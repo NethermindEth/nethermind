@@ -186,9 +186,10 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (headers.Count <= 0) return true;
 
+            // Note: It does not download block for the first header. so we are checking for the second+ header.
             BlockHeader blockZero = headers[0];
 
-            bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
+            bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number, blockZero.Hash);
             if (!parentIsKnown)
             {
                 _ancestorLookupLevel++;
@@ -235,7 +236,6 @@ namespace Nethermind.Synchronization.Blocks
             {
                 if (cancellation.IsCancellationRequested) break; // check before every heavy operation
 
-                Console.Error.WriteLine($"The header is {headers[0].Number}");
                 bool downloadReceipts = !shouldProcess;
                 BlockDownloadContext? context = await DoDownload(bestPeer, headers!, downloadReceipts, cancellation);
                 headers.TryDispose();
