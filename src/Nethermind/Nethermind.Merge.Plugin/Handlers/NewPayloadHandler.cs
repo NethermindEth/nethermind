@@ -148,11 +148,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
-        if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
-        {
-            if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
-            return NewPayloadV1Result.Valid(block.Hash);
-        }
+        // if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
+        // {
+        //     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
+        //     return NewPayloadV1Result.Valid(block.Hash);
+        // }
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
