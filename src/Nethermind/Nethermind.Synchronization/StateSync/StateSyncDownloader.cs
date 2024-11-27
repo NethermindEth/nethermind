@@ -137,7 +137,6 @@ namespace Nethermind.Synchronization.StateSync
             foreach (var kvp in itemsGroupedByAccount)
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
-                // TODO: Whats the key encoding? Anyone remember Hash256->compact?
                 group[0] = kvp.Key.Bytes.ToArray();
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)

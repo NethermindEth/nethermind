@@ -12,6 +12,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
     public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
+    public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     public virtual bool IsEip658Enabled => spec.IsEip658Enabled;
     public virtual string Name => spec.Name;
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
@@ -80,6 +81,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
+    public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOntakeEnabled => spec.IsOntakeEnabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
