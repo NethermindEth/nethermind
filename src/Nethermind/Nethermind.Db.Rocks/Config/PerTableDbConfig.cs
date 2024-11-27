@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Configuration;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Nethermind.Core.Extensions;
 
@@ -23,13 +25,11 @@ public class PerTableDbConfig
         _columnName = columnName;
     }
 
-    public ulong BlockCacheSize => _settings.BlockCacheSize ?? ReadConfig<ulong>(nameof(BlockCacheSize));
-
     public ulong WriteBufferSize => _settings.WriteBufferSize ?? ReadConfig<ulong>(nameof(WriteBufferSize));
-
     public ulong WriteBufferNumber => _settings.WriteBufferNumber ?? ReadConfig<uint>(nameof(WriteBufferNumber));
 
-    public string? AdditionalRocksDbOptions => ReadConfigStringAppend(_dbConfig, nameof(AdditionalRocksDbOptions), GetPrefixes());
+    public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), GetPrefixes());
+    public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), GetPrefixes());
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
@@ -64,7 +64,7 @@ public class PerTableDbConfig
         return [string.Concat(_tableName, "Db")];
     }
 
-    private static string ReadConfigStringAppend(IDbConfig dbConfig, string propertyName, string[] prefixes)
+    private static string ReadRocksdbOptions(IDbConfig dbConfig, string propertyName, string[] prefixes)
     {
         Type type = dbConfig.GetType();
         PropertyInfo? propertyInfo;
@@ -79,8 +79,9 @@ public class PerTableDbConfig
             if (propertyInfo is not null)
             {
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
-                if (valObj != null)
+                if (!string.IsNullOrEmpty(valObj))
                 {
+                    if (!valObj.EndsWith(";")) throw new ConfigurationErrorsException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.");
                     val += valObj;
                 }
             }

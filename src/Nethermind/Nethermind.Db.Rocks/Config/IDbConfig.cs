@@ -26,56 +26,65 @@ public interface IDbConfig : IConfig
 
     ulong WriteBufferSize { get; set; }
     uint WriteBufferNumber { get; set; }
-    ulong BlockCacheSize { get; set; }
     int? MaxOpenFiles { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
+    string RocksDbOptions { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
     bool? VerifyChecksum { get; set; }
     ulong? RowCacheSize { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
 
-    ulong BlobTransactionsDbBlockCacheSize { get; set; }
+    string BlobTransactionsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
-    uint ReceiptsDbWriteBufferNumber { get; set; }
-    ulong ReceiptsDbBlockCacheSize { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
+    string ReceiptsDbRocksDbOptions { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
-    uint BlocksDbWriteBufferNumber { get; set; }
-    ulong BlocksDbBlockCacheSize { get; set; }
+    string BlocksDbRocksDbOptions { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
-    uint HeadersDbWriteBufferNumber { get; set; }
-    ulong HeadersDbBlockCacheSize { get; set; }
+    string HeadersDbRocksDbOptions { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlockNumbersDbWriteBufferSize { get; set; }
-    uint BlockNumbersDbWriteBufferNumber { get; set; }
-    ulong BlockNumbersDbBlockCacheSize { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
+    string BlockNumbersDbRocksDbOptions { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
-    uint BlockInfosDbWriteBufferNumber { get; set; }
-    ulong BlockInfosDbBlockCacheSize { get; set; }
+    string BlockInfosDbRocksDbOptions { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
-    uint PendingTxsDbWriteBufferNumber { get; set; }
-    ulong PendingTxsDbBlockCacheSize { get; set; }
+    string PendingTxsDbRocksDbOptions { get; set; }
+    string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
+
+    ulong MetadataDbWriteBufferSize { get; set; }
+    string MetadataDbRocksDbOptions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
+
+    ulong BloomDbWriteBufferSize { get; set; }
+    string BloomDbRocksDbOptions { get; set; }
+    string? BloomDbAdditionalRocksDbOptions { get; set; }
+
+    ulong CodeDbWriteBufferSize { get; set; }
+    ulong? CodeDbRowCacheSize { get; set; }
+    string CodeDbRocksDbOptions { get; set; }
+    string? CodeDbAdditionalRocksDbOptions { get; set; }
+
 
     ulong StateDbWriteBufferSize { get; set; }
     uint StateDbWriteBufferNumber { get; set; }
-    ulong StateDbBlockCacheSize { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
     bool StateDbEnableFileWarmer { get; set; }
     double StateDbCompressibilityHint { get; set; }
+    string StateDbRocksDbOptions { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }
 }

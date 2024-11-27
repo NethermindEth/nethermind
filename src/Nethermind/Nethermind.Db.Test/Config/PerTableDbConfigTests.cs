@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Reflection;
 using FluentAssertions;
 using Nethermind.Db.Rocks.Config;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Config;
@@ -30,8 +33,8 @@ public class PerTableDbConfigTests
         {
             PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(table, ""));
 
-            object _ = config.CacheIndexAndFilterBlocks;
-            _ = config.BlockCacheSize;
+            object _ = config.RocksDbOptions;
+            _ = config.AdditionalRocksDbOptions;
             _ = config.WriteBufferSize;
             _ = config.WriteBufferNumber;
             _ = config.MaxOpenFiles;
@@ -66,5 +69,17 @@ public class PerTableDbConfigTests
 
         PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""));
         config.MaxOpenFiles.Should().Be(2);
+    }
+
+    [Test]
+    public void AllDbConfigMemberMustBeDeclaredInIDbConfig()
+    {
+        Type dbConfigType = typeof(DbConfig);
+        Type iDbConfigType = typeof(IDbConfig);
+
+        foreach (PropertyInfo propertyInfo in dbConfigType.Properties())
+        {
+            iDbConfigType.GetProperty(propertyInfo.Name).Should().NotBeNull($"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
+        }
     }
 }

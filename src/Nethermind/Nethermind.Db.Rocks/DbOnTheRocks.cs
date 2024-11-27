@@ -59,7 +59,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     private long _maxThisDbSize;
 
-    protected IntPtr? _cache = null;
     protected IntPtr? _rowCache = null;
 
     private readonly DbSettings _settings;
@@ -151,8 +150,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                     if (columnFamily == "Default") columnFamily = "default";
 
                     ColumnFamilyOptions options = new();
-                    IntPtr? cacheForColumn = _cache ?? sharedCache;
-                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, cacheForColumn);
+                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
                     columnFamilies.Add(columnFamily, options);
                 }
             }
@@ -360,7 +358,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            if (_cache is null && !includeSharedCache)
+            if (!includeSharedCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -412,6 +410,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
     {
         Dictionary<string, string> asDict = new();
+        if (string.IsNullOrEmpty(dbOptions)) return asDict;
 
         foreach (Match match in ExtractDbOptionsRegex().Matches(dbOptions))
         {
@@ -428,27 +427,34 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         // Note: Keep in mind, the term 'index' here usually means mapping to a block, not to a value.
         #region TableFactory sections
 
-        // TODO: Try PlainTable and Cuckoo table.
-        BlockBasedTableOptions tableOptions = new();
+        string allOptions = dbConfig.RocksDbOptions + dbConfig.AdditionalRocksDbOptions;
+        IDictionary<string, string> optionsAsDict = ExtractOptions(allOptions);
+        _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
+        _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
+        _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
 
-        ulong blockCacheSize = dbConfig.BlockCacheSize;
+        BlockBasedTableOptions tableOptions = new();
+        options.SetBlockBasedTableFactory(tableOptions);
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
+        try
+        {
+            _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(optsPtr);
+        }
+
+        ulong blockCacheSize = 0;
+        if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
+        {
+            blockCacheSize = ulong.Parse(blockCacheSizeStr);
+        }
+
         if (sharedCache is not null && blockCacheSize == 0)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
         }
-        else
-        {
-            _cache = _rocksDbNative.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
-            tableOptions.SetBlockCache(_cache.Value);
-        }
-
-        options.SetBlockBasedTableFactory(tableOptions);
-
-        IDictionary<string, string> optionsAsDict = ExtractOptions(dbConfig.AdditionalRocksDbOptions!);
-
-        _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
-        _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
-        _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_to_merge"]);
 
         #endregion
 
@@ -526,7 +532,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
-            IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
+            optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
             try
             {
                 _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
@@ -1233,11 +1239,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         _iteratorManager.Dispose();
         _db.Dispose();
-
-        if (_cache.HasValue)
-        {
-            _rocksDbNative.rocksdb_cache_destroy(_cache.Value);
-        }
 
         if (_rowCache.HasValue)
         {
