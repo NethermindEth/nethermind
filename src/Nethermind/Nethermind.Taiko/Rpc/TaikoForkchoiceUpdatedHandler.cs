@@ -51,7 +51,7 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
           secondsPerSlot,
           simulateBlockProduction)
 {
-    protected override bool IsNewHeadAlignedWithChain(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+    protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         errorResult = null;
@@ -72,7 +72,7 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
         return true;
     }
 
-    protected override BlockHeader? ValidateCheckpointBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
+    protected override BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
         if (skipZeroHash && blockHash == Keccak.Zero)

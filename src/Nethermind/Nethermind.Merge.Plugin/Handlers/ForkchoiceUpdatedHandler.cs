@@ -94,7 +94,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
-    protected virtual bool IsNewHeadAlignedWithChain(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+    protected virtual bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
@@ -155,8 +155,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
 
-        BlockHeader? safeBlockHeader = ValidateCheckpointBlockHash(ref safeBlockHash, out string? safeBlockErrorMsg);
-        BlockHeader? finalizedHeader = ValidateCheckpointBlockHash(ref finalizedBlockHash, out string? finalizationErrorMsg);
+        BlockHeader? safeBlockHeader = ValidateBlockHash(ref safeBlockHash, out string? safeBlockErrorMsg);
+        BlockHeader? finalizedHeader = ValidateBlockHash(ref finalizedBlockHash, out string? finalizationErrorMsg);
 
         string requestStr = forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number);
 
@@ -170,7 +170,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (!blockInfo.WasProcessed)
         {
-            if (!IsNewHeadAlignedWithChain(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (!IsOnMainChainBehindHead(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
                 return errorResult;
             }
@@ -249,7 +249,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!IsNewHeadAlignedWithChain(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        if (!IsOnMainChainBehindHead(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }
@@ -391,7 +391,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return branchOfBlocks;
     }
 
-    protected virtual BlockHeader? ValidateCheckpointBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
+    protected virtual BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
         if (skipZeroHash && blockHash == Keccak.Zero)
