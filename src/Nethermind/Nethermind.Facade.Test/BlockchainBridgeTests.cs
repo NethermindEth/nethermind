@@ -153,8 +153,8 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx =>
-                blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
+            Arg.Is<BlockHeader>(blockHeader =>
+                blockHeader.IsPostMerge && blockHeader.Random == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
 
@@ -169,7 +169,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
+            Arg.Is<BlockHeader>(blockHeader => blockHeader.Number == 10),
             Arg.Any<ITxTracer>());
     }
 
@@ -184,7 +184,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+            Arg.Is<BlockHeader>(blockHeader => blockHeader.MixHash == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
 
@@ -199,7 +199,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Is<BlockHeader>(blockHeader => blockHeader.Beneficiary == TestItem.AddressB),
             Arg.Any<ITxTracer>());
     }
 

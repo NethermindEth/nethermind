@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Contracts
 
             try
             {
-                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), tracer);
+                _transactionProcessor.Execute(transaction, header, tracer);
                 result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }
