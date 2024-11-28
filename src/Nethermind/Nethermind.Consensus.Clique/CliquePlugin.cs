@@ -46,7 +46,8 @@ namespace Nethermind.Consensus.Clique
             _cliqueConfig = new CliqueConfig
             {
                 BlockPeriod = chainSpec.Period,
-                Epoch = chainSpec.Epoch
+                Epoch = chainSpec.Epoch,
+                MinimumOutOfTurnDelay = nethermindApi.Config<ICliqueConfig>().MinimumOutOfTurnDelay
             };
 
             _snapshotManager = new SnapshotManager(

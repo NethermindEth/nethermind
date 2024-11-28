@@ -14,10 +14,6 @@ namespace Nethermind.Db.Test
         {
             DbSettings settings = new("name", "path")
             {
-                BlockCacheSize = 1,
-                WriteBufferNumber = 5,
-                WriteBufferSize = 10,
-                CacheIndexAndFilterBlocks = true
             };
 
             DbSettings settings2 = settings.Clone("Name2", "Path2");
