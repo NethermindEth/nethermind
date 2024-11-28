@@ -167,6 +167,7 @@ jobs:
         run: |
           tag=${{ needs.create_docker_image.outputs.cleanRef }}
           sed -i -e "s|^ARG baseimage=.*|ARG baseimage=nethermindeth/nethermind|" -e "s|^ARG tag=.*|ARG tag=$tag|" hive/clients/nethermind/Dockerfile
+          sed -i "s/NETHERMIND_HIVE_ENABLED/NETHERMIND_HIVECONFIG_ENABLED/g" hive/clients/nethermind/Dockerfile
 
       - name: Build Hive
         working-directory: hive
