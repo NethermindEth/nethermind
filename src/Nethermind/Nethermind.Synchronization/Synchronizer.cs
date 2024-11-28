@@ -381,6 +381,8 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         ConfigureSingletonSyncFeed<BodiesSyncBatch, BodiesSyncFeed, BodiesSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
 
+        serviceCollection.Bind<BodiesSyncFeed, IBodiesSyncFeed>();
+
         if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
             !syncConfig.DownloadBodiesInFastSync)
         {

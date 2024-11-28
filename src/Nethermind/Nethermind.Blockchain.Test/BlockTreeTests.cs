@@ -1170,47 +1170,6 @@ public class BlockTreeTests
         Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
-    public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
-    {
-        // left old code to prove that it does not matter for the result nowadays
-        // we store and no longer binary search lowest body number
-
-        MemDb blocksDb = new();
-        blocksDb.Set(BlockTree.LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(1L).Bytes);
-
-        SyncConfig syncConfig = new()
-        {
-            PivotNumber = beginIndex.ToString(),
-        };
-
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithBlocksDb(blocksDb)
-            .WithSyncConfig(syncConfig)
-            .WithoutSettingHead;
-
-        BlockTree tree = builder.TestObject;
-
-        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-
-        for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
-        {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
-            tree.Insert(block.Header);
-            tree.Insert(block);
-        }
-
-        BlockTree loadedTree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .WithDatabaseFrom(builder)
-            .WithSyncConfig(syncConfig)
-            .TestObject;
-
-        Assert.That(tree.LowestInsertedBodyNumber, Is.EqualTo(null), "tree");
-        Assert.That(loadedTree.LowestInsertedBodyNumber, Is.EqualTo(1), "loaded tree");
-    }
-
-
     private static readonly object[] SourceOfBSearchTestCases =
     {
         new object[] {1L, 0L},
@@ -1362,7 +1321,6 @@ public class BlockTreeTests
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
         Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(1), "loaded tree - lowest header");
-        Assert.That(tree.LowestInsertedBodyNumber, Is.EqualTo(null), "loaded tree - lowest body");
         Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
     }
 

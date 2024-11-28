@@ -16,6 +16,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -78,7 +79,7 @@ internal static class TestRpcBlockchainExt
             LimboLogs.Instance,
             blockchain.SpecProvider,
             blockchain.GasPriceOracle,
-            new EthSyncingInfo(blockchain.BlockTree, blockchain.ReceiptStorage, new SyncConfig(),
+            new EthSyncingInfo(blockchain.BlockTree, blockchain.ReceiptStorage, Substitute.For<IBodiesSyncFeed>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), blockchain.LogManager),
             blockchain.FeeHistoryOracle ??
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),

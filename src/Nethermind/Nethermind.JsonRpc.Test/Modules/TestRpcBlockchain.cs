@@ -31,6 +31,7 @@ using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
 using Nethermind.State;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -130,7 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, new SyncConfig(),
+            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, Substitute.For<IBodiesSyncFeed>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),

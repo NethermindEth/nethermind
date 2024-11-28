@@ -37,6 +37,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -202,7 +203,7 @@ public partial class EngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, Substitute.For<IBodiesSyncFeed>(), syncConfig,
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager);
             PostMergeBlockProducerFactory? blockProducerFactory = new(
                 SpecProvider,

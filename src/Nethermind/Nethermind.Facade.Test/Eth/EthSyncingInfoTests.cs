@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,12 +26,13 @@ namespace Nethermind.Facade.Test.Eth
             ISyncConfig syncConfig = new SyncConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IBodiesSyncFeed bodiesSyncFeed = Substitute.For<IBodiesSyncFeed>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig,
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, bodiesSyncFeed, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(false));
@@ -46,12 +48,13 @@ namespace Nethermind.Facade.Test.Eth
             ISyncConfig syncConfig = new SyncConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IBodiesSyncFeed bodiesSyncFeed = Substitute.For<IBodiesSyncFeed>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig,
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, bodiesSyncFeed, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(true));
@@ -67,12 +70,13 @@ namespace Nethermind.Facade.Test.Eth
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IBodiesSyncFeed bodiesSyncFeed = Substitute.For<IBodiesSyncFeed>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, new SyncConfig(),
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, bodiesSyncFeed, new SyncConfig(),
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedResult));
@@ -98,6 +102,7 @@ namespace Nethermind.Facade.Test.Eth
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IBodiesSyncFeed bodiesSyncFeed = Substitute.For<IBodiesSyncFeed>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingreceipts);
@@ -105,7 +110,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
 
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig,
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, bodiesSyncFeed, syncConfig,
                 new StaticSelector(SyncMode.FastBlocks), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult, Is.EqualTo(CreateSyncingResult(expectedResult, 6178000L, 6178001L, SyncMode.FastBlocks)));
@@ -117,6 +122,7 @@ namespace Nethermind.Facade.Test.Eth
             SyncConfig syncConfig = new();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IBodiesSyncFeed bodiesSyncFeed = Substitute.For<IBodiesSyncFeed>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
@@ -125,7 +131,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100).TestObject)
                 .TestObject);
 
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig,
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, bodiesSyncFeed, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
 
             ethSyncingInfo.IsSyncing().Should().Be(false);
@@ -160,6 +166,7 @@ namespace Nethermind.Facade.Test.Eth
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IBodiesSyncFeed bodiesSyncFeed = Substitute.For<IBodiesSyncFeed>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
@@ -171,7 +178,7 @@ namespace Nethermind.Facade.Test.Eth
                 SnapSync = true,
                 PivotNumber = "0", // Equivalent to not having a pivot
             };
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig,
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, bodiesSyncFeed, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 

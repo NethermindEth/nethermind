@@ -328,7 +328,6 @@ public class ReceiptsSyncFeedTests
                     : null);
 
         _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
-        _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody!.Number);
     }
 
     [Test]
@@ -417,7 +416,6 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-        _blockTree.LowestInsertedBodyNumber.Returns(1);
 
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
@@ -439,7 +437,6 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-        _blockTree.LowestInsertedBodyNumber.Returns(2);
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
 
