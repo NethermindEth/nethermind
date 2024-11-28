@@ -161,4 +161,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
     int StateMinDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool GCOnStateSyncFinished { get; set; }
 }

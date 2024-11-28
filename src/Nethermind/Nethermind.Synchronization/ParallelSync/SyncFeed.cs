@@ -44,7 +44,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public virtual void Finish()
         {
             ChangeState(SyncFeedState.Finished);
-            GC.Collect(2, GCCollectionMode.Aggressive, true, true);
         }
         public Task FeedTask => _taskCompletionSource?.Task ?? Task.CompletedTask;
         public abstract void SyncModeSelectorOnChanged(SyncMode current);

@@ -90,8 +90,22 @@ namespace Nethermind.Synchronization
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
 
+            if (syncConfig.GCOnStateSyncFinished)
+            {
+                SyncModeSelector.Changed += GCOnStateSyncFinished;
+            }
+
             // Make unit test faster.
             SyncModeSelector.Update();
+        }
+
+        private void GCOnStateSyncFinished(object? sender, SyncModeChangedEventArgs e)
+        {
+            // State nodes finished
+            if ((e.Previous & SyncMode.StateNodes) != 0 && (e.Current & SyncMode.StateNodes) == 0)
+            {
+                GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            }
         }
 
         private void StartFullSyncComponents()

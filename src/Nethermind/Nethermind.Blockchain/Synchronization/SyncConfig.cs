@@ -72,6 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool TrieHealing { get; set; } = true;
         public int StateMaxDistanceFromHead { get; set; } = 128;
         public int StateMinDistanceFromHead { get; set; } = 32;
+        public bool GCOnStateSyncFinished { get; set; } = true;
 
         public override string ToString()
         {
