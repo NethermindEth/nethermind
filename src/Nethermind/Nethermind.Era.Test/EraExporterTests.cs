@@ -53,6 +53,7 @@ public class EraExporterTests
     public void Export_ReceiptsAreNull_ThrowEraException()
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
+            .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>())
             .Build();
 
         string tmpDirectory = container.ResolveTempDirPath();

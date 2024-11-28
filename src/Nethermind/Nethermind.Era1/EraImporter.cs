@@ -132,13 +132,6 @@ public class EraImporter : IEraImporter
             suggestFromBlock = long.MaxValue;
         }
 
-        // Add last header first.
-        // This set BestSuggestedHeader so that the receipt insert does not create tx index unnecessarily
-        {
-            (Block? b, TxReceipt[]? _) = (await eraStore.FindBlockAndReceipts(eraStore.LastBlock, cancellation: cancellation))!;
-            if (b?.IsGenesis == false) _blockTree.Insert(b!.Header);
-        }
-
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
         // This make the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
         // work on the same era file as other thread.
@@ -221,7 +214,7 @@ public class EraImporter : IEraImporter
                 await SuggestAndProcessBlock(b);
             }
             else
-                InsertBlockAndReceipts(b, r);
+                InsertBlockAndReceipts(b, r, to);
 
             blocksProcessed++;
             if (blocksProcessed % 10000 == 0)
@@ -245,12 +238,12 @@ public class EraImporter : IEraImporter
             _logger.Info($"Import progress: | {totalBlocksProcessed,10}/{totalBlocks} blocks  | elapsed {elapsed:hh\\:mm\\:ss} | {blocksProcessedSinceLast / elapsedSinceLastLog.TotalSeconds,10:0.00} Blk/s ");
     }
 
-    private void InsertBlockAndReceipts(Block b, TxReceipt[] r)
+    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, long lastBlockNumber)
     {
         if (_blockTree.FindBlock(b.Number) is null)
             _blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
         if (!_receiptStorage.HasBlock(b.Number, b.Hash!))
-            _receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL);
+            _receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }
 
     private async Task SuggestAndProcessBlock(Block block)
