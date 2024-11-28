@@ -574,16 +574,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long baseGasCost = precompile.BaseGasCost(spec);
         long blobGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = false;
-        if (!_state.AccountExists(state.Env.ExecutingAccount))
-        {
-            wasCreated = true;
-            _state.CreateAccount(state.Env.ExecutingAccount, transferValue);
-        }
-        else
-        {
-            _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
-        }
+        bool wasCreated = _state.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -639,14 +630,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         if (!vmState.IsContinuation)
         {
-            if (!_state.AccountExists(env.ExecutingAccount))
-            {
-                _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
-            }
-            else
-            {
-                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
-            }
+            _state.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
 
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
@@ -2247,14 +2231,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         EvmExceptionType FastCall(IReleaseSpec spec, out object returnData, in UInt256 transferValue, Address target)
         {
-            if (!_state.AccountExists(target))
-            {
-                _state.CreateAccount(target, transferValue);
-            }
-            else
-            {
-                _state.AddToBalance(target, transferValue, spec);
-            }
+            _state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
             returnData = CallResult.BoxedEmpty;

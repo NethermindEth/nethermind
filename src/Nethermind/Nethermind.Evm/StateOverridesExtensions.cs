@@ -124,7 +124,7 @@ public static class StateOverridesExtensions
             }
             else if (balance < newBalance)
             {
-                stateProvider.AddToBalance(address, newBalance - balance, spec);
+                stateProvider.AddToBalanceAndCreateIfNotExists(address, newBalance - balance, spec);
             }
         }
     }
