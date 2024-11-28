@@ -23,7 +23,6 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;

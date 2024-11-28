@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -152,7 +151,6 @@ namespace Nethermind.TxPool
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
                 new OnlyOneTxPerDelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository ),
-                new DelegatedAccountFilter(_specProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -346,6 +344,14 @@ namespace Nethermind.TxPool
                 if (blockTx.Type == TxType.SetCode)
                 {
                     eip7702Txs++;
+
+                    if (blockTx.HasAuthorizationList)
+                    {
+                        foreach (AuthorizationTuple tuple in blockTx.AuthorizationList)
+                        {
+
+                        }
+                    }
                 }
 
                 if (!IsKnown(txHash))
@@ -498,7 +504,7 @@ namespace Nethermind.TxPool
                 : worstTx.GasBottleneck;
 
             bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-
+            
             if (!inserted)
             {
                 // it means it failed on adding to the pool - it is possible when new tx has the same sender

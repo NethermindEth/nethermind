@@ -22,9 +22,17 @@ namespace Nethermind.TxPool.Filters
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
-
-            if (standardPool.ContainsBucket(tx.SenderAddress!) || blobPool.ContainsBucket(tx.SenderAddress!))
+            Transaction[] currentTx;
+            if (standardPool.TryGetBucket(tx.SenderAddress!, out currentTx) || blobPool.TryGetBucket(tx.SenderAddress!, out currentTx))
             {
+                foreach (Transaction t in currentTx)
+                {
+                    if (t.Nonce == tx.Nonce)
+                    {
+                        //This is a replacement tx so accept it, and let the comparers check for correct replacement rules
+                        return AcceptTxResult.Accepted;
+                    }
+                }
                 return AcceptTxResult.OnlyOneTxPerDelegatedAccount;
             }
             return AcceptTxResult.Accepted;
