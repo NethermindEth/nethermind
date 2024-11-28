@@ -444,7 +444,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             IContainer container = builder.Build();
             _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Push((IAsyncDisposable) container);
+            _api.DisposeStack.Push((IAsyncDisposable)container);
 
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
             _peerRefresher = peerRefresher;

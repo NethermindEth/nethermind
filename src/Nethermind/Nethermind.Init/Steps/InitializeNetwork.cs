@@ -120,7 +120,7 @@ public class InitializeNetwork : IStep
             IContainer container = builder.Build();
 
             _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Push((IAsyncDisposable) container);
+            _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
         if (_api.TrieStore is HealingTrieStore healingTrieStore)
