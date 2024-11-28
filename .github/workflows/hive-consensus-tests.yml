@@ -121,6 +121,10 @@ jobs:
         with:
           path: nethermind
           submodules: "recursive"
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9'
       - name: Generate Hive Json For Matrix
         id: set-matrix
         run: |
