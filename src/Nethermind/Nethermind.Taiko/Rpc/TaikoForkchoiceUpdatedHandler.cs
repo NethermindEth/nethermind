@@ -6,6 +6,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -20,7 +21,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Taiko.Rpc;
 
-class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
+internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
@@ -50,7 +51,7 @@ class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
           secondsPerSlot,
           simulateBlockProduction)
 {
-    protected override bool IsNewHeadAlignedWithChain(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+    protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         errorResult = null;
@@ -69,5 +70,23 @@ class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
 
         errorResult = null;
         return true;
+    }
+
+    protected override BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
+    {
+        errorMessage = null;
+        if (skipZeroHash && blockHash == Keccak.Zero)
+        {
+            return null;
+        }
+
+        BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (blockHeader is null)
+        {
+            blockHash = Keccak.Zero;
+            return null;
+        }
+
+        return blockHeader;
     }
 }
