@@ -489,6 +489,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
+            BlockHeader? lowestInsertedHeader = null;
             int skippedAtTheEnd = 0;
             for (int i = batch.Response.Count - 1; i >= 0; i--)
             {
@@ -515,89 +516,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == batch.Response.Count - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    BlockHeader lowestInserted = LowestInsertedBlockHeader;
-                    // response does not carry expected data
-                    if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
-                    {
-                        if (batch.ResponseSourcePeer is not null)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
-                            _syncPeerPool.ReportBreachOfProtocol(
-                                batch.ResponseSourcePeer,
-                                DisconnectReason.UnexpectedHeaderHash,
-                                "first hash inconsistent with request");
-                        }
-
-                        break;
-                    }
-
-                    // response needs to be cached until predecessors arrive
-                    if (header.Hash != _nextHeaderHash)
-                    {
-                        // If the header is at the exact block number, but the hash does not match, then its a different branch.
-                        // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
-                        // `_nextHeaderHash` not updated as the `BlockTree.Insert` has not returned yet.
-                        // We just let it go to the dependency graph.
-                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1 && header.Hash != LowestInsertedBlockHeader?.ParentHash)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
-                            if (batch.ResponseSourcePeer is not null)
-                            {
-                                _syncPeerPool.ReportBreachOfProtocol(
-                                    batch.ResponseSourcePeer,
-                                    DisconnectReason.HeaderBatchOnDifferentBranch,
-                                    "headers - different branch");
-                            }
-
-                            break;
-                        }
-
-                        if (header.Number == LowestInsertedBlockHeader?.Number)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                            if (batch.ResponseSourcePeer is not null)
-                            {
-                                _syncPeerPool.ReportBreachOfProtocol(
-                                    batch.ResponseSourcePeer,
-                                    DisconnectReason.HeaderBatchOnDifferentBranch,
-                                    "headers - different branch");
-                            }
-
-                            break;
-                        }
-
-                        if (_dependencies.ContainsKey(header.Number))
-                        {
-                            _pending.Enqueue(batch);
-                            throw new InvalidOperationException($"Only one header dependency expected ({batch})");
-                        }
-                        long lastNumber = -1;
-                        for (int j = 0; j < batch.Response.Count; j++)
-                        {
-                            BlockHeader? current = batch.Response[j];
-                            if (current is not null)
-                            {
-                                if (lastNumber != -1 && lastNumber < current.Number - 1)
-                                {
-                                    //There is a gap in this response,
-                                    //so we save the whole batch for now,
-                                    //and let the next PrepareRequest() handle the disconnect
-                                    addedEarliest = batch.StartNumber;
-                                    addedLast = batch.EndNumber;
-                                    break;
-                                }
-                                addedEarliest = Math.Min(addedEarliest, current.Number);
-                                addedLast = Math.Max(addedLast, current.Number);
-                                lastNumber = current.Number;
-                            }
-                        }
-                        HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                        _dependencies[header.Number] = dependentBatch;
-                        MarkDirty();
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
-                        // but we cannot do anything with it yet
-                        break;
-                    }
+                    if (ValidateFirstHeader(header)) break;
                 }
                 else
                 {
@@ -625,6 +544,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     break;
                 }
+                else
+                {
+                    lowestInsertedHeader = header;
+                }
 
                 addedEarliest = Math.Min(addedEarliest, header.Number);
                 addedLast = Math.Max(addedLast, header.Number);
@@ -636,6 +559,11 @@ namespace Nethermind.Synchronization.FastBlocks
             if (added + leftFillerSize + rightFillerSize != batch.RequestSize)
             {
                 throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.RequestSize} in {batch}");
+            }
+
+            if (lowestInsertedHeader is not null)
+            {
+                OnLowestInsertedHeaderInBatch(lowestInsertedHeader);
             }
 
             added = Math.Max(0, added);
@@ -684,6 +612,103 @@ namespace Nethermind.Synchronization.FastBlocks
 
             HeadersSyncQueueReport.Update(HeadersInQueue);
             return added;
+
+            bool ValidateFirstHeader(BlockHeader? header)
+            {
+                BlockHeader lowestInserted = LowestInsertedBlockHeader;
+                // response does not carry expected data
+                if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
+                {
+                    if (batch.ResponseSourcePeer is not null)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
+                        _syncPeerPool.ReportBreachOfProtocol(
+                            batch.ResponseSourcePeer,
+                            DisconnectReason.UnexpectedHeaderHash,
+                            "first hash inconsistent with request");
+                    }
+
+                    return true;
+                }
+
+                // response needs to be cached until predecessors arrive
+                if (header.Hash != _nextHeaderHash)
+                {
+                    // If the header is at the exact block number, but the hash does not match, then its a different branch.
+                    // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
+                    // `_nextHeaderHash` not updated as the `BlockTree.Insert` has not returned yet.
+                    // We just let it go to the dependency graph.
+                    if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1 && header.Hash != LowestInsertedBlockHeader?.ParentHash)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
+                        if (batch.ResponseSourcePeer is not null)
+                        {
+                            _syncPeerPool.ReportBreachOfProtocol(
+                                batch.ResponseSourcePeer,
+                                DisconnectReason.HeaderBatchOnDifferentBranch,
+                                "headers - different branch");
+                        }
+
+                        return true;
+                    }
+
+                    if (header.Number == LowestInsertedBlockHeader?.Number)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
+                        if (batch.ResponseSourcePeer is not null)
+                        {
+                            _syncPeerPool.ReportBreachOfProtocol(
+                                batch.ResponseSourcePeer,
+                                DisconnectReason.HeaderBatchOnDifferentBranch,
+                                "headers - different branch");
+                        }
+
+                        return true;
+                    }
+
+                    if (_dependencies.ContainsKey(header.Number))
+                    {
+                        _pending.Enqueue(batch);
+                        throw new InvalidOperationException($"Only one header dependency expected ({batch})");
+                    }
+                    long lastNumber = -1;
+                    for (int j = 0; j < batch.Response.Count; j++)
+                    {
+                        BlockHeader? current = batch.Response[j];
+                        if (current is not null)
+                        {
+                            if (lastNumber != -1 && lastNumber < current.Number - 1)
+                            {
+                                //There is a gap in this response,
+                                //so we save the whole batch for now,
+                                //and let the next PrepareRequest() handle the disconnect
+                                addedEarliest = batch.StartNumber;
+                                addedLast = batch.EndNumber;
+                                break;
+                            }
+                            addedEarliest = Math.Min(addedEarliest, current.Number);
+                            addedLast = Math.Max(addedLast, current.Number);
+                            lastNumber = current.Number;
+                        }
+                    }
+                    HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
+                    _dependencies[header.Number] = dependentBatch;
+                    MarkDirty();
+                    if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
+                    // but we cannot do anything with it yet
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        protected virtual void OnLowestInsertedHeaderInBatch(BlockHeader lowestInsertedHeader)
+        {
+            if (lowestInsertedHeader.Number < (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue))
+            {
+                _blockTree.LowestInsertedHeader = lowestInsertedHeader;
+            }
         }
 
         private void MarkDirty()

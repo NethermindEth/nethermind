@@ -226,11 +226,6 @@ namespace Nethermind.Blockchain
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
 
-            if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
-            {
-                LowestInsertedHeader = header;
-            }
-
             bool beaconInsert = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
             if (!beaconInsert)
             {

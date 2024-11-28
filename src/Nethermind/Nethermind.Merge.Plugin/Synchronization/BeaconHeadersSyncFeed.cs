@@ -138,6 +138,10 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         return base.InsertHeaders(batch);
     }
 
+    protected override void OnLowestInsertedHeaderInBatch(BlockHeader lowestInsertedHeader)
+    {
+    }
+
     private void ConnectHeaderChainInInvalidChainTracker(IReadOnlyList<BlockHeader?> batchResponse)
     {
         // Sometimes multiple consecutive block failed validation, but engine api need to know the earliest valid hash.
