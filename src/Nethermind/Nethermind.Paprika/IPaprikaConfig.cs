@@ -23,6 +23,9 @@ public interface IPaprikaConfig : IConfig
     [ConfigItem(Description = "Whether Merkle should use parallelism", DefaultValue = "true")]
     public bool ParallelMerkle { get; set; }
 
+    [ConfigItem(Description = "Whether a prefetcher should be run in the background to prefetch Merkle nodes that are on the path of the data access", DefaultValue = "true")]
+    public bool Prefetch { get; set; }
+
     [ConfigItem(Description = "Paprika history depth", DefaultValue = "32")]
     public int HistoryDepth { get; set; }
 

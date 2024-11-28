@@ -31,6 +31,7 @@ namespace Nethermind.State
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly IStateFactory _factory;
+        private readonly bool _prefetchMerkle;
         private IState _state;
         private PreBlockCaches? PreBlockCaches { get; }
 
@@ -53,9 +54,11 @@ namespace Nethermind.State
             IKeyValueStore? codeDb,
             ILogManager? logManager,
             PreBlockCaches? preBlockCaches = null,
-            bool populatePreBlockCache = true)
+            bool populatePreBlockCache = true,
+            bool prefetchMerkle = false)
         {
             _factory = factory;
+            _prefetchMerkle = prefetchMerkle;
             PreBlockCaches = preBlockCaches;
             _stateProvider = new StateProvider(this, factory, codeDb, logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(this, logManager, PreBlockCaches?.StorageCache,
@@ -281,7 +284,7 @@ namespace Nethermind.State
 
         private void ResetState(Hash256 stateRoot)
         {
-            Interlocked.Exchange(ref _state, _factory.Get(stateRoot))?.Dispose();
+            Interlocked.Exchange(ref _state, _factory.Get(stateRoot, _prefetchMerkle))?.Dispose();
         }
 
         private void ResetStateToNull()

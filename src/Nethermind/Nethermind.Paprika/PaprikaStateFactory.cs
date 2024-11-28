@@ -59,6 +59,8 @@ public class PaprikaStateFactory : IStateFactory
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
 
+        Prefetch = config.Prefetch;
+
         _blockchain.FlusherFailure += (_, exception) =>
         {
             _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
@@ -67,7 +69,15 @@ public class PaprikaStateFactory : IStateFactory
         _accessor = _blockchain.BuildReadOnlyAccessor();
     }
 
-    public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);
+    /// <summary>
+    /// Provides information whether prefetching was configured in <see cref="IPaprikaConfig"/>.
+    /// </summary>
+    private bool Prefetch { get; }
+
+    public IState Get(Hash256 stateRoot, bool prefetchMerkle)
+    {
+        return new State(_blockchain.StartNew(Convert(stateRoot)), this, prefetchMerkle);
+    }
 
     public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
         new ReadOnlyState(stateRoot != null
@@ -218,12 +228,11 @@ public class PaprikaStateFactory : IStateFactory
         private readonly IPreCommitPrefetcher? _prefetch;
         private readonly HashSet<int> _prefetched;
 
-        public State(IWorldState wrapped, PaprikaStateFactory factory)
+        public State(IWorldState wrapped, PaprikaStateFactory factory, bool prefetchMerkle)
         {
             _wrapped = wrapped;
             _factory = factory;
-            //_prefetch = _wrapped.OpenPrefetcher();
-            _prefetch = default;
+            _prefetch = prefetchMerkle && factory.Prefetch ? _wrapped.OpenPrefetcher() : null;
             _prefetched = new HashSet<int>();
         }
 

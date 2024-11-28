@@ -54,7 +54,7 @@ public interface IReadOnlyState : IDisposable
 /// </summary>
 public interface IStateFactory : IAsyncDisposable
 {
-    IState Get(Hash256 stateRoot);
+    IState Get(Hash256 stateRoot, bool prefetchMerkle);
 
     IReadOnlyState GetReadOnly(Hash256? stateRoot);
 

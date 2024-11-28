@@ -16,7 +16,9 @@ public class PaprikaConfig : IPaprikaConfig
 
     public bool ParallelMerkle { get; set; } = true;
 
+    public bool Prefetch { get; set; } = true;
+
     public int HistoryDepth { get; set; } = 32;
 
-    public int SizeInGb { get; set; } = 512;
+    public int SizeInGb { get; set; } = 320;
 }
