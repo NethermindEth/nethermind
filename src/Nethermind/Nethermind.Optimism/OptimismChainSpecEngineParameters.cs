@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -38,22 +37,6 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
     public Address? Create2DeployerAddress { get; set; }
 
     public byte[]? Create2DeployerCode { get; set; }
-
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-        ArgumentNullException.ThrowIfNull(BedrockBlockNumber);
-        ArgumentNullException.ThrowIfNull(RegolithTimestamp);
-        ArgumentNullException.ThrowIfNull(CanyonTimestamp);
-        ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
-        ArgumentNullException.ThrowIfNull(FjordTimestamp);
-        ArgumentNullException.ThrowIfNull(GraniteTimestamp);
-        blockNumbers.Add(BedrockBlockNumber.Value);
-        timestamps.Add(RegolithTimestamp.Value);
-        timestamps.Add(CanyonTimestamp.Value);
-        timestamps.Add(EcotoneTimestamp.Value);
-        timestamps.Add(FjordTimestamp.Value);
-        timestamps.Add(GraniteTimestamp.Value);
-    }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {

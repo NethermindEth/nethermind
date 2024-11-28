@@ -146,6 +146,12 @@ public class Startup
                 return;
             }
 
+            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
+            {
+                ctx.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
+                return;
+            }
+
             if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
                 !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
             {

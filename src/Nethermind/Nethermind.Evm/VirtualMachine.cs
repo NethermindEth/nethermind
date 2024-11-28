@@ -2177,7 +2177,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
