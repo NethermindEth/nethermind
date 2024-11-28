@@ -138,6 +138,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
     private void LogTable(List<string[]> rows)
     {
         string[] headers = ["Additional Url", "Protocols", "Modules"];
+        string redSeparator = "\u001b[31m|\u001b[0m"; 
         var columnWidths = new int[headers.Length];
 
         for (int i = 0; i < headers.Length; i++)
@@ -152,16 +153,16 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
             }
         }
 
-        var separator = string.Join("+", columnWidths.Select(width => new string('-', width + 2)));
+        var separator = "-" + string.Join("-", columnWidths.Select(width => new string('-', width + 2))) + "-";
 
 
         _logger.Info(separator);
-        _logger.Info("| " + string.Join(" | ", headers.Select((h, i) => h.PadRight(columnWidths[i]))) + " |");
+        _logger.Info(redSeparator + " " + string.Join(" " + redSeparator + " ", headers.Select((h, i) => h.PadRight(columnWidths[i]))) + " " + redSeparator);
         _logger.Info(separator);
 
         foreach (var row in rows)
         {
-            _logger.Info("| " + string.Join(" | ", row.Select((cell, i) => (cell ?? "").PadRight(columnWidths[i]))) + " |");
+            _logger.Info(redSeparator + " " + string.Join(" " + redSeparator + " ", row.Select((cell, i) => (cell ?? "").PadRight(columnWidths[i]))) + " " + redSeparator);
         }
 
         _logger.Info(separator);
