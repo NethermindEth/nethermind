@@ -20,4 +20,5 @@ public interface IBlockStore
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash);
     void Cache(Block block);
     bool HasBlock(long blockNumber, Hash256 blockHash);
+    long? LowestInsertedBodyNumber { get; set; }
 }

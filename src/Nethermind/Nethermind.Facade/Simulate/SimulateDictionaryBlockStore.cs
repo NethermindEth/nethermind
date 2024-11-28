@@ -75,4 +75,10 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     {
         return _blockNumDict.ContainsKey(blockNumber);
     }
+
+    public long? LowestInsertedBodyNumber
+    {
+        get => readonlyBaseBlockStore.LowestInsertedBodyNumber;
+        set { }
+    }
 }

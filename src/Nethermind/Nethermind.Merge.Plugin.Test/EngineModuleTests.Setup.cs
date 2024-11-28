@@ -203,7 +203,7 @@ public partial class EngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, Substitute.For<IBodiesSyncFeed>(), syncConfig,
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, Substitute.For<IBlockStore>(), syncConfig,
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager);
             PostMergeBlockProducerFactory? blockProducerFactory = new(
                 SpecProvider,

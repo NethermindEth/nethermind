@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -314,8 +315,10 @@ public class SynchronizerTests
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb stateDb = new MemDb();
             IDb codeDb = dbProvider.CodeDb;
+            IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
             BlockTree = Build.A.BlockTree()
                 .WithSpecProvider(new TestSingleReleaseSpecProvider(Constantinople.Instance))
+                .WithBlockStore(blockStore)
                 .WithoutSettingHead
                 .TestObject;
 
@@ -347,6 +350,7 @@ public class SynchronizerTests
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
+                .AddSingleton(blockStore)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IBlockTree>(BlockTree)

@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -131,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, Substitute.For<IBodiesSyncFeed>(), new SyncConfig(),
+            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, Substitute.For<IBlockStore>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),

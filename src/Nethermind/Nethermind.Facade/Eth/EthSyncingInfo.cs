@@ -4,10 +4,10 @@
 using System;
 using System.Diagnostics;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Facade.Eth
@@ -18,14 +18,14 @@ namespace Nethermind.Facade.Eth
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly IBodiesSyncFeed _bodiesSyncFeed;
+        private readonly IBlockStore _blockStore;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISyncProgressResolver _syncProgressResolver;
 
         public EthSyncingInfo(
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
-            IBodiesSyncFeed bodiesSyncFeed,
+            IBlockStore blockStore,
             ISyncConfig syncConfig,
             ISyncModeSelector syncModeSelector,
             ISyncProgressResolver syncProgressResolver,
@@ -33,7 +33,7 @@ namespace Nethermind.Facade.Eth
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
-            _bodiesSyncFeed = bodiesSyncFeed;
+            _blockStore = blockStore;
             _syncConfig = syncConfig;
             _syncModeSelector = syncModeSelector;
             _syncProgressResolver = syncProgressResolver;
@@ -47,7 +47,7 @@ namespace Nethermind.Facade.Eth
             bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
             SyncMode syncMode = _syncModeSelector.Current;
 
-            if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_bodiesSyncFeed.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+            if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockStore.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             if (isSyncing)
             {
                 if (_logger.IsTrace) _logger.Trace($"Too far from head - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}");
@@ -62,18 +62,18 @@ namespace Nethermind.Facade.Eth
             {
                 if (_syncConfig.DownloadReceiptsInFastSync && !_syncProgressResolver.IsFastBlocksReceiptsFinished())
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Receipts not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientReceiptsBarrier: {_syncConfig.AncientReceiptsBarrierCalc}. LowestInsertedBodyNumber: {_bodiesSyncFeed.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+                    if (_logger.IsTrace) _logger.Trace($"Receipts not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientReceiptsBarrier: {_syncConfig.AncientReceiptsBarrierCalc}. LowestInsertedBodyNumber: {_blockStore.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return ReturnSyncing(headNumberOrZero, bestSuggestedNumber, syncMode);
                 }
 
                 if (_syncConfig.DownloadBodiesInFastSync && !_syncProgressResolver.IsFastBlocksBodiesFinished())
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Bodies not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientBodiesBarrier: {_syncConfig.AncientBodiesBarrierCalc}. LowestInsertedBodyNumber: {_bodiesSyncFeed.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+                    if (_logger.IsTrace) _logger.Trace($"Bodies not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientBodiesBarrier: {_syncConfig.AncientBodiesBarrierCalc}. LowestInsertedBodyNumber: {_blockStore.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return ReturnSyncing(headNumberOrZero, bestSuggestedNumber, syncMode);
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Node is not syncing - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}. LowestInsertedBodyNumber: {_bodiesSyncFeed.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+            if (_logger.IsTrace) _logger.Trace($"Node is not syncing - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}. LowestInsertedBodyNumber: {_blockStore.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             return SyncingResult.NotSyncing;
         }
 

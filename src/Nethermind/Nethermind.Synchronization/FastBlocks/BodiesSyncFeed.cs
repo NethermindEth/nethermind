@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -22,15 +23,13 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>, IBodiesSyncFeed
+    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
-        private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-
-        protected override long? LowestInsertedNumber => LowestInsertedBodyNumber;
+        protected override long? LowestInsertedNumber => _blockStore.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
         protected override Func<bool> HasPivot =>
-            () => LowestInsertedBodyNumber is not null && LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
+            () => _blockStore.LowestInsertedBodyNumber is not null && _blockStore.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
 
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
@@ -40,29 +39,20 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly IBlockStore _blockStore;
         private readonly IDb _blocksDb;
 
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
-        private bool AllDownloaded => (LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
+        private bool AllDownloaded => (_blockStore.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
-
-        private long? _lowestInsertedReceiptBlock;
-        public long? LowestInsertedBodyNumber
-        {
-            get => _lowestInsertedReceiptBlock;
-            set
-            {
-                _lowestInsertedReceiptBlock = value;
-                if (value.HasValue) _blocksDb[LowestInsertedBodyNumberDbEntryAddress] = Rlp.Encode(value.Value).Bytes;
-            }
-        }
 
         public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            IBlockStore blockStore,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
@@ -73,6 +63,7 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockStore = blockStore;
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -85,9 +76,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = -1; // First reset in `InitializeFeed`.
-
-            LowestInsertedBodyNumber = _blocksDb.Get(LowestInsertedBodyNumberDbEntryAddress)?
-                .AsRlpValueContext().DecodeLong();
         }
 
         public override void InitializeFeed()
@@ -110,7 +98,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                LowestInsertedBodyNumber,
+                _blockStore.LowestInsertedBodyNumber,
                 _syncConfig.AncientBodiesBarrier);
         }
 
@@ -153,7 +141,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     token.ThrowIfCancellationRequested();
 
                     // Otherwise, the progress does not update correctly
-                    LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    _blockStore.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
                     UpdateSyncReport();
                 }
 
@@ -167,7 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             if (
-                (LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
+                (_blockStore.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
                 _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
             )
             {
@@ -181,7 +169,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
-            LowestInsertedBodyNumber = lowestInsertedAtPoint;
+            _blockStore.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)

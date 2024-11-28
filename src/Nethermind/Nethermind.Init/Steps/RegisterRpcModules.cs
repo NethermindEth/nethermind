@@ -72,7 +72,7 @@ public class RegisterRpcModules : IStep
         _api.EthSyncingInfo = new EthSyncingInfo(
             _api.BlockTree,
             _api.ReceiptStorage!,
-            _api.ApiWithNetworkServiceContainer!.Resolve<IBodiesSyncFeed>(),
+            _api.BlockStore!,
             _api.Config<ISyncConfig>(),
             _api.SyncModeSelector!,
             _api.SyncProgressResolver!,

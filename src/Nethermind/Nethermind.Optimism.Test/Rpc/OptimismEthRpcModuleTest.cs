@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -79,7 +80,7 @@ internal static class TestRpcBlockchainExt
             LimboLogs.Instance,
             blockchain.SpecProvider,
             blockchain.GasPriceOracle,
-            new EthSyncingInfo(blockchain.BlockTree, blockchain.ReceiptStorage, Substitute.For<IBodiesSyncFeed>(), new SyncConfig(),
+            new EthSyncingInfo(blockchain.BlockTree, blockchain.ReceiptStorage, Substitute.For<IBlockStore>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), blockchain.LogManager),
             blockchain.FeeHistoryOracle ??
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),

@@ -259,7 +259,8 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);
-            BlockTree tree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+            IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
+            BlockTree tree = Build.A.BlockTree().WithBlockStore(blockStore).WithoutSettingHead.TestObject;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
@@ -355,6 +356,7 @@ namespace Nethermind.Synchronization.Test
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
+                .AddSingleton(blockStore)
                 .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IBlockTree>(tree)
