@@ -62,7 +62,18 @@ namespace Nethermind.Blockchain
         public BlockHeader? BestSuggestedHeader { get; private set; }
 
         public Block? BestSuggestedBody { get; private set; }
-        public BlockHeader? LowestInsertedHeader { get; private set; }
+        public BlockHeader? LowestInsertedHeader
+        {
+            get => _lowestInsertedHeader;
+            set
+            {
+                _lowestInsertedHeader = value;
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+            }
+        }
+
+        private BlockHeader? _lowestInsertedHeader;
+
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
         public Block? BestSuggestedBeaconBody { get; private set; }
