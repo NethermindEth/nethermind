@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Processing
             catch (Exception ex)
             {
                 // Don't allow exception to escape to ThreadPool
-                 if (_logger.IsError) _logger.Error("Error when generating processing statistics", ex);
+                if (_logger.IsError) _logger.Error("Error when generating processing statistics", ex);
             }
         }
 
@@ -155,8 +155,9 @@ namespace Nethermind.Consensus.Processing
                 UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
                 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
             }
-            catch
+            catch (Exception ex)
             {
+                if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
             }
 
             long currentSelfDestructs = Evm.Metrics.SelfDestructs;
