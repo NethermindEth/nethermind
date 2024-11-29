@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             {
-                ConfigureJwtSecret(keyStoreConfig, logger, jsonRpcConfig);
+                ConfigureJwtSecret(keyStoreConfig, jsonRpcConfig, logger);
             }
 
             if (jsonRpcConfig.Enabled)
