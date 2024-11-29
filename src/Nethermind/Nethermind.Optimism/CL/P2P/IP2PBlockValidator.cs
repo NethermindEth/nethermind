@@ -14,8 +14,7 @@ public interface IP2PBlockValidator
 public enum ValidityStatus
 {
     Valid,
-    Reject,
-    Ignore
+    Reject
 }
 
 public enum P2PTopic

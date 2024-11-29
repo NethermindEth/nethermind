@@ -283,8 +283,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
 
+        // TODO: fix cancellation
         ICLConfig clConfig = _api.Config<ICLConfig>();
-        _cl = new OptimismCL(_api.SpecProvider, clConfig, _api.EthereumJsonSerializer, _api.EthereumEcdsa, new CancellationToken(), _api.Timestamper, _api!.LogManager, opEngine);
+        CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<CLChainSpecEngineParameters>();
+        _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer, _api.EthereumEcdsa,
+            new CancellationToken(), _api.Timestamper, _api!.LogManager, opEngine);
         _cl.Start();
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");

@@ -18,13 +18,15 @@ public class P2PBlockValidator : IP2PBlockValidator
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
     private readonly ConcurrentDictionary<long, long> _numberOfBlocksSeen = new();
+    private readonly byte[] _sequencerPubkey;
     private readonly byte[] _chainId;
 
 
-    public P2PBlockValidator(UInt256 chainId, ITimestamper timestamper, ILogger logger)
+    public P2PBlockValidator(UInt256 chainId, byte[] sequencerPubkey, ITimestamper timestamper, ILogger logger)
     {
         _logger = logger;
         _timestamper = timestamper;
+        _sequencerPubkey = sequencerPubkey;
         _chainId = chainId.ToBigEndian();
     }
 
@@ -36,11 +38,6 @@ public class P2PBlockValidator : IP2PBlockValidator
             !IsSignatureValid(payloadData, signature))
         {
             return ValidityStatus.Reject;
-        }
-
-        if (AlreadySeen(payload))
-        {
-            return ValidityStatus.Ignore;
         }
 
         return ValidityStatus.Valid;
@@ -132,9 +129,9 @@ public class P2PBlockValidator : IP2PBlockValidator
     private bool IsBlockNumberPerHightLimitReached(ExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
-        // TODO: make thread safe
-        // return _numberOfBlocksSeen[payload.BlockNumber] <= 5;
-        return false;
+        long currentCount = _numberOfBlocksSeen.GetOrAdd(payload.BlockNumber, _ => 0);
+        _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
+        return currentCount > 5;
     }
 
     private bool IsSignatureValid(byte[] payloadData, byte[] signature)
@@ -154,13 +151,8 @@ public class P2PBlockValidator : IP2PBlockValidator
             signature[64],
             false);
 
-        // TODO verify that publicKeys match
-        return success;
-    }
+        _logger.Error($"PUBKEY: {BitConverter.ToString(publicKey.ToArray()).Replace("-", "").ToLower()}");
 
-    private bool AlreadySeen(ExecutionPayloadV3 payload)
-    {
-        // TODO
-        return false;
+        return success && publicKey.SequenceEqual(_sequencerPubkey);
     }
 }

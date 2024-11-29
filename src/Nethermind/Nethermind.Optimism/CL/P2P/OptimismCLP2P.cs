@@ -38,27 +38,21 @@ public class OptimismCLP2P
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly IPayloadDecoder _payloadDecoder;
     private readonly IP2PBlockValidator _blockValidator;
+    private readonly ulong _chainId;
 
-    public OptimismCLP2P(ulong chainId, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
+    public OptimismCLP2P(ulong chainId, byte[] sequencerPubkey, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
+        _chainId = chainId;
         _logger = logManager.GetClassLogger();
         _engineRpcModule = engineRpcModule;
         _payloadDecoder = new PayloadDecoder();
-        _blockValidator = new P2PBlockValidator(chainId, timestamper, _logger);
+        _blockValidator = new P2PBlockValidator(chainId, sequencerPubkey, timestamper, _logger);
     }
 
     public void Start()
     {
         _logger.Error("Starting p2p");
         _serviceProvider = new ServiceCollection()
-            // .AddLogging(builder =>
-            //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
-            //     .AddSimpleConsole(l =>
-            //     {
-            //         l.SingleLine = true;
-            //         l.TimestampFormat = "[HH:mm:ss.FFF]";
-            //     })
-            // )
             .AddSingleton<PeerStore>()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
@@ -66,10 +60,7 @@ public class OptimismCLP2P
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(new Settings()
-            {
-
-            })
+            .AddSingleton(new Settings())
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
@@ -77,7 +68,7 @@ public class OptimismCLP2P
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
-        ITopic topic = _router.GetTopic("/optimism/11155420/2/blocks");
+        ITopic topic = _router.GetTopic($"/optimism/{_chainId}/2/blocks");
         topic.OnMessage += OnMessage;
 
         _cancellationTokenSource = new();
@@ -104,20 +95,7 @@ public class OptimismCLP2P
         byte[] payloadData = decompressed[65..];
 
         var payloadDecoded = _payloadDecoder.DecodePayload(payloadData);
-        _logger.Error($"PREV RANDAO: {payloadDecoded.PrevRandao}");
-        _logger.Error($"BeaconBlockRoot: {payloadDecoded.ParentBeaconBlockRoot}");
-
-        if (payloadDecoded.TryGetBlock(out Block? block))
-        {
-            if (_logger.IsError)
-            {
-                _logger.Error($"HASH {block!.Header.CalculateHash()}");
-            }
-        }
-
         var validationResult = _blockValidator.Validate(payloadDecoded, payloadData, signature, P2PTopic.BlocksV3);
-
-        _logger.Error($"VALIDATION RESULT {validationResult}");
 
         if (validationResult == ValidityStatus.Reject)
         {
@@ -125,27 +103,20 @@ public class OptimismCLP2P
             return;
         }
 
-        if (validationResult == ValidityStatus.Ignore)
+        if (_logger.IsInfo)
         {
-            return;
+            _logger.Info($"Got block from CL P2P: {payloadDecoded.BlockHash}");
         }
-
-        // await Task.Delay(5000);
 
         var npResult = await _engineRpcModule.engine_newPayloadV3(payloadDecoded, Array.Empty<byte[]>(),
             payloadDecoded.ParentBeaconBlockRoot);
 
-        _logger.Error($"NP RESULT {npResult.Data.Status}");
-
         var fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(payloadDecoded.BlockHash, payloadDecoded.BlockHash, payloadDecoded.BlockHash), null);
-
-        _logger.Error($"FCU RESULT {fcuResult.Data.PayloadStatus.Status}");
     }
 
     private MessageId CalculateMessageId(Message message)
     {
-        // TODO: create proper function
         var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
         sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
