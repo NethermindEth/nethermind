@@ -143,18 +143,15 @@ namespace Nethermind.Serialization.Json
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
             var writer = GetPipeWriter(stream, leaveOpen);
-            Serialize(writer, value, indented);
+            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;
             return outputCount;
         }
 
-        public void Serialize<T>(IBufferWriter<byte> writer, T value, bool indented = false)
-        {
-            using var jsonWriter = new Utf8JsonWriter(writer, CreateWriterOptions(indented));
-            JsonSerializer.Serialize(jsonWriter, value, indented ? JsonOptionsIndented : _jsonOptions);
-        }
+        public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
+            => JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
