@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Json
                 Range final = default;
                 foreach (Range subPath in pathSpan.Split('.'))
                 {
-                    if (!currentElement.TryGetProperty(innerPath[subPath], out currentElement))
+                    if (!currentElement.TryGetProperty(pathSpan[subPath], out currentElement))
                     {
                         value = default;
                         return false;
