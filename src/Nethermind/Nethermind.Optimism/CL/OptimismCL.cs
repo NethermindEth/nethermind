@@ -34,14 +34,14 @@ public class OptimismCL
         IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint!), jsonSerializer, ecdsa, _logger,
             cancellationToken);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, logManager);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, cancellationToken, logManager);
         _driver = new Driver(_l1Bridge, config, _logger);
     }
 
     public void Start()
     {
         _p2p.Start();
-        // _l1Bridge.Start();
-        // _driver.Start();
+        _l1Bridge.Start();
+        _driver.Start();
     }
 }

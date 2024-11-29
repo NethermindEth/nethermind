@@ -103,17 +103,15 @@ public class OptimismCLP2P
         byte[] signature = decompressed[0..65];
         byte[] payloadData = decompressed[65..];
 
-        // if (_logger.IsError)
-        //     _logger.Error($"Signature {BitConverter.ToString(signature).Replace("-", string.Empty)}");
-
         var payloadDecoded = _payloadDecoder.DecodePayload(payloadData);
+        _logger.Error($"PREV RANDAO: {payloadDecoded.PrevRandao}");
+        _logger.Error($"BeaconBlockRoot: {payloadDecoded.ParentBeaconBlockRoot}");
 
         if (payloadDecoded.TryGetBlock(out Block? block))
         {
             if (_logger.IsError)
             {
                 _logger.Error($"HASH {block!.Header.CalculateHash()}");
-                // _logger.Error($"GOT BLOCK {block!.Header.ToString(BlockHeader.Format.Full)}");
             }
         }
 
@@ -153,16 +151,5 @@ public class OptimismCLP2P
         sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
         sha256.AppendData(message.Data.Span);
         return new MessageId(sha256.GetHashAndReset());
-    }
-
-    internal class MyProto : IDiscoveryProtocol
-    {
-        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
-        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
-
-        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
-        {
-            return Task.Delay(int.MaxValue);
-        }
     }
 }

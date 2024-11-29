@@ -268,14 +268,14 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         n += n7;
 
         // Signatures
-        BatchV1TransactionSignature[] signatures = new BatchV1TransactionSignature[totalTxCount];
+        Signature[] signatures = new Signature[totalTxCount];
         for (int i = 0; i < (int)totalTxCount; ++i)
         {
-            signatures[i] = new()
-            {
-                R = new UInt256(data[n..(n + 32)], true),
-                S = new UInt256(data[(n + 32)..(n + 64)], true)
-            };
+            signatures[i] = new(
+                data[n..(n + 32)],
+                data[(n + 32)..(n + 64)],
+                0 // TODO: recover v
+            );
             n += 64;
         }
 

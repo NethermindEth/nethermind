@@ -69,17 +69,10 @@ public struct BatchV1Transactions
 {
     public BigInteger ContractCreationBits;
     public BigInteger YParityBits;
-    public BatchV1TransactionSignature[] Signatures;
+    public Signature[] Signatures;
     public Address[] Tos;
     public byte[][] Datas;
     public ulong[] Nonces;
     public ulong[] Gases;
     public BigInteger ProtectedBits;
-}
-
-public struct BatchV1TransactionSignature
-{
-    public UInt256 R;
-    public UInt256 S;
-    public ulong V;
 }

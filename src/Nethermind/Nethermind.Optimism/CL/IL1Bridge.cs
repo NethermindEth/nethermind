@@ -3,12 +3,12 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL;
 
 public interface IL1Bridge
 {
-    event Action<BeaconBlock, ulong>? OnNewL1Head;
+    event Action<BeaconBlock, ReceiptForRpc[]>? OnNewL1Head;
     Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber);
 }

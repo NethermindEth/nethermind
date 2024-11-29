@@ -3,8 +3,10 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -20,8 +22,13 @@ public class EthereumEthApi : IEthApi
         _ethRpcClient = new BasicJsonRpcClient(new Uri(config.L1EthApiEndpoint), jsonSerializer, logManager);
     }
 
-    public Task<BlockForRpc?> GetBlockByNumber(ulong blockNumber)
+    public Task<ReceiptForRpc[]?> GetReceiptsByHash(Hash256 blockHash)
     {
-        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByNumber", new object[] { blockNumber, true });
+        return _ethRpcClient.Post<ReceiptForRpc[]?>("eth_getBlockReceipts", new object[] { blockHash });
+    }
+
+    public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash)
+    {
+        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByHash", new object[] { blockHash, false });
     }
 }

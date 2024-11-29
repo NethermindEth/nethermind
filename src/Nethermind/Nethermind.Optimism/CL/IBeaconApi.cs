@@ -16,6 +16,9 @@ public interface IBeaconApi
     // /eth/v2/beacon/blocks/finalized
     Task<BeaconBlock> GetFinalized();
 
+    // /eth/v2/beacon/blocks/{slot}
+    Task<BeaconBlock> GetBySlotNumber(ulong slot);
+
     // /eth/v1/beacon/blob_sidecars/:slot:
     Task<BlobSidecar[]> GetBlobSidecars(ulong slot);
 }
@@ -26,6 +29,7 @@ public struct BeaconBlock
     public ulong PayloadNumber;
     public Hash256 ExecutionBlockHash;
     public Hash256 BeaconBlockHash;
+    public Hash256 PrevRandao;
     public Transaction[] Transactions;
 }
 

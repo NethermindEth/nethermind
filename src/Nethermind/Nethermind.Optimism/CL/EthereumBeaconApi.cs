@@ -5,12 +5,10 @@ using System;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -44,6 +42,26 @@ public class EthereumBeaconApi : IBeaconApi
             PayloadNumber = data.Data.Message.Body.ExecutionPayload.BlockNumber,
             SlotNumber = data.Data.Message.Slot,
             ExecutionBlockHash = data.Data.Message.Body.ExecutionPayload.BlockHash,
+            PrevRandao = data.Data.Message.Body.ExecutionPayload.PrevRandao,
+            Transactions = data.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
+            {
+                // Should we remove this and use L1 EL to retrieve data?
+                var tx = Rlp.Decode<Transaction>(x);
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
+                return tx;
+            }).ToArray()
+        };
+    }
+
+    public async Task<BeaconBlock> GetBySlotNumber(ulong slot)
+    {
+        GetBlockResponse data = await GetData<GetBlockResponse>($"/eth/v2/beacon/blocks/{slot}");
+        return new BeaconBlock
+        {
+            PayloadNumber = data.Data.Message.Body.ExecutionPayload.BlockNumber,
+            SlotNumber = data.Data.Message.Slot,
+            ExecutionBlockHash = data.Data.Message.Body.ExecutionPayload.BlockHash,
+            PrevRandao = data.Data.Message.Body.ExecutionPayload.PrevRandao,
             Transactions = data.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
             {
                 // Should we remove this and use L1 EL to retrieve data?
@@ -62,6 +80,7 @@ public class EthereumBeaconApi : IBeaconApi
             PayloadNumber = data.Data.Message.Body.ExecutionPayload.BlockNumber,
             SlotNumber = data.Data.Message.Slot,
             ExecutionBlockHash = data.Data.Message.Body.ExecutionPayload.BlockHash,
+            PrevRandao = data.Data.Message.Body.ExecutionPayload.PrevRandao,
             Transactions = data.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
             {
                 // Should we remove this and use L1 EL to retrieve data?
@@ -138,6 +157,8 @@ public class EthereumBeaconApi : IBeaconApi
         public ulong BlockNumber;
         [JsonPropertyName("block_hash")]
         public Hash256 BlockHash;
+        [JsonPropertyName("prev_randao")]
+        public Hash256 PrevRandao;
         public byte[][] Transactions;
     }
 

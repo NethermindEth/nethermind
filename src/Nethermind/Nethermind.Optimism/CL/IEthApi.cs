@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL;
 
 public interface IEthApi
 {
-    Task<BlockForRpc?> GetBlockByNumber(ulong blockNumber);
+    Task<ReceiptForRpc[]?> GetReceiptsByHash(Hash256 blockHash);
+    Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash);
 }
