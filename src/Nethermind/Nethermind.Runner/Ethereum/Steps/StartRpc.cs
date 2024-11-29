@@ -114,8 +114,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
             }
         }
-        private void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, ILogger logger, IJsonRpcConfig jsonRpcConfig) {
-
+        private void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, ILogger logger, IJsonRpcConfig jsonRpcConfig)
+        {
             string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));
             string oldPath = Path.GetFullPath("keystore/jwt-secret");
             // check if jwt-secret file already exists in previous default directory
@@ -133,9 +133,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     jsonRpcConfig.JwtSecretFile = oldPath;
                 }
             }
-            else {
-                jsonRpcConfig.JwtSecretFile = newPath;
-            } 
+            else jsonRpcConfig.JwtSecretFile = newPath;
         }
     }
 }
