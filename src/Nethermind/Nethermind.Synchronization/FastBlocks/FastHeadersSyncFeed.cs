@@ -401,7 +401,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     batch.MarkHandlingStart();
                     if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                    _pending.Enqueue(batch);
+                    EnqueueBatch(batch);
                     batch.MarkHandlingEnd();
                     return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
                 }
@@ -464,6 +464,11 @@ namespace Nethermind.Synchronization.FastBlocks
             return dependentBatch;
         }
 
+        private void EnqueueBatch(HeadersSyncBatch batch)
+        {
+            _pending.Enqueue(batch);
+        }
+
         protected virtual int InsertHeaders(HeadersSyncBatch batch)
         {
             if (batch.Response is null)
@@ -483,7 +488,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         $"response too long ({batch.Response.Count})");
                 }
 
-                _pending.Enqueue(batch);
+                EnqueueBatch(batch);
                 return 0;
             }
 
@@ -574,21 +579,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     batch.Response?.Dispose();
                     batch.Response = null;
-                    _pending.Enqueue(batch);
+                    EnqueueBatch(batch);
                 }
                 else
                 {
                     if (leftFillerSize > 0)
                     {
                         HeadersSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
-                        _pending.Enqueue(leftFiller);
+                        EnqueueBatch(leftFiller);
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
                     }
 
                     if (rightFillerSize > 0)
                     {
                         HeadersSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
-                        _pending.Enqueue(rightFiller);
+                        EnqueueBatch(rightFiller);
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
                     }
                 }
@@ -668,7 +673,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     if (_dependencies.ContainsKey(header.Number))
                     {
-                        _pending.Enqueue(batch);
+                        EnqueueBatch(batch);
                         throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                     }
                     long lastNumber = -1;
