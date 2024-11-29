@@ -143,7 +143,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (infos[0] is not null)
                 {
                     batch = new ReceiptsSyncBatch(infos);
-                    batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
 
