@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Processing
             Address beneficiary = block.Header.GasBeneficiary ?? Address.Zero;
             Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
             bool isMev = false;
-            if (lastTx is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
+            if (lastTx?.To is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
             {
                 // Mev reward with in last tx
                 beneficiary = lastTx.To;
