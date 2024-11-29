@@ -48,15 +48,20 @@ namespace Nethermind.Runner.Ethereum.Steps
                     try
                     {
                         File.Move(oldPath, newPath);
-
-                        logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                        if (logger.IsWarn) {
+                            logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                        }
+                        jsonRpcConfig.JwtSecretFile = newPath;
                     }
                     catch (Exception ex)
                     {
                         if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                        jsonRpcConfig.JwtSecretFile = oldPath;
                     }
                 }
-                jsonRpcConfig.JwtSecretFile = newPath;
+                else {
+                    jsonRpcConfig.JwtSecretFile = newPath;
+                }  
             }
 
             if (jsonRpcConfig.Enabled)
