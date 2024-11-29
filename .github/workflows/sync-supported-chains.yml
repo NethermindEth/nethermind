@@ -108,7 +108,7 @@ jobs:
       - name: Installing requirements
         run: |
           sudo apt-get update
-          sudo apt-get install -y make build-essential jq screen lshw dmidecode fio
+          sudo apt-get install -y make build-essential jq screen lshw dmidecode fio zip
 
       - name: Setup Go environment
         uses: actions/setup-go@v5
