@@ -38,30 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             {
-                string oldPath = "keystore/jwt-secret";
-                string newPath = Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-                // check if jwt-secret file already exists in previous default directory
-                if (!File.Exists(newPath) && File.Exists(oldPath))
-                {
-                    oldPath = Path.GetFullPath(oldPath);
-                    newPath = Path.GetFullPath(newPath);
-                    try
-                    {
-                        File.Move(oldPath, newPath);
-                        if (logger.IsWarn) {
-                            logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
-                        }
-                        jsonRpcConfig.JwtSecretFile = newPath;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
-                        jsonRpcConfig.JwtSecretFile = oldPath;
-                    }
-                }
-                else {
-                    jsonRpcConfig.JwtSecretFile = newPath;
-                }  
+                ConfigureJwtSecret(keyStoreConfig, logger, jsonRpcConfig);
             }
 
             if (jsonRpcConfig.Enabled)
@@ -136,6 +113,29 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
             }
+        }
+        private void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, ILogger logger, IJsonRpcConfig jsonRpcConfig) {
+
+            string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));
+            string oldPath = Path.GetFullPath("keystore/jwt-secret");
+            // check if jwt-secret file already exists in previous default directory
+            if (!File.Exists(newPath) && File.Exists(oldPath))
+            {
+                try
+                {
+                    File.Move(oldPath, newPath);
+                    if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                    jsonRpcConfig.JwtSecretFile = newPath;
+                }
+                catch (Exception ex)
+                {
+                    if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                    jsonRpcConfig.JwtSecretFile = oldPath;
+                }
+            }
+            else {
+                jsonRpcConfig.JwtSecretFile = newPath;
+            } 
         }
     }
 }
