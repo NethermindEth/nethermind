@@ -84,6 +84,14 @@ jobs:
     timeout-minutes: ${{ matrix.config.timeout }}
     
     steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+          
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -94,6 +102,7 @@ jobs:
         with:
           repository: NethermindEth/post-merge-smoke-tests
           path: tests
+          token: ${{ steps.gh-app.outputs.token }}
           clean: true
 
       - name: Installing requirements
