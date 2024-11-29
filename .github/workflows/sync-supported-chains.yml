@@ -263,7 +263,7 @@ jobs:
         with:
           name: ${{ env.artifact_name }}
           path: ${{ env.artifact_path }}
-        retention-days: 7
+          retention-days: 7
           
       - name: Get Consensus Logs
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
