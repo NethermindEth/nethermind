@@ -18,128 +18,160 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  create_docker_image:
-    name: "Generate docker image"
-    outputs:
-      cleanRef: ${{ steps.prepare_ref.outputs.cleanRef }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Prepare docker tag
-        id: prepare_ref
-        run: |
-          REF_NAME=${{ github.ref }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
-          echo "cleanRef=$CLEAN_REF" >> $GITHUB_OUTPUT
-
-      - name: Set Repo and Org Variables
-        id: cleanup
-        run: |
-          echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
-          echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
-
-      - name: Check if master or release branch
-        id: check_conditions
-        run: |
-          ref="${{ github.ref }}"
-          event_name="${{ github.event_name }}"
-
-          # Append "refs/heads/" prefix if it's not already there
-          if [[ $ref != refs/heads/* ]]; then
-            ref="refs/heads/$ref"
-          fi
-
-          # Initialize variables
-          skip_docker_build="false"
-          skip_wait_for_docker="false"
-
-          # Set conditions based on branch and event type
-          if [[ "$ref" == "refs/heads/master" || $ref == refs/heads/release* ]]; then
-            skip_docker_build="true"
-
-            if [[ "$event_name" == "workflow_dispatch" ]]; then
-              skip_wait_for_docker="true"
-            fi
-          fi
-
-          # Output the variables
-          echo "skip_docker_build=$skip_docker_build" >> $GITHUB_OUTPUT
-          echo "skip_wait_for_docker=$skip_wait_for_docker" >> $GITHUB_OUTPUT
-
-      - name: Trigger Docker Build Action with Cleaned Ref
-        if: steps.check_conditions.outputs.skip_docker_build != 'true'
-        uses: benc-uk/workflow-dispatch@v1
-        env:
-          ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
-        with:
-          workflow: publish-docker.yml
-          ref: "${{ github.ref }}"
-          token: "${{ steps.gh-app.outputs.token }}"
-          inputs: '{
-            "tag": "${{ env.CLEAN_REF }}",
-            "dockerfile": "Dockerfile",
-            "build-config": "release"
-            }'
-
-      - name: Wait for Docker Build Action to complete
-        if: steps.check_conditions.outputs.skip_wait_for_docker != 'true'
-        env:
-          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
-          WORKFLOW_ID: 'publish-docker.yml'
-          MAX_WAIT_MINUTES: '20'
-          INTERVAL: '5'
-          TIMEOUT: '20'
-          ORG_NAME: ${{ env.ORG_NAME }}
-          REPO_NAME: ${{ env.REPO_NAME }}
-          REF: ${{ github.ref }}
-        run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh
-        working-directory: ${{ github.workspace }}
-
-  generate_hive_consensus_tests:
-    name: "Prepare all hive tests to be started"
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    needs: [create_docker_image]
-    steps:
-      - name: Check out Nethermind repository
-        uses: actions/checkout@v4
-        with:
-          path: nethermind
-          submodules: "recursive"
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: nethermind/global.json
-      - name: Generate Hive Json For Matrix
-        id: set-matrix
-        run: |
-          cd nethermind/tools/HiveConsensusWorkflowGenerator
-          dotnet run
-          cat matrix.json
-          echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
-
   run_hive_tests:
     runs-on: ubuntu-latest
-    needs: [generate_hive_consensus_tests, create_docker_image]
     strategy:
       fail-fast: false
       matrix:
-        hiveTests: ${{fromJson(needs.generate_hive_consensus_tests.outputs.matrix)}}
+        master-image:
+          - master-89c5835
+          - master-65cd94d
+          - master-5516619
+          - master-e0f1713
+          - master-0b49b10
+          - master-4ecedbc
+          - master-abf7c73
+          - master-4dd60d8
+          - master-f733f71
+          - master-ee96111
+          - master-c666e5e
+          - master-d15a540
+          - master-3b213af
+          - master-39d8076
+          - master-9780259
+          - master-d2fbc46
+          - master-efb2993
+          - master-ed90d17
+          - master-9127c2a
+          - master-84dbd5a
+          - master-1a25af3
+          - master-01440e3
+          - master-f02b4e9
+          - master-6e5a865
+          - master-5960948
+          - master-1772107
+          - master-ee2db60
+          - master-263594a
+          - master-5c1ca15
+          - master-4b81930
+          - master-cc96168
+          - master-68b3321
+          - master-0fa8e47
+          - master-5d7894c
+          - master-cf8e4e2
+          - master-7725967
+          - master-ff52bfb
+          - master-eef77b6
+          - master-88a615f
+          - master-55ee32c
+          - master-2c1ce70
+          - master-81f08a0
+          - master-627186f
+          - master-75cb6fe
+          - master-b1b7330
+          - master-6edbb48
+          - master-07f320e
+          - master-6ab6e65
+          - master-f9c8eec
+          - master-120bfec
+          - master-6601f4c
+          - master-2d4f6e7
+          - master-bba37d4
+          - master-5f8369a
+          - master-8de524c
+          - master-a39cd9f
+          - master-9acde37
+          - master-82c78e7
+          - master-09b7196
+          - master-8e69a02
+          - master-f6843c1
+          - master-078df55
+          - master-6409179
+          - master-65e9132
+          - master-02a14a0
+          - master-cb4ec0b
+          - master-72b3ee7
+          - master-8bc8d8f
+          - master-458266e
+          - master-0d9af1a
+          - master-c91e0b2
+          - master-a00c8f5
+          - master-5af8f17
+          - master-d2f4b15
+          - master-26a2e89
+          - master-0fdb10a
+          - master-173a663
+          - master-4eb7f09
+          - master-159c2a4
+          - master-efe8dba
+          - master-a1b9a39
+          - master-9e12334
+          - master-cedb007
+          - master-5908bad
+          - master-2ec731d
+          - master-6a08dd5
+          - master-332ed74
+          - master-65e0158
+          - master-7dbc09f
+          - master-089d2c4
+          - master-9f6cf3b
+          - master-d8ba650
+          - master-756ddc2
+          - master-0263fed
+          - master-bc95db2
+          - master-3138f0a
+          - master-596b619
+          - master-4ba06ad
+          - master-a5526b1
+          - master-89563bd
+          - master-d67420b
+          - master-1c4a9a7
+          - master-d7f5ef0
+          - master-077f358
+          - master-f005e26
+          - master-cda75f4
+          - master-9ddd14f
+          - master-d3d0ec0
+          - master-ebc0def
+          - master-85294fe
+          - master-ab9c24a
+          - master-c9deec9
+          - master-0b6328b
+          - master-ebce748
+          - master-a262636
+          - master-bbc3e45
+          - master-140df13
+          - master-5bddd2e
+          - master-7588e22
+          - master-13f8286
+          - master-39cf227
+          - master-a1ca0fb
+          - master-70a4780
+          - master-addad41
+          - master-e1a2c82
+          - master-5324473
+          - master-81cb4f5
+          - master-8f61588
+          - master-ae3e7a6
+          - master-b0e8c2c
+          - master-4f0e596
+          - master-de191c0
+          - master-966113f
+          - master-7c411aa
+          - master-8e716e9
+          - master-6b4b485
+          - master-837065c
+          - master-4bba613
+          - master-43b9af9
+          - master-54a795c
+          - master-4b1084a
+          - master-71335db
+          - master-7ef9398
+          - master-8296752
+          - master-522deba
+          - master-a0d106c
+          - master-a705c1a
+          
     steps:
       - name: Set up parameters
         run: |
@@ -169,18 +201,18 @@ jobs:
 
       - name: Patch Hive Dockerfile
         run: |
-          tag=${{ needs.create_docker_image.outputs.cleanRef }}
+          tag=${{ matrix.master-image }}
           sed -i -e "s|^ARG baseimage=.*|ARG baseimage=nethermindeth/nethermind|" -e "s|^ARG tag=.*|ARG tag=$tag|" hive/clients/nethermind/Dockerfile
 
       - name: Build Hive
         working-directory: hive
         run: go build .
 
-      - name: Run hive for tests - ${{ join(matrix.hiveTests.testNames, ', ') }}
+      - name: Run hive for tests - ${{ matrix.master-image }}
         continue-on-error: true
         working-directory: hive
         run: |
-          IFS=',' read -ra TEST_NAMES <<< "${{ join(matrix.hiveTests.testNames, ',') }}"
+          Run IFS=',' read -ra TEST_NAMES <<< "GeneralStateTests/stSStoreTest/sstore_XtoYtoX,ValidBlocks/bcEIP1559/intrinsic,VMTests/vmTests/envInfo,GeneralStateTests/stZeroKnowledge2/ecadd_1145-3932_1145-4651_25000_192,GeneralStateTests/stZeroKnowledge2/ecmul_1-2_1_28000_128,GeneralStateTests/stZeroKnowledge2/ecmul_0-0_0_28000_80,cancun/eip6780_selfdestruct/selfdestruct_created_in_same_tx_with_revert,TransitionTests/bcFrontierToHomestead/UncleFromFrontierInHomestead,shanghai/eip3855_push0/push0_before_jumpdest,GeneralStateTests/stRandom2/randomStatetest643,GeneralStateTests/stRandom2/randomStatetest393,GeneralStateTests/stRandom2/randomStatetest635,GeneralStateTests/stRandom2/randomStatetest526,GeneralStateTests/stRandom/randomStatetest88,GeneralStateTests/stSStoreTest/sstoreGas,GeneralStateTests/stNonZeroCallsTest/NonZeroValue_DELEGATECALL_ToOneStorageKey_Paris,GeneralStateTests/stRandom/randomStatetest151,GeneralStateTests/stPreCompiledContracts2/CALLCODESha256_2,GeneralStateTests/stTransactionTest/CreateMessageReverted"
           for testName in "${TEST_NAMES[@]}"
           do
             ./hive --client nethermind --sim ethereum/consensus --sim.limit /$testName --sim.parallelism $PARALLELISM
@@ -189,12 +221,3 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-      # - name: Send results to dashboard
-      #   uses: appleboy/scp-action@master
-      #   with:
-      #     host: ${{ secrets.HIVE_HOST }}
-      #     username: ${{ secrets.HIVE_USERNAME }}
-      #     key: ${{ secrets.HIVE_KEY }}
-      #     port: ${{ secrets.HIVE_PORT }}
-      #     source: hive/workspace/logs/*
-      #     target: ${{ secrets.HIVE_DIR }}/
