@@ -106,6 +106,19 @@ namespace Nethermind.Consensus.Processing
 
         void IThreadPoolWorkItem.Execute()
         {
+            try
+            {
+                Execute();
+            }
+            catch (Exception ex)
+            {
+                // Don't allow exception to escape to ThreadPool
+                if (_logger.IsError) _logger.Error($"{nameof(ProcessingStats)} Error", ex);
+            }
+        }
+
+        void Execute()
+        {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
             const string whiteText = "\u001b[97m";
