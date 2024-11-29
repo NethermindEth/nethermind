@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Peers
         {
         }
 
-        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, Lock? allocationLock)
+        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, Lock? allocationLock = null)
         {
             _peerAllocationStrategy = peerAllocationStrategy;
             Contexts = contexts;
