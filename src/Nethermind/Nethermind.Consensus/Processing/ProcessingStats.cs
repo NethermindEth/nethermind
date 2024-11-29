@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Processing
             catch (Exception ex)
             {
                 // Don't allow exception to escape to ThreadPool
-                if (_logger.IsError) _logger.Error($"{nameof(ProcessingStats)} Error when generating processing statistics", ex);
+                 if (_logger.IsError) _logger.Error("Error when generating processing statistics", ex);
             }
         }
 
