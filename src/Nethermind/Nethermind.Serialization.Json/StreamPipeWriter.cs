@@ -53,6 +53,9 @@ public sealed class CountingPipeWriter : CountingWriter
 
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
         => _writer.FlushAsync(cancellationToken);
+
+    public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
+    public override long UnflushedBytes => _writer.UnflushedBytes;
 }
 
 public sealed class CountingStreamPipeWriter : CountingWriter
