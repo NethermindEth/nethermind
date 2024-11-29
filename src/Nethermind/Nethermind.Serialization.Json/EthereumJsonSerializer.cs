@@ -169,20 +169,20 @@ namespace Nethermind.Serialization.Json
             ArgumentNullException.ThrowIfNullOrEmpty(innerPath);
 
             ReadOnlySpan<char> pathSpan = innerPath.AsSpan();
-            if (innerPath.Contains('.'))
+            int lastDot = pathSpan.LastIndexOf('.');
+            if (lastDot >= 0)
             {
                 JsonElement currentElement = element;
-                Range final = default;
-                foreach (Range subPath in pathSpan.Split('.'))
+                foreach (Range subPath in pathSpan[..lastDot].Split('.'))
                 {
                     if (!currentElement.TryGetProperty(pathSpan[subPath], out currentElement))
                     {
                         value = default;
                         return false;
                     }
-                    final = subPath;
                 }
-                return currentElement.TryGetProperty(pathSpan[final], out value);
+                lastDot++;
+                return currentElement.TryGetProperty(pathSpan[lastDot..], out value);
             }
 
             return element.TryGetProperty(pathSpan, out value);
