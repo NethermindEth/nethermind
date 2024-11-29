@@ -134,9 +134,17 @@ namespace Nethermind.Consensus.Processing
 
             if (_lastBranchRoot is null || !_stateReader.HasStateForRoot(_lastBranchRoot) || block.StateRoot is null || !_stateReader.HasStateForRoot(block.StateRoot))
                 return;
-            UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
-            UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
-            UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+
+            UInt256 rewards = default;
+            try
+            {
+                UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
+                UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
+                rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+            }
+            catch
+            {
+            }
 
             long currentSelfDestructs = Evm.Metrics.SelfDestructs;
 
