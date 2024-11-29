@@ -16,16 +16,14 @@ namespace Nethermind.Serialization.Json;
 
 #nullable enable
 
-public interface ICountingBufferWriter : IBufferWriter<byte>
+public abstract class CountingWriter : PipeWriter
 {
-    long WrittenCount { get; }
-    ValueTask CompleteAsync(Exception? exception = null);
+    public long WrittenCount { get; protected set; }
 }
 
-public sealed class CountingPipeWriter : ICountingBufferWriter
+public sealed class CountingPipeWriter : CountingWriter
 {
     private readonly PipeWriter _writer;
-    public long WrittenCount { get; private set; }
 
     public CountingPipeWriter(PipeWriter writer)
     {
@@ -34,24 +32,30 @@ public sealed class CountingPipeWriter : ICountingBufferWriter
         _writer = writer;
     }
 
-    public void Advance(int count)
+    public override void Advance(int count)
     {
         _writer.Advance(count);
         WrittenCount += count;
     }
 
-    public Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
+    public override Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
 
-    public Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
+    public override Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
 
-    public ValueTask CompleteAsync(Exception? exception = null)
-    {
-        return _writer.CompleteAsync();
-    }
+    public override ValueTask CompleteAsync(Exception? exception = null)
+        => _writer.CompleteAsync();
 
+    public override void CancelPendingFlush()
+        => _writer.CancelPendingFlush();
+
+    public override void Complete(Exception? exception = null)
+        => _writer.Complete(exception);
+
+    public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        => _writer.FlushAsync(cancellationToken);
 }
 
-public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
+public sealed class CountingStreamPipeWriter : CountingWriter
 {
     internal const int InitialSegmentPoolSize = 4; // 16K
     internal const int MaxSegmentPoolSize = 256; // 1MB
@@ -103,7 +107,6 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
     /// Gets the inner stream that is being written to.
     /// </summary>
     public Stream InnerStream { get; }
-    public long WrittenCount { get; set; }
 
     /// <inheritdoc />
     public override void Advance(int bytes)
