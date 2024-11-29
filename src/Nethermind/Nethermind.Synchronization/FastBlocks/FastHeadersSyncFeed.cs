@@ -12,6 +12,7 @@ using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -334,13 +335,20 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch BuildNewBatch()
+        private HeadersSyncBatch? BuildNewBatch()
         {
-            HeadersSyncBatch batch = new();
-            batch.MinNumber = _lowestRequestedHeaderNumber - 1;
-            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
-            _lowestRequestedHeaderNumber = batch.StartNumber;
+            HeadersSyncBatch? batch = null;
+            do
+            {
+                batch = new();
+                batch.StartNumber = Math.Max(HeadersDestinationNumber,
+                    _lowestRequestedHeaderNumber - _headersRequestSize);
+                batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber,
+                    _headersRequestSize);
+                _lowestRequestedHeaderNumber = batch.StartNumber;
+
+                batch = ProcessPersistedPortion(batch);
+            } while (batch is null && ShouldBuildANewBatch());
             return batch;
         }
 
@@ -401,7 +409,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     batch.MarkHandlingStart();
                     if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                    _pending.Enqueue(batch);
+                    EnqueueBatch(batch);
                     batch.MarkHandlingEnd();
                     return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
                 }
@@ -437,7 +445,6 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch rightFiller = new();
             rightFiller.StartNumber = batch.EndNumber - rightFillerSize + 1;
             rightFiller.RequestSize = rightFillerSize;
-            rightFiller.MinNumber = batch.MinNumber;
             return rightFiller;
         }
 
@@ -446,7 +453,6 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch leftFiller = new();
             leftFiller.StartNumber = batch.StartNumber;
             leftFiller.RequestSize = leftFillerSize;
-            leftFiller.MinNumber = batch.MinNumber;
             return leftFiller;
         }
 
@@ -456,12 +462,64 @@ namespace Nethermind.Synchronization.FastBlocks
             dependentBatch.StartNumber = addedEarliest;
             int count = (int)(addedLast - addedEarliest + 1);
             dependentBatch.RequestSize = count;
-            dependentBatch.MinNumber = batch.MinNumber;
             dependentBatch.Response = batch.Response!
                 .Skip((int)(addedEarliest - batch.StartNumber))
                 .Take(count).ToPooledList(count);
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
+        }
+
+        private void EnqueueBatch(HeadersSyncBatch batch)
+        {
+            HeadersSyncBatch? left = ProcessPersistedPortion(batch);
+            if (left is not null)
+            {
+                _pending.Enqueue(batch);
+            }
+        }
+
+        /// <summary>
+        /// Check for portion of header that is already persisted and process them, returning a null batch
+        /// if the whole portion is already persisted and does not require download.
+        /// If only portion of the batch is persisted, then return a new batch that need to be downloaded.
+        /// </summary>
+        /// <param name="batch"></param>
+        /// <returns></returns>
+        private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
+        {
+            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None);
+            if (lastHeader is null) return batch;
+
+            using ArrayPoolList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(1);
+            headers.Add(lastHeader);
+            for (long i = batch.EndNumber -1; i >= batch.StartNumber; i--)
+            {
+                // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
+                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
+                if (nextHeader is null) break;
+                lastHeader = nextHeader;
+                headers.Add(lastHeader);
+            }
+
+            ArrayPoolList<BlockHeader> reversedBatch = new ArrayPoolList<BlockHeader>(headers.Count);
+            foreach (BlockHeader blockHeader in headers.Reverse())
+            {
+                reversedBatch.Add(blockHeader);
+            }
+
+            using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
+            newBatchToProcess.StartNumber = lastHeader.Number;
+            newBatchToProcess.RequestSize = headers.Count;
+            newBatchToProcess.Response = reversedBatch;
+            if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
+            InsertHeaders(newBatchToProcess);
+
+            int newRequestSize = batch.RequestSize - headers.Count;
+
+            if (newRequestSize == 0) return null;
+
+            batch.RequestSize = newRequestSize;
+            return batch;
         }
 
         protected virtual int InsertHeaders(HeadersSyncBatch batch)
@@ -483,7 +541,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         $"response too long ({batch.Response.Count})");
                 }
 
-                _pending.Enqueue(batch);
+                EnqueueBatch(batch);
                 return 0;
             }
 
@@ -574,21 +632,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     batch.Response?.Dispose();
                     batch.Response = null;
-                    _pending.Enqueue(batch);
+                    EnqueueBatch(batch);
                 }
                 else
                 {
                     if (leftFillerSize > 0)
                     {
                         HeadersSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
-                        _pending.Enqueue(leftFiller);
+                        EnqueueBatch(leftFiller);
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
                     }
 
                     if (rightFillerSize > 0)
                     {
                         HeadersSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
-                        _pending.Enqueue(rightFiller);
+                        EnqueueBatch(rightFiller);
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
                     }
                 }
@@ -613,7 +671,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncQueueReport.Update(HeadersInQueue);
             return added;
 
-            bool ValidateFirstHeader(BlockHeader? header)
+            bool ValidateFirstHeader(BlockHeader header)
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
@@ -668,7 +726,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     if (_dependencies.ContainsKey(header.Number))
                     {
-                        _pending.Enqueue(batch);
+                        EnqueueBatch(batch);
                         throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                     }
                     long lastNumber = -1;

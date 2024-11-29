@@ -143,7 +143,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     batch = new BodiesSyncBatch(infos);
                     // Used for peer allocation. It pick peer which have the at least this number
-                    batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
             }
