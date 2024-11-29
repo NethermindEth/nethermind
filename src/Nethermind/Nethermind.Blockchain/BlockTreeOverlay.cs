@@ -251,4 +251,6 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockHeader FindBestSuggestedHeader() =>
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
+
+    public bool IsSyncing() => _baseTree.IsSyncing() || _overlayTree.IsSyncing();
 }

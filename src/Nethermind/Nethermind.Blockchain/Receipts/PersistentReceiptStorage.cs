@@ -81,12 +81,24 @@ namespace Nethermind.Blockchain.Receipts
             {
                 RemoveBlockTx(e.PreviousBlock, e.Block);
             }
-            EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
 
-            // Dont block main loop
+            bool isSyncing = e.IsSyncing;
+            if (!isSyncing)
+            {
+                // Don't delay Canonical receipts if at head
+                EnsureCanonical(e.Block);
+                ReceiptsInserted?.Invoke(this, e);
+            }
+
+            // Don't block main loop
             Task.Run(() =>
             {
+                if (isSyncing)
+                {
+                    // If syncing canonical receipts can lag
+                    EnsureCanonical(e.Block);
+                    ReceiptsInserted?.Invoke(this, e);
+                }
 
                 Block newMain = e.Block;
 
