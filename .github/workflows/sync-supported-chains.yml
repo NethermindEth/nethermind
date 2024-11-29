@@ -172,7 +172,7 @@ jobs:
             stripped_network="${stripped_network#op-}"
 
             mkdir -p execution-data-op/logs/configs
-            mv tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
+            mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
             
             ./build/sedge generate \
             --logging none \
@@ -202,7 +202,7 @@ jobs:
             fi
 
             mkdir -p execution-data-taiko/logs/configs
-            mv tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
+            mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
             
             ./build/sedge generate \
             --logging none \
@@ -219,7 +219,7 @@ jobs:
             $extra_param
           else
             mkdir -p execution-data/logs/configs
-            mv tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
+            mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
           
             ./build/sedge generate \
             --logging none \
