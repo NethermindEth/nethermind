@@ -165,7 +165,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         IContainer container = builder.Build();
 
         _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Append(container);
+        _api.DisposeStack.Push((IAsyncDisposable)container);
 
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);

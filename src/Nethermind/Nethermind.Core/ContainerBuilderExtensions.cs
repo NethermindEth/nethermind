@@ -57,8 +57,17 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .As<T>()
-            .SingleInstance()
-            .ExternallyOwned();
+            .ExternallyOwned()
+            .SingleInstance();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
+    {
+        builder.Register(factory)
+            .As<T>()
+            .SingleInstance();
 
         return builder;
     }
@@ -77,9 +86,9 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddKeyedSingleton<T>(this ContainerBuilder builder, object key, T instance) where T : class
     {
         builder.RegisterInstance(instance)
-            .Keyed<T>(key)
-            .SingleInstance()
-            .ExternallyOwned();
+            .Named<T>(key)
+            .ExternallyOwned()
+            .SingleInstance();
 
         return builder;
     }
