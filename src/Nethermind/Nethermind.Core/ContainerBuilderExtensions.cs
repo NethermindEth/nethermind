@@ -86,7 +86,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddKeyedSingleton<T>(this ContainerBuilder builder, object key, T instance) where T : class
     {
         builder.RegisterInstance(instance)
-            .Named<T>(key)
+            .Keyed<T>(key)
             .ExternallyOwned()
             .SingleInstance();
 
