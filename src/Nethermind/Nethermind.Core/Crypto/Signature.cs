@@ -15,10 +15,7 @@ namespace Nethermind.Core.Crypto
 
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
-            if (bytes.Length != 64)
-            {
-                throw new ArgumentException();
-            }
+            ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, 64);
 
             bytes.CopyTo(Bytes.AsSpan());
             V = (ulong)recoveryId + VOffset;
@@ -26,10 +23,7 @@ namespace Nethermind.Core.Crypto
 
         public Signature(ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length != 65)
-            {
-                throw new ArgumentException();
-            }
+            ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, 65);
 
             bytes[..64].CopyTo(Bytes.AsSpan());
             V = bytes[64];
@@ -37,10 +31,7 @@ namespace Nethermind.Core.Crypto
 
         public Signature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s, ulong v)
         {
-            if (v < VOffset)
-            {
-                throw new ArgumentException(nameof(v));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(v, (ulong)VOffset);
 
             r.CopyTo(Bytes.AsSpan(32 - r.Length, r.Length));
             s.CopyTo(Bytes.AsSpan(64 - s.Length, s.Length));
@@ -49,10 +40,7 @@ namespace Nethermind.Core.Crypto
 
         public Signature(in UInt256 r, in UInt256 s, ulong v)
         {
-            if (v < VOffset)
-            {
-                throw new ArgumentException(nameof(v));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(v, (ulong)VOffset);
 
             r.ToBigEndian(Bytes.AsSpan(0, 32));
             s.ToBigEndian(Bytes.AsSpan(32, 32));

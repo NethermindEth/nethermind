@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -225,7 +224,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
             _currentValidator is ITxSource txSource
                 ? txSource.GetTransactions(parent, gasLimit, payloadAttributes)
-                : Enumerable.Empty<Transaction>();
+                : [];
 
         public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
 

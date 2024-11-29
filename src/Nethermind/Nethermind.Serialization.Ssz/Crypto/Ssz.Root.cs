@@ -58,7 +58,7 @@ public static partial class Ssz
     {
         if (span.Length == 0)
         {
-            return Array.Empty<Root>();
+            return [];
         }
 
         int count = span.Length / Ssz.RootLength;

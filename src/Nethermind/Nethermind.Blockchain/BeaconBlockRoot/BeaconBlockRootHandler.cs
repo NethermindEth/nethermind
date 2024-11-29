@@ -15,6 +15,9 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 {
     private const long GasLimit = 30_000_000L;
 
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+        => BeaconRootsAccessList(block, spec).accessList;
+
     public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
     {
         BlockHeader? header = block.Header;

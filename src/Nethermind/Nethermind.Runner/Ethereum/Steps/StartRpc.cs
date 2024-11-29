@@ -50,7 +50,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     jsonRpcService,
                     jsonRpcConfig,
                     _api.FileSystem,
-                    _api.LogManager);
+                    _api.LogManager,
+                    _api.ProcessExit);
 
 
                 if (initConfig.WebSocketsEnabled)

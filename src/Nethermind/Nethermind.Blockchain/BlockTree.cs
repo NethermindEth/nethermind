@@ -820,18 +820,8 @@ namespace Nethermind.Blockchain
 
         public bool WasProcessed(long number, Hash256 blockHash)
         {
-            ChainLevelInfo? levelInfo = LoadLevel(number);
-            if (levelInfo is null)
-            {
-                throw new InvalidOperationException($"Not able to find block {blockHash} from an unknown level {number}");
-            }
-
-            int? index = levelInfo.FindIndex(blockHash);
-            if (index is null)
-            {
-                throw new InvalidOperationException($"Not able to find block {blockHash} index on the chain level");
-            }
-
+            ChainLevelInfo? levelInfo = LoadLevel(number) ?? throw new InvalidOperationException($"Not able to find block {blockHash} from an unknown level {number}");
+            int? index = levelInfo.FindIndex(blockHash) ?? throw new InvalidOperationException($"Not able to find block {blockHash} index on the chain level");
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
 
@@ -854,12 +844,7 @@ namespace Nethermind.Blockchain
                 }
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
-                int? index = level?.FindIndex(block.Hash);
-                if (index is null)
-                {
-                    throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
-                }
-
+                int? index = (level?.FindIndex(block.Hash)) ?? throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
                 BlockInfo info = level.BlockInfos[index.Value];
                 info.WasProcessed = true;
                 _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
@@ -1031,13 +1016,7 @@ namespace Nethermind.Blockchain
             }
 
             ChainLevelInfo? level = LoadLevel(block.Number);
-            int? index = level?.FindIndex(block.Hash);
-            if (index is null)
-            {
-                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
-            }
-
-
+            int? index = (level?.FindIndex(block.Hash)) ?? throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
             Hash256 hashOfThePreviousMainBlock = level.MainChainBlock?.BlockHash;
 
             BlockInfo info = level.BlockInfos[index.Value];
@@ -1150,7 +1129,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
+                if (_logger.IsDebug) _logger.Debug($"Deleting an invalid block or its descendant {hash}");
                 _blockInfoDb.Set(DeletePointerAddressInDb, hash.Bytes);
             }
         }
@@ -1191,33 +1170,32 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo UpdateOrCreateLevel(long number, Hash256 hash, BlockInfo blockInfo, bool setAsMain = false)
         {
-            using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
+            using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
+
+            if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
             {
-                if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
-                {
-                    BestKnownNumber = number;
-                }
-
-                ChainLevelInfo level = LoadLevel(number, false);
-
-                if (level is not null)
-                {
-                    level.InsertBlockInfo(hash, blockInfo, setAsMain);
-                }
-                else
-                {
-                    level = new ChainLevelInfo(false, new[] { blockInfo });
-                }
-
-                if (setAsMain)
-                {
-                    level.HasBlockOnMainChain = true;
-                }
-
-                _chainLevelInfoRepository.PersistLevel(number, level, batch);
-
-                return level;
+                BestKnownNumber = number;
             }
+
+            ChainLevelInfo level = LoadLevel(number, false);
+
+            if (level is not null)
+            {
+                level.InsertBlockInfo(hash, blockInfo, setAsMain);
+            }
+            else
+            {
+                level = new ChainLevelInfo(false, new[] { blockInfo });
+            }
+
+            if (setAsMain)
+            {
+                level.HasBlockOnMainChain = true;
+            }
+
+            _chainLevelInfoRepository.PersistLevel(number, level, batch);
+
+            return level;
         }
 
         public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash) => LoadInfo(number, blockHash, true);
@@ -1521,12 +1499,8 @@ namespace Nethermind.Blockchain
             if (Head?.Number >= startNumber)
             {
                 // greater than zero so will not fail
-                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1);
-                if (chainLevelInfo is null)
-                {
-                    throw new InvalidDataException(
+                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1) ?? throw new InvalidDataException(
                         $"Chain level {startNumber - 1} does not exist when {startNumber} level exists.");
-                }
 
                 // there may be no canonical block marked on this level - then we just hack to genesis
                 Hash256? newHeadHash = chainLevelInfo.HasBlockOnMainChain

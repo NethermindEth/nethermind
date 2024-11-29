@@ -34,7 +34,9 @@ public static class ContainerBuilderExtensions
             object? val = propertyInfo.GetValue(source);
             if (val != null)
             {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+                configuration.RegisterInstance(val)
+                    .As(propertyInfo.PropertyType)
+                    .ExternallyOwned();
             }
         }
 
@@ -54,6 +56,16 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
     {
         builder.RegisterInstance(instance)
+            .As<T>()
+            .ExternallyOwned()
+            .SingleInstance();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
+    {
+        builder.Register(factory)
             .As<T>()
             .SingleInstance();
 
@@ -75,6 +87,7 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .Named<T>(key)
+            .ExternallyOwned()
             .SingleInstance();
 
         return builder;

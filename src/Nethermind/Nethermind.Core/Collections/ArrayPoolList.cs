@@ -36,7 +36,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         }
         else
         {
-            _array = Array.Empty<T>();
+            _array = [];
         }
         _capacity = _array.Length;
 

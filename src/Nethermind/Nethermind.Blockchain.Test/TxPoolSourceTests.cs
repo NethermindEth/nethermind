@@ -30,7 +30,7 @@ public class TxPoolSourceTests
             .ToDictionary(
                 pair => new AddressAsKey(new Address((new byte[19]).Concat(new byte[] { (byte)pair.index }).ToArray())),
                 pair => new Transaction[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
-        txPool.GetPendingTransactions().Returns(new Transaction[0]);
+        txPool.GetPendingTransactions().Returns([]);
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();

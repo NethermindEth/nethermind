@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Synchronization.SnapSync
+namespace Nethermind.Synchronization.FastSync
 {
-    internal class Pivot
+    public class StateSyncPivot
     {
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
@@ -25,7 +28,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public Pivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _blockTree = blockTree;
             _syncConfig = syncConfig;
@@ -34,7 +37,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public BlockHeader GetPivotHeader()
         {
-            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
+            if (_bestHeader is null || (_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
@@ -56,7 +59,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void UpdateHeaderForcefully()
         {
-            if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
+            if ((_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }
@@ -65,7 +68,7 @@ namespace Nethermind.Synchronization.SnapSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = _blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number - _syncConfig.StateMinDistanceFromHead, 0);
+            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number + MultiSyncModeSelector.FastSyncLag - _syncConfig.StateMinDistanceFromHead, 0);
             BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
@@ -73,5 +76,7 @@ namespace Nethermind.Synchronization.SnapSync
                 _bestHeader = bestHeader;
             }
         }
+
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new ConcurrentHashSet<Hash256>();
     }
 }

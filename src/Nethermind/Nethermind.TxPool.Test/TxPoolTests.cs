@@ -224,11 +224,8 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactionsCount().Should().Be(0);
         }
 
-        [TestCase(false, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(false, true, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(true, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(true, true, ExpectedResult = nameof(AcceptTxResult.SenderIsContract))]
-        public string should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
+        [TestCaseSource(nameof(Eip3607RejectionsTestCases))]
+        public AcceptTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { IsEip3607Enabled = eip3607Enabled });
             TxPool txPool = CreatePool(null, specProvider);
@@ -237,7 +234,15 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             _stateProvider.InsertCode(TestItem.AddressA, hasCode ? "H"u8.ToArray() : System.Text.Encoding.UTF8.GetBytes(""), London.Instance);
 
-            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).ToString();
+            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        }
+
+        public static IEnumerable<TestCaseData> Eip3607RejectionsTestCases()
+        {
+            yield return new TestCaseData(false, false).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(false, true).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(true, false).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(true, true).Returns(AcceptTxResult.SenderIsContract);
         }
 
         [Test]
@@ -268,12 +273,12 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
 
             // LatestPendingNonce=0, when account does not exist
-            UInt256 latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            _ = _txPool.GetLatestPendingNonce(TestItem.AddressA);
 
             _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
 
             // LatestPendingNonce=0, for a new account
-            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            UInt256 latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
             Assert.That((UInt256)0, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
@@ -918,7 +923,7 @@ namespace Nethermind.TxPool.Test
             {
                 for (uint i = 0; i < 100; i++)
                 {
-                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei(), TestItem.AddressA, Array.Empty<byte>(), k);
+                    Transaction tx = GetTransaction(i, GasCostOf.Transaction, 10.GWei(), TestItem.AddressA, [], k);
                     _txPool.SubmitTx(tx, TxHandlingOptions.None);
                 }
             });
@@ -1067,7 +1072,7 @@ namespace Nethermind.TxPool.Test
         public void should_notify_added_peer_of_own_tx_when_we_are_synced([Values(0, 1)] int headNumber)
         {
             _txPool = CreatePool();
-            Transaction tx = AddTransactionToPool();
+            _ = AddTransactionToPool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.HeadNumber.Returns(headNumber);
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
@@ -1082,7 +1087,7 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            Transaction tx = AddTransactionToPool();
+            _ = AddTransactionToPool();
             await Task.Delay(500);
             txPoolPeer.Received(1).SendNewTransaction(Arg.Any<Transaction>());
             txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
@@ -1849,7 +1854,7 @@ namespace Nethermind.TxPool.Test
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
         {
-            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, (nonce ?? 999) + 1, to, Array.Empty<byte>(), privateKey);
+            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, (nonce ?? 999) + 1, to, [], privateKey);
             EnsureSenderBalance(transaction);
             return transaction;
         }

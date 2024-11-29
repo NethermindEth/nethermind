@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -783,7 +784,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         TreePath path = TreePath.Empty;
         commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
-        // The amount of change in the subtrees are not balanced at all. So their writes ares buffered here
+        // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
         // This unfortunately is not atomic
         // However, anything that we are trying to persist here should still be in dirty cache.
@@ -802,11 +803,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             });
         }
 
-        Task.WaitAll(parallelStartNodes.Select(entry => Task.Run(() =>
-        {
-            (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
-            PersistNodeStartingFrom(trieNode, address2, path2, persistedNodeRecorder, writeFlags, disposeQueue);
-        })));
+        using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+            entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+            .ToPooledList(parallelStartNodes.Count);
+
+        Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
 
         disposeQueue.CompleteAdding();
         Task.WaitAll(_disposeTasks);
@@ -971,6 +972,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 ParallelPersistBlockCommitSet(blockCommitSet);
             }
             writeBatch.Dispose();
+            _nodeStorage.Flush(onlyWal: false);
 
             if (candidateSets.Count == 0)
             {

@@ -18,7 +18,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -83,7 +82,7 @@ public partial class BlockProcessor(
     // TODO: move to branch processor
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
-        if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+        if (suggestedBlocks.Count == 0) return [];
 
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
@@ -124,17 +123,17 @@ public partial class BlockProcessor(
                 if (!skipPrewarming)
                 {
                     using CancellationTokenSource cancellationTokenSource = new();
-                    (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
+                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     cancellationTokenSource.Cancel();
                 }
                 else
                 {
-                    if (preWarmer?.ClearCaches() ?? false)
+                    CacheType result = preWarmer?.ClearCaches() ?? default;
+                    if (result != default)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Low txs, caches are not empty. Clearing them.");
+                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
@@ -436,14 +435,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        if (!_stateProvider.AccountExists(reward.Address))
-        {
-            _stateProvider.CreateAccount(reward.Address, reward.Value);
-        }
-        else
-        {
-            _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
-        }
+        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
 
     // TODO: block processor pipeline

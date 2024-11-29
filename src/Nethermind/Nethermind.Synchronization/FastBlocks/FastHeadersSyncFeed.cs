@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
 
-        private readonly object _handlerLock = new();
+        private readonly Lock _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         protected long _lowestRequestedHeaderNumber;

@@ -24,9 +24,9 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
-        public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
+        public Transaction[] GetPendingTransactions() => [];
 
-        public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
+        public Transaction[] GetPendingTransactionsBySender(Address address) => [];
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();

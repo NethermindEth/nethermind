@@ -50,18 +50,18 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
     public void ProcessStatisticsString(string dbStatsString)
     {
-        foreach ((string Name, IDictionary<string, double> SubMetric) value in ExtractStatsFromStatisticString(dbStatsString))
+        foreach ((string Name, IDictionary<string, double> SubMetric) in ExtractStatsFromStatisticString(dbStatsString))
         {
             // The metric can be of several type, usually just a counter, but sometime its a histogram,
             // in which case we take both the sum and count.
-            if (value.SubMetric.TryGetValue("SUM", out var valueSum))
+            if (SubMetric.TryGetValue("SUM", out var valueSum))
             {
-                Metrics.DbStats[($"{dbName}Db", $"{value.Name}.sum")] = valueSum;
-                Metrics.DbStats[($"{dbName}Db", $"{value.Name}.count")] = value.SubMetric["COUNT"];
+                Metrics.DbStats[($"{dbName}Db", $"{Name}.sum")] = valueSum;
+                Metrics.DbStats[($"{dbName}Db", $"{Name}.count")] = SubMetric["COUNT"];
             }
             else
             {
-                Metrics.DbStats[($"{dbName}Db", value.Name)] = value.SubMetric["COUNT"];
+                Metrics.DbStats[($"{dbName}Db", Name)] = SubMetric["COUNT"];
             }
         }
     }
