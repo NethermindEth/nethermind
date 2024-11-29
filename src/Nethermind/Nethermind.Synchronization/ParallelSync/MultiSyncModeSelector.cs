@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -636,8 +635,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 LogDetailedSyncModeChecks("STATE_NODES",
                     (nameof(isInStateSync), isInStateSync),
-                    (nameof(snapSyncDisabled), snapSyncDisabled),
-                    (nameof(snapRangesFinished), snapRangesFinished));
+                    ($"{nameof(snapSyncDisabled)}||{nameof(snapRangesFinished)}", snapSyncDisabled || snapRangesFinished));
             }
 
             return result;
@@ -646,7 +644,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInSnapRangesPhase(Snapshot best)
         {
             bool isInStateSync = best.IsInStateSync;
-            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) < Constants.MaxDistanceFromHead;
+            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= FastSyncLag;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
 
             if (_logger.IsTrace)
