@@ -21,8 +21,8 @@ namespace Ethereum.Test.Base
             }
             else
             {
-                // testDirs = Directory.EnumerateDirectories(testsDirectoryName);
-                testDirs = new[] { testsDirectoryName };
+                testDirs = Directory.EnumerateDirectories(testsDirectoryName);
+                // testDirs = new[] { testsDirectoryName };
             }
 
             List<BlockchainTest> testJsons = new();
