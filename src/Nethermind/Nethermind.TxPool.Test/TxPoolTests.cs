@@ -1153,7 +1153,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactionsCount().Should().Be(isSynced ? 1 : 0);
-            result.Should().Be(isSynced ? AcceptTxResult.Accepted : AcceptTxResult.AlreadyKnown);
+            result.Should().Be(isSynced ? AcceptTxResult.Accepted : AcceptTxResult.Syncing);
         }
 
         [Test]
