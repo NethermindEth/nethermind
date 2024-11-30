@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockTree _blockTree;
         // For testing
-        internal bool HasSynced { get; init; }
+        public bool HasSynced { private get; init; }
 
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
