@@ -24,21 +24,6 @@ jobs:
       fail-fast: false
       matrix:
         master-image:
-          - master-89c5835
-          - master-65cd94d
-          - master-5516619
-          - master-e0f1713
-          - master-0b49b10
-          - master-4ecedbc
-          - master-abf7c73
-          - master-4dd60d8
-          - master-f733f71
-          - master-ee96111
-          - master-c666e5e
-          - master-d15a540
-          - master-3b213af
-          - master-39d8076
-          - master-9780259
           - master-d2fbc46
           - master-efb2993
           - master-ed90d17
@@ -154,23 +139,6 @@ jobs:
           - master-8f61588
           - master-ae3e7a6
           - master-b0e8c2c
-          - master-4f0e596
-          - master-de191c0
-          - master-966113f
-          - master-7c411aa
-          - master-8e716e9
-          - master-6b4b485
-          - master-837065c
-          - master-4bba613
-          - master-43b9af9
-          - master-54a795c
-          - master-4b1084a
-          - master-71335db
-          - master-7ef9398
-          - master-8296752
-          - master-522deba
-          - master-a0d106c
-          - master-a705c1a
           
     steps:
       - name: Set up parameters
@@ -212,7 +180,7 @@ jobs:
         continue-on-error: true
         working-directory: hive
         run: |
-          IFS=',' read -ra TEST_NAMES <<< "GeneralStateTests/stRandom2/randomStatetest643"
+          IFS=',' read -ra TEST_NAMES <<< "GeneralStateTests/stEIP1559/intrinsic"
           for testName in "${TEST_NAMES[@]}"
           do
             ./hive --client nethermind --sim ethereum/consensus --sim.limit /$testName --sim.parallelism $PARALLELISM
