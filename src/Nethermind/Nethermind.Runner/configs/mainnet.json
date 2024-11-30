@@ -9,8 +9,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 21002000,
-    "PivotHash": "0xd127c729dcd7bd984b381ca981e74023426a82855ea40e677ef815df2bf528be",
+    "PivotNumber": 21285000,
+    "PivotHash": "0x313760f259dda6ca0909b353bbfd8a8e02ccbd132b2a8d48dba17c8bdbe085ab",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": "10000000000"
   },

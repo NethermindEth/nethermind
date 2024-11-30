@@ -10,6 +10,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ConcurrentCollections;
@@ -26,7 +27,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class DbOnTheRocks : IDb, ITunableDb
+public partial class DbOnTheRocks : IDb, ITunableDb
 {
     protected ILogger _logger;
 
@@ -41,7 +42,6 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     internal readonly RocksDb _db;
 
-    private IntPtr? _rateLimiter;
     internal WriteOptions? WriteOptions { get; private set; }
     private WriteOptions? _noWalWrite;
     private WriteOptions? _lowPriorityAndNoWalWrite;
@@ -59,12 +59,14 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private long _maxThisDbSize;
 
-    protected IntPtr? _cache = null;
     protected IntPtr? _rowCache = null;
 
     private readonly DbSettings _settings;
 
     protected readonly PerTableDbConfig _perTableDbConfig;
+    private ulong _maxBytesForLevelBase;
+    private ulong _targetFileSizeBase;
+    private int _minWriteBufferToMerge;
 
     private readonly IFileSystem _fileSystem;
 
@@ -81,6 +83,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     private long _totalWrites;
 
     private readonly IteratorManager _iteratorManager;
+    private ulong _writeBufferSize;
+    private int _maxWriteBufferNumber;
 
     public DbOnTheRocks(
         string basePath,
@@ -144,12 +148,11 @@ public class DbOnTheRocks : IDb, ITunableDb
                 {
                     string columnFamily = enumColumnName;
 
+                    ColumnFamilyOptions options = new();
+                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
+
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
-
-                    ColumnFamilyOptions options = new();
-                    IntPtr? cacheForColumn = _cache ?? sharedCache;
-                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, cacheForColumn);
                     columnFamilies.Add(columnFamily, options);
                 }
             }
@@ -357,7 +360,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            if (_cache is null && !includeSharedCache)
+            if (!includeSharedCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -403,6 +406,22 @@ public class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
+    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    private static partial Regex ExtractDbOptionsRegex();
+
+    public static IDictionary<string, string> ExtractOptions(string dbOptions)
+    {
+        Dictionary<string, string> asDict = new();
+        if (string.IsNullOrEmpty(dbOptions)) return asDict;
+
+        foreach (Match match in ExtractDbOptionsRegex().Matches(dbOptions))
+        {
+            asDict[match.Groups["optionName"].ToString()] = match.Groups["optionValue"].ToString();
+        }
+
+        return asDict;
+    }
+
     protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
@@ -410,151 +429,59 @@ public class DbOnTheRocks : IDb, ITunableDb
         // Note: Keep in mind, the term 'index' here usually means mapping to a block, not to a value.
         #region TableFactory sections
 
-        // TODO: Try PlainTable and Cuckoo table.
+        string allOptions = dbConfig.RocksDbOptions + dbConfig.AdditionalRocksDbOptions;
+        IDictionary<string, string> optionsAsDict = ExtractOptions(allOptions);
+        _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
+        _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
+        _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
+        _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
+        _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
+
         BlockBasedTableOptions tableOptions = new();
-
-        // Note, this is before compression. On disk size may be lower. The on disk size is the minimum amount of read
-        // each io will do. On most SSD, the minimum read size is 4096 byte. So don't set it to lower than that, unless
-        // you have an optane drive or some kind of RAM disk. Lower block size also means bigger index size.
-        tableOptions.SetBlockSize((ulong)(dbConfig.BlockSize ?? 16 * 1024));
-
-        // No significant downside. Just set it.
-        tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-
-        // If true, the index does not reside on dedicated memory space, but uses the block cache as memory space and
-        // it can be released. This sounds great, except that without two level index, the index size is fairly large,
-        // about 0.5MB each, so if the index is not in the cache, the whole thing need to re-read. This cause very spiky
-        // block processing time. With two level index, this setting only apply to the top level index, which is only
-        // a couple MB on StateDb. So we keep it as false to not introduce regression on user who synced before 1.19.
-        // On mainnet, the total index size for statedb is about 3GB if I'm not mistaken. Its linearly proportional to
-        // database size and inversely proportional to blocksize.
-        tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
-
-        // Make the index in cache have higher priority, so it is kept more in cache.
-        _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
-
-        if (dbConfig.UseTwoLevelIndex)
+        options.SetBlockBasedTableFactory(tableOptions);
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
+        try
         {
-            // Two level index split the index into two level. First index point to second level index, which actually
-            // point to the block, which get bsearched to the value. This means potentially two iop instead of one per
-            // read, and probably more processing overhead. But it significantly reduces memory usage and make block
-            // processing time more consistent. So its enabled by default. That said, if you got the RAM, maybe disable
-            // this.
-            // See https://rocksdb.org/blog/2017/05/12/partitioned-index-filter.html
-            tableOptions.SetIndexType(BlockBasedTableIndexType.TwoLevelIndex);
-            _rocksDbNative.rocksdb_block_based_options_set_partition_filters(tableOptions.Handle, true);
-            _rocksDbNative.rocksdb_block_based_options_set_metadata_block_size(tableOptions.Handle, 4096);
+            _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
         }
-        else if (dbConfig.UseHashIndex)
+        finally
         {
-            // Hash index need prefix extractor.
-            // I'm not sure if this index goes directly to value or not.
-            // Also means it can't do range scan.
-            // I'm guessing, if the prefix is the whole key, its useless.
-            tableOptions.SetIndexType(BlockBasedTableIndexType.Hash);
+            Marshal.FreeHGlobal(optsPtr);
         }
 
-        tableOptions.SetFormatVersion(5);
-        if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
+        ulong blockCacheSize = 0;
+        if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
         {
-            if (dbConfig.UseRibbonFilterStartingFromLevel is not null)
-            {
-                // Ribbon filter reduces filter size by about 30% but uses up roughly the same amount of CPU for the same
-                // false positive rate. This config allow the use of ribbon filter only for lower levels.
-                IntPtr filter = _rocksDbNative.rocksdb_filterpolicy_create_ribbon_hybrid(
-                    dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(),
-                    dbConfig.UseRibbonFilterStartingFromLevel.Value);
-                tableOptions.SetFilterPolicy(filter);
-            }
-            else
-            {
-                // Bloom filter size for the sst files.
-                tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(), false));
-            }
+            blockCacheSize = ulong.Parse(blockCacheSizeStr);
         }
 
-        // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
-        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
-        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
-        // cache utilization.
-        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval ?? 16);
-
-        // This adds a hashtable-like index per block (the 16kb block)
-        // In, this reduce CPU and therefore latency under high block cache hit scenario.
-        // It seems to increase disk space use by about 1 GB.
-        double? dataBlockIndexUtilRatio = dbConfig.DataBlockIndexUtilRatio;
-        if (dataBlockIndexUtilRatio.HasValue && dataBlockIndexUtilRatio.Value > 0)
-        {
-            _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
-            _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, dataBlockIndexUtilRatio.Value);
-        }
-
-        ulong blockCacheSize = dbConfig.BlockCacheSize;
         if (sharedCache is not null && blockCacheSize == 0)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
         }
-        else
+
+        if (dbConfig.WriteBufferSize is not null)
         {
-            _cache = _rocksDbNative.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
-            tableOptions.SetBlockCache(_cache.Value);
+            _writeBufferSize = dbConfig.WriteBufferSize.Value;
+            options.SetWriteBufferSize(dbConfig.WriteBufferSize.Value);
         }
 
-        options.SetBlockBasedTableFactory(tableOptions);
-
-        // When true, (for some reason the binding is int, but 1 is true), bloom filters for last level is not created.
-        // This reduces disk space utilization, but read of non-existent key will have to go through the database
-        // instead of checking a bloom filter.
-        options.SetOptimizeFiltersForHits(dbConfig.OptimizeFiltersForHits ? 1 : 0);
-
-        if (dbConfig.DisableCompression == true)
+        if (dbConfig.WriteBufferNumber is not null)
         {
-            options.SetCompression(Compression.No);
+            _maxWriteBufferNumber = (int)dbConfig.WriteBufferNumber.Value;
+            options.SetMaxWriteBufferNumber(_maxWriteBufferNumber);
         }
-        else if (dbConfig.UseLz4 == true)
-        {
-            // Its faster sometimes, its slower sometimes, depends on the DB.
-            options.SetCompression(Compression.Lz4);
-        }
-        else if (dbConfig.OnlyCompressLastLevel)
-        {
-            // So the bottommost level is about 80-90% of the database. So it may make sense to only compress that
-            // part, which make the top level faster, and/or mmap-able.
-            options.SetCompression(Compression.No);
-            _rocksDbNative.rocksdb_options_set_bottommost_compression(options.Handle, 0x1); // 0x1 is snappy.
-        }
-
-        // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
-        options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);
-
-        // Multiply the target size of SST file by this much every level down, further reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        options.SetTargetFileSizeMultiplier(dbConfig.TargetFileSizeMultiplier);
+        if (_maxWriteBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {_maxWriteBufferNumber}", ExitCodes.GeneralError);
 
         #endregion
 
-        // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
-        // file which affect compactions. The options here does not effect how the sst files are read... probably.
-        // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
-        // block cache and then finally the LSM/SST files.
         #region WriteBuffer
 
-        // The memtable have a bloom filter whose size depends on the `prefix_bloom_size_ratio`, which is not actually
-        // just for prefix.
-        _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
-        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, dbConfig.MemtablePrefixBloomSizeRatio);
-
         // Note: Write buffer and write buffer num are modified by MemoryHintMan.
-        ulong writeBufferSize = dbConfig.WriteBufferSize;
-        options.SetWriteBufferSize(writeBufferSize);
-        int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
-        if (writeBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {writeBufferNumber}", ExitCodes.GeneralError);
-        options.SetMaxWriteBufferNumber(writeBufferNumber);
         lock (_dbsByPath)
         {
+            ulong writeBufferSize = _writeBufferSize;
+            int writeBufferNumber = _maxWriteBufferNumber;
             _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
             Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
             if (_logger.IsDebug)
@@ -562,37 +489,6 @@ public class DbOnTheRocks : IDb, ITunableDb
                     $"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000} MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000} MB + {blockCacheSize / 1000 / 1000} MB)");
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
             ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000} MB".PadLeft(8));
-        }
-
-        if (dbConfig.UseHashSkipListMemtable)
-        {
-            // Use a hashtable of skiplist, instead of skiplist.
-            // This has shown to be quite effective at reducing CPU usage at the expense of raw concurrent throughput
-            // in the case of flatdb layout's storage db. Reduces sync throughput though. Could improve block processing
-            // time. Need prefix extractor. Can't do range scan between prefixes. Well, there is a flag to force it,
-            // but it'll cost some CPU.
-            options.SetAllowConcurrentMemtableWrite(false);
-
-            // Default value.
-            UIntPtr bucketCount = 1000000; // Seems quite large. Wonder why this is the default value.
-            int skiplistHeight = 4;
-            int skiplistBranchingFactor = 4;
-            _rocksDbNative.rocksdb_options_set_hash_skip_list_rep(options.Handle, bucketCount, skiplistHeight, skiplistBranchingFactor);
-        }
-
-        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
-        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
-        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
-        options.SetMinWriteBufferNumberToMerge(dbConfig.MinWriteBufferNumberToMerge);
-
-        if (dbConfig.MaxWriteBufferSizeToMaintain.HasValue)
-        {
-            // Allow maintaining some of the flushed write buffer. Why do you want to do this? Because write buffer
-            // act like a write cache. Recently written key are likely to be read back. Plus, in state db, intermediate
-            // nodes that is being read is likely going to get modified, so having those node in rowcache/blockcache
-            // can be useless, might as well put memory here.
-            // Note: each memtable need to be checked, so it may make sense to also increase the write buffer size.
-            _rocksDbNative.rocksdb_options_set_max_write_buffer_size_to_maintain(options.Handle, dbConfig.MaxWriteBufferSizeToMaintain.Value);
         }
 
         #endregion
@@ -613,37 +509,9 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
 
-        // Set to true to enable dynamic level bytes. Its drastically different than standard compaction.
-        options.SetLevelCompactionDynamicLevelBytes(dbConfig.LevelCompactionDynamicLevelBytes);
-
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
-        // Main config for LSM shape, also effect write amplification.
-        // MaxBytesForLevelBase is 256MB by default. But if write buffer is lowered, it could be preferable to reduce
-        // this as well to match total write buffer to reduce write amplification, but it can increase number of level
-        // which in turn, make write amplification higher anyway.
-        options.SetMaxBytesForLevelBase(dbConfig.MaxBytesForLevelBase);
-        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
-        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
-        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
-        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
-        options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
-
-        // How many bytes before the SST files get synced to disk.
-        options.SetBytesPerSync(dbConfig.BytesPerSync);
-
-        // For reducing temporarily used disk space but come at the cost of parallel compaction.
-        if (dbConfig.MaxCompactionBytes.HasValue)
-        {
-            options.SetMaxCompactionBytes(dbConfig.MaxCompactionBytes.Value);
-        }
-
-        // Significantly reduces IOPs during syncing, but take up quite some memory.
-        if (dbConfig.CompactionReadAhead is not null && dbConfig.CompactionReadAhead != 0)
-        {
-            options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
-        }
         #endregion
 
         #region Other options
@@ -659,42 +527,11 @@ public class DbOnTheRocks : IDb, ITunableDb
             _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
         }
 
-        if (dbConfig.PrefixExtractorLength.HasValue)
-        {
-            options.SetPrefixExtractor(SliceTransform.CreateFixedPrefix(dbConfig.PrefixExtractorLength.Value));
-        }
-
         options.SetCreateIfMissing();
-
-        // From looking into the source code, this does not have an effect on Windows.
-        options.SetAdviseRandomOnOpen(dbConfig.AdviseRandomOnOpen);
 
         if (dbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
-        }
-        options.SetRecycleLogFileNum(dbConfig
-            .RecycleLogFileNum); // potential optimization for reusing allocated log files
-
-        // Bypass OS cache. This may reduce response time, but if cache size is not increased, it has less effective
-        // cache. Also, OS cache is compressed cache, so even if cache size is increased, the effective cache size
-        // is still lower as block cache is uncompressed.
-        options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
-        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
-
-        if (dbConfig.AllowMmapReads)
-        {
-            // Only work if disable compression is false.
-            // Note: if SkipVerifyChecksum is false, checksum is calculated on every reads.
-            // Note: This bypass block cache.
-            options.SetAllowMmapReads(true);
-        }
-
-        if (dbConfig.MaxBytesPerSec.HasValue)
-        {
-            _rateLimiter =
-                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxBytesPerSec.Value, 1000, 10);
-            _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
         }
 
         if (dbConfig.EnableDbStatistics)
@@ -705,7 +542,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
-            IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
+            optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
             try
             {
                 _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
@@ -1413,19 +1250,9 @@ public class DbOnTheRocks : IDb, ITunableDb
         _iteratorManager.Dispose();
         _db.Dispose();
 
-        if (_cache.HasValue)
-        {
-            _rocksDbNative.rocksdb_cache_destroy(_cache.Value);
-        }
-
         if (_rowCache.HasValue)
         {
             _rocksDbNative.rocksdb_cache_destroy(_rowCache.Value);
-        }
-
-        if (_rateLimiter.HasValue)
-        {
-            _rocksDbNative.rocksdb_ratelimiter_destroy(_rateLimiter.Value);
         }
     }
 
@@ -1496,7 +1323,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                 // l0 the same size as l1, but keep the LSM the same. This improve flush parallelization, and
                 // write amplification due to mismatch of l0 and l1 size, but does not reduce compaction from other
                 // levels.
-                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase));
+                ApplyOptions(GetHeavyWriteOptions(_maxBytesForLevelBase));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
@@ -1556,8 +1383,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         // Defaults are from rocksdb source code
         return new Dictionary<string, string>()
         {
-            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
-            { "max_write_buffer_number", _perTableDbConfig.WriteBufferNumber.ToString() },
+            { "write_buffer_size", _writeBufferSize.ToString() },
+            { "max_write_buffer_number", _maxWriteBufferNumber.ToString() },
 
             { "level0_file_num_compaction_trigger", 4.ToString() },
             { "level0_slowdown_writes_trigger", 20.ToString() },
@@ -1567,8 +1394,8 @@ public class DbOnTheRocks : IDb, ITunableDb
             // until they get compacted.
             { "level0_stop_writes_trigger", 1024.ToString() },
 
-            { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
-            { "target_file_size_base", _perTableDbConfig.TargetFileSizeBase.ToString() },
+            { "max_bytes_for_level_base", _maxBytesForLevelBase.ToString() },
+            { "target_file_size_base", _targetFileSizeBase.ToString() },
             { "disable_auto_compactions", "false" },
 
             { "enable_blob_files", "false" },
@@ -1613,7 +1440,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // The buffer is not compressed unlike l0File, so to account for it, its size need to be slightly larger.
         ulong targetFileSize = (ulong)16.MiB();
         ulong bufferSize = (ulong)(targetFileSize / _perTableDbConfig.CompressibilityHint);
-        ulong l0FileSize = targetFileSize * (ulong)_perTableDbConfig.MinWriteBufferNumberToMerge;
+        ulong l0FileSize = targetFileSize * (ulong)_minWriteBufferToMerge;
         ulong maxBufferNumber = 8;
 
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,

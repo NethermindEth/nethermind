@@ -224,11 +224,8 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactionsCount().Should().Be(0);
         }
 
-        [TestCase(false, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(false, true, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(true, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(true, true, ExpectedResult = nameof(AcceptTxResult.SenderIsContract))]
-        public string should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
+        [TestCaseSource(nameof(Eip3607RejectionsTestCases))]
+        public AcceptTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { IsEip3607Enabled = eip3607Enabled });
             TxPool txPool = CreatePool(null, specProvider);
@@ -237,7 +234,15 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             _stateProvider.InsertCode(TestItem.AddressA, hasCode ? "H"u8.ToArray() : System.Text.Encoding.UTF8.GetBytes(""), London.Instance);
 
-            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).ToString();
+            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        }
+
+        public static IEnumerable<TestCaseData> Eip3607RejectionsTestCases()
+        {
+            yield return new TestCaseData(false, false).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(false, true).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(true, false).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(true, true).Returns(AcceptTxResult.SenderIsContract);
         }
 
         [Test]
