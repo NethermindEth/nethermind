@@ -410,7 +410,7 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (_headInfo.IsSyncing) return AcceptTxResult.AlreadyKnown;
+            if (_headInfo.IsSyncing) return AcceptTxResult.Syncing;
 
             Metrics.PendingTransactionsReceived++;
 
