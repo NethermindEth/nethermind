@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -974,6 +975,72 @@ namespace Nethermind.Trie
             }
 
             action(this, storageAddress, currentPath);
+        }
+
+        public async ValueTask CallRecursivelyAsync(
+            Func<TrieNode, Hash256?, TreePath, ValueTask> action,
+            Hash256? storageAddress,
+            TreePath currentPath,
+            ITrieNodeResolver resolver,
+            bool skipPersisted,
+            ILogger logger,
+            int maxPathLength = Int32.MaxValue,
+            bool resolveStorageRoot = true)
+        {
+            if (skipPersisted && IsPersisted)
+            {
+                if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
+                return;
+            }
+
+            if (currentPath.Length >= maxPathLength)
+            {
+                await action(this, storageAddress, currentPath);
+                return;
+            }
+
+            if (!IsLeaf)
+            {
+                if (_data is not null)
+                {
+                    for (int i = 0; i < _data.Length; i++)
+                    {
+                        object o = _data[i];
+                        if (o is TrieNode child)
+                        {
+                            if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
+                            int previousLength = AppendChildPath(ref currentPath, i);
+                            await child.CallRecursivelyAsync(action, storageAddress, currentPath, resolver, skipPersisted, logger, maxPathLength, resolveStorageRoot);
+                            currentPath.TruncateMut(previousLength);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                TrieNode? storageRoot = _storageRoot;
+                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
+                {
+                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
+                    Hash256 storagePathAddr;
+                    using (currentPath.ScopedAppend(Key))
+                    {
+                        if (currentPath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                        storagePathAddr = currentPath.Path.ToCommitment();
+                    }
+
+                    TreePath emptyPath = TreePath.Empty;
+                    await storageRoot!.CallRecursivelyAsync(
+                        action,
+                        storagePathAddr,
+                        emptyPath,
+                        resolver.GetStorageTrieNodeResolver(storagePathAddr),
+                        skipPersisted,
+                        logger);
+                }
+            }
+
+            await action(this, storageAddress, currentPath);
         }
 
         /// <summary>
