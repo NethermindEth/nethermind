@@ -68,10 +68,7 @@ namespace Nethermind.Blockchain
                     return false;
                 }
 
-                long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-                long headNumberOrZero = _blockTree.Head?.Number ?? 0;
-                bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + 8;
-
+                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 2);
                 return isSyncing;
             }
         }
