@@ -338,6 +338,17 @@ namespace Nethermind.Synchronization.SnapSync
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
                     }
+
+                    //leaves as a part of boundary are only added if they are outside the processed range,
+                    //therefore they will not be persisted during current Commit. Still it is possible, they have already
+                    //been persisted when processing a range they belong, so it is needed to do a check here.
+                    //Without it, there is a risk that the whole dependant path (including root) will not be eventually stitched and persisted
+                    //leading to TrieNodeException after sync (as healing may not get to heal the particular storage trie)
+                    if (node.IsLeaf)
+                    {
+                        node.IsPersisted = store.IsPersisted(path, node.Keccak);
+                        node.IsBoundaryProofNode = !node.IsPersisted;
+                    }
                 }
             }
         }
