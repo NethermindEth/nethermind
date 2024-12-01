@@ -134,11 +134,10 @@ public ref struct EvmStack<TTracing>
         if (Avx2.IsSupported)
         {
             Word shuffle = Vector256.Create(
-                (byte)
-                31, 30, 29, 28, 27, 26, 25, 24,
-                23, 22, 21, 20, 19, 18, 17, 16,
-                15, 14, 13, 12, 11, 10, 9, 8,
-                7, 6, 5, 4, 3, 2, 1, 0);
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
             if (Avx512Vbmi.VL.IsSupported)
             {
                 Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
@@ -207,11 +206,10 @@ public ref struct EvmStack<TTracing>
         {
             Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
             Word shuffle = Vector256.Create(
-                (byte)
-                31, 30, 29, 28, 27, 26, 25, 24,
-                23, 22, 21, 20, 19, 18, 17, 16,
-                15, 14, 13, 12, 11, 10, 9, 8,
-                7, 6, 5, 4, 3, 2, 1, 0);
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
             if (Avx512Vbmi.VL.IsSupported)
             {
                 Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
@@ -382,7 +380,6 @@ public static class EvmStack
     public const int ReturnStackSize = 1023;
     public const int WordSize = 32;
     public const int AddressSize = 20;
-
 
     [StackTraceHidden]
     [DoesNotReturn]
