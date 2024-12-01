@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
@@ -68,7 +67,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _timer.Start();
     }
 
-    private readonly Channel<Block> _signalsQueue = Channel.CreateUnbounded<Block>();
+    private readonly BlockingCollection<Block> _signalsQueue =
+        new(new ConcurrentQueue<Block>());
 
     private Block? _scheduledBlock;
 
@@ -91,7 +91,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public void ProduceOnTopOf(Hash256 hash)
     {
-        _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
+        _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
 
     public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
@@ -111,7 +111,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
             {
                 if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                 {
-                    _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
+                    _signalsQueue.Add(_blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None));
                 }
 
                 _timer.Enabled = true;
@@ -216,17 +216,17 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
     {
-        _signalsQueue.Writer.TryWrite(e.Block);
+        _signalsQueue.Add(e.Block);
     }
 
     private async Task ConsumeSignal()
     {
         _lastProducedBlock = DateTime.UtcNow;
-        await foreach (Block signal in _signalsQueue.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+        foreach (Block signal in _signalsQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
         {
             // TODO: Maybe use IBlockProducer specific to clique?
             Block parentBlock = signal;
-            while (_signalsQueue.Reader.TryRead(out Block? nextSignal))
+            while (_signalsQueue.TryTake(out Block? nextSignal))
             {
                 if (parentBlock.Number <= nextSignal.Number)
                 {
@@ -258,7 +258,6 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     {
         _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
         _cancellationTokenSource?.Cancel();
-        _signalsQueue.Writer.TryComplete();
         await (_producerTask ?? Task.CompletedTask);
     }
 
@@ -274,12 +273,11 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 
+
     public void Dispose()
     {
         _cancellationTokenSource?.Dispose();
         _timer?.Dispose();
-        _signalsQueue.Writer.TryComplete();
-        BlockProduced = null;
     }
 }
 
