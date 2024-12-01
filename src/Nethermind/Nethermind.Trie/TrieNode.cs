@@ -935,12 +935,12 @@ namespace Nethermind.Trie
 
             if (!IsLeaf)
             {
-                if (_data is not null)
+                object?[] data = _data;
+                if (data is not null)
                 {
-                    for (int i = 0; i < _data.Length; i++)
+                    for (int i = 0; i < data.Length; i++)
                     {
-                        object o = _data[i];
-                        if (o is TrieNode child)
+                        if (data[i] is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                             int previousLength = AppendChildPath(ref currentPath, i);
@@ -1001,12 +1001,12 @@ namespace Nethermind.Trie
 
             if (!IsLeaf)
             {
-                if (_data is not null)
+                object?[] data = _data;
+                if (data is not null)
                 {
-                    for (int i = 0; i < _data.Length; i++)
+                    for (int i = 0; i < data.Length; i++)
                     {
-                        object o = _data[i];
-                        if (o is TrieNode child)
+                        if (data[i] is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                             int previousLength = AppendChildPath(ref currentPath, i);
