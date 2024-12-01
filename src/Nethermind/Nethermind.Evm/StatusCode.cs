@@ -9,8 +9,8 @@ namespace Nethermind.Evm
     public static class StatusCode
     {
         public const byte Failure = 0;
-        public static readonly ReadOnlyMemory<byte> FailureBytes = Bytes.ZeroByte;
+        public static readonly ReadOnlyMemory<byte> FailureBytes = Bytes.ZeroByteMemory;
         public const byte Success = 1;
-        public static readonly ReadOnlyMemory<byte> SuccessBytes = Bytes.OneByte;
+        public static readonly ReadOnlyMemory<byte> SuccessBytes = Bytes.OneByteMemory;
     }
 }

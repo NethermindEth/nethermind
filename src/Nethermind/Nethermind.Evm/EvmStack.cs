@@ -43,19 +43,15 @@ public ref struct EvmStack<TTracing>
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
+        ref byte bytes = ref PushBytesRef();
         if (value.Length != WordSize)
         {
-            ClearWordAtHead();
-            value.CopyTo(_bytes.Slice(Head * WordSize + WordSize - value.Length, value.Length));
+            Unsafe.As<byte, Word>(ref bytes) = default;
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
         }
         else
         {
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
-        }
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
+            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
     }
 
@@ -63,94 +59,67 @@ public ref struct EvmStack<TTracing>
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
+        ref byte bytes = ref PushBytesRef();
         ReadOnlySpan<byte> valueSpan = value.Span;
         if (valueSpan.Length != WordSize)
         {
-            ClearWordAtHead();
-            Span<byte> stack = _bytes.Slice(Head * WordSize, valueSpan.Length);
-            valueSpan.CopyTo(stack);
+            Unsafe.As<byte, Word>(ref bytes) = default;
+            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
         }
         else
         {
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan)));
-        }
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
+            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
     {
-        ref byte bytes = ref _bytes[Head * WordSize];
-
-        if (++Head >= MaxStackSize)
+        // Workhorse method
+        int head = Head;
+        if ((Head = head + 1) >= MaxStackSize)
         {
             EvmStack.ThrowEvmStackOverflowException();
         }
 
-        return ref bytes;
+        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public void PushByte(byte value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
-        ClearWordAtHead();
-        _bytes[Head * WordSize + WordSize - sizeof(byte)] = value;
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
-        }
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = default;
+        Unsafe.Add(ref bytes, WordSize - sizeof(byte)) = value;
     }
-
-    private static ReadOnlySpan<byte> OneStackItem() => Bytes.OneByte.Span;
 
     public void PushOne()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(OneStackItem());
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.OneByteSpan());
 
-        ClearWordAtHead();
-        _bytes[Head * WordSize + WordSize - sizeof(byte)] = 1;
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
-        }
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = default;
+        Unsafe.Add(ref bytes, WordSize - sizeof(byte)) = 1;
     }
-
-    private static ReadOnlySpan<byte> ZeroStackItem() => Bytes.ZeroByte.Span;
 
     public void PushZero()
     {
-        if (typeof(TTracing) == typeof(IsTracing))
-        {
-            _tracer.ReportStackPush(ZeroStackItem());
-        }
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.ZeroByteSpan());
 
-        ClearWordAtHead();
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
-        }
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = default;
     }
 
     public void PushUInt32(in int value)
     {
-        ClearWordAtHead();
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = default;
 
-        Span<byte> intPlace = _bytes.Slice(Head * WordSize + WordSize - sizeof(uint), sizeof(uint));
+        Span<byte> intPlace = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - sizeof(uint)), sizeof(uint));
         BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
 
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(intPlace);
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
-        }
     }
 
     /// <summary>
@@ -161,9 +130,7 @@ public ref struct EvmStack<TTracing>
     /// </remarks>
     public void PushUInt256(in UInt256 value)
     {
-        Span<byte> word = _bytes.Slice(Head * WordSize, WordSize);
-        ref byte bytes = ref MemoryMarshal.GetReference(word);
-
+        ref byte bytes = ref PushBytesRef();
         if (Avx2.IsSupported)
         {
             Word shuffle = Vector256.Create(
@@ -205,18 +172,13 @@ public ref struct EvmStack<TTracing>
             Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(word);
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
-        }
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref bytes, WordSize));
     }
 
     public void PushSignedInt256(in Int256.Int256 value)
     {
         // tail call into UInt256
-        PushUInt256(Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
+        PushUInt256(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
     public void PopLimbo()
@@ -314,51 +276,45 @@ public ref struct EvmStack<TTracing>
 
     public ref byte PopBytesByRef()
     {
-        if (Head-- == 0)
+        int head = Head;
+        if (head == 0)
         {
             return ref Unsafe.NullRef<byte>();
         }
-
-        return ref _bytes[Head * WordSize];
+        head--;
+        Head = head;
+        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public Span<byte> PopWord256()
     {
-        if (Head-- == 0)
-        {
-            EvmStack.ThrowEvmStackUnderflowException();
-        }
+        ref byte bytes = ref PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes)) EvmStack.ThrowEvmStackUnderflowException();
 
-        return _bytes.Slice(Head * WordSize, WordSize);
+        return MemoryMarshal.CreateSpan(ref bytes, WordSize);
     }
 
     public byte PopByte()
     {
-        if (Head-- == 0)
-        {
-            EvmStack.ThrowEvmStackUnderflowException();
-        }
+        ref byte bytes = ref PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes)) EvmStack.ThrowEvmStackUnderflowException();
 
-        return _bytes[Head * WordSize + WordSize - sizeof(byte)];
+        return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
     }
 
     public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
+        ref byte bytes = ref PushBytesRef();
         if (value.Length != WordSize)
         {
-            ClearWordAtHead();
-            value.CopyTo(_bytes.Slice(Head * WordSize + WordSize - paddingLength, value.Length));
+            Unsafe.As<byte, Word>(ref bytes) = default;
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - paddingLength), value.Length));
         }
         else
         {
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
-        }
-
-        if (++Head >= MaxStackSize)
-        {
-            EvmStack.ThrowEvmStackOverflowException();
+            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
     }
 
@@ -387,14 +343,7 @@ public ref struct EvmStack<TTracing>
     }
 
     public readonly bool EnsureDepth(int depth)
-    {
-        if (Head < depth)
-        {
-            return false;
-        }
-
-        return true;
-    }
+        => Head >= depth;
 
     public readonly bool Swap(int depth)
     {
@@ -423,12 +372,6 @@ public ref struct EvmStack<TTracing>
         {
             _tracer.ReportStackPush(_bytes.Slice(Head * WordSize - i * WordSize, WordSize));
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private readonly void ClearWordAtHead()
-    {
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
     }
 }
 
