@@ -305,7 +305,7 @@ public class P2PProtocolHandler(
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
         Send(message);
-
+        Dispose();
     }
 
     private void SendHello()
@@ -337,6 +337,7 @@ public class P2PProtocolHandler(
 
     private void Close(EthDisconnectReason ethDisconnectReason)
     {
+        Dispose();
         if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
             ethDisconnectReason != EthDisconnectReason.Other &&
             ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
@@ -363,5 +364,8 @@ public class P2PProtocolHandler(
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
+        SubprotocolRequested = null;
     }
 }

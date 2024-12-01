@@ -54,6 +54,8 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
     }
     public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
     {

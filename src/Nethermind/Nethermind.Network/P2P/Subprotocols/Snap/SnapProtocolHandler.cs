@@ -88,6 +88,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public override void Dispose()
         {
+            // Clear Events if set
+            ProtocolInitialized = null;
         }
 
         public override void HandleMessage(ZeroPacket message)

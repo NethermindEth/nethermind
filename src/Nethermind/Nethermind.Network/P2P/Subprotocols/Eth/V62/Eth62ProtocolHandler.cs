@@ -379,6 +379,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected override void OnDisposed()
         {
+            // Clear Events
+            ProtocolInitialized = null;
         }
     }
 }
