@@ -115,7 +115,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushOne()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.OneByteSpan());
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.OneByteSpan);
 
         ref byte bytes = ref PushBytesRef();
         // Not full entry, clear first
@@ -125,7 +125,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushZero()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.ZeroByteSpan());
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
         ref byte bytes = ref PushBytesRef();
         Unsafe.As<byte, Word>(ref bytes) = default;

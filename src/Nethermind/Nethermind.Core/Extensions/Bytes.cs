@@ -27,10 +27,12 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
-        public static ReadOnlyMemory<byte> ZeroByteMemory = new byte[] { 0 };
-        public static ReadOnlyMemory<byte> OneByteMemory = new byte[] { 1 };
-        public static ReadOnlySpan<byte> ZeroByteSpan() => new byte[] { 0 };
-        public static ReadOnlySpan<byte> OneByteSpan() => new byte[] { 1 };
+        // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
+        public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
+        public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
+        public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
+        public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
 
         public const string ZeroHexValue = "0x0";
         public const string ZeroValue = "0";
@@ -212,7 +214,7 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0) return ZeroByteSpan();
+            if (bytes.Length == 0) return ZeroByteSpan;
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
             // Keep one or it will be interpreted as null

@@ -29,7 +29,7 @@ namespace Nethermind.State
             ValueHash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return Bytes.ZeroByteSpan();
+                return Bytes.ZeroByteSpan;
             }
 
             Metrics.StorageReaderReads++;
