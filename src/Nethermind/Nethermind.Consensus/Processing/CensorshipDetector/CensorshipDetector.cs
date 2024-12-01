@@ -69,13 +69,8 @@ public class CensorshipDetector : IDisposable
 
     private bool IsSyncing()
     {
-        long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-        if (bestSuggestedNumber == 0)
-        {
-            return true;
-        }
-        long headNumberOrZero = _blockTree.Head?.Number ?? 0;
-        return bestSuggestedNumber > headNumberOrZero;
+        (bool isSyncing, _, _) = _blockTree.IsSyncing();
+        return isSyncing;
     }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
