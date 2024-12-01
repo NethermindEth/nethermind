@@ -24,19 +24,15 @@ jobs:
       fail-fast: false
       matrix:
         master-image:
-          - master-89c5835
-          - master-0b49b10
-          - master-9780259
-          - master-6e5a865
-          - master-0fa8e47
-          - master-6ab6e65
-          - master-82c78e7
-          - master-0d9af1a
-          - master-cedb007
-          - master-4ba06ad
-          - master-85294fe
-          - master-5324473
-          - master-a705c1a
+          - master-4ecedbc
+          - master-abf7c73
+          - master-4dd60d8
+          - master-f733f71
+          - master-ee96111
+          - master-c666e5e
+          - master-d15a540
+          - master-3b213af
+          - master-39d8076
           
     steps:
       - name: Set up parameters
