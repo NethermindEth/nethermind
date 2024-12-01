@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -790,31 +790,26 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         // However, anything that we are trying to persist here should still be in dirty cache.
         // So parallel read should go there first instead of to the database for these dataset,
         // so it should be fine for these to be non atomic.
-        Channel<INodeStorage.WriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.WriteBatch>(4);
-        try
+        using BlockingCollection<INodeStorage.WriteBatch> disposeQueue = new BlockingCollection<INodeStorage.WriteBatch>(4);
+
+        for (int index = 0; index < _disposeTasks.Length; index++)
         {
-            for (int index = 0; index < _disposeTasks.Length; index++)
+            _disposeTasks[index] = Task.Run(() =>
             {
-                _disposeTasks[index] = Task.Run(async () =>
+                while (disposeQueue.TryTake(out INodeStorage.WriteBatch disposable, Timeout.Infinite))
                 {
-                    await foreach (var disposable in disposeQueue.Reader.ReadAllAsync())
-                    {
-                        disposable.Dispose();
-                    }
-                });
-            }
-
-            using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
-                entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
-                .ToPooledList(parallelStartNodes.Count);
-
-            Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
-        }
-        finally
-        {
-            disposeQueue.Writer.Complete();
+                    disposable.Dispose();
+                }
+            });
         }
 
+        using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+            entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+            .ToPooledList(parallelStartNodes.Count);
+
+        Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
+
+        disposeQueue.CompleteAdding();
         Task.WaitAll(_disposeTasks);
 
         // Dispose top level last in case something goes wrong, at least the root won't be stored
@@ -829,14 +824,14 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         LastPersistedBlockNumber = commitSet.BlockNumber;
     }
 
-    private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
+    private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
         Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
-        WriteFlags writeFlags, Channel<INodeStorage.WriteBatch> disposeQueue)
+        WriteFlags writeFlags, BlockingCollection<INodeStorage.WriteBatch> disposeQueue)
     {
         long persistedNodeCount = 0;
         INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
-        async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
+        void DoPersist(TrieNode node, Hash256? address3, TreePath path2)
         {
             persistedNodeRecorder?.Invoke(path2, address3, node);
             PersistNode(address3, path2, node, writeBatch, writeFlags);
@@ -844,13 +839,13 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             persistedNodeCount++;
             if (persistedNodeCount % 512 == 0)
             {
-                await disposeQueue.Writer.WriteAsync(writeBatch);
+                disposeQueue.Add(writeBatch);
                 writeBatch = _nodeStorage.StartWriteBatch();
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, path, GetTrieStore(address2), true, _logger);
-        await disposeQueue.Writer.WriteAsync(writeBatch);
+        tn.CallRecursively(DoPersist, address2, ref path, GetTrieStore(address2), true, _logger);
+        disposeQueue.Add(writeBatch);
     }
 
     private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
