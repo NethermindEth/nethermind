@@ -258,8 +258,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     {
         _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
         _cancellationTokenSource?.Cancel();
-        _signalsQueue.Writer.TryComplete();
         await (_producerTask ?? Task.CompletedTask);
+        _signalsQueue.Writer.TryComplete();
     }
 
     bool IBlockProducerRunner.IsProducingBlocks(ulong? maxProducingInterval)
