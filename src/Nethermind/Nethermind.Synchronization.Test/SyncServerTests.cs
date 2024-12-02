@@ -99,7 +99,7 @@ public class SyncServerTests
             sealValidator,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -141,7 +141,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -178,7 +178,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             staticSelector,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -211,7 +211,7 @@ public class SyncServerTests
             {
                 TerminalTotalDifficulty = $"{testSpecProvider.TerminalTotalDifficulty}"
             },
-            new SyncConfig(),
+            new TestSyncConfig(),
             new MemDb(),
             localBlockTree,
             testSpecProvider,
@@ -246,7 +246,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             testSpecProvider,
             LimboLogs.Instance);
@@ -420,7 +420,7 @@ public class SyncServerTests
             {
                 TerminalTotalDifficulty = $"{ttd}"
             },
-            new SyncConfig(),
+            new TestSyncConfig(),
             new MemDb(),
             localBlockTree,
             testSpecProvider,
@@ -469,7 +469,7 @@ public class SyncServerTests
             sealEngine,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             testSpecProvider,
             LimboLogs.Instance);
@@ -509,7 +509,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -541,7 +541,7 @@ public class SyncServerTests
             sealValidator,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -568,7 +568,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -604,7 +604,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -645,7 +645,7 @@ public class SyncServerTests
             Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -683,7 +683,7 @@ public class SyncServerTests
             sealValidator,
             ctx.PeerPool,
             StaticSelector.Full,
-            new SyncConfig(),
+            new TestSyncConfig(),
             Policy.FullGossip,
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
@@ -723,7 +723,7 @@ public class SyncServerTests
                 Always.Valid,
                 PeerPool,
                 selector,
-                new SyncConfig(),
+                new TestSyncConfig(),
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);

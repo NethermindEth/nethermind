@@ -27,6 +27,17 @@ namespace Nethermind.Db
             Name = name;
         }
 
+        public static MemDb CopyFrom(IDb anotherDb)
+        {
+            MemDb newDb = new MemDb();
+            foreach (KeyValuePair<byte[], byte[]> kv in anotherDb.GetAll())
+            {
+                newDb[kv.Key] = kv.Value;
+            }
+
+            return newDb;
+        }
+
         public MemDb() : this(0, 0)
         {
         }
