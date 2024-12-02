@@ -201,7 +201,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Optimism", "Nethermind.Optimism\Nethermind.Optimism.csproj", "{32E5D15A-F6A6-40EA-9F31-05FE9251F958}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Init.Snapshot", "Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj", "{AD09FBCB-5496-499B-9129-B6D139A65B6F}"
 EndProject
@@ -212,7 +211,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		nuget.config = nuget.config
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Optimism.Test", "Nethermind.Optimism.Test\Nethermind.Optimism.Test.csproj", "{2438958D-46EA-4A7E-B89F-29E069DA0CCA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Signer", "Signer", "{89311B58-AF36-4956-883D-54531BC1D5A3}"
 EndProject
