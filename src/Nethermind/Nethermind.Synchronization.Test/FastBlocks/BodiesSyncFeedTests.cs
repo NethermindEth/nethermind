@@ -28,6 +28,7 @@ public class BodiesSyncFeedTests
     private IBlockTree _syncingFromBlockTree = null!;
     private IBlockTree _syncingToBlockTree = null!;
     private TestMemDb _blocksDb = null!;
+    private ISyncPointers _syncPointers = null!;
     private BodiesSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
     private MemDb _metadataDb = null!;
@@ -42,6 +43,7 @@ public class BodiesSyncFeedTests
 
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
+        _syncPointers = new MemorySyncPointers();
         _syncingToBlockTree = Build.A.BlockTree()
             .WithBlocksDb(_blocksDb)
             .TestObject;
@@ -66,6 +68,7 @@ public class BodiesSyncFeedTests
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            _syncPointers,
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),
@@ -198,11 +201,11 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
-        _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
+        _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
-        _syncingToBlockTree.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
         _feed.IsFinished.Should().Be(shouldfinish);
     }

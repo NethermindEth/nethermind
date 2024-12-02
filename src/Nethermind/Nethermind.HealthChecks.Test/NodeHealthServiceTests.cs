@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
@@ -23,6 +24,7 @@ using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Extensions;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.HealthChecks.Test;
@@ -63,7 +65,7 @@ public class NodeHealthServiceTests
             blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
         }
 
-        IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
+        IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(), syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
         NodeHealthService nodeHealthService =
             new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
                 healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
@@ -130,7 +132,7 @@ public class NodeHealthServiceTests
 
         CustomRpcCapabilitiesProvider customProvider =
             new(test.EnabledCapabilities, test.DisabledCapabilities);
-        IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(),
+        IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(),
             new SyncConfig(), syncModeSelector, Substitute.For<ISyncProgressResolver>(), new TestLogManager());
         NodeHealthService nodeHealthService =
             new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
