@@ -90,6 +90,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult NotSupportedTxType = new(15, nameof(NotSupportedTxType));
 
+        /// <summary>
+        /// The node is syncing and cannot accept transactions at this time.
+        /// </summary>
+        public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
+
         private int Id { get; }
         private string Code { get; }
         private string? Message { get; }

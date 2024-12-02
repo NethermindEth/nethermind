@@ -90,8 +90,21 @@ namespace Nethermind.Synchronization
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
 
+            if (syncConfig.GCOnFeedFinished)
+            {
+                SyncModeSelector.Changed += GCOnFeedFinished;
+            }
+
             // Make unit test faster.
             SyncModeSelector.Update();
+        }
+
+        private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
+        {
+            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlocks))
+            {
+                GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            }
         }
 
         private void StartFullSyncComponents()
@@ -279,6 +292,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
+            .AddSingleton<ISyncPointers, SyncPointers>()
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
