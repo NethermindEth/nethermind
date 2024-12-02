@@ -685,7 +685,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             selector.Current.Should().Be(SyncMode.Full);
 
             CancellationTokenSource waitTokenSource = new();
-            ReceiptsSyncFeed receiptsSyncFeed = Substitute.ForPartsOf<ReceiptsSyncFeed>(MainnetSpecProvider.Instance, Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), syncPeerPool, syncConfig, Substitute.For<ISyncReport>(), Substitute.For<IDb>(), LimboLogs.Instance);
+            ReceiptsSyncFeed receiptsSyncFeed = Substitute.ForPartsOf<ReceiptsSyncFeed>(
+                MainnetSpecProvider.Instance,
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IReceiptStorage>(),
+                Substitute.For<ISyncPointers>(),
+                syncPeerPool,
+                syncConfig,
+                Substitute.For<ISyncReport>(),
+                Substitute.For<IDb>(),
+                LimboLogs.Instance);
             receiptsSyncFeed.When(rsf => rsf.InitializeFeed()).DoNotCallBase();
             receiptsSyncFeed.When(rsf => rsf.InitializeFeed()).Do(e =>
             {

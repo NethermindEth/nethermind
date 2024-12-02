@@ -16,7 +16,6 @@ public partial class BlockTree
 
     public void RecalculateTreeLevels()
     {
-        LoadLowestInsertedBodyNumber();
         LoadLowestInsertedHeader();
         LoadLowestInsertedBeaconHeader();
         LoadBestKnown();
@@ -113,13 +112,6 @@ public partial class BlockTree
         _logger.Info("Loading fork choice info");
         FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
         SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
-    }
-
-    private void LoadLowestInsertedBodyNumber()
-    {
-        LowestInsertedBodyNumber =
-            _blockStore.GetMetadata(LowestInsertedBodyNumberDbEntryAddress)?
-                .AsRlpValueContext().DecodeLong();
     }
 
     private void LoadLowestInsertedBeaconHeader()
