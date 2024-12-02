@@ -78,6 +78,22 @@ static class EmitExtensions
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
+    public static void LoadRefArgument<T, U>(this Emit<T> il, ushort index)
+        => il.LoadRefArgument(index, typeof(U));
+
+    public static void LoadRefArgument<T>(this Emit<T> il, ushort index, Type targetType)
+    {
+        il.LoadArgument(index);
+        if (targetType.IsValueType)
+        {
+            il.LoadObject(targetType);
+        }
+        else
+        {
+            il.LoadIndirect(targetType);
+        }
+    }
+
     public static void Print<T>(this Emit<T> il, Local local)
     {
         if (local.LocalType.IsValueType)

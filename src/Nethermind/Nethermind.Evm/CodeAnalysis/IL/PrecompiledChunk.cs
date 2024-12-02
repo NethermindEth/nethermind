@@ -14,11 +14,13 @@ internal class PrecompiledChunk : InstructionChunk
     public string Name => PrecompiledSegment.Method.Name;
     internal ExecuteSegment PrecompiledSegment;
     internal byte[][] Data;
-    internal int[] JumpDestinations;
 
     public void Invoke<T>(EvmState vmState,
         ulong chainId,
         ref ReadOnlyMemory<byte> outputBuffer,
+        in ExecutionEnvironment env,
+        in TxExecutionContext txCtx,
+        in BlockExecutionContext blkCtx,
         IBlockhashProvider blockhashProvider,
         IWorldState worldState,
         ICodeInfoRepository codeInfoRepository,
@@ -29,11 +31,31 @@ internal class PrecompiledChunk : InstructionChunk
         ITxTracer trace,
         ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
-        vmState.DataStackHead = stack.Head;
-        var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, ref outputBuffer);
-        PrecompiledSegment(ref ilvmState, blockhashProvider, worldState, codeInfoRepository, spec, trace, ref programCounter, ref gasAvailable, Data);
+        Span<byte> stackBytes = stack.Bytes;
 
-        result = (ILChunkExecutionResult)ilvmState;
-        stack.Head = ilvmState.StackHead;
+        PrecompiledSegment.Invoke(
+            chainId,
+            ref vmState,
+            in env,
+            in txCtx,
+            in blkCtx,
+            ref vmState.Memory,
+
+            ref stackBytes,
+            ref stack.Head,
+
+            blockhashProvider,
+            worldState,
+            codeInfoRepository,
+            spec,
+            trace,
+
+            ref programCounter,
+            ref gasAvailable,
+
+            env.CodeInfo.MachineCode,
+            in env.InputData,
+            Data,
+            ref result);
     }
 }

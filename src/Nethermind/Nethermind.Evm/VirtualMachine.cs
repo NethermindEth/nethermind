@@ -78,8 +78,8 @@ public class VirtualMachine : IVirtualMachine
         _config = vmConfig ?? new VMConfig();
         _evm = logger.IsTrace
             ? _config.IsVmOptimizationEnabled
-                ? new VirtualMachine<IsTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
-                : new VirtualMachine<IsTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger)
+                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
+                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger)
             : _config.IsVmOptimizationEnabled
                 ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
                 : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger);
@@ -787,31 +787,47 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if(typeof(TOptimizing) == typeof(IsOptimizing))
             {
-                while (ilInfo is not null && (ilInfo.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out ILChunkExecutionResult? chunkExecutionResult)))
+                var chunkExecutionResult = new ILChunkExecutionResult(ref _returnDataBuffer);
+                while (ilInfo is not null && (ilInfo.TryExecute(_logger,
+                    vmState,
+                    in env,
+                    in txCtx,
+                    in blkCtx,
+
+                    _specProvider.ChainId,
+                    ref _returnDataBuffer,
+                    _state,
+                    _blockhashProvider,
+                    vmState.Env.TxExecutionContext.CodeInfoRepository,
+                    spec, _txTracer,
+                    ref programCounter,
+                    ref gasAvailable,
+                    ref stack,
+                    ref chunkExecutionResult)))
                 {
-                    if (chunkExecutionResult.Value.ShouldReturn)
+                    if (chunkExecutionResult.ShouldReturn)
                     {
-                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
+                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.ReturnData).ToArray();
                         goto DataReturn;
                     }
-                    if (chunkExecutionResult.Value.ShouldRevert)
+                    if (chunkExecutionResult.ShouldRevert)
                     {
                         isRevert = true;
-                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
+                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.ReturnData).ToArray();
                         goto DataReturn;
                     }
-                    if (chunkExecutionResult.Value.ShouldStop)
+                    if (chunkExecutionResult.ShouldStop)
                     {
                         goto EmptyReturn;
                     }
-                    if (chunkExecutionResult.Value.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
+                    if (chunkExecutionResult.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
                     {
                         exceptionType = EvmExceptionType.InvalidJumpDestination;
                         goto InvalidJumpDestination;
                     }
-                    if (chunkExecutionResult.Value.ShouldFail)
+                    if (chunkExecutionResult.ShouldFail)
                     {
-                        exceptionType = chunkExecutionResult.Value.ExceptionType;
+                        exceptionType = chunkExecutionResult.ExceptionType;
                         switch (exceptionType)
                         {
                             case EvmExceptionType.StackOverflow:

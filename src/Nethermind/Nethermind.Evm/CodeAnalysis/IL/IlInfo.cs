@@ -10,33 +10,15 @@ using static Nethermind.Evm.VirtualMachine;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal struct ILChunkExecutionResult
+internal ref struct ILChunkExecutionResult(ref ReadOnlyMemory<byte> output)
 {
     public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
     public bool ShouldJump;
     public bool ShouldStop;
     public bool ShouldRevert;
     public bool ShouldReturn;
-    public object ReturnData;
+    public ref readonly ReadOnlyMemory<byte> ReturnData = ref output;
     public EvmExceptionType ExceptionType;
-
-
-    public static ILChunkExecutionResult Empty = new();
-    public static void Reset() => Empty = new();
-
-
-    public static explicit operator ILChunkExecutionResult(ILEvmState state)
-    {
-        return new ILChunkExecutionResult
-        {
-            ShouldJump = state.ShouldJump,
-            ShouldStop = state.ShouldStop,
-            ShouldRevert = state.ShouldRevert,
-            ShouldReturn = state.ShouldReturn,
-            ReturnData = state.ReturnBuffer,
-            ExceptionType = state.EvmException
-        };
-    }
 }
 
 public static class ILMode
@@ -85,15 +67,29 @@ internal class IlInfo
         _Mapping[index] = (byte)(chunkIdx | mode);
     }
 
-    public bool TryExecute<TTracingInstructions>(ILogger logger, EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
+    public bool TryExecute<TTracingInstructions>(
+        ILogger logger,
+        EvmState vmState,
+        in ExecutionEnvironment env,
+        in TxExecutionContext txCtx,
+        in BlockExecutionContext blkCtx,
+        ulong chainId,
+        ref ReadOnlyMemory<byte> outputBuffer,
+        IWorldState worldState,
+        IBlockhashProvider blockHashProvider,
+        ICodeInfoRepository codeinfoRepository,
+        IReleaseSpec spec,
+        ITxTracer tracer,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<TTracingInstructions> stack,
+        ref ILChunkExecutionResult result)
+
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
-        result = null;
-
         if (programCounter > ushort.MaxValue || this.IsEmpty)
             return false;
 
-        var executionResult = new ILChunkExecutionResult();
         if (Mode != ILMode.NO_ILVM && _Mapping[programCounter] != ILMode.NO_ILVM)
         {
             var bytecodeChunkHandler = IlevmChunks[_Mapping[programCounter] & 0x3F];
@@ -101,9 +97,7 @@ internal class IlInfo
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, bytecodeChunkHandler);
 
-            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, tracer, ref executionResult);
-
-            result = executionResult;
+            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, tracer, ref result);
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
             return true;

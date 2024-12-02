@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.IL;
@@ -14,40 +15,82 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.Intrinsics;
+using System.Security;
 using static Nethermind.Evm.IL.EmitExtensions;
 using Label = Sigil.Label;
+
+[assembly: AllowPartiallyTrustedCallers]
+[assembly: SecurityTransparent]
+[assembly: SecurityRules(SecurityRuleSet.Level2, SkipVerificationInFullTrust = true)]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace, ref int programCounter, ref long gasAvailable, byte[][] immediatesData);
+    public delegate void ExecuteSegment(
+        ulong chainId,
 
-    private const int VMSTATE_INDEX = 0;
-    private const int BLOCKHASH_PROVIDER_INDEX = 1;
-    private const int WORLD_STATE_INDEX = 2;
-    private const int CODE_INFO_REPOSITORY_INDEX = 3;
-    private const int SPEC_INDEX = 4;
-    private const int TXTRACER_INDEX = 5;
-    private const int PROGRAM_COUNTER_INDEX = 6;
-    private const int GAS_AVAILABLE_INDEX = 7;
-    private const int IMMEDIATES_DATA_INDEX = 8;
+        ref EvmState vmstate,
+        in ExecutionEnvironment env,
+        in TxExecutionContext txCtx,
+        in BlockExecutionContext blkCtx,
+        ref EvmPooledMemory memory,
 
-    public static PrecompiledChunk CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
+        ref Span<byte> stack,
+        ref int stackHead,
+
+        IBlockhashProvider blockhashProvider,
+        IWorldState worldState,
+        ICodeInfoRepository codeInfoRepository,
+        IReleaseSpec spec,
+        ITxTracer trace,
+        ref int programCounter,
+        ref long gasAvailable,
+
+        ReadOnlyMemory<byte> machineCode,
+        in ReadOnlyMemory<byte> calldata,
+
+        byte[][] immediatesData,
+
+        ref ILChunkExecutionResult result);
+
+    private const int CHAINID_INDEX = 0;
+    private const int REF_VMSTATE_INDEX = 1;
+    private const int REF_ENV_INDEX = 2;
+    private const int REF_TXCTX_INDEX = 3;
+    private const int REF_BLKCTX_INDEX = 4;
+    private const int REF_MEMORY_INDEX = 5;
+    private const int REF_STACK_INDEX = 6;
+    private const int STACK_HEAD_INDEX = 7;
+    private const int BLOCKHASH_PROVIDER_INDEX = 8;
+    private const int WORLD_STATE_INDEX = 9;
+    private const int CODE_INFO_REPOSITORY_INDEX = 10;
+    private const int SPEC_INDEX = 11;
+    private const int TXTRACER_INDEX = 12;
+    private const int PROGRAM_COUNTER_INDEX = 13;
+    private const int GAS_AVAILABLE_INDEX = 14;
+    private const int MACHINE_CODE_INDEX = 15;
+    private const int REF_CALLDATA_INDEX = 16;
+    private const int IMMEDIATES_DATA_INDEX = 17;
+    private const int REF_RESULT_INDEX = 18;
+
+
+    public static PrecompiledChunk CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config, out int[] jumpdests)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
-        // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
-        // Note(Ayman) : verify all endianness arguments and bytes
-
+        // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
-        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInPartialAotMode);
-        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
+        jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInPartialAotMode);
+        ExecuteSegment dynEmitedDelegate = method.CreateDelegate(out string ilcode);
+
+        System.IO.File.WriteAllText($"E:\\ILed Code\\{segmentName}.il", ilcode);
+
         return new PrecompiledChunk
         {
             PrecompiledSegment = dynEmitedDelegate,
             Data = data,
-            JumpDestinations = jumpdests
         };
     }
 
@@ -84,7 +127,6 @@ internal class ILCompiler
         using Local byte8A = method.DeclareLocal(typeof(byte));
         using Local lbool = method.DeclareLocal(typeof(bool));
         using Local byte8B = method.DeclareLocal(typeof(byte));
-        using Local buffer = method.DeclareLocal(typeof(byte*));
 
         using Local storageCell = method.DeclareLocal(typeof(StorageCell));
 
@@ -94,6 +136,7 @@ internal class ILCompiler
         using Local stack = method.DeclareLocal(typeof(Span<Word>));
         using Local head = method.DeclareLocal(typeof(int));
 
+        using Local header = method.DeclareLocal(typeof(BlockHeader));
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
@@ -108,18 +151,23 @@ internal class ILCompiler
         Label ret = method.DefineLabel();
 
         // allocate stack
-        method.LoadArgument(VMSTATE_INDEX);
-        method.Duplicate();
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Stack)));
+        method.LoadRefArgument(REF_STACK_INDEX, typeof(Span<byte>));
         method.Call(GetCastMethodInfo<byte, Word>());
         method.StoreLocal(stack);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.StackHead)));
+
+        method.LoadArgument(STACK_HEAD_INDEX);
+        method.LoadIndirect<int>();
         method.StoreLocal(head);
 
         // set gas to local
         method.LoadArgument(GAS_AVAILABLE_INDEX);
         method.LoadIndirect<long>();
         method.StoreLocal(gasAvailable);
+
+        // cache header
+        method.LoadArgument(REF_BLKCTX_INDEX);
+        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+        method.StoreLocal(header);
 
         // set pc to local
         method.LoadArgument(PROGRAM_COUNTER_INDEX);
@@ -247,17 +295,16 @@ internal class ILCompiler
                     break;
                 case Instruction.STOP:
                     {
-                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadArgument(REF_RESULT_INDEX);
                         method.LoadConstant(true);
-                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldStop)));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ShouldStop)));
                         method.FakeBranch(ret);
                     }
                     break;
                 case Instruction.CHAINID:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ChainId)));
+                        method.LoadArgument(CHAINID_INDEX);
                         method.Call(Word.SetULong0);
                         method.StackPush(head);
                     }
@@ -358,13 +405,19 @@ internal class ILCompiler
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
                     {// we load the stack
-                        method.CleanAndLoadWord(stack, head);
+                        if (data[op.Arguments.Value].IsZero())
+                        {
+                            method.CleanWord(stack, head);
+                        }
+                        else
+                        {
+                            method.CleanAndLoadWord(stack, head);
+                            method.LoadArgument(IMMEDIATES_DATA_INDEX);
+                            method.LoadConstant(op.Arguments.Value);
+                            method.LoadElement<byte[]>();
+                            method.Call(Word.SetArray);
+                        }
 
-                        // we load the span of bytes
-                        method.LoadArgument(IMMEDIATES_DATA_INDEX);
-                        method.LoadConstant(op.Arguments.Value);
-                        method.LoadElement<byte[]>();
-                        method.Call(Word.SetArray);
                         method.StackPush(head);
                     }
                     break;
@@ -1013,9 +1066,7 @@ internal class ILCompiler
                 case Instruction.COINBASE:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary), false, out _));
                         method.Call(Word.SetAddress);
                         method.StackPush(head);
@@ -1024,9 +1075,7 @@ internal class ILCompiler
                 case Instruction.TIMESTAMP:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
                         method.Call(Word.SetULong0);
                         method.StackPush(head);
@@ -1035,9 +1084,7 @@ internal class ILCompiler
                 case Instruction.NUMBER:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
                         method.Call(Word.SetULong0);
                         method.StackPush(head);
@@ -1046,9 +1093,7 @@ internal class ILCompiler
                 case Instruction.GASLIMIT:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
                         method.Call(Word.SetULong0);
                         method.StackPush(head);
@@ -1057,8 +1102,7 @@ internal class ILCompiler
                 case Instruction.CALLER:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
                         method.Call(Word.SetAddress);
                         method.StackPush(head);
@@ -1067,8 +1111,7 @@ internal class ILCompiler
                 case Instruction.ADDRESS:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                         method.Call(Word.SetAddress);
                         method.StackPush(head);
@@ -1077,8 +1120,7 @@ internal class ILCompiler
                 case Instruction.ORIGIN:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                        method.LoadArgument(REF_TXCTX_INDEX);
                         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
                         method.Call(Word.SetAddress);
                         method.StackPush(head);
@@ -1087,8 +1129,7 @@ internal class ILCompiler
                 case Instruction.CALLVALUE:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
                         method.Call(Word.SetUInt256);
                         method.StackPush(head);
@@ -1097,8 +1138,7 @@ internal class ILCompiler
                 case Instruction.GASPRICE:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                        method.LoadArgument(REF_TXCTX_INDEX);
                         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
                         method.Call(Word.SetUInt256);
                         method.StackPush(head);
@@ -1135,8 +1175,7 @@ internal class ILCompiler
                         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                         method.BranchIfTrue(endOfOpcode);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
@@ -1144,9 +1183,7 @@ internal class ILCompiler
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
-                        method.LoadObject(typeof(ReadOnlyMemory<byte>));
+                        method.LoadRefArgument(REF_CALLDATA_INDEX, typeof(ReadOnlyMemory<byte>));
                         method.LoadLocalAddress(uint256B);
                         method.LoadLocal(uint256C);
                         method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -1155,8 +1192,7 @@ internal class ILCompiler
                         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                         method.StoreLocal(localZeroPaddedSpan);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(localZeroPaddedSpan);
                         method.CallVirtual(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1173,10 +1209,7 @@ internal class ILCompiler
 
                         method.CleanAndLoadWord(stack, head);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
-                        method.LoadObject(typeof(ReadOnlyMemory<byte>));
-
+                        method.LoadRefArgument(REF_CALLDATA_INDEX, typeof(ReadOnlyMemory<byte>));
                         method.LoadLocalAddress(uint256A);
                         method.LoadConstant(Word.Size);
                         method.LoadConstant((int)PadDirection.Right);
@@ -1188,8 +1221,7 @@ internal class ILCompiler
                 case Instruction.CALLDATASIZE:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
+                        method.LoadArgument(REF_CALLDATA_INDEX);
                         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                         method.Call(Word.SetInt0);
                         method.StackPush(head);
@@ -1199,8 +1231,7 @@ internal class ILCompiler
                     {
                         method.CleanAndLoadWord(stack, head);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
                         method.Call(Word.SetULong0);
                         method.StackPush(head);
@@ -1212,12 +1243,10 @@ internal class ILCompiler
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256A);
                         method.StackLoadPrevious(stack, head, 2);
-                        method.Call(Word.GetUInt256);
-                        method.StoreLocal(uint256B);
+                        method.StoreLocal(wordRef256B);
                         method.StackPop(head, 2);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadConstant(Word.Size);
@@ -1227,13 +1256,10 @@ internal class ILCompiler
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
-                        method.LoadLocalAddress(uint256B);
-                        method.LoadConstant(Word.Size);
-                        method.Call(typeof(UInt256).GetMethod(nameof(UInt256.PaddedBytes)));
-                        method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(byte[])));
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetMutableSpan);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.SaveWord)));
                     }
                     break;
@@ -1247,8 +1273,7 @@ internal class ILCompiler
                         method.StoreLocal(byte8A);
                         method.StackPop(head, 2);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadConstant(1);
@@ -1258,8 +1283,7 @@ internal class ILCompiler
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocal(byte8A);
 
@@ -1273,26 +1297,22 @@ internal class ILCompiler
                         method.StoreLocal(uint256A);
                         method.StackPop(head, 1);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadFieldAddress(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType()]));
                         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
                         method.StoreLocal(localReadonOnlySpan);
 
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadLocalAddress(localReadonOnlySpan);
-                        method.LoadConstant(BitConverter.IsLittleEndian);
-                        method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
-                        method.Call(Word.SetUInt256);
+                        method.LoadLocal(localReadonOnlySpan);
+                        method.Call(Word.SetReadOnlySpan);
                         method.StackPush(head);
                     }
                     break;
@@ -1324,8 +1344,7 @@ internal class ILCompiler
                         method.LoadConstant((long)0);
                         method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
@@ -1336,11 +1355,9 @@ internal class ILCompiler
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256B);
                         method.LoadLocalAddress(uint256C);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -1370,8 +1387,7 @@ internal class ILCompiler
                         method.LoadConstant((long)0);
                         method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
@@ -1379,8 +1395,7 @@ internal class ILCompiler
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -1397,8 +1412,7 @@ internal class ILCompiler
                         method.Duplicate();
                         method.Call(Word.GetUInt0);
                         method.StoreLocal(uint32A);
-                        method.Call(Word.GetUInt256);
-                        method.StoreLocal(uint256A);
+                        method.StoreLocal(wordRef256A);
                         method.StackLoadPrevious(stack, head, 2);
                         method.Call(Word.GetReadOnlySpan);
                         method.StoreLocal(localReadonOnlySpan);
@@ -1407,14 +1421,17 @@ internal class ILCompiler
 
                         Label pushZeroLabel = method.DefineLabel();
                         Label endOfInstructionImpl = method.DefineLabel();
-                        method.LoadLocalAddress(uint256A);
-                        method.LoadConstant(Word.Size - 1);
-                        method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
-                        method.LoadLocalAddress(uint256A);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint16);
+                        method.BranchIfFalse(pushZeroLabel);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetInt0);
+                        method.LoadConstant(Word.Size);
+                        method.BranchIfGreaterOrEqual(pushZeroLabel);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetInt0);
                         method.LoadConstant(0);
-                        method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
-                        method.Or();
-                        method.BranchIfTrue(pushZeroLabel);
+                        method.BranchIfLess(pushZeroLabel);
 
                         method.LoadLocalAddress(localReadonOnlySpan);
                         method.LoadLocal(uint32A);
@@ -1467,16 +1484,14 @@ internal class ILCompiler
                         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                         method.BranchIfTrue(endOfOpcode);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.MachineCode)));
+                        method.LoadArgument(MACHINE_CODE_INDEX);
                         method.StoreLocal(localReadOnlyMemory);
 
                         method.LoadLocal(localReadOnlyMemory);
@@ -1487,8 +1502,7 @@ internal class ILCompiler
                         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                         method.StoreLocal(localZeroPaddedSpan);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(localZeroPaddedSpan);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1508,8 +1522,8 @@ internal class ILCompiler
                 case Instruction.RETURNDATASIZE:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+                        method.LoadArgument(REF_RESULT_INDEX);
+                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ReturnData)));
                         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                         method.Call(Word.SetInt0);
                         method.StackPush(head);
@@ -1537,8 +1551,8 @@ internal class ILCompiler
                         method.LoadLocalAddress(tempResult);
                         method.Call(typeof(UInt256).GetMethod(nameof(UInt256.AddOverflow)));
                         method.LoadLocalAddress(tempResult);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+                        method.LoadRefArgument(REF_RESULT_INDEX, typeof(ILChunkExecutionResult));
+                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ReturnData)));
                         method.Call(typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Length)).GetMethod!);
                         method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
                         method.Or();
@@ -1563,16 +1577,15 @@ internal class ILCompiler
                         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                         method.BranchIfTrue(endOfOpcode);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
+                        method.LoadArgument(REF_RESULT_INDEX);
+                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ReturnData)));
                         method.LoadObject(typeof(ReadOnlyMemory<byte>));
                         method.LoadLocalAddress(uint256B);
                         method.LoadLocalAddress(uint256C);
@@ -1581,8 +1594,7 @@ internal class ILCompiler
                         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                         method.StoreLocal(localZeroPaddedSpan);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(localZeroPaddedSpan);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1600,32 +1612,30 @@ internal class ILCompiler
                         method.StoreLocal(uint256B);
                         method.StackPop(head, 2);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadRefArgument(REF_RESULT_INDEX, typeof(ILChunkExecutionResult));
+                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ReturnData)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                         method.StoreObject<ReadOnlyMemory<byte>>();
 
-                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadArgument(REF_RESULT_INDEX);
                         method.LoadConstant(true);
                         switch (op.Operation)
                         {
                             case Instruction.REVERT:
-                                method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldRevert)));
+                                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ShouldRevert)));
                                 break;
                             case Instruction.RETURN:
-                                method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldReturn)));
+                                method.StoreField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ShouldReturn)));
                                 break;
                         }
                         method.FakeBranch(ret);
@@ -1634,9 +1644,7 @@ internal class ILCompiler
                 case Instruction.BASEFEE:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
                         method.Call(Word.SetUInt256);
                         method.StackPush(head);
@@ -1646,8 +1654,7 @@ internal class ILCompiler
                     {
                         using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?));
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
+                        method.LoadArgument(REF_BLKCTX_INDEX);
                         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
                         method.StoreLocal(uint256Nullable);
                         method.LoadLocalAddress(uint256Nullable);
@@ -1662,9 +1669,7 @@ internal class ILCompiler
                         Label endOfOpcode = method.DefineLabel();
                         method.CleanAndLoadWord(stack, head);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.Duplicate();
                         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.IsPostMerge), false, out _));
                         method.BranchIfFalse(isPostMergeBranch);
@@ -1688,8 +1693,7 @@ internal class ILCompiler
                         Label endOfOpcode = method.DefineLabel();
                         using Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
+                        method.LoadArgument(REF_TXCTX_INDEX);
                         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
                         method.StoreLocal(byteMatrix);
 
@@ -1743,9 +1747,7 @@ internal class ILCompiler
                         method.StackPop(head, 1);
 
                         method.LoadArgument(BLOCKHASH_PROVIDER_INDEX);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.BlkCtx)));
-                        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                        method.LoadLocal(header);
                         method.LoadLocalAddress(int64A);
                         method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
                         method.Duplicate();
@@ -1834,8 +1836,7 @@ internal class ILCompiler
                     {
                         sbyte topicsCount = (sbyte)(op.Operation - Instruction.LOG0);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                         method.BranchIfTrue(evmExceptionLabels[EvmExceptionType.StaticCallViolation]);
 
@@ -1844,8 +1845,7 @@ internal class ILCompiler
                     break;
                 case Instruction.TSTORE:
                     {
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                         method.BranchIfTrue(evmExceptionLabels[EvmExceptionType.StaticCallViolation]);
 
@@ -1859,8 +1859,7 @@ internal class ILCompiler
 
                         method.StackPop(head, 2);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                         method.LoadLocalAddress(uint256A);
                         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
@@ -1879,8 +1878,7 @@ internal class ILCompiler
                         method.StoreLocal(uint256A);
                         method.StackPop(head, 1);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                         method.LoadLocalAddress(uint256A);
                         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
@@ -1907,8 +1905,7 @@ internal class ILCompiler
                         method.StoreLocal(localReadonOnlySpan);
                         method.StackPop(head, 2);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
@@ -1947,9 +1944,9 @@ internal class ILCompiler
                         method.LoadConstant((int)EvmExceptionType.None);
                         method.BranchIfEqual(endOfOpcode);
 
-                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadArgument(REF_RESULT_INDEX);
                         method.LoadLocal(uint32A);
-                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ExceptionType)));
 
                         method.LoadArgument(GAS_AVAILABLE_INDEX);
                         method.LoadLocal(gasAvailable);
@@ -1975,16 +1972,14 @@ internal class ILCompiler
                         method.StoreLocal(uint256A);
                         method.StackPop(head, 1);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                         method.LoadLocalAddress(uint256A);
                         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
                         method.StoreLocal(storageCell);
 
                         method.LoadLocalAddress(gasAvailable);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(storageCell);
                         method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.StorageAccessType.SLOAD);
                         method.LoadArgument(SPEC_INDEX);
@@ -2020,8 +2015,7 @@ internal class ILCompiler
                         method.StackPop(head, 1);
 
                         method.LoadLocalAddress(gasAvailable);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocal(address);
                         method.LoadConstant(true);
                         method.LoadArgument(WORLD_STATE_INDEX);
@@ -2082,8 +2076,7 @@ internal class ILCompiler
                         method.StackPop(head, 4);
 
                         method.LoadLocalAddress(gasAvailable);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocal(address);
                         method.LoadConstant(true);
                         method.LoadArgument(WORLD_STATE_INDEX);
@@ -2097,8 +2090,7 @@ internal class ILCompiler
                         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                         method.BranchIfTrue(endOfOpcode);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
@@ -2120,8 +2112,7 @@ internal class ILCompiler
                         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                         method.StoreLocal(localZeroPaddedSpan);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                        method.LoadArgument(REF_MEMORY_INDEX);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(localZeroPaddedSpan);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -2148,8 +2139,7 @@ internal class ILCompiler
                         method.StackPop(head, 1);
 
                         method.LoadLocalAddress(gasAvailable);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocal(address);
                         method.LoadConstant(true);
                         method.LoadArgument(WORLD_STATE_INDEX);
@@ -2213,8 +2203,7 @@ internal class ILCompiler
                     {
                         method.CleanAndLoadWord(stack, head);
                         method.LoadArgument(WORLD_STATE_INDEX);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+                        method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
                         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                         method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                         method.Call(Word.SetUInt256);
@@ -2238,8 +2227,7 @@ internal class ILCompiler
                         method.StackPop(head, 1);
 
                         method.LoadLocalAddress(gasAvailable);
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
                         method.LoadLocal(address);
                         method.LoadConstant(false);
                         method.LoadArgument(WORLD_STATE_INDEX);
@@ -2278,15 +2266,9 @@ internal class ILCompiler
         // check if returnState is null
         method.MarkLabel(ret);
         // we get stack size
-        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadArgument(STACK_HEAD_INDEX);
         method.LoadLocal(head);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.StackHead)));
-
-        // set stack
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadLocal(stack);
-        method.Call(GetCastMethodInfo<Word, byte>());
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Stack)));
+        method.StoreIndirect<int>();
 
         // set gas available
         method.LoadArgument(GAS_AVAILABLE_INDEX);
@@ -2349,11 +2331,11 @@ internal class ILCompiler
         method.Branch(jumpIsLocal);
 
         method.MarkLabel(jumpIsNotLocal);
-        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadArgument(REF_RESULT_INDEX);
         method.LoadConstant(true);
         method.StoreLocal(isEphemeralJump);
         method.LoadConstant(true);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ShouldJump)));
         method.LoadArgument(PROGRAM_COUNTER_INDEX);
         method.LoadLocal(jmpDestination);
         method.StoreIndirect<int>();
@@ -2383,9 +2365,9 @@ internal class ILCompiler
                 EmitCallToErrorTrace(method, gasAvailable, kvp);
             }
 
-            method.LoadArgument(VMSTATE_INDEX);
+            method.LoadArgument(REF_RESULT_INDEX);
             method.LoadConstant((int)kvp.Key);
-            method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
+            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionResult), nameof(ILChunkExecutionResult.ExceptionType)));
             method.Branch(exit);
         }
 
@@ -2416,8 +2398,7 @@ internal class ILCompiler
         method.StoreLocal(convertedPc);
 
         method.LoadLocal(debugTracer);
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         method.StoreLocal(vmState);
 
         method.LoadLocalAddress(vmState);
@@ -2428,15 +2409,13 @@ internal class ILCompiler
 
 
         using Local newStack = method.DeclareLocal(typeof(Span<Word>));
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         method.LoadField(GetFieldInfo(typeof(EvmState), nameof(EvmState.DataStack)));
         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(byte[])));
         method.Call(GetCastMethodInfo<byte, Word> ());
         method.StoreLocal(newStack);
         
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         method.LoadField(GetFieldInfo(typeof(EvmState), nameof(EvmState.DataStackHead)));
         method.StoreLocal(head);
 
@@ -2448,8 +2427,7 @@ internal class ILCompiler
             il.StoreObject(typeof(Word));
         });
 
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.ProgramCounter), false, out _));
         method.StoreLocal(pc);
 
@@ -2479,8 +2457,7 @@ internal class ILCompiler
 
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadLocal(gasAvailable);
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+        method.LoadArgument(REF_MEMORY_INDEX);
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
 
@@ -2495,8 +2472,7 @@ internal class ILCompiler
 
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadConstant((int)op.Operation);
-        method.LoadArgument(0);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         method.LoadLocal(gasAvailable);
         method.LoadConstant(op.ProgramCounter);
         method.LoadLocal(head);
@@ -2829,8 +2805,7 @@ internal class ILCompiler
         il.StoreLocal(uint256Length); // length
         il.StackPop(stack.idx, 2);
         // UpdateMemoryCost
-        il.LoadArgument(VMSTATE_INDEX);
-        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        il.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         il.LoadLocalAddress(gasAvailable);
         il.LoadLocalAddress(uint256Position); // position
         il.LoadLocalAddress(uint256Length); // length
@@ -2857,8 +2832,7 @@ internal class ILCompiler
         il.LoadConstant((ulong)0);
         il.BranchIfLess(exceptions[EvmExceptionType.OutOfGas]);
 
-        il.LoadArgument(VMSTATE_INDEX);
-        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+        il.LoadArgument(REF_ENV_INDEX);
         il.LoadField(
             GetFieldInfo(
                 typeof(ExecutionEnvironment),
@@ -2866,8 +2840,7 @@ internal class ILCompiler
             )
         );
 
-        il.LoadArgument(VMSTATE_INDEX);
-        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+        il.LoadArgument(REF_MEMORY_INDEX);
         il.LoadLocalAddress(uint256Position); // position
         il.LoadLocalAddress(uint256Length); // length
         il.Call(
@@ -2901,8 +2874,7 @@ internal class ILCompiler
         il.StoreLocal(logEntry);
         il.StackPop(stack.idx, topicsCount);
 
-        il.LoadArgument(0);
-        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        il.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
         il.LoadFieldAddress(typeof(EvmState).GetField("_accessTracker", BindingFlags.Instance | BindingFlags.NonPublic));
         il.CallVirtual(GetPropertyInfo(typeof(StackAccessTracker), nameof(StackAccessTracker.Logs), getSetter: false, out _));
         il.LoadLocal(logEntry);

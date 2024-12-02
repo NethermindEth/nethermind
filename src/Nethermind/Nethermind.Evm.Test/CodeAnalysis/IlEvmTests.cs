@@ -36,22 +36,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     {
         public string Name => nameof(AbortDestinationPattern);
         public byte[] Pattern => [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
-        public byte CallCount { get; set; } = 0;
         public long GasCost(EvmState vmState, IReleaseSpec spec)
         {
             return GasCostOf.JumpDest;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
-            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-            ref int programCounter,
-            ref long gasAvailable,
-            ref EvmStack<T> stack,
-            ITxTracer txTracer,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
-            CallCount++;
-
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
 
@@ -63,7 +54,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     {
         public string Name => nameof(SomeAfterTwoPush);
         public byte[] Pattern => [96, 96, 01];
-        public byte CallCount { get; set; } = 0;
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
         {
@@ -71,16 +61,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, 
-            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-            ref int programCounter,
-            ref long gasAvailable,
-            ref EvmStack<T> stack,
-            ITxTracer txTracer,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
         {
-            CallCount++;
-
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
 
@@ -2323,7 +2305,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 try
                 {
                     var codeinfo = new CodeInfo([(byte)instruction]);
-                    ILCompiler.CompileSegment(name, codeinfo, [opcode], [], config);
+                    ILCompiler.CompileSegment(name, codeinfo, [opcode], [], config, out _);
                 }
                 catch (NotSupportedException nse)
                 {
@@ -2356,9 +2338,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
             var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
             var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
-            var stack = new byte[1024 * 32];
+            Span<byte> stack = new byte[1024 * 32];
+            var stackhead = 0;
             var inputBuffer = envExCtx.InputData;
-            var returnBuffer =
+            _returnBuffer =
                 new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
                 .Select(i => (byte)i).ToArray());
 
@@ -2368,24 +2351,49 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             long gasAvailable = 750_000;
             int programCounter = 0;
+            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
             var state = new EvmState(
                 gasAvailable,
-                new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                env,
                 ExecutionType.CALL,
                 Snapshot.Empty);
 
-            IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
+            var memory = state.Memory;
 
+            var outputBuffer = new byte[32];
             state.InitStacks();
-            ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, ref returnBuffer);
-            var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.opcode}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config);
-            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ref programCounter, ref gasAvailable, ctx.Data);
 
-            Assert.That(iLEvmState.EvmException == testcase.exceptionType);
+            ILChunkExecutionResult iLChunkExecutionResult = new ILChunkExecutionResult(ref _returnBuffer);
+
+            var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
+            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.msg}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config, out _);
+            ctx.PrecompiledSegment(
+                SpecProvider.ChainId,
+                ref state,
+                in env,
+                in txExCtx,
+                in blkExCtx,
+
+                ref memory,
+                ref stack,
+                ref stackhead,
+
+                _blockhashProvider,
+                TestState,
+                CodeInfoRepository,
+                Prague.Instance,
+                tracer,
+                ref programCounter,
+                ref gasAvailable,
+                testcase.bytecode,
+                in env.InputData,
+                ctx.Data,
+                ref iLChunkExecutionResult);
+
+            Assert.That(iLChunkExecutionResult.ExceptionType == testcase.exceptionType);
         }
 
-
+        private ReadOnlyMemory<byte> _returnBuffer;
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void Test_ILVM_Trace_Mode((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
         {
@@ -2393,33 +2401,66 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
             var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
             var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
-            var stack = new byte[1024 * 32];
+            Span<byte> stack = new byte[1024 * 32];
+            var stackhead = 0;
             var inputBuffer = envExCtx.InputData;
-            var returnBuffer =
+            _returnBuffer =
                 new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
                 .Select(i => (byte)i).ToArray());
 
             TestState.CreateAccount(Address.FromNumber(1), 1000000);
             TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            var config = new VMConfig
+            {
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
+                PatternMatchingThreshold = 1,
+                IsPatternMatchingEnabled = false,
+                BakeInTracingInPartialAotMode = true,
+                AggressivePartialAotMode = true,
+            };
 
             long gasAvailable = 750_000;
             int programCounter = 0;
+            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
             var state = new EvmState(
                 gasAvailable,
-                new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                env,
                 ExecutionType.CALL,
                 Snapshot.Empty);
 
-            IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
+            var memory = state.Memory;
 
             state.InitStacks();
 
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            ILChunkExecutionResult iLChunkExecutionResult = new ILChunkExecutionResult(ref _returnBuffer);
 
-            ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", codeInfo, metadata.Item1, metadata.Item2, config);
-            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ref programCounter, ref gasAvailable, ctx.Data);
+            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.msg}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config, out _);
+            ctx.PrecompiledSegment(
+                SpecProvider.ChainId,
+                ref state,
+                in env,
+                in txExCtx,
+                in blkExCtx,
+
+                ref memory,
+                ref stack,
+                ref stackhead,
+
+                _blockhashProvider,
+                TestState,
+                CodeInfoRepository,
+                Prague.Instance,
+                tracer,
+                ref programCounter,
+                ref gasAvailable,
+                testcase.bytecode,
+                in env.InputData,
+                ctx.Data,
+                ref iLChunkExecutionResult);
 
             var tracedOpcodes = tracer.BuildResult().Entries;
 
@@ -2433,38 +2474,68 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
             var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
             var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
-            var stack = new byte[1024 * 32];
+            Span<byte> stack = new byte[1024 * 32];
+            var stackhead = 0;
             var inputBuffer = envExCtx.InputData;
-            var returnBuffer =
+            _returnBuffer =
                 new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
                 .Select(i => (byte)i).ToArray());
 
             TestState.CreateAccount(Address.FromNumber(1), 1000000);
             TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
-
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
             long gasAvailable = 750_000;
             int programCounter = 0;
+            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
             var state = new EvmState(
                 gasAvailable,
-                new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                env,
                 ExecutionType.CALL,
                 Snapshot.Empty);
 
-            IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
+            var memory = state.Memory;
 
             state.InitStacks();
 
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            ILChunkExecutionResult iLChunkExecutionResult = new ILChunkExecutionResult(ref _returnBuffer);
 
-            ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, ref returnBuffer);
+            var config = new VMConfig
+            {
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
+                PatternMatchingThreshold = 1,
+                IsPatternMatchingEnabled = false,
+                BakeInTracingInPartialAotMode = false,
+                AggressivePartialAotMode = true,
+            };
+
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.opcode}", codeInfo, metadata.Item1, metadata.Item2, config);
-            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, NullTxTracer.Instance, ref programCounter, ref gasAvailable, ctx.Data);
+            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.msg}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config, out _);
+            ctx.PrecompiledSegment(
+                SpecProvider.ChainId,
+                ref state,
+                in env,
+                in txExCtx,
+                in blkExCtx,
+
+                ref memory,
+                ref stack,
+                ref stackhead,
+
+                _blockhashProvider,
+                TestState,
+                CodeInfoRepository,
+                Prague.Instance,
+                tracer,
+                ref programCounter,
+                ref gasAvailable,
+                testcase.bytecode,
+                in env.InputData,
+                ctx.Data,
+                ref iLChunkExecutionResult);
 
             var tracedOpcodes = tracer.BuildResult().Entries;
-
-            state.Dispose();
 
             Assert.That(tracedOpcodes.Count, Is.EqualTo(0));
         }
