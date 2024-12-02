@@ -329,7 +329,7 @@ namespace Nethermind.Synchronization.Peers
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
-            SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
+            SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts, _isAllocatedChecks);
             while (true)
             {
                 if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
