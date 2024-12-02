@@ -67,7 +67,7 @@ public class ReceiptsSyncFeedTests
 
     private static readonly ISpecProvider _specProvider;
     private IReceiptStorage _receiptStorage = null!;
-    private ISyncPointers _syncPointers = new MemorySyncPointers();
+    private ISyncPointers _syncPointers = null!;
     private ISyncPeerPool _syncPeerPool = null!;
     private ReceiptsSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
@@ -98,6 +98,7 @@ public class ReceiptsSyncFeedTests
     public void Setup()
     {
         _receiptStorage = Substitute.For<IReceiptStorage>();
+        _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
         _metadataDb = new TestMemDb();
 
