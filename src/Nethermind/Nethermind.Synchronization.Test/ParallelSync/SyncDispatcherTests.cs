@@ -255,12 +255,7 @@ public class SyncDispatcherTests
         TestSyncFeed syncFeed = new();
         TestDownloader downloader = new TestDownloader();
         SyncDispatcher<TestBatch> dispatcher = new(
-            new SyncConfig()
-            {
-                MultiSyncModeSelectorLoopTimerMs = 1,
-                SyncDispatcherEmptyRequestDelayMs = 1,
-                SyncDispatcherAllocateTimeoutMs = 1
-            },
+            new TestSyncConfig(),
             syncFeed,
             downloader,
             new TestSyncPeerPool(),
@@ -287,10 +282,9 @@ public class SyncDispatcherTests
 
         TestDownloader downloader = new TestDownloader();
         SyncDispatcher<TestBatch> dispatcher = new(
-            new SyncConfig()
+            new TestSyncConfig()
             {
                 MaxProcessingThreads = processingThread,
-                SyncDispatcherEmptyRequestDelayMs = 1,
             },
             syncFeed,
             downloader,

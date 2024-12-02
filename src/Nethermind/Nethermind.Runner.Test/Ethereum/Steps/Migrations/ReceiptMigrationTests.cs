@@ -139,11 +139,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
 
-            public long? LowestInsertedReceiptBlockNumber
-            {
-                get => _outStorage.LowestInsertedReceiptBlockNumber;
-                set => _outStorage.LowestInsertedReceiptBlockNumber = value;
-            }
             public long MigratedBlockNumber
             {
                 get => _outStorage.MigratedBlockNumber;

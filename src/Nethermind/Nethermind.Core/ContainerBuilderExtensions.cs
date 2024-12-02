@@ -160,6 +160,15 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    public static ContainerBuilder Bind<TFrom, TTo>(this ContainerBuilder builder) where TFrom : TTo where TTo : notnull
+    {
+        builder.Register((it) => it.Resolve<TFrom>())
+            .As<TTo>()
+            .ExternallyOwned();
+
+        return builder;
+    }
 }
 
 /// <summary>

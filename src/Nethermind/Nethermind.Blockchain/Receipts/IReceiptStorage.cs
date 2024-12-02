@@ -11,7 +11,6 @@ namespace Nethermind.Blockchain.Receipts
     {
         void Insert(Block block, params TxReceipt[]? txReceipts) => Insert(block, txReceipts, true);
         void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null);
-        long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
         bool HasBlock(long blockNumber, Hash256 hash);
         void EnsureCanonical(Block block);

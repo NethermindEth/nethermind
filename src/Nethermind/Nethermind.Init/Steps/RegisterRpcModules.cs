@@ -69,8 +69,13 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.PeerManager);
 
         // Used only by rpc
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _api.Config<ISyncConfig>(),
-            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
+        _api.EthSyncingInfo = new EthSyncingInfo(
+            _api.BlockTree,
+            _api.SyncPointers!,
+            _api.Config<ISyncConfig>(),
+            _api.SyncModeSelector!,
+            _api.SyncProgressResolver!,
+            _api.LogManager);
         _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.LogManager);
 
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;

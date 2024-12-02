@@ -143,18 +143,15 @@ namespace Nethermind.Serialization.Json
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
             var writer = GetPipeWriter(stream, leaveOpen);
-            Serialize(writer, value, indented);
+            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;
             return outputCount;
         }
 
-        public void Serialize<T>(IBufferWriter<byte> writer, T value, bool indented = false)
-        {
-            using var jsonWriter = new Utf8JsonWriter(writer, CreateWriterOptions(indented));
-            JsonSerializer.Serialize(jsonWriter, value, indented ? JsonOptionsIndented : _jsonOptions);
-        }
+        public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
+            => JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
@@ -168,22 +165,24 @@ namespace Nethermind.Serialization.Json
         {
             ArgumentNullException.ThrowIfNullOrEmpty(innerPath);
 
-            if (innerPath.Contains('.'))
+            ReadOnlySpan<char> pathSpan = innerPath.AsSpan();
+            int lastDot = pathSpan.LastIndexOf('.');
+            if (lastDot >= 0)
             {
-                string[] parts = innerPath.Split('.');
                 JsonElement currentElement = element;
-                for (int i = 0; i < parts.Length - 1; i++)
+                foreach (Range subPath in pathSpan[..lastDot].Split('.'))
                 {
-                    if (!currentElement.TryGetProperty(parts[i], out currentElement))
+                    if (!currentElement.TryGetProperty(pathSpan[subPath], out currentElement))
                     {
                         value = default;
                         return false;
                     }
                 }
-                return currentElement.TryGetProperty(parts[^1], out value);
+                lastDot++;
+                return currentElement.TryGetProperty(pathSpan[lastDot..], out value);
             }
 
-            return element.TryGetProperty(innerPath.AsSpan(), out value);
+            return element.TryGetProperty(pathSpan, out value);
         }
     }
 }

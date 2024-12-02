@@ -7,6 +7,7 @@ using System.Linq;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -65,7 +66,8 @@ namespace Nethermind.Api
                 .AddPropertiesFrom<IBasicApi>(this)
                 .AddModule(new DbModule())
                 .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
-                .AddSingleton(ConfigProvider.GetConfig<IEraConfig>());
+                .AddSingleton(ConfigProvider.GetConfig<IEraConfig>())
+                .AddSingleton(ConfigProvider.GetConfig<IReceiptConfig>());
 
             return builder;
         }
