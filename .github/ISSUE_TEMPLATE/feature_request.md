@@ -7,6 +7,11 @@ assignees: ''
 
 ---
 
+Note: Before attempting and issue please go through the [contribution guidelines](../../CONTRIBUTING.md) and
+[code of conduct page](../../CODE_OF_CONDUCT.md) especially
+the [section about attempting an issue](../../CONTRIBUTING.md#attempting-an-issue).
+
+
 **Is your feature request related to a problem? Please describe.**
 A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
