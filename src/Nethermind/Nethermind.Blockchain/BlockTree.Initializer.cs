@@ -140,30 +140,15 @@ public partial class BlockTree
 
         long right = Math.Max(0, left) + BestKnownSearchLimit;
 
-        long bestKnownNumberFound =
-            BinarySearchBlockNumber(1, left, LevelExists) ?? 0;
-        long bestKnownNumberAlternative =
-            BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
-
-        long bestSuggestedHeaderNumber =
-            BinarySearchBlockNumber(1, left, HeaderExists) ?? 0;
-        long bestSuggestedHeaderNumberAlternative
-            = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
-
-        long bestSuggestedBodyNumber
-            = BinarySearchBlockNumber(1, left, BodyExists) ?? 0;
-        long bestSuggestedBodyNumberAlternative
-            = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
+        long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
+        long bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
+        long bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
 
         if (_logger.IsInfo)
             _logger.Info("Numbers resolved, " +
-                         $"level = Max({bestKnownNumberFound}, {bestKnownNumberAlternative}), " +
-                         $"header = Max({bestSuggestedHeaderNumber}, {bestSuggestedHeaderNumberAlternative}), " +
-                         $"body = Max({bestSuggestedBodyNumber}, {bestSuggestedBodyNumberAlternative})");
-
-        bestKnownNumberFound = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
-        bestSuggestedHeaderNumber = Math.Max(bestSuggestedHeaderNumber, bestSuggestedHeaderNumberAlternative);
-        bestSuggestedBodyNumber = Math.Max(bestSuggestedBodyNumber, bestSuggestedBodyNumberAlternative);
+                         $"level = {bestKnownNumberFound}, " +
+                         $"header = {bestSuggestedHeaderNumber}, " +
+                         $"body = {bestSuggestedBodyNumber}");
 
         if (bestKnownNumberFound < 0 ||
             bestSuggestedHeaderNumber < 0 ||
@@ -187,7 +172,7 @@ public partial class BlockTree
             }
         }
 
-        BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
+        BestKnownNumber = bestKnownNumberFound;
         BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
         BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
         BestSuggestedBody = bestSuggestedBodyHeader is null

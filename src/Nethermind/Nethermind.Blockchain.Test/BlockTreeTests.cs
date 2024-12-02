@@ -1170,6 +1170,38 @@ public class BlockTreeTests
         Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
     }
 
+    [TestCase(5, 10)]
+    [TestCase(10, 10)]
+    [TestCase(12, 0)]
+    public void Does_not_load_bestKnownNumber_before_syncPivot(long syncPivot, long expectedBestKnownNumber)
+    {
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = $"{syncPivot}"
+        };
+
+        MemDb blockInfosDb = new MemDb();
+        MemDb headersDb = new MemDb();
+        MemDb blockDb = new MemDb();
+
+        _ = Build.A.BlockTree()
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blockInfosDb)
+            .WithBlocksDb(blockDb)
+            .OfChainLength(11)
+            .TestObject;
+
+        BlockTree tree = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blockInfosDb)
+            .WithBlocksDb(blockDb)
+            .TestObject;
+
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
+    }
+
     private static readonly object[] SourceOfBSearchTestCases =
     {
         new object[] {1L, 0L},
