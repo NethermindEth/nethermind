@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -15,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
@@ -24,10 +24,8 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NSubstitute.ClearExtensions;
 using NUnit.Framework;
@@ -36,12 +34,12 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [TestCase(16L, 32L, DownloaderOptions.Process, 32, 32)]
-    [TestCase(16L, 32L, DownloaderOptions.Process, 32, 29)]
-    [TestCase(16L, 32L, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 0, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 32, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, SyncBatchSize.Max * 8 - 16L)]
+    [TestCase(16L, 32L, DownloaderOptions.Full, 32, 32)]
+    [TestCase(16L, 32L, DownloaderOptions.Full, 32, 29)]
+    [TestCase(16L, 32L, DownloaderOptions.Fast, 0, 32)]
+    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Fast, 32, 32)]
+    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Full, 32, 32)]
+    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Full, 32, SyncBatchSize.Max * 8 - 16L)]
     public async Task Merge_Happy_path(long pivot, long headNumber, int options, int threshold, long insertedBeaconBlocks)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
@@ -50,15 +48,16 @@ public partial class BlockDownloaderTests
             .InsertBeaconPivot(pivot)
             .InsertBeaconHeaders(4, pivot - 1)
             .InsertBeaconBlocks(pivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .AddSingleton<IMergeConfig>(new MergeConfig { TerminalTotalDifficulty = "0" })
+            .Build();
+
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-        };
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-        ctx.MergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" };
+        bool withReceipts = downloaderOptions == DownloaderOptions.Fast;
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 
@@ -89,8 +88,8 @@ public partial class BlockDownloaderTests
         ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(insertedBeaconBlocks);
     }
 
-    [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
-    [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
+    [TestCase(32L, DownloaderOptions.Fast, 32, false)]
+    [TestCase(32L, DownloaderOptions.Fast, 32, true)]
     public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
     {
         UInt256 ttd = 10000000;
@@ -100,14 +99,15 @@ public partial class BlockDownloaderTests
             .InsertBeaconPivot(16)
             .InsertBeaconHeaders(4, 15)
             .InsertBeaconBlocks(17, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .AddSingleton<IMergeConfig>(new MergeConfig { TerminalTotalDifficulty = $"{ttd}" })
+            .Build();
+
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-        };
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        ctx.MergeConfig = new MergeConfig { TerminalTotalDifficulty = $"{ttd}" };
         if (withBeaconPivot)
             ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
@@ -119,8 +119,8 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
-    [TestCase(32L, DownloaderOptions.MoveToMain, 16, false, 16)]
-    [TestCase(32L, DownloaderOptions.MoveToMain, 16, true, 3)] // No beacon header, so it does not sync
+    [TestCase(32L, DownloaderOptions.Fast, 16, false, 16)]
+    [TestCase(32L, DownloaderOptions.Fast, 16, true, 3)] // No beacon header, so it does not sync
     public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
@@ -135,16 +135,17 @@ public partial class BlockDownloaderTests
                 syncedSplitFrom: ttdBlock,
                 syncedSplitVariant: negativeTd
             );
+
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
 
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-        };
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .AddSingleton<IMergeConfig>(new MergeConfig { TerminalTotalDifficulty = $"{ttd}" })
+            .Build();
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        ctx.MergeConfig = new MergeConfig { TerminalTotalDifficulty = $"{ttd}" };
         if (withBeaconPivot)
             ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
@@ -166,11 +167,11 @@ public partial class BlockDownloaderTests
             .InsertBeaconPivot(pivot)
             .InsertBeaconHeaders(4, pivot - 1);
 
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .Build();
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-        };
 
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
@@ -181,7 +182,7 @@ public partial class BlockDownloaderTests
 
         SyncPeerMock syncPeer = new(syncedTree, false, responseOptions, 16000000);
         PeerInfo peerInfo = new(syncPeer);
-        BlocksRequest blocksRequest = new BlocksRequest(DownloaderOptions.Process, blocksToIgnore);
+        BlocksRequest blocksRequest = new BlocksRequest(DownloaderOptions.Full, blocksToIgnore);
         await downloader.DownloadBlocks(peerInfo, blocksRequest, CancellationToken.None);
 
         ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, expectedBestKnownNumber));
@@ -202,18 +203,6 @@ public partial class BlockDownloaderTests
             .InsertOtherChainToMain(notSyncedTree, 1, 3) // Need to have the header inserted to LRU which mean we need to move the head forward
             .InsertBeaconHeaders(1, 3, tdMode: BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
 
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-            MergeConfig = new MergeConfig { TerminalTotalDifficulty = $"{ttd}" },
-        };
-
-        BlockHeader lastHeader = syncedTree.FindHeader(3, BlockTreeLookupOptions.None)!;
-        // Because the FindHeader recalculated the TD.
-        lastHeader.TotalDifficulty = 0;
-
-        ctx.BeaconPivot.EnsurePivot(lastHeader);
-
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns((info =>
         {
@@ -222,7 +211,19 @@ public partial class BlockDownloaderTests
             notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             return true;
         }));
-        ctx.SealValidator = sealValidator;
+
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .AddSingleton<IMergeConfig>(new MergeConfig { TerminalTotalDifficulty = $"{ttd}" })
+            .AddSingleton<ISealValidator>(sealValidator)
+            .Build();
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
+
+        BlockHeader lastHeader = syncedTree.FindHeader(3, BlockTreeLookupOptions.None)!;
+        // Because the FindHeader recalculated the TD.
+        lastHeader.TotalDifficulty = 0;
+
+        ctx.BeaconPivot.EnsurePivot(lastHeader);
 
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -236,7 +237,7 @@ public partial class BlockDownloaderTests
             lastBestSuggestedBlock = args.Block;
         };
 
-        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.Process | DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
+        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.Full), CancellationToken.None);
 
         lastBestSuggestedBlock!.Hash.Should().Be(lastHeader.Hash!);
         lastBestSuggestedBlock.TotalDifficulty.Should().NotBeEquivalentTo(UInt256.Zero);
@@ -249,12 +250,6 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(0, 4)
             .InsertBeaconPivot(3);
-        PostMergeContext ctx = new()
-        {
-            MergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" },
-            BlockTreeScenario = blockTrees,
-        };
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(3, BlockTreeLookupOptions.None));
 
         ManualResetEventSlim chainLevelHelperBlocker = new ManualResetEventSlim(false);
         IChainLevelHelper chainLevelHelper = Substitute.For<IChainLevelHelper>();
@@ -264,7 +259,16 @@ public partial class BlockDownloaderTests
             {
                 chainLevelHelperBlocker.Wait();
             });
-        ctx.ChainLevelHelper = chainLevelHelper;
+
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .AddSingleton<IMergeConfig>(new MergeConfig { TerminalTotalDifficulty = "0" })
+            .AddSingleton<IChainLevelHelper>(chainLevelHelper)
+            .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
+            .Build();
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
+
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(3, BlockTreeLookupOptions.None));
 
         IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
 
@@ -318,65 +322,17 @@ public partial class BlockDownloaderTests
         cts.Dispose();
     }
 
-    [Test]
-    public void No_old_bodies_and_receipts()
-    {
-        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
-            .GoesLikeThis()
-            .WithBlockTrees(4, 129)
-            .InsertBeaconPivot(64)
-            .InsertBeaconHeaders(4, 128);
-        BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-        };
-
-        ctx.Feed = new FastSyncFeed(new SyncConfig
-        {
-            NonValidatorNode = true,
-            DownloadBodiesInFastSync = false,
-            DownloadReceiptsInFastSync = false
-        })!;
-
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
-
-        SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 34000000);
-        PeerInfo peerInfo = new(syncPeer);
-
-        IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-        peerAllocationStrategy
-            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-            .Returns(peerInfo);
-        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks);
-        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
-
-        ctx.PeerPool
-            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
-            .Returns(Task.FromResult(peerAllocation));
-
-        ctx.Feed.Activate();
-
-        CancellationTokenSource cts = new();
-        Task _ = ctx.Dispatcher.Start(cts.Token);
-
-        Assert.That(
-            () => ctx.BlockTree.BestKnownNumber,
-            Is.EqualTo(96).After(3000, 100)
-        );
-
-        cts.Cancel();
-    }
-
-    [TestCase(DownloaderOptions.WithReceipts)]
-    [TestCase(DownloaderOptions.None)]
-    [TestCase(DownloaderOptions.Process)]
+    [TestCase(DownloaderOptions.Fast)]
+    [TestCase(DownloaderOptions.Full)]
     public async Task BlockDownloader_works_correctly_with_withdrawals(int options)
     {
-        PostMergeContext ctx = new();
+        await using IContainer container = BuildMergeContainerBuilder()
+            .Build();
+
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
+
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
+        bool withReceipts = downloaderOptions == DownloaderOptions.Fast;
         BlockDownloader downloader = ctx.BlockDownloader;
 
         Response responseOptions = Response.AllCorrect;
@@ -409,7 +365,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
 
         int threshold = 2;
-        await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.Fast, threshold), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
 
         syncPeerInternal.ExtendTree(chainLength * 2);
@@ -423,9 +379,9 @@ public partial class BlockDownloaderTests
     [TestCase(34)]
     [TestCase(129)]
     [TestCase(1024)]
-    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(long pivot)
+    public async Task BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(long pivot)
     {
-        DownloaderOptions downloaderOptions = DownloaderOptions.Process;
+        DownloaderOptions downloaderOptions = DownloaderOptions.Full;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
              .GoesLikeThis()
              .WithBlockTrees(1, (int)(pivot + 1), false, 0)
@@ -433,11 +389,12 @@ public partial class BlockDownloaderTests
              .InsertBeaconHeaders(1, pivot)
              .InsertBeaconBlocks(pivot, pivot, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
 
-        PostMergeContext ctx = new()
-        {
-            BlockTreeScenario = blockTrees,
-            MergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" }
-        };
+        await using IContainer container = BuildMergeContainerBuilder()
+            .AddBlockTreeScenario(blockTrees)
+            .AddSingleton<IMergeConfig>(new MergeConfig { TerminalTotalDifficulty = "0" })
+            .Build();
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
+
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 
@@ -445,91 +402,30 @@ public partial class BlockDownloaderTests
         Assert.DoesNotThrowAsync(() => ctx.BlockDownloader.DownloadBlocks(new(syncPeer), new BlocksRequest(downloaderOptions), CancellationToken.None));
     }
 
-    class PostMergeContext : Context
+    private ContainerBuilder BuildMergeContainerBuilder()
     {
-        protected override ISpecProvider SpecProvider => _specProvider ??= new MainnetSpecProvider(); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
+        return BuildContainerBuilder()
+            .AddModule(new MergeSynchronizerModule())
+            .AddSingleton<IMergeConfig>(
+                new MergeConfig
+                { TerminalTotalDifficulty = "58750000000000000000000" } // Main block downloader test assume pre-merge
+            )
+            .Add<PostMergeContext>()
+            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddSingleton<IBeaconPivot, BeaconPivot>()
+            .AddSingleton<ChainSpec>(new ChainSpec())
+            .AddSingleton<ISpecProvider>(new MainnetSpecProvider()); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
+    }
 
-        private BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder? _blockTreeScenario;
+    private IContainer BuildMergeContainer()
+    {
+        return BuildMergeContainerBuilder().Build();
+    }
 
-        public BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder BlockTreeScenario
-        {
-            get =>
-                _blockTreeScenario ??
-                new BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder();
-            set => _blockTreeScenario = value;
-        }
-
-        public override IBlockTree BlockTree => _blockTreeScenario?.NotSyncedTree ?? base.BlockTree;
-
-        private IDb? _metadataDb;
-        private IDb MetadataDb => (_metadataDb ?? _blockTreeScenario?.NotSyncedTreeBuilder.MetadataDb) ?? (_metadataDb ??= new MemDb());
-
-        private MergeConfig? _mergeConfig;
-
-        public MergeConfig MergeConfig
-        {
-            get => _mergeConfig ??= new MergeConfig
-            { TerminalTotalDifficulty = "58750000000000000000000" }; // Main block downloader test assume pre-merge
-            set => _mergeConfig = value;
-        }
-
-        private BeaconPivot? _beaconPivot;
-
-        private PoSSwitcher? _posSwitcher;
-
-        public PoSSwitcher PosSwitcher => _posSwitcher ??= new(
-            MergeConfig,
-            new SyncConfig(),
-            MetadataDb,
-            BlockTree,
-            SpecProvider,
-            new ChainSpec(),
-            LimboLogs.Instance);
-        public BeaconPivot BeaconPivot => _beaconPivot ??= new(new SyncConfig(), MetadataDb, BlockTree, _posSwitcher!, LimboLogs.Instance);
-
-        protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=
-            new MergeBetterPeerStrategy(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), PosSwitcher, BeaconPivot, LimboLogs.Instance);
-
-        private IChainLevelHelper? _chainLevelHelper;
-
-        public IChainLevelHelper ChainLevelHelper
-        {
-            get =>
-                _chainLevelHelper ??= new ChainLevelHelper(
-                    BlockTree,
-                    BeaconPivot,
-                    new SyncConfig(),
-                    LimboLogs.Instance);
-            set => _chainLevelHelper = value;
-        }
-
-        private MergeBlockDownloader? _mergeBlockDownloader;
-
-        public override BlockDownloader BlockDownloader
-        {
-            get
-            {
-                return _mergeBlockDownloader ??= new(
-                    PosSwitcher,
-                    BeaconPivot,
-                    Feed,
-                    PeerPool,
-                    BlockTree,
-                    BlockValidator,
-                    SealValidator,
-                    NullSyncReport.Instance,
-                    ReceiptStorage,
-                    SpecProvider,
-                    BetterPeerStrategy,
-                    ChainLevelHelper,
-                    Substitute.For<ISyncProgressResolver>(),
-                    LimboLogs.Instance);
-            }
-        }
-
-        private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
-        protected override IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
-            _peerAllocationStrategy ??= new MergeBlocksSyncPeerAllocationStrategyFactory(PosSwitcher, BeaconPivot, LimboLogs.Instance);
-
+    class PostMergeContext(ILifetimeScope ctx) : Context(ctx)
+    {
+        private readonly ILifetimeScope _ctx = ctx;
+        public IBeaconPivot BeaconPivot => _ctx.Resolve<IBeaconPivot>();
+        public PoSSwitcher PosSwitcher => _ctx.Resolve<PoSSwitcher>();
     }
 }

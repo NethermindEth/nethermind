@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -54,7 +55,7 @@ namespace Nethermind.Merge.Plugin
         public PoSSwitcher(
             IMergeConfig mergeConfig,
             ISyncConfig syncConfig,
-            IDb metadataDb,
+            [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             ChainSpec chainSpec,

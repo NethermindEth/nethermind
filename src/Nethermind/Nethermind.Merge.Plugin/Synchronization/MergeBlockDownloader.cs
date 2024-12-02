@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -29,20 +30,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-        private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly IBlockValidator _blockValidator;
-        private readonly ISpecProvider _specProvider;
-        private readonly ISyncReport _syncReport;
-        private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IFullStateFinder _fullStateFinder;
 
         public MergeBlockDownloader(
             IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
-            ISyncPeerPool? syncPeerPool,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
             ISealValidator? sealValidator,
@@ -54,57 +48,47 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IFullStateFinder fullStateFinder,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
-            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
-                specProvider, betterPeerStrategy, logManager, syncBatchSize)
+            : base(feed, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
+                specProvider, betterPeerStrategy, fullStateFinder, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _chainLevelHelper = chainLevelHelper ?? throw new ArgumentNullException(nameof(chainLevelHelper));
             _poSSwitcher = posSwitcher ?? throw new ArgumentNullException(nameof(posSwitcher));
-            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
-            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider);
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _logger = logManager.GetClassLogger();
         }
 
-        public override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
+        private Task<IReadOnlyList<BlockHeader>?> PoSHasMoreToSync(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
-            if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            if (_logger.IsDebug)
+                _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+
+            int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
+
+            IReadOnlyList<BlockHeader>? headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+            if (headers is null || headers.Count <= 1)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug("Using pre merge dispatcher");
-                await base.Dispatch(bestPeer, blocksRequest, cancellation);
-                return;
+                if (_logger.IsTrace)
+                    _logger.Trace("Chain level helper got no headers suggestion");
+                return Task.FromResult<IReadOnlyList<BlockHeader>?>(null);
             }
 
-            if (blocksRequest is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
-                return;
-            }
+            // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
+            ValidateSeals(headers!, cancellation);
 
-            if (!_blockTree.CanAcceptNewBlocks) return;
+            if (HasBetterPeer)
+            {
+                if (_logger.IsDebug) _logger.Debug("Has better peer, stopping");
+                return Task.FromResult<IReadOnlyList<BlockHeader>?>(null);
+            }
+            if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {_currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}");
 
-            if (_previousBestPeer != bestPeer)
-            {
-                _syncBatchSize.Reset();
-            }
-            _previousBestPeer = bestPeer;
-
-            try
-            {
-                InvokeEvent(new SyncEventArgs(bestPeer.SyncPeer, Nethermind.Synchronization.SyncEvent.Started));
-                await DownloadBlocks(bestPeer, blocksRequest, cancellation)
-                        .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
-            }
-            finally
-            {
-                _allocationWithCancellation.Dispose();
-            }
+            return Task.FromResult<IReadOnlyList<BlockHeader>?>(headers);
         }
+
 
         public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
@@ -123,217 +107,45 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 throw new ArgumentNullException(message);
             }
 
-            DownloaderOptions options = blocksRequest.Options;
-            bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
-            bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
-            bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
-
-            int blocksSynced = 0;
-            long currentNumber = _blockTree.BestKnownNumber;
+            _currentNumber = _blockTree.BestKnownNumber;
             if (_logger.IsDebug)
                 _logger.Debug(
-                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+                    $"MergeBlockDownloader GetCurrentNumber: CurrentNumber {_currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
-            bool HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest)
+            return await DownloadBlocksBatchLoop(bestPeer, blocksRequest, PoSHasMoreToSync, cancellation);
+        }
+
+        protected override AddBlockResult AddBlock(PeerInfo bestPeer, Block currentBlock,
+            BlockTreeSuggestOptions suggestOptions,
+            int blockIndex, bool downloadReceipts, TxReceipt[]?[]? receipts,
+            ref long bestProcessedBlock, ref int blocksSynced)
+        {
+
+            bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
+            if (isKnownBeaconBlock)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-                headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-
-                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-                if (headers is null || headers.Length <= 1)
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace("Chain level helper got no headers suggestion");
-                    return false;
-                }
-
-                return true;
+                suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
             }
 
-            long bestProcessedBlock = 0;
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {(suggestOptions & BlockTreeSuggestOptions.ShouldProcess) != 0}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
 
-            while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
+            AddBlockResult addResult = base.AddBlock(bestPeer, currentBlock, suggestOptions,
+                blockIndex, downloadReceipts, receipts,
+                ref bestProcessedBlock, ref blocksSynced);
+
+            if (addResult == AddBlockResult.Added)
             {
-                if (HasBetterPeer)
+                if ((_beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Has better peer, stopping");
-                    break;
-                }
-
-                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                Block[]? blocks = null;
-                TxReceipt[]?[]? receipts = null;
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
-
-                // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
-                ValidateSeals(headers!, cancellation);
-
-                BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
-
-                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-
-                long startTime = Stopwatch.GetTimestamp();
-                await RequestBodies(bestPeer, cancellation, context);
-
-                if (downloadReceipts)
-                {
-                    if (cancellation.IsCancellationRequested)
-                        return blocksSynced; // check before every heavy operation
-                    await RequestReceipts(bestPeer, cancellation, context);
-                }
-
-                AdjustSyncBatchSize(Stopwatch.GetElapsedTime(startTime));
-
-                blocks = context.Blocks;
-                receipts = context.ReceiptsForBlocks;
-
-                if (!(blocks?.Length > 0))
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace("Break early due to no blocks.");
-                    break;
-                }
-
-                for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
-                {
-                    if (cancellation.IsCancellationRequested)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
-                        break;
-                    }
-
-                    Block currentBlock = blocks[blockIndex];
-                    if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
-
-                    if (currentBlock.IsBodyMissing)
-                    {
-                        throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
-                    }
-
-                    // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
-                    {
-                        string message = InvalidBlockHelper.GetMessage(currentBlock, $"invalid block sent by peer. {errorMessage}") +
-                                         $" PeerInfo {bestPeer}";
-                        if (_logger.IsWarn) _logger.Warn(message);
-                        throw new EthSyncException(message);
-                    }
-
-                    if (shouldProcess)
-                    {
-                        // An edge case where we already have the state but are still downloading preceding blocks.
-                        // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
-                        // Therefore, we detect this situation and switch from processing to receipts downloading.
-                        bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                        bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
-                        bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
-                        if (isFastSyncTransition)
-                        {
-                            long bestFullState = _fullStateFinder.FindBestFullState();
-                            shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
-                            if (!shouldProcess && !downloadReceipts)
-                            {
-                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
-                                downloadReceipts = true;
-                                context.SetDownloadReceipts();
-                                await RequestReceipts(bestPeer, cancellation, context);
-                                receipts = context.ReceiptsForBlocks;
-                            }
-                        }
-                    }
-
-                    if (downloadReceipts)
-                    {
-                        TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                        if (currentBlock.Header.HasTransactions && contextReceiptsForBlock is null)
-                        {
-                            throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
-                        }
-                    }
-
-                    bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
-                    BlockTreeSuggestOptions suggestOptions =
-                        shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
-
-                    if (isKnownBeaconBlock)
-                    {
-                        suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
-                    }
-
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
-
-                    AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
-                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
-                    {
-                        if (shouldProcess == false)
-                        {
-                            _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                        }
-                        else
-                        {
-                            bestProcessedBlock = currentBlock.Number;
-                        }
-
-                        TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
-
-                        if (downloadReceipts)
-                        {
-                            TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                            if (contextReceiptsForBlock is not null)
-                            {
-                                _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
-                            }
-                            else
-                            {
-                                // this shouldn't now happen with new validation above, still lets keep this check
-                                if (currentBlock.Header.HasTransactions)
-                                {
-                                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                                }
-                            }
-                        }
-
-                        if ((_beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
-                        {
-                            // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
-                            // already processed header starting from `ProcessDestination`.
-                            _beaconPivot.ProcessDestination = currentBlock.Header;
-                        }
-                        blocksSynced++;
-                    }
-
-                    if (shouldMoveToMain)
-                    {
-                        _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                    }
-
-                    currentNumber += 1;
-                }
-
-                if (blocksSynced > 0)
-                {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
-                }
-                else
-                {
-                    break;
+                    // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
+                    // already processed header starting from `ProcessDestination`.
+                    _beaconPivot.ProcessDestination = currentBlock.Header;
                 }
             }
 
-            return blocksSynced;
+            return addResult;
         }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
