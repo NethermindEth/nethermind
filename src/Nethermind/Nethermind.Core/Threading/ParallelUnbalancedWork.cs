@@ -180,6 +180,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
         public SemaphoreSlim Event { get; } = new(initialCount: 0);
+        private int _activeThreads = threads;
 
         /// <summary>
         /// Gets the exclusive upper bound of the range.
@@ -189,7 +190,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// <summary>
         /// Gets the number of active threads.
         /// </summary>
-        public int ActiveThreads => Volatile.Read(ref threads);
+        public int ActiveThreads => Volatile.Read(ref _activeThreads);
 
         /// <summary>
         /// Marks a thread as completed.
@@ -197,7 +198,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// <returns>The number of remaining active threads.</returns>
         public int MarkThreadCompleted()
         {
-            var remaining = Interlocked.Decrement(ref threads);
+            var remaining = Interlocked.Decrement(ref _activeThreads);
 
             if (remaining == 0)
             {
