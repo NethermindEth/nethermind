@@ -95,12 +95,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public void Clear()
     {
-        var count = Count;
-        if (count > 0 && RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-        {
-            // Release any references to the objects in the array so can be GC'd.
-            Array.Clear(_array, 0, count);
-        }
+        ClearToCount(_array);
         Count = 0;
     }
 
@@ -149,11 +144,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array.AsSpan(0, count).CopyTo(newArray);
             T[] oldArray = Interlocked.Exchange(ref _array, newArray);
             _capacity = newArray.Length;
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-            {
-                // Release any references to the objects in the array so can be GC'd.
-                Array.Clear(oldArray, 0, Count);
-            }
+            ClearToCount(oldArray);
             _arrayPool.Return(oldArray);
         }
         else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
@@ -165,6 +156,16 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         void ThrowOnlyReduce(int count)
         {
             throw new ArgumentException($"Count can only be reduced. {count} is larger than {Count}", nameof(count));
+        }
+    }
+
+    private void ClearToCount(T[] array)
+    {
+        int count = Count;
+        // Release any references to the objects in the array so can be GC'd.
+        if (count > 0 && RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            Array.Clear(array, 0, count);
         }
     }
 
@@ -237,11 +238,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array.CopyTo(newArray, 0);
             T[] oldArray = Interlocked.Exchange(ref _array, newArray);
             _capacity = newArray.Length;
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-            {
-                // Release any references to the objects in the array so can be GC'd.
-                Array.Clear(oldArray, 0, Count);
-            }
+            ClearToCount(oldArray);
             _arrayPool.Return(oldArray);
         }
     }
@@ -362,11 +359,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array = null!;
             if (array is not null)
             {
-                if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-                {
-                    // Release any references to the objects in the array so can be GC'd.
-                    Array.Clear(array, 0, Count);
-                }
+                ClearToCount(array);
                 _arrayPool.Return(array);
             }
             Count = 0;
