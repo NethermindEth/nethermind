@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -93,7 +92,16 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         Count += items.Length;
     }
 
-    public void Clear() => Count = 0;
+    public void Clear()
+    {
+        var count = Count;
+        if (count > 0 && RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            // Release any references to the objects in the array so can be GC'd.
+            Array.Clear(_array, 0, count);
+        }
+        Count = 0;
+    }
 
     public bool Contains(T item)
     {
@@ -140,6 +148,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array.AsSpan(0, count).CopyTo(newArray);
             T[] oldArray = Interlocked.Exchange(ref _array, newArray);
             _capacity = newArray.Length;
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
+                // Release any references to the objects in the array so can be GC'd.
+                Array.Clear(oldArray, 0, Count);
+            }
             _arrayPool.Return(oldArray);
         }
         else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
@@ -223,6 +236,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array.CopyTo(newArray, 0);
             T[] oldArray = Interlocked.Exchange(ref _array, newArray);
             _capacity = newArray.Length;
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
+                // Release any references to the objects in the array so can be GC'd.
+                Array.Clear(oldArray, 0, Count);
+            }
             _arrayPool.Return(oldArray);
         }
     }
@@ -249,6 +267,10 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             }
 
             Count--;
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
+                _array[Count] = default!;
+            }
         }
 
         return isValid;
@@ -335,13 +357,18 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         if (!_disposed)
         {
             _disposed = true;
-            Count = 0;
             T[]? array = _array;
+            _array = null!;
             if (array is not null)
             {
-                _arrayPool.Return(_array);
-                _array = null!;
+                if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                {
+                    // Release any references to the objects in the array so can be GC'd.
+                    Array.Clear(array, 0, Count);
+                }
+                _arrayPool.Return(array);
             }
+            Count = 0;
         }
 
 #if DEBUG
