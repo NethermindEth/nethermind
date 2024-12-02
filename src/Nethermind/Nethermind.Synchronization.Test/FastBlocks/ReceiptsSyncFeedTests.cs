@@ -67,6 +67,7 @@ public class ReceiptsSyncFeedTests
 
     private static readonly ISpecProvider _specProvider;
     private IReceiptStorage _receiptStorage = null!;
+    private ISyncPointers _syncPointers = new MemorySyncPointers();
     private ISyncPeerPool _syncPeerPool = null!;
     private ReceiptsSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
@@ -130,6 +131,7 @@ public class ReceiptsSyncFeedTests
             _specProvider,
             _blockTree,
             _receiptStorage,
+            _syncPointers,
             _syncPeerPool,
             _syncConfig,
             _syncReport,
@@ -146,6 +148,7 @@ public class ReceiptsSyncFeedTests
                 _specProvider,
                 _blockTree,
                 _receiptStorage,
+                _syncPointers,
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
@@ -160,6 +163,7 @@ public class ReceiptsSyncFeedTests
             _specProvider,
             _blockTree,
             NullReceiptStorage.Instance,
+            _syncPointers,
             _syncPeerPool,
             _syncConfig,
             _syncReport,
@@ -277,7 +281,7 @@ public class ReceiptsSyncFeedTests
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
         _feed.IsFinished.Should().Be(shouldfinish);
     }
 
@@ -296,6 +300,7 @@ public class ReceiptsSyncFeedTests
             _specProvider,
             _blockTree,
             _receiptStorage,
+            _syncPointers,
             _syncPeerPool,
             _syncConfig,
             _syncReport,
@@ -327,7 +332,7 @@ public class ReceiptsSyncFeedTests
                 scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value.Header
                     : null);
 
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns((long?)null);
     }
 
     [Test]
@@ -397,7 +402,7 @@ public class ReceiptsSyncFeedTests
 
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
         _feed.PrepareRequest().Result.Should().Be(null);
 
         _feed.CurrentState.Should().Be(SyncFeedState.Finished);
@@ -417,8 +422,8 @@ public class ReceiptsSyncFeedTests
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 
-        _receiptStorage = Substitute.For<IReceiptStorage>();
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
+        _syncPointers = Substitute.For<ISyncPointers>();
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(2);
 
         ReceiptsSyncFeed feed = CreateFeed();
         Assert.That(feed.IsFinished, Is.False);
@@ -437,8 +442,8 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-        _receiptStorage = Substitute.For<IReceiptStorage>();
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers = Substitute.For<ISyncPointers>();
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
 
         ReceiptsSyncFeed feed = CreateFeed();
         feed.InitializeFeed();

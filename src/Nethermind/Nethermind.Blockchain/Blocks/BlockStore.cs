@@ -12,51 +12,29 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore : IBlockStore
+public class BlockStore(IDb blockDb) : IBlockStore
 {
-    private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;
 
     private readonly ClockCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
 
-    private long? _lowestInsertedReceiptBlock;
-    private readonly IDb _blockDb;
-
-    public BlockStore(IDb blockDb)
-    {
-        _blockDb = blockDb;
-        LowestInsertedBodyNumber = GetMetadata(LowestInsertedBodyNumberDbEntryAddress)?
-            .AsRlpValueContext().DecodeLong();
-    }
-
-    public long? LowestInsertedBodyNumber
-    {
-        get => _lowestInsertedReceiptBlock;
-        set
-        {
-            _lowestInsertedReceiptBlock = value;
-            if (value.HasValue) SetMetadata(LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(value.Value).Bytes);
-        }
-    }
-
     public void SetMetadata(byte[] key, byte[] value)
     {
-        _blockDb.Set(key, value);
+        blockDb.Set(key, value);
     }
 
     public byte[]? GetMetadata(byte[] key)
     {
-        return _blockDb.Get(key);
+        return blockDb.Get(key);
     }
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return _blockDb.KeyExists(dbKey);
+        return blockDb.KeyExists(dbKey);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -70,7 +48,7 @@ public class BlockStore : IBlockStore
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
     private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
@@ -82,24 +60,24 @@ public class BlockStore : IBlockStore
     public void Delete(long blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(blockHash);
-        _blockDb.Delete(blockNumber, blockHash);
-        _blockDb.Remove(blockHash.Bytes);
+        blockDb.Delete(blockNumber, blockHash);
+        blockDb.Remove(blockHash.Bytes);
     }
 
     public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        var b = _blockDb.Get(dbKey);
+        var b = blockDb.Get(dbKey);
         if (b is not null) return b;
-        return _blockDb.Get(blockHash);
+        return blockDb.Get(blockHash);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
@@ -107,8 +85,8 @@ public class BlockStore : IBlockStore
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = blockDb.GetOwnedMemory(keyWithBlockNumber);
+        memoryOwner ??= blockDb.GetOwnedMemory(blockHash.Bytes);
 
         return BlockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
     }

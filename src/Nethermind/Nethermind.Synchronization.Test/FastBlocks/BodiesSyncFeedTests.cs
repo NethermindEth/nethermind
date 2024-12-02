@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -29,7 +28,7 @@ public class BodiesSyncFeedTests
     private IBlockTree _syncingFromBlockTree = null!;
     private IBlockTree _syncingToBlockTree = null!;
     private TestMemDb _blocksDb = null!;
-    private IBlockStore _blockStore = null!;
+    private ISyncPointers _syncPointers = null!;
     private BodiesSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
     private MemDb _metadataDb = null!;
@@ -44,9 +43,8 @@ public class BodiesSyncFeedTests
 
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
-        _blockStore = new BlockStore(_blocksDb);
+        _syncPointers = new MemorySyncPointers();
         _syncingToBlockTree = Build.A.BlockTree()
-            .WithBlockStore(_blockStore)
             .TestObject;
 
         for (int i = 1; i < 100; i++)
@@ -69,7 +67,7 @@ public class BodiesSyncFeedTests
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            _blockStore,
+            _syncPointers,
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),
@@ -202,11 +200,11 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
-        _blockStore.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
+        _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
-        _blockStore.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
         _feed.IsFinished.Should().Be(shouldfinish);
     }

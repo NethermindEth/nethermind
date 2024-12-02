@@ -50,7 +50,7 @@ namespace Nethermind.Init.Steps
             IChainLevelInfoRepository chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
-            IBlockStore blockStore = _set.BlockStore = new BlockStore(_get.DbProvider.BlocksDb);
+            IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
             IBadBlockStore badBlockStore = _set.BadBlocksStore = new BadBlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored ?? 100);
 

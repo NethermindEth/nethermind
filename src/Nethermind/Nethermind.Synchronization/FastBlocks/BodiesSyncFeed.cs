@@ -25,11 +25,11 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
-        protected override long? LowestInsertedNumber => _blockStore.LowestInsertedBodyNumber;
+        protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
         protected override Func<bool> HasPivot =>
-            () => _blockStore.LowestInsertedBodyNumber is not null && _blockStore.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
+            () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
 
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
@@ -39,20 +39,20 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly IBlockStore _blockStore;
+        private readonly ISyncPointers _syncPointers;
         private readonly IDb _blocksDb;
 
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_blockStore.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
+        private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
 
         public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IBlockStore blockStore,
+            ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
@@ -62,12 +62,12 @@ namespace Nethermind.Synchronization.FastBlocks
             long flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockStore = blockStore;
-            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
+            _blockTree = blockTree;
+            _syncPointers = syncPointers;
+            _syncPeerPool = syncPeerPool;
+            _syncConfig = syncConfig;
+            _syncReport = syncReport;
+            _blocksDb = blocksDb;
             _flushDbInterval = flushDbInterval;
 
             if (!_syncConfig.FastSync)
@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _blockStore.LowestInsertedBodyNumber,
+                _syncPointers.LowestInsertedBodyNumber,
                 _syncConfig.AncientBodiesBarrier);
         }
 
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     token.ThrowIfCancellationRequested();
 
                     // Otherwise, the progress does not update correctly
-                    _blockStore.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    _syncPointers.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
                     UpdateSyncReport();
                 }
 
@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             if (
-                (_blockStore.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
+                (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
                 _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
             )
             {
@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
-            _blockStore.LowestInsertedBodyNumber = lowestInsertedAtPoint;
+            _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)

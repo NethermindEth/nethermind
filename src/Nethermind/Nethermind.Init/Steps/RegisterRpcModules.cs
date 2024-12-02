@@ -71,8 +71,7 @@ public class RegisterRpcModules : IStep
         // Used only by rpc
         _api.EthSyncingInfo = new EthSyncingInfo(
             _api.BlockTree,
-            _api.ReceiptStorage!,
-            _api.BlockStore!,
+            _api.SyncPointers!,
             _api.Config<ISyncConfig>(),
             _api.SyncModeSelector!,
             _api.SyncProgressResolver!,
