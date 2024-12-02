@@ -349,6 +349,7 @@ public class SynchronizerTests
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
+                .AddSingleton<IReceiptConfig>(new ReceiptConfig())
                 .AddSingleton(dbProvider)
                 .AddSingleton(blockStore)
                 .AddSingleton(nodeStorage)

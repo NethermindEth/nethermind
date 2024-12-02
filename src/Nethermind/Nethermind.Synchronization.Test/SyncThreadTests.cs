@@ -355,6 +355,7 @@ namespace Nethermind.Synchronization.Test
             builder
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
+                .AddSingleton<IReceiptConfig>(new ReceiptConfig())
                 .AddSingleton(dbProvider)
                 .AddSingleton(blockStore)
                 .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
