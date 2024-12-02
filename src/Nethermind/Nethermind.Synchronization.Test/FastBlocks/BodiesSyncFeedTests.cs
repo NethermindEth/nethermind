@@ -45,6 +45,7 @@ public class BodiesSyncFeedTests
         _metadataDb = new MemDb();
         _syncPointers = new MemorySyncPointers();
         _syncingToBlockTree = Build.A.BlockTree()
+            .WithBlocksDb(_blocksDb)
             .TestObject;
 
         for (int i = 1; i < 100; i++)

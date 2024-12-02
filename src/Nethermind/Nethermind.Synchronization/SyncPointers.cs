@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,7 +46,7 @@ public class SyncPointers : ISyncPointers
     }
 
 
-    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb)
+    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb, IReceiptConfig receiptConfig)
     {
         _blocksDb = blocksDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
@@ -54,5 +55,11 @@ public class SyncPointers : ISyncPointers
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
+
+        // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
+        if (!receiptConfig.StoreReceipts)
+        {
+            _lowestInsertedReceiptBlock = 0;
+        }
     }
 }

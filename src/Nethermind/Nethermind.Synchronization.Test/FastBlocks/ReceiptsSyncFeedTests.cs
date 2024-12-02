@@ -159,6 +159,7 @@ public class ReceiptsSyncFeedTests
     [Test]
     public async Task Should_finish_on_start_when_receipts_not_stored()
     {
+        _syncPointers.LowestInsertedReceiptBlockNumber = 0;
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
@@ -274,6 +275,7 @@ public class ReceiptsSyncFeedTests
         long? previousBarrierInDb,
         bool shouldfinish)
     {
+        _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _pivotNumber = AncientBarrierInConfig + 1_000_000;
@@ -295,6 +297,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
+        _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
             _specProvider,
