@@ -42,7 +42,7 @@ public class CachedBlockTreeBuilder
                 MemDb.CopyFrom(builder.BlockNumbersDb),
                 MemDb.CopyFrom(builder.BlockInfoDb)
             );
-            _cachedDbs.TryAdd(key, cachedValue);
+            _cachedDbs.GetOrAdd(key, cachedValue);
 
             return builder.TestObject;
         }

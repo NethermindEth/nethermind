@@ -163,5 +163,5 @@ public interface ISyncConfig : IConfig
     int StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool GCOnStateSyncFinished { get; set; }
+    bool GCOnFeedFinished { get; set; }
 }

@@ -9,7 +9,7 @@ public class TestSyncConfig : SyncConfig
 {
     public TestSyncConfig()
     {
-        GCOnStateSyncFinished = false;
+        GCOnFeedFinished = false;
         MultiSyncModeSelectorLoopTimerMs = 1;
         SyncDispatcherEmptyRequestDelayMs = 1;
         SyncDispatcherAllocateTimeoutMs = 1;
