@@ -29,7 +29,7 @@ public class SynchronizerModuleTests
         IBlockProcessingQueue blockQueue = Substitute.For<IBlockProcessingQueue>();
 
         return new ContainerBuilder()
-            .AddModule(new SynchronizerModule(new SyncConfig()
+            .AddModule(new SynchronizerModule(new TestSyncConfig()
             {
                 FastSync = true,
                 VerifyTrieOnStateSyncFinished = true

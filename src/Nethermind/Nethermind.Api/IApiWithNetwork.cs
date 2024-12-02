@@ -47,6 +47,7 @@ namespace Nethermind.Api
         ISynchronizer? Synchronizer { get; }
         ISyncModeSelector SyncModeSelector { get; }
         ISyncProgressResolver? SyncProgressResolver { get; }
+        ISyncPointers? SyncPointers { get; }
         IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; }
         IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }

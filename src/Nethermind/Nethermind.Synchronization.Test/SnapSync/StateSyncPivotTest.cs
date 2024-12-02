@@ -30,7 +30,7 @@ public class StateSyncPivotTest
             .Returns((ci) => Build.A.BlockHeader.WithNumber((long)ci[0]).TestObject);
 
         Synchronization.FastSync.StateSyncPivot stateSyncPivot = new Synchronization.FastSync.StateSyncPivot(blockTree,
-            new SyncConfig()
+            new TestSyncConfig()
             {
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,

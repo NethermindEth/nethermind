@@ -106,6 +106,19 @@ namespace Nethermind.Consensus.Processing
 
         void IThreadPoolWorkItem.Execute()
         {
+            try
+            {
+                Execute();
+            }
+            catch (Exception ex)
+            {
+                // Don't allow exception to escape to ThreadPool
+                if (_logger.IsError) _logger.Error("Error when generating processing statistics", ex);
+            }
+        }
+
+        void Execute()
+        {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
             const string whiteText = "\u001b[97m";
@@ -125,7 +138,7 @@ namespace Nethermind.Consensus.Processing
             Address beneficiary = block.Header.GasBeneficiary ?? Address.Zero;
             Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
             bool isMev = false;
-            if (lastTx is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
+            if (lastTx?.To is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
             {
                 // Mev reward with in last tx
                 beneficiary = lastTx.To;
@@ -134,9 +147,18 @@ namespace Nethermind.Consensus.Processing
 
             if (_lastBranchRoot is null || !_stateReader.HasStateForRoot(_lastBranchRoot) || block.StateRoot is null || !_stateReader.HasStateForRoot(block.StateRoot))
                 return;
-            UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
-            UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
-            UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+
+            UInt256 rewards = default;
+            try
+            {
+                UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
+                UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
+                rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
+            }
 
             long currentSelfDestructs = Evm.Metrics.SelfDestructs;
 

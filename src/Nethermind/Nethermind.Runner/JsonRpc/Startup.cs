@@ -186,7 +186,7 @@ public class Startup
                         using (result)
                         {
                             await using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
-                            ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
+                            CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
                             try
                             {
                                 ctx.Response.ContentType = "application/json";
@@ -210,7 +210,7 @@ public class Startup
                                                 }
 
                                                 first = false;
-                                                jsonSerializer.Serialize(resultWriter, entry.Response);
+                                                await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
@@ -233,7 +233,7 @@ public class Startup
                                 }
                                 else
                                 {
-                                    jsonSerializer.Serialize(resultWriter, result.Response);
+                                    await jsonSerializer.SerializeAsync(resultWriter, result.Response);
                                 }
                                 await resultWriter.CompleteAsync();
                                 if (stream is not null)
@@ -245,11 +245,11 @@ public class Startup
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
                             {
-                                SerializeTimeoutException(resultWriter);
+                                await SerializeTimeoutException(resultWriter);
                             }
                             catch (OperationCanceledException)
                             {
-                                SerializeTimeoutException(resultWriter);
+                                await SerializeTimeoutException(resultWriter);
                             }
                             finally
                             {
@@ -281,17 +281,17 @@ public class Startup
                     Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                 }
             }
-            void SerializeTimeoutException(IBufferWriter<byte> resultStream)
+            Task SerializeTimeoutException(CountingWriter resultStream)
             {
                 JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                jsonSerializer.Serialize(resultStream, error);
+                return jsonSerializer.SerializeAsync(resultStream, error);
             }
             async Task PushErrorResponse(int statusCode, int errorCode, string message)
             {
                 JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(errorCode, message);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = statusCode;
-                jsonSerializer.Serialize(ctx.Response.BodyWriter, response);
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
         });
