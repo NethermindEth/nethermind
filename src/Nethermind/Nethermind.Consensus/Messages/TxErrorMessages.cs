@@ -10,9 +10,9 @@ public static class TxErrorMessages
     public static string InvalidTxType(string name) =>
         $"InvalidTxType: Transaction type in {name} is not supported.";
     public const string IntrinsicGasTooLow =
-        "IntrinsicGasTooLow: Gas limit is too low.";
+        "intrinsic gas too low";
     public const string TxMissingTo =
-        "TxMissingTo: Must be set.";
+        "blob transaction of type create";
 
     public const string InvalidTxSignature =
         "InvalidTxSignature: Signature is invalid.";
@@ -23,7 +23,7 @@ public static class TxErrorMessages
         "InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas.";
 
     public const string ContractSizeTooBig =
-        "ContractSizeTooBig: Max initcode size exceeded.";
+        "max initcode size exceeded";
 
     public const string NotAllowedMaxFeePerBlobGas =
         "NotAllowedMaxFeePerBlobGas: Cannot be set.";
@@ -41,7 +41,7 @@ public static class TxErrorMessages
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
 
     public const string BlobTxMissingBlobVersionedHashes =
-        "BlobTxMissingBlobVersionedHashes: Must be set.";
+        "blob transaction missing blob hashes";
 
     public static readonly string BlobTxGasLimitExceeded =
         $"BlobTxGasLimitExceeded: Transaction exceeded {Eip4844Constants.MaxBlobGasPerTransaction}.";

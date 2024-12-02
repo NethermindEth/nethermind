@@ -621,7 +621,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
+            ISyncConfig syncConfig = new TestSyncConfig() { FastSyncCatchUpHeightDelta = 2 };
             syncConfig.FastSync = true;
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
@@ -671,7 +671,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig
+            ISyncConfig syncConfig = new TestSyncConfig
             {
                 FastSyncCatchUpHeightDelta = 2,
                 FastSync = true,

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using Nethermind.Api;
@@ -11,7 +10,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Hive;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -23,7 +21,7 @@ public class ApiBuilder
     private readonly IConfigProvider _configProvider;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
-    private readonly Nethermind.Logging.ILogger _logger;
+    private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
 
     public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
@@ -66,21 +64,12 @@ public class ApiBuilder
 
     private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
     {
-        IHiveConfig hiveConfig = _configProvider.GetConfig<IHiveConfig>();
-        bool hiveChainSpecExists = File.Exists(_initConfig.HiveChainSpecPath);
+        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
-        string chainSpecFile;
-        if (hiveConfig.Enabled && hiveChainSpecExists)
-            chainSpecFile = _initConfig.HiveChainSpecPath;
-        else
-            chainSpecFile = _initConfig.ChainSpecPath;
-
-        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {chainSpecFile}");
-
-        ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
+        ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
         IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath, _logger);
         return chainSpec;
     }
 

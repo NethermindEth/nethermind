@@ -101,7 +101,7 @@ public class ReceiptsSyncFeedTests
         _blockTree = Substitute.For<IBlockTree>();
         _metadataDb = new TestMemDb();
 
-        _syncConfig = new SyncConfig { FastSync = true };
+        _syncConfig = new TestSyncConfig { FastSync = true };
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = Keccak.Zero.ToString();
 
@@ -142,7 +142,7 @@ public class ReceiptsSyncFeedTests
     [Test]
     public void Should_throw_when_fast_block_not_enabled()
     {
-        _syncConfig = new SyncConfig { FastSync = false };
+        _syncConfig = new TestSyncConfig { FastSync = false };
         Assert.Throws<InvalidOperationException>(
             () => _feed = new ReceiptsSyncFeed(
                 _specProvider,
@@ -412,7 +412,7 @@ public class ReceiptsSyncFeedTests
     public void Is_fast_block_receipts_finished_returns_false_when_receipts_not_downloaded()
     {
         _blockTree = Substitute.For<IBlockTree>();
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             DownloadBodiesInFastSync = true,
@@ -433,7 +433,7 @@ public class ReceiptsSyncFeedTests
     public void Is_fast_block_bodies_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
     {
         _blockTree = Substitute.For<IBlockTree>();
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             DownloadBodiesInFastSync = false,

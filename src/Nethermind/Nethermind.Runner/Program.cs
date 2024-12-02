@@ -280,7 +280,6 @@ void CheckForDeprecatedOptions(ParseResult parseResult)
     [
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
-        BasicOptions.DataDirectory,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.PluginsDirectory
     ];
