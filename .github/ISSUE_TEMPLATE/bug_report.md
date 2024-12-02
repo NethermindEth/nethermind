@@ -9,7 +9,7 @@ assignees: ''
 
 Note: Before attempting and issue please go through the [contribution guidelines](../../CONTRIBUTING.md) and
 [code of conduct page](../../CODE_OF_CONDUCT.md) especially
-the [section about attempting an issue](../../CONTRIBUTING.md#attempting-an-issue).
+the [section about attempting an issue](../../CONTRIBUTING.md#attempting-an-issue) and the [do's and don't's](../../CONTRIBUTING.md#dos-and-donts).
 
 
 **Description**
