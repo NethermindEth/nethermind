@@ -46,7 +46,7 @@ public class TraceRpcModuleTests
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
 
-            Hash256 stateRoot = Blockchain.State.StateRoot;
+            Hash256 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             for (int i = 1; i < 10; i++)
             {
                 List<Transaction> transactions = new();
@@ -59,7 +59,7 @@ public class TraceRpcModuleTests
                 }
                 await Blockchain.AddBlock(transactions.ToArray());
 
-                stateRoot = Blockchain.State.StateRoot;
+                stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
 
             Factory = new(
