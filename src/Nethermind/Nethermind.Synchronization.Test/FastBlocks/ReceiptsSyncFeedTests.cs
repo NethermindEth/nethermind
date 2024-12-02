@@ -67,6 +67,7 @@ public class ReceiptsSyncFeedTests
 
     private static readonly ISpecProvider _specProvider;
     private IReceiptStorage _receiptStorage = null!;
+    private ISyncPointers _syncPointers = null!;
     private ISyncPeerPool _syncPeerPool = null!;
     private ReceiptsSyncFeed _feed = null!;
     private ISyncConfig _syncConfig = null!;
@@ -97,10 +98,11 @@ public class ReceiptsSyncFeedTests
     public void Setup()
     {
         _receiptStorage = Substitute.For<IReceiptStorage>();
+        _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
         _metadataDb = new TestMemDb();
 
-        _syncConfig = new SyncConfig { FastSync = true };
+        _syncConfig = new TestSyncConfig { FastSync = true };
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = Keccak.Zero.ToString();
 
@@ -130,6 +132,7 @@ public class ReceiptsSyncFeedTests
             _specProvider,
             _blockTree,
             _receiptStorage,
+            _syncPointers,
             _syncPeerPool,
             _syncConfig,
             _syncReport,
@@ -140,12 +143,13 @@ public class ReceiptsSyncFeedTests
     [Test]
     public void Should_throw_when_fast_block_not_enabled()
     {
-        _syncConfig = new SyncConfig { FastSync = false };
+        _syncConfig = new TestSyncConfig { FastSync = false };
         Assert.Throws<InvalidOperationException>(
             () => _feed = new ReceiptsSyncFeed(
                 _specProvider,
                 _blockTree,
                 _receiptStorage,
+                _syncPointers,
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
@@ -156,10 +160,12 @@ public class ReceiptsSyncFeedTests
     [Test]
     public async Task Should_finish_on_start_when_receipts_not_stored()
     {
+        _syncPointers.LowestInsertedReceiptBlockNumber = 0;
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
             NullReceiptStorage.Instance,
+            _syncPointers,
             _syncPeerPool,
             _syncConfig,
             _syncReport,
@@ -270,6 +276,7 @@ public class ReceiptsSyncFeedTests
         long? previousBarrierInDb,
         bool shouldfinish)
     {
+        _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _pivotNumber = AncientBarrierInConfig + 1_000_000;
@@ -277,7 +284,7 @@ public class ReceiptsSyncFeedTests
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
         _feed.IsFinished.Should().Be(shouldfinish);
     }
 
@@ -291,11 +298,13 @@ public class ReceiptsSyncFeedTests
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
+        _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
             _receiptStorage,
+            _syncPointers,
             _syncPeerPool,
             _syncConfig,
             _syncReport,
@@ -327,8 +336,7 @@ public class ReceiptsSyncFeedTests
                 scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value.Header
                     : null);
 
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
-        _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody!.Number);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns((long?)null);
     }
 
     [Test]
@@ -398,7 +406,7 @@ public class ReceiptsSyncFeedTests
 
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
         _feed.PrepareRequest().Result.Should().Be(null);
 
         _feed.CurrentState.Should().Be(SyncFeedState.Finished);
@@ -408,7 +416,7 @@ public class ReceiptsSyncFeedTests
     public void Is_fast_block_receipts_finished_returns_false_when_receipts_not_downloaded()
     {
         _blockTree = Substitute.For<IBlockTree>();
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             DownloadBodiesInFastSync = true,
@@ -417,10 +425,9 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-        _blockTree.LowestInsertedBodyNumber.Returns(1);
 
-        _receiptStorage = Substitute.For<IReceiptStorage>();
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
+        _syncPointers = Substitute.For<ISyncPointers>();
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(2);
 
         ReceiptsSyncFeed feed = CreateFeed();
         Assert.That(feed.IsFinished, Is.False);
@@ -430,7 +437,7 @@ public class ReceiptsSyncFeedTests
     public void Is_fast_block_bodies_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
     {
         _blockTree = Substitute.For<IBlockTree>();
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             DownloadBodiesInFastSync = false,
@@ -439,9 +446,8 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-        _blockTree.LowestInsertedBodyNumber.Returns(2);
-        _receiptStorage = Substitute.For<IReceiptStorage>();
-        _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers = Substitute.For<ISyncPointers>();
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
 
         ReceiptsSyncFeed feed = CreateFeed();
         feed.InitializeFeed();
