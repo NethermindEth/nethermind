@@ -268,15 +268,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         void UpdateRootHashesMultiThread()
         {
             // We can recalculate the roots in parallel as they are all independent tries
-            var storages = _storages.ToArray();
+            using var storages = _storages.ToPooledList();
             ParallelUnbalancedWork.For(
                 0,
-                storages.Length,
+                storages.Count,
                 RuntimeInformation.ParallelOptionsLogicalCores,
                 (storages, toUpdateRoots: _toUpdateRoots),
                 static (i, state) =>
             {
-                ref var kvp = ref state.storages[i];
+                ref var kvp = ref state.storages.GetRef(i);
                 if (!state.toUpdateRoots.Contains(kvp.Key))
                 {
                     // Wasn't updated don't recalculate
@@ -288,9 +288,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             });
 
             // Update the storage roots in the main thread non in parallel
-            for (int i = 0; i < storages.Length; i++)
+            foreach (ref var kvp in storages.AsSpan())
             {
-                ref var kvp = ref storages[i];
                 if (!_toUpdateRoots.Contains(kvp.Key))
                 {
                     continue;
