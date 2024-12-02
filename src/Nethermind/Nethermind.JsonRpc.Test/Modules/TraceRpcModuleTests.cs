@@ -28,6 +28,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -45,6 +46,7 @@ public class TraceRpcModuleTests
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
 
+            Hash256 stateRoot = Blockchain.State.StateRoot;
             for (int i = 1; i < 10; i++)
             {
                 List<Transaction> transactions = new();
@@ -52,10 +54,12 @@ public class TraceRpcModuleTests
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction
                         .WithTo(Address.Zero)
-                        .WithNonce(Blockchain.State.GetNonce(TestItem.AddressB) + (UInt256)j)
+                        .WithNonce(Blockchain.StateReader.GetNonce(stateRoot, TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
                 await Blockchain.AddBlock(transactions.ToArray());
+
+                stateRoot = Blockchain.State.StateRoot;
             }
 
             Factory = new(
