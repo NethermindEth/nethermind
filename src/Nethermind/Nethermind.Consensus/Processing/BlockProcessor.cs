@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -143,11 +144,12 @@ public partial class BlockProcessor(
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
-                QueueClearCaches(preWarmer, preWarmTask);
+                TimeSpan merkleizationTime = PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
                 {
+                    Metrics.StateMerkleizationTime = merkleizationTime.TotalMilliseconds
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -180,7 +182,7 @@ public partial class BlockProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
-            QueueClearCaches(preWarmer, preWarmTask);
+            QueueClearCaches(preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
@@ -189,7 +191,7 @@ public partial class BlockProcessor(
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
-    private void QueueClearCaches(IBlockCachePreWarmer preWarmer, Task? preWarmTask)
+    private void QueueClearCaches(Task? preWarmTask)
     {
         if (preWarmTask is not null)
         {
@@ -198,7 +200,7 @@ public partial class BlockProcessor(
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(() => preWarmer.ClearCaches());
+            _clearTask = Task.Run(preWarmer.ClearCaches);
         }
     }
 
@@ -231,10 +233,12 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to block processing pipeline
-    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
+    private TimeSpan PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
+        long startTime = Stopwatch.GetTimestamp();
         _stateProvider.CommitTree(blockNumber);
+        return Stopwatch.GetElapsedTime(startTime);
     }
 
     // TODO: move to branch processor
