@@ -3,18 +3,23 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL;
 
 public class PayloadDecoder : IPayloadDecoder
 {
+    private const int PrefixDataSize = 560;
+
     public ExecutionPayloadV3 DecodePayload(byte[] data)
     {
         ExecutionPayloadV3 payload = new();
 
-        // TODO: Add sanity checks
+        if (PrefixDataSize >= data.Length)
+        {
+            throw new ArgumentException("Invalid payload data size");
+        }
+
         int offset = 0;
         payload.ParentBeaconBlockRoot = new(data[offset..(offset + 32)]);
         offset += 32;
@@ -56,6 +61,11 @@ public class PayloadDecoder : IPayloadDecoder
         payload.ExcessBlobGas = BitConverter.ToUInt64(data[offset..(offset + 8)]);
         offset += 8;
 
+        if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset >= transactionsOffset)
+        {
+            throw new ArgumentException("Invalid offsets");
+        }
+
         payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset];
 
         payload.Transactions = DecodeTransactions(data[(int)transactionsOffset..(int)withdrawalsOffset]);
@@ -66,15 +76,24 @@ public class PayloadDecoder : IPayloadDecoder
 
     byte[][] DecodeTransactions(byte[] data)
     {
+        if (4 > data.Length) throw new ArgumentException("Invalid transaction data");
         UInt32 firstTxOffset = BitConverter.ToUInt32(data[..4]);
         UInt32 txCount = firstTxOffset / 4;
         byte[][] txs = new byte[txCount][];
         int previous = (int)firstTxOffset;
         for (int i = 0; i < txCount; i++)
         {
-            int next = i + 1 < txCount
-                ? (int)BitConverter.ToUInt32(data[(i * 4 + 4)..(i * 4 + 8)])
-                : data.Length;
+            int next;
+            if (i + 1 < txCount)
+            {
+                if (i * 4 + 8 > data.Length) throw new ArgumentException("Invalid transaction data");
+                next = (int)BitConverter.ToUInt32(data[(i * 4 + 4)..(i * 4 + 8)]);
+            }
+            else
+            {
+                next = data.Length;
+            }
+            if (previous >= next || next > data.Length) throw new ArgumentException("Invalid transaction offset");
             txs[i] = data[previous..next];
             previous = next;
         }

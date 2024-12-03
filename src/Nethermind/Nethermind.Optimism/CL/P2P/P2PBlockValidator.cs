@@ -151,8 +151,6 @@ public class P2PBlockValidator : IP2PBlockValidator
             signature[64],
             false);
 
-        _logger.Error($"PUBKEY: {BitConverter.ToString(publicKey.ToArray()).Replace("-", "").ToLower()}");
-
         return success && publicKey.SequenceEqual(_sequencerPubkey);
     }
 }

@@ -7,17 +7,11 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
 using System;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Multiformats.Address;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -38,12 +32,16 @@ public class OptimismCLP2P
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly IPayloadDecoder _payloadDecoder;
     private readonly IP2PBlockValidator _blockValidator;
+    private readonly string[] _staticPeerList;
     private readonly ulong _chainId;
 
-    public OptimismCLP2P(ulong chainId, byte[] sequencerPubkey, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
+    private ITopic? _blocksV2Topic;
+
+    public OptimismCLP2P(ulong chainId, string[] staticPeerList, byte[] sequencerPubkey, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
         _chainId = chainId;
         _logger = logManager.GetClassLogger();
+        _staticPeerList = staticPeerList;
         _engineRpcModule = engineRpcModule;
         _payloadDecoder = new PayloadDecoder();
         _blockValidator = new P2PBlockValidator(chainId, sequencerPubkey, timestamper, _logger);
@@ -68,8 +66,8 @@ public class OptimismCLP2P
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
-        ITopic topic = _router.GetTopic($"/optimism/{_chainId}/2/blocks");
-        topic.OnMessage += OnMessage;
+        _blocksV2Topic = _router.GetTopic($"/optimism/{_chainId}/2/blocks");
+        _blocksV2Topic.OnMessage += OnMessage;
 
         _cancellationTokenSource = new();
         _ = _router.RunAsync(peer, new Settings
@@ -79,14 +77,17 @@ public class OptimismCLP2P
         }, token: _cancellationTokenSource.Token);
 
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
-        peerStore.Discover(["/ip4/5.9.87.214/tcp/9222/p2p/16Uiu2HAm39UNArTiqPNakHqA58Rss4Fz8f41otDj4sWKbaA7BazG"]);
-        peerStore.Discover(["/ip4/217.22.153.164/tcp/31660/p2p/16Uiu2HAmG5hBYavoanawCzz1cu5H7XNNSaA7BYNvwa7DNmojei6g"]);
+        foreach (string peerAddress in _staticPeerList)
+        {
+            peerStore.Discover([peerAddress]);
+        }
 
         if (_logger.IsInfo) _logger.Info($"Started P2P: {peer.Address}");
     }
 
     async void OnMessage(byte[] msg)
     {
+        // TODO: handle missed payloads
         int length = Snappy.GetUncompressedLength(msg);
         byte[] decompressed = new byte[length];
         Snappy.Decompress(msg, decompressed);
@@ -94,12 +95,18 @@ public class OptimismCLP2P
         byte[] signature = decompressed[0..65];
         byte[] payloadData = decompressed[65..];
 
-        var payloadDecoded = _payloadDecoder.DecodePayload(payloadData);
-        var validationResult = _blockValidator.Validate(payloadDecoded, payloadData, signature, P2PTopic.BlocksV3);
-
-        if (validationResult == ValidityStatus.Reject)
+        ExecutionPayloadV3 payloadDecoded;
+        try
         {
-            // TODO decrease peers rating
+            payloadDecoded = _payloadDecoder.DecodePayload(payloadData);
+        }
+        catch (ArgumentException e)
+        {
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Unable to decode payload from p2p. {e.Message}");
+            }
+            // TODO: decrease peers rating
             return;
         }
 
@@ -108,11 +115,49 @@ public class OptimismCLP2P
             _logger.Info($"Got block from CL P2P: {payloadDecoded.BlockHash}");
         }
 
+        var validationResult = _blockValidator.Validate(payloadDecoded, payloadData, signature, P2PTopic.BlocksV3);
+
+        if (validationResult == ValidityStatus.Reject)
+        {
+            // TODO decrease peers rating
+            return;
+        }
+
         var npResult = await _engineRpcModule.engine_newPayloadV3(payloadDecoded, Array.Empty<byte[]>(),
             payloadDecoded.ParentBeaconBlockRoot);
 
+        if (npResult.Result.ResultType == ResultType.Failure)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"NewPayload request error: {npResult.Result.Error}");
+            }
+            return;
+        }
+
+        if (npResult.Data.Status == PayloadStatus.Invalid)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Got invalid payload from p2p");
+            return;
+        }
+
         var fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
-            new ForkchoiceStateV1(payloadDecoded.BlockHash, payloadDecoded.BlockHash, payloadDecoded.BlockHash), null);
+            new ForkchoiceStateV1(payloadDecoded.BlockHash, payloadDecoded.BlockHash, payloadDecoded.BlockHash),
+            null);
+
+        if (fcuResult.Result.ResultType == ResultType.Failure)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"ForkChoiceUpdated request error: {npResult.Result.Error}");
+            }
+            return;
+        }
+
+        if (fcuResult.Data.PayloadStatus.Status == PayloadStatus.Invalid)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Got invalid payload from p2p");
+        }
     }
 
     private MessageId CalculateMessageId(Message message)

@@ -8,8 +8,6 @@ namespace Nethermind.Optimism.CL;
 
 public interface ICLConfig : IConfig
 {
-    Address? BatcherInboxAddress { get; set; }
-    Address? BatcherAddress { get; set; }
     string? L1BeaconApiEndpoint { get; set; }
     string? L1EthApiEndpoint { get; set; }
 }

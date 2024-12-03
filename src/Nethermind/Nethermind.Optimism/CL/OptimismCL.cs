@@ -30,12 +30,13 @@ public class OptimismCL
         IOptimismEngineRpcModule engineRpcModule)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.SequencerPubkey);
+        ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
 
         _engineRpcModule = engineRpcModule;
         _logger = logManager.GetClassLogger();
         _chainSpecEngineParameters = engineParameters;
 
-        _p2p = new OptimismCLP2P(specProvider.ChainId, Convert.FromHexString(_chainSpecEngineParameters.SequencerPubkey), timestamper, logManager, engineRpcModule);
+        _p2p = new OptimismCLP2P(specProvider.ChainId, engineParameters.Nodes, Convert.FromHexString(_chainSpecEngineParameters.SequencerPubkey), timestamper, logManager, engineRpcModule);
         IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint!), jsonSerializer, ecdsa, _logger,
             cancellationToken);
