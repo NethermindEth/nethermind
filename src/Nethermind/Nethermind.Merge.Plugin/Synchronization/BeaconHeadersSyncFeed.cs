@@ -39,7 +39,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override BlockHeader? LowestInsertedBlockHeader
     {
         get => _blockTree.LowestInsertedBeaconHeader;
-        set => _blockTree.LowestInsertedBeaconHeader = value;
+        set {
+            // Set in blocktree
+        }
     }
 
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
