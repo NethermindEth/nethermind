@@ -149,7 +149,7 @@ public partial class BlockProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = merkleizationTime.TotalMilliseconds
+                    Metrics.StateMerkleizationTime = merkleizationTime.TotalMilliseconds;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
