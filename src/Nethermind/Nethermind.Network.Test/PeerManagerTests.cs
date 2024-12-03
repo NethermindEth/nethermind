@@ -322,7 +322,7 @@ namespace Nethermind.Network.Test
                 for (int i = 0; i < 10; i++)
                 {
                     Assert.That(
-                        () => ctx.PeerPool.ActivePeers.Count(),
+                        () => ctx.PeerPool.ActivePeers.Count,
                         Is.AtLeast(25).After(_travisDelayLonger * 2, 10));
                     ctx.DisconnectAllSessions();
                 }

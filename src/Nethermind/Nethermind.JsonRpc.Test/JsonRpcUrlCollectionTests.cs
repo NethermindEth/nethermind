@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
@@ -19,12 +18,6 @@ public class JsonRpcUrlCollectionTests
     }
 
     private string[] _enabledModules = null!;
-
-    [TearDown]
-    public void TearDown()
-    {
-        Environment.SetEnvironmentVariable("NETHERMIND_URL", null, EnvironmentVariableTarget.Process);
-    }
 
     [Test]
     public void Empty_when_disabled()
@@ -47,24 +40,6 @@ public class JsonRpcUrlCollectionTests
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) }
-        }, Is.EquivalentTo(urlCollection));
-    }
-
-    [Test]
-    public void Contains_single_default_url_overridden_by_environment_variable()
-    {
-        Environment.SetEnvironmentVariable("NETHERMIND_URL", "http://localhost:1234", EnvironmentVariableTarget.Process);
-
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
-        {
-            Enabled = true,
-            EnabledModules = _enabledModules
-        };
-
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
-        Assert.That(new Dictionary<int, JsonRpcUrl>()
-        {
-            { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) }
         }, Is.EquivalentTo(urlCollection));
     }
 

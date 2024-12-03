@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -89,8 +90,21 @@ namespace Nethermind.Synchronization
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
 
+            if (syncConfig.GCOnFeedFinished)
+            {
+                SyncModeSelector.Changed += GCOnFeedFinished;
+            }
+
             // Make unit test faster.
             SyncModeSelector.Update();
+        }
+
+        private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
+        {
+            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlocks))
+            {
+                GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            }
         }
 
         private void StartFullSyncComponents()
@@ -278,6 +292,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
+            .AddSingleton<ISyncPointers, SyncPointers>()
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
@@ -300,10 +315,10 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
 
+        ConfigureStateSyncComponent(builder);
         ConfigureSnapComponent(builder);
         ConfigureReceiptSyncComponent(builder);
         ConfigureBodiesSyncComponent(builder);
-        ConfigureStateSyncComponent(builder);
 
         builder
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
@@ -315,6 +330,10 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .As<ISyncPeerPool>()
             .As<IPeerDifficultyRefreshPool>()
             .SingleInstance();
+
+        builder
+            .Map<IReceiptStorage, IReceiptFinder>((storage) => storage)
+            .AddSingleton<ISyncServer, SyncServer>();
     }
 
     private void ConfigureFullSync(ContainerBuilder scopeConfig)
@@ -387,6 +406,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
+            .AddSingleton<StateSyncPivot>()
             .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);

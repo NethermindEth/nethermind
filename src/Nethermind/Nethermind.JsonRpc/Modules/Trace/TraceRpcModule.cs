@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
 
-            Block block = new(header, txs, Enumerable.Empty<BlockHeader>());
+            Block block = new(header, txs, []);
             IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
         }

@@ -37,12 +37,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 int accessListItemLength = rlpStream.ReadSequenceLength();
                 int accessListItemCheck = rlpStream.Position + accessListItemLength;
-                Address address = rlpStream.DecodeAddress();
-                if (address is null)
-                {
-                    throw new RlpException("Invalid tx access list format - address is null");
-                }
-
+                Address address = rlpStream.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
                 accessListBuilder.AddAddress(address);
 
                 if (rlpStream.Position < check)
@@ -102,12 +97,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 int accessListItemLength = decoderContext.ReadSequenceLength();
                 int accessListItemCheck = decoderContext.Position + accessListItemLength;
-                Address address = decoderContext.DecodeAddress();
-                if (address is null)
-                {
-                    throw new RlpException("Invalid tx access list format - address is null");
-                }
-
+                Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
                 accessListBuilder.AddAddress(address);
 
                 if (decoderContext.Position < check)

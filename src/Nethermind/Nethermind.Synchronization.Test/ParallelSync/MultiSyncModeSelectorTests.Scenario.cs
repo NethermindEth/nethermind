@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ISyncProgressResolver SyncProgressResolver { get; set; } = null!;
 
-                public ISyncConfig SyncConfig { get; } = new SyncConfig();
+                public ISyncConfig SyncConfig { get; } = new TestSyncConfig();
 
                 public IBeaconSyncStrategy BeaconSyncStrategy { get; set; } = No.BeaconSync;
 

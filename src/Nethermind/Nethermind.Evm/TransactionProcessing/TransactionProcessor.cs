@@ -141,7 +141,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // commit - is for standard execute, we will commit thee state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
+            bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.Warmup) && !spec.IsEip658Enabled);
 
             TransactionResult result;
             if (!(result = ValidateStatic(tx, header, spec, opts, out long intrinsicGas))) return result;
@@ -204,12 +204,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
+                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : [];
                     tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
+                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
@@ -602,7 +602,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out long spentGas,
             out byte statusCode)
         {
-            bool validate = ShouldValidate(opts);
+            _ = ShouldValidate(opts);
 
             substate = null;
             spentGas = tx.GasLimit;

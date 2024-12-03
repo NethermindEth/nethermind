@@ -5,10 +5,13 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -27,6 +30,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
+using Nethermind.Synchronization.FastBlocks;
 
 namespace Nethermind.Init.Steps;
 
@@ -64,6 +68,14 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.PeerManager);
 
+        // Used only by rpc
+        _api.EthSyncingInfo = new EthSyncingInfo(
+            _api.BlockTree,
+            _api.SyncPointers!,
+            _api.Config<ISyncConfig>(),
+            _api.SyncModeSelector!,
+            _api.SyncProgressResolver!,
+            _api.LogManager);
         _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.LogManager);
 
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
@@ -81,11 +93,9 @@ public class RegisterRpcModules : IStep
 
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         RpcLimits.Init(_jsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-
 
         StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
@@ -215,7 +225,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);

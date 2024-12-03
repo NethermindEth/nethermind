@@ -181,20 +181,12 @@ namespace Nethermind.Evm
         {
             get
             {
-                switch (ExecutionType)
+                return ExecutionType switch
                 {
-                    case ExecutionType.STATICCALL:
-                    case ExecutionType.CALL:
-                    case ExecutionType.CALLCODE:
-                    case ExecutionType.CREATE:
-                    case ExecutionType.CREATE2:
-                    case ExecutionType.TRANSACTION:
-                        return Env.Caller;
-                    case ExecutionType.DELEGATECALL:
-                        return Env.ExecutingAccount;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                    ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+                    ExecutionType.DELEGATECALL => Env.ExecutingAccount,
+                    _ => throw new ArgumentOutOfRangeException(),
+                };
             }
         }
 

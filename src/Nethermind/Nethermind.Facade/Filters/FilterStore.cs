@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Filters
     public class FilterStore : IFilterStore
     {
         private int _currentFilterId = -1;
-        private readonly object _locker = new object();
+        private readonly Lock _locker = new Lock();
 
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
 
@@ -32,13 +32,13 @@ namespace Nethermind.Blockchain.Filters
                 return FilterType.BlockFilter;
             }
 
-            switch (filter)
+            return filter switch
             {
-                case LogFilter _: return FilterType.LogFilter;
-                case BlockFilter _: return FilterType.BlockFilter;
-                case PendingTransactionFilter _: return FilterType.PendingTransactionFilter;
-                default: return FilterType.BlockFilter;
-            }
+                LogFilter _ => FilterType.LogFilter,
+                BlockFilter _ => FilterType.BlockFilter,
+                PendingTransactionFilter _ => FilterType.PendingTransactionFilter,
+                _ => FilterType.BlockFilter,
+            };
         }
 
         // Stop gap method to reduce allocations from non-struct enumerator

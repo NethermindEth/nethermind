@@ -37,7 +37,7 @@ public class SnapProviderTests
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -55,7 +55,7 @@ public class SnapProviderTests
     public void AddAccountRange_ResponseHasEmptyListOfAccountsAndOneProof_ReturnsExpiredRootHash()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -85,7 +85,7 @@ public class SnapProviderTests
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 1
             }))
@@ -95,14 +95,14 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) res = ss.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, entries[3].Item1, 1.MB(), default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = res.accounts;
-        accountsAndProofs.Proofs = res.proofs;
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
         progressTracker.IsFinished(out batch).Should().Be(false);
@@ -127,7 +127,7 @@ public class SnapProviderTests
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 2
             }))
@@ -137,14 +137,14 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) res = ss.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, Keccak.MaxValue, 1.MB(), default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = res.accounts;
-        accountsAndProofs.Proofs = res.proofs;
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 

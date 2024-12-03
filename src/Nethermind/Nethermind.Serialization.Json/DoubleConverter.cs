@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Json
                 throw new JsonException();
             }
 
-            if (values.Count == 0) return Array.Empty<double>();
+            if (values.Count == 0) return [];
 
             double[] result = new double[values.Count];
             values.CopyTo(result, 0);
