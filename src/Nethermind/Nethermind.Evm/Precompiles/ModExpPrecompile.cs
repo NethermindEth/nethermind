@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
-                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(300L, (long)result);
+                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(400L, (long)result);
             }
             catch (OverflowException)
             {
