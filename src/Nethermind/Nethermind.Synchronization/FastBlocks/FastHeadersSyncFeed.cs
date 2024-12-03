@@ -71,7 +71,11 @@ namespace Nethermind.Synchronization.FastBlocks
         private ulong _memoryEstimate;
         private long _headersEstimate;
 
-        protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
+        protected virtual BlockHeader? LowestInsertedBlockHeader
+        {
+            get => _blockTree.LowestInsertedHeader;
+            set => _blockTree.LowestInsertedHeader = value;
+        }
 
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
         protected virtual MeasuredProgress HeadersSyncQueueReport => _syncReport.HeadersInQueue;
@@ -487,12 +491,15 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <returns></returns>
         private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
         {
+            // This only check for the last header though, which is fine as headers are so small, the time it take
+            // to download one is more or less the same as the whole batch. So many small batch is slower than
+            // less large batch.
             BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None);
             if (lastHeader is null) return batch;
 
             using ArrayPoolList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(1);
             headers.Add(lastHeader);
-            for (long i = batch.EndNumber -1; i >= batch.StartNumber; i--)
+            for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
             {
                 // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
                 BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
@@ -574,7 +581,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == batch.Response.Count - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (ValidateFirstHeader(header)) break;
+                    if (!ValidateFirstHeader(header)) break;
                 }
                 else
                 {
@@ -619,9 +626,9 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.RequestSize} in {batch}");
             }
 
-            if (lowestInsertedHeader is not null)
+            if (lowestInsertedHeader is not null && lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
             {
-                OnLowestInsertedHeaderInBatch(lowestInsertedHeader);
+                LowestInsertedBlockHeader = lowestInsertedHeader;
             }
 
             added = Math.Max(0, added);
@@ -707,7 +714,7 @@ namespace Nethermind.Synchronization.FastBlocks
                                 "headers - different branch");
                         }
 
-                        return true;
+                        return false;
                     }
 
                     if (header.Number == LowestInsertedBlockHeader?.Number)
@@ -721,7 +728,7 @@ namespace Nethermind.Synchronization.FastBlocks
                                 "headers - different branch");
                         }
 
-                        return true;
+                        return false;
                     }
 
                     if (_dependencies.ContainsKey(header.Number))
@@ -754,18 +761,10 @@ namespace Nethermind.Synchronization.FastBlocks
                     MarkDirty();
                     if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
                     // but we cannot do anything with it yet
-                    return true;
+                    return false;
                 }
 
-                return false;
-            }
-        }
-
-        protected virtual void OnLowestInsertedHeaderInBatch(BlockHeader lowestInsertedHeader)
-        {
-            if (lowestInsertedHeader.Number < (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue))
-            {
-                _blockTree.LowestInsertedHeader = lowestInsertedHeader;
+                return true;
             }
         }
 

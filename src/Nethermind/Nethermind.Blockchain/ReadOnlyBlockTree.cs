@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedHeader
         {
             get => _wrapped.LowestInsertedHeader;
-            set {}
+            set { }
         }
 
         public long? BestPersistedState

@@ -1139,7 +1139,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
-    public void Loads_lowest_inserted_header_correctly(long beginIndex, long insertedBlocks)
+    public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(long beginIndex, long insertedBlocks)
     {
         long? expectedResult = insertedBlocks == 0L ? null : beginIndex - insertedBlocks + 1L;
 
@@ -1161,13 +1161,48 @@ public class BlockTreeTests
             tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
         }
 
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "tree");
+    }
+
+    [Test]
+    public void When_lowestInsertedHeaderWasPersisted_doNot_useBinarySearchToLoadLowestInsertedHeader()
+    {
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = "105",
+        };
+
+        BlockTreeBuilder builder = Build.A
+            .BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        tree.RecalculateTreeLevels();
+
+        for (int i = 1; i < 100; i++)
+        {
+            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithParent(tree.FindHeader(i - 1, BlockTreeLookupOptions.None)!).TestObject);
+        }
+
         BlockTree loadedTree = Build.A.BlockTree()
             .WithDatabaseFrom(builder)
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "tree");
-        Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
+        Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(null));
+        Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(null));
+
+        loadedTree.LowestInsertedHeader = tree.FindHeader(50, BlockTreeLookupOptions.None);
+
+        loadedTree = Build.A.BlockTree()
+            .WithDatabaseFrom(builder)
+            .WithSyncConfig(syncConfig)
+            .TestObject;
+
+        Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(50));
     }
 
     [TestCase(5, 10)]
@@ -1352,7 +1387,6 @@ public class BlockTreeTests
             .TestObject;
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
-        Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(1), "loaded tree - lowest header");
         Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
     }
 
