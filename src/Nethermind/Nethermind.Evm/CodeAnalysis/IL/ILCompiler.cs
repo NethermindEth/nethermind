@@ -21,9 +21,6 @@ using System.Security;
 using static Nethermind.Evm.IL.EmitExtensions;
 using Label = Sigil.Label;
 
-[assembly: AllowPartiallyTrustedCallers]
-[assembly: SecurityTransparent]
-[assembly: SecurityRules(SecurityRuleSet.Level2, SkipVerificationInFullTrust = true)]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
@@ -190,22 +187,29 @@ internal class ILCompiler
         {
             OpcodeInfo op = code[i];
 
-            if (segments.TryGetValue(op.ProgramCounter, out var metadata))
+            // if tracing mode is off, 
+            if (!bakeInTracerCalls)
             {
-                if (!metadata.IsReachable)
+                if (segments.TryGetValue(op.ProgramCounter, out var metadata))
                 {
-                    i = metadata.EndOfSegment;
-                    continue;
-                }
-                if (metadata.WillFail)
-                {
-                    if (bakeInTracerCalls)
+                    // we skip compiling unreachable code
+                    if (!metadata.IsReachable)
                     {
-                        EmitCallToStartInstructionTrace(method, gasAvailable, head, op);
+                        i = metadata.EndOfSegment;
+                        continue;
                     }
-                    method.Branch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
-                    i = metadata.EndOfSegment;
-                    continue;
+
+                    // and we emit failure for failing jumpless segment at start 
+                    if (metadata.WillFail)
+                    {
+                        if (bakeInTracerCalls)
+                        {
+                            EmitCallToStartInstructionTrace(method, gasAvailable, head, op);
+                        }
+                        method.Branch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+                        i = metadata.EndOfSegment;
+                        continue;
+                    }
                 }
             }
 
@@ -223,8 +227,8 @@ internal class ILCompiler
                 EmitCallToStartInstructionTrace(method, gasAvailable, head, op);
             }
 
-            // check if opcode is activated in current spec
-            if(op.Operation.RequiresAvailabilityCheck())
+            // check if opcode is activated in current spec, we skip this check for opcodes that are always enabled
+            if (op.Operation.RequiresAvailabilityCheck())
             {
                 method.LoadArgument(SPEC_INDEX);
                 method.LoadConstant((byte)op.Operation);
@@ -232,7 +236,9 @@ internal class ILCompiler
                 method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
             }
 
-            if (!bakeInTracerCalls) {
+            // if tracing mode is off, we consume the static gas only at the start of segment
+            if (!bakeInTracerCalls)
+            {
                 if (costs.TryGetValue(op.ProgramCounter, out long gasCost) && gasCost > 0)
                 {
                     method.LoadLocal(gasAvailable);
@@ -244,8 +250,10 @@ internal class ILCompiler
                     method.Subtract();
                     method.StoreLocal(gasAvailable);
                 }
-            } else
+            }
+            else
             {
+                // otherwise we update the gas after each instruction
                 method.LoadLocal(gasAvailable);
                 method.LoadConstant(op.Metadata.GasCost);
                 method.Subtract();
@@ -255,30 +263,62 @@ internal class ILCompiler
                 method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
             }
 
-            if (i == code.Length - 1)
+            // if tracing mode is off, we update the pc only at the end of segment and in jumps
+            if (!bakeInTracerCalls)
             {
+                if (i == code.Length - 1)
+                {
+                    method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
+                    method.StoreLocal(programCounter);
+                }
+            }
+            else
+            {
+                // otherwise we update the pc after each instruction
                 method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
                 method.StoreLocal(programCounter);
             }
 
-            if (stacks.TryGetValue(op.ProgramCounter, out (int required, int max, int leftOut) stackMetadata))
+            // if tracing is off, we check the stack requirement of the full jumpless segment at once
+            if (!bakeInTracerCalls)
             {
-                if(stackMetadata.required != 0)
+                if (stacks.TryGetValue(op.ProgramCounter, out (int required, int max, int leftOut) stackMetadata))
                 {
-                    method.LoadLocal(head);
-                    method.LoadConstant(stackMetadata.required);
-                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
-                }
+                    // we check if stack underflow can occur
+                    if (stackMetadata.required != 0)
+                    {
+                        method.LoadLocal(head);
+                        method.LoadConstant(stackMetadata.required);
+                        method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                    }
 
-                if (stackMetadata.max != 0)
-                {
-                    method.LoadLocal(head);
-                    method.LoadConstant(stackMetadata.max);
-                    method.Add();
-                    method.LoadConstant(EvmStack.MaxStackSize);
-                    method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    // we check if stack overflow can occur
+                    if (stackMetadata.max != 0)
+                    {
+                        method.LoadLocal(head);
+                        method.LoadConstant(stackMetadata.max);
+                        method.Add();
+                        method.LoadConstant(EvmStack.MaxStackSize);
+                        method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    }
                 }
+            } else
+            {
+                // otherwise we check the stack requirement of each instruction
+                method.LoadLocal(head);
+                method.LoadConstant(op.Metadata.StackBehaviorPop);
+                method.Subtract();
+                method.StoreLocal(head);
 
+                method.LoadLocal(head);
+                method.LoadConstant(0);
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+
+                method.LoadLocal(head);
+                method.LoadConstant(op.Metadata.StackBehaviorPush);
+                method.Add();
+                method.LoadConstant(EvmStack.MaxStackSize);
+                method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
             }
 
 #if DEBUG
