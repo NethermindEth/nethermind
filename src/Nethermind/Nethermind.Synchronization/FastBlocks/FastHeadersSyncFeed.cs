@@ -626,9 +626,9 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.RequestSize} in {batch}");
             }
 
-            if (lowestInsertedHeader is not null)
+            if (lowestInsertedHeader is not null && lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
             {
-                OnLowestInsertedHeaderInBatch(lowestInsertedHeader);
+                LowestInsertedBlockHeader = lowestInsertedHeader;
             }
 
             added = Math.Max(0, added);
@@ -765,14 +765,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 return true;
-            }
-        }
-
-        protected virtual void OnLowestInsertedHeaderInBatch(BlockHeader lowestInsertedHeader)
-        {
-            if (lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
-            {
-                LowestInsertedBlockHeader = lowestInsertedHeader;
             }
         }
 
