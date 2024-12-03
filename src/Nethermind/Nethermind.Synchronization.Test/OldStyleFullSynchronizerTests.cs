@@ -55,12 +55,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
-            SyncConfig syncConfig = new()
-            {
-                MultiSyncModeSelectorLoopTimerMs = 1,
-                SyncDispatcherEmptyRequestDelayMs = 1,
-                SyncDispatcherAllocateTimeoutMs = 1
-            };
+            SyncConfig syncConfig = new TestSyncConfig();
 
             NodeStorage nodeStorage = new NodeStorage(_stateDb);
             TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
