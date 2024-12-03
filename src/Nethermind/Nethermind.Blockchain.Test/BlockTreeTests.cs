@@ -1184,7 +1184,7 @@ public class BlockTreeTests
 
         for (int i = 1; i < 100; i++)
         {
-            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithParent(tree.FindHeader(i-1, BlockTreeLookupOptions.None)!).TestObject);
+            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithParent(tree.FindHeader(i - 1, BlockTreeLookupOptions.None)!).TestObject);
         }
 
         BlockTree loadedTree = Build.A.BlockTree()

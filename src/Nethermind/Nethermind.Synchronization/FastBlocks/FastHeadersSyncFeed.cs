@@ -499,7 +499,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             using ArrayPoolList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(1);
             headers.Add(lastHeader);
-            for (long i = batch.EndNumber -1; i >= batch.StartNumber; i--)
+            for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
             {
                 // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
                 BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
