@@ -264,7 +264,7 @@ jobs:
           ls
           log_file=$(find . -type f -name "*logs.txt" | head -n 1)
           echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file" .txt)-${{ github.event.inputs.run_id }}
+          artifact_name=$(basename "$log_file" .txt)-${{ github.run_id }}
           zip "${artifact_name}.zip" "$log_file"
           echo "Compressed log file into ${artifact_name}.zip"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
