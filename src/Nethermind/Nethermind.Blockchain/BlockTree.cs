@@ -134,6 +134,9 @@ namespace Nethermind.Blockchain
                 DeleteBlocks(new Hash256(deletePointer));
             }
 
+            // Need to be here because it still need to run even if there are no genesis to store the null entry.
+            LoadLowestInsertedHeader();
+
             ChainLevelInfo? genesisLevel = LoadLevel(0);
             if (genesisLevel is not null)
             {
