@@ -491,6 +491,9 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <returns></returns>
         private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
         {
+            // This only check for the last header though, which is fine as headers are so small, the time it take
+            // to download one is more or less the same as the whole batch. So many small batch is slower than
+            // less large batch.
             BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None);
             if (lastHeader is null) return batch;
 
