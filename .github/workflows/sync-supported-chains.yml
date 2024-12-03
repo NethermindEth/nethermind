@@ -244,9 +244,6 @@ jobs:
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
-          # To be removed - Debug
-          docker exec sedge-execution-client cat /nethermind/data/logs/configs/customNLog.config
-
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
@@ -255,7 +252,7 @@ jobs:
           python scripts/waitForSync.py
 
       - name: Get Nethermind Debug Logs
-        if: always()
+        if: failure()
         id: find-and-upload
         run: |      
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
@@ -271,6 +268,7 @@ jobs:
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
 
       - name: Upload Nethermind Debug logs artifact
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.artifact_name }}
