@@ -244,6 +244,9 @@ jobs:
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
+          # To be removed - Debug
+          docker exec sedge-execution-client cat /nethermind/data/logs/configs/customNLog.config
+
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
