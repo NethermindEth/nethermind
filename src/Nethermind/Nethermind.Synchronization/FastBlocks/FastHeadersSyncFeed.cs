@@ -71,7 +71,11 @@ namespace Nethermind.Synchronization.FastBlocks
         private ulong _memoryEstimate;
         private long _headersEstimate;
 
-        protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
+        protected virtual BlockHeader? LowestInsertedBlockHeader
+        {
+            get => _blockTree.LowestInsertedHeader;
+            set => _blockTree.LowestInsertedHeader = value;
+        }
 
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
         protected virtual MeasuredProgress HeadersSyncQueueReport => _syncReport.HeadersInQueue;
@@ -574,7 +578,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == batch.Response.Count - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (ValidateFirstHeader(header)) break;
+                    if (!ValidateFirstHeader(header)) break;
                 }
                 else
                 {
@@ -707,7 +711,7 @@ namespace Nethermind.Synchronization.FastBlocks
                                 "headers - different branch");
                         }
 
-                        return true;
+                        return false;
                     }
 
                     if (header.Number == LowestInsertedBlockHeader?.Number)
@@ -721,7 +725,7 @@ namespace Nethermind.Synchronization.FastBlocks
                                 "headers - different branch");
                         }
 
-                        return true;
+                        return false;
                     }
 
                     if (_dependencies.ContainsKey(header.Number))
@@ -754,18 +758,18 @@ namespace Nethermind.Synchronization.FastBlocks
                     MarkDirty();
                     if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
                     // but we cannot do anything with it yet
-                    return true;
+                    return false;
                 }
 
-                return false;
+                return true;
             }
         }
 
         protected virtual void OnLowestInsertedHeaderInBatch(BlockHeader lowestInsertedHeader)
         {
-            if (lowestInsertedHeader.Number < (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue))
+            if (lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? long.MaxValue))
             {
-                _blockTree.LowestInsertedHeader = lowestInsertedHeader;
+                LowestInsertedBlockHeader = lowestInsertedHeader;
             }
         }
 
