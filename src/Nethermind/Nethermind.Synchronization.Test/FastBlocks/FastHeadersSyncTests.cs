@@ -408,7 +408,8 @@ public class FastHeadersSyncTests
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
         var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" };
+        var pivotHeader = peerChain.FindHeader(998)!;
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         const int lowestInserted = 999;
@@ -419,7 +420,7 @@ public class FastHeadersSyncTests
         report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
         feed.InitializeFeed();
         using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
         using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
