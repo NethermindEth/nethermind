@@ -526,12 +526,6 @@ namespace Nethermind.Synchronization.SnapSync
             lockInfo.Increment(number);
         }
 
-        public void DecrementStorageRangeLock(ValueHash256 accountPath, bool removeFromContainer)
-        {
-            if (!_storageRangeLocks.TryGetValue(accountPath, out IStorageRangeLock lockInfo)) return;
-            lockInfo.Decrement(accountPath, removeFromContainer);
-        }
-
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
         private class AccountRangePartition
         {
@@ -556,17 +550,10 @@ namespace Nethermind.Synchronization.SnapSync
             void ExecuteSafe(Action action);
         }
 
-        public class StorageRangeLock : IStorageRangeLock
+        public class StorageRangeLock(uint counter, ConcurrentDictionary<ValueHash256, IStorageRangeLock> owner)
+            : IStorageRangeLock
         {
-            private readonly object _lock;
-            private readonly ConcurrentDictionary<ValueHash256, IStorageRangeLock> _owner;
-
-            public StorageRangeLock(uint counter, ConcurrentDictionary<ValueHash256, IStorageRangeLock> owner)
-            {
-                Counter = counter;
-                _owner = owner;
-                _lock = new object();
-            }
+            private readonly object _lock = new();
 
             public IStorageRangeLock Increment(uint value = 1)
             {
@@ -582,7 +569,7 @@ namespace Nethermind.Synchronization.SnapSync
                 lock (_lock)
                 {
                     if (--Counter == 0 && removeFromOwner)
-                        _owner.TryRemove(key, out _);
+                        owner.TryRemove(key, out _);
                 }
             }
 
@@ -594,7 +581,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            public uint Counter { get; private set; }
+            public uint Counter { get; private set; } = counter;
         }
 
         public class StorageRangeLockPassThrough : IStorageRangeLock

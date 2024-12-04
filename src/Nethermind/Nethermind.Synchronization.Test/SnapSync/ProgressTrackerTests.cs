@@ -218,10 +218,82 @@ public class ProgressTrackerTests
         batch1?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
     }
 
+    [Test]
+    public void Will_process_with_storage_range_request_locks()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        var accountPath = TestItem.Tree.AccountAddress0;
+
+        int threadNumber = 4;
+        var tasks = new Task[threadNumber];
+        CounterWrapper testValue = new(0);
+        for (int i = 0; i < threadNumber; i++)
+        {
+            tasks[i] = Task.Run(() => EnqueueRange(progressTracker, testValue, true));
+        }
+
+        Task.WaitAll(tasks);
+
+        var rangeLock = progressTracker.GetLockObjectForPath(accountPath);
+
+        //all should be removed
+        rangeLock.Should().BeOfType<ProgressTracker.StorageRangeLockPassThrough>();
+        testValue.Counter.Should().Be(threadNumber * 20);
+
+        //same test but don't remove lock structs at the end
+        testValue = new(0);
+        for (int i = 0; i < threadNumber; i++)
+        {
+            tasks[i] = Task.Run(() => EnqueueRange(progressTracker, testValue, false));
+        }
+
+        Task.WaitAll(tasks);
+
+        rangeLock = progressTracker.GetLockObjectForPath(accountPath);
+        rangeLock.Should().BeOfType<ProgressTracker.StorageRangeLock>();
+        ((ProgressTracker.StorageRangeLock)rangeLock).Counter.Should().Be(0);
+        testValue.Counter.Should().Be(threadNumber * 20);
+
+
+        void EnqueueRange(ProgressTracker pt, CounterWrapper checkValue, bool shouldRemove)
+        {
+            ProgressTracker.IStorageRangeLock? rangeLock = null;
+            bool canRemove = false;
+            int loopCount = 20;
+
+            //assume AddStorageRange does split
+            pt?.IncrementStorageRangeLock(accountPath, 1);
+
+            for (int i = 0; i < loopCount; i++)
+            {
+                try
+                {
+                    rangeLock = pt?.GetLockObjectForPath(accountPath);
+
+                    rangeLock?.ExecuteSafe(() => checkValue.Counter++);
+
+                    canRemove = shouldRemove && i == loopCount - 1;
+
+                    if (i < loopCount - 1) //no more ranges on last iteration
+                        pt?.IncrementStorageRangeLockIfExists(accountPath, 1);
+                }
+                finally
+                {
+                    rangeLock?.Decrement(accountPath, canRemove);
+                }
+            }
+        }
+
+    }
+
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
         SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
+    private class CounterWrapper(int c)
+    {
+        public int Counter = c;
+    };
 }
