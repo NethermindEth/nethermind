@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -30,17 +29,21 @@ public class P2PBlockValidator : IP2PBlockValidator
         _chainId = chainId.ToBigEndian();
     }
 
-    public ValidityStatus Validate(ExecutionPayloadV3 payload, byte[] payloadData, byte[] signature, P2PTopic topic)
+    public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {
         if (!IsTopicValid(topic) || !IsTimestampValid(payload) || !IsBlockHashValid(payload) ||
             !IsBlobGasUsedValid(payload, topic) || !IsExcessBlobGasValid(payload, topic) ||
-            !IsParentBeaconBlockRootValid(payload, topic) || IsBlockNumberPerHightLimitReached(payload) ||
-            !IsSignatureValid(payloadData, signature))
+            !IsParentBeaconBlockRootValid(payload, topic) || IsBlockNumberPerHightLimitReached(payload))
         {
             return ValidityStatus.Reject;
         }
 
         return ValidityStatus.Valid;
+    }
+
+    public ValidityStatus ValidateSignature(byte[] payloadData, byte[] signature)
+    {
+        return IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
     }
 
     private bool IsTopicValid(P2PTopic topic)

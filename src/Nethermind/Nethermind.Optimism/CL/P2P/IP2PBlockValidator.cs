@@ -8,7 +8,8 @@ namespace Nethermind.Optimism.CL;
 // Validates p2p "blocks" messages
 public interface IP2PBlockValidator
 {
-    ValidityStatus Validate(ExecutionPayloadV3 payload, byte[] payloadData, byte[] signature, P2PTopic topic);
+    ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic);
+    ValidityStatus ValidateSignature(byte[] payloadData, byte[] signature);
 }
 
 public enum ValidityStatus

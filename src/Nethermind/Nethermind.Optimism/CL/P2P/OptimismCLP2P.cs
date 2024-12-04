@@ -28,23 +28,24 @@ public class OptimismCLP2P
     private CancellationTokenSource? _cancellationTokenSource;
     private PubsubRouter? _router;
     private readonly ILogger _logger;
-
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly IPayloadDecoder _payloadDecoder;
     private readonly IP2PBlockValidator _blockValidator;
     private readonly string[] _staticPeerList;
-    private readonly ulong _chainId;
+
+    private readonly string _blocksV2TopicId;
 
     private ITopic? _blocksV2Topic;
 
     public OptimismCLP2P(ulong chainId, string[] staticPeerList, byte[] sequencerPubkey, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
-        _chainId = chainId;
         _logger = logManager.GetClassLogger();
         _staticPeerList = staticPeerList;
         _engineRpcModule = engineRpcModule;
         _payloadDecoder = new PayloadDecoder();
         _blockValidator = new P2PBlockValidator(chainId, sequencerPubkey, timestamper, _logger);
+
+        _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
     }
 
     public void Start()
@@ -66,7 +67,7 @@ public class OptimismCLP2P
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
-        _blocksV2Topic = _router.GetTopic($"/optimism/{_chainId}/2/blocks");
+        _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
         _blocksV2Topic.OnMessage += OnMessage;
 
         _cancellationTokenSource = new();
@@ -89,11 +90,22 @@ public class OptimismCLP2P
     {
         // TODO: handle missed payloads
         int length = Snappy.GetUncompressedLength(msg);
+        if (length < 65)
+        {
+            // TODO: decrease peers rating
+            return;
+        }
         byte[] decompressed = new byte[length];
         Snappy.Decompress(msg, decompressed);
 
         byte[] signature = decompressed[0..65];
         byte[] payloadData = decompressed[65..];
+
+        if (_blockValidator.ValidateSignature(signature, payloadData) != ValidityStatus.Valid)
+        {
+            // TODO: decrease peers rating
+            return;
+        }
 
         ExecutionPayloadV3 payloadDecoded;
         try
@@ -115,11 +127,11 @@ public class OptimismCLP2P
             _logger.Info($"Got block from CL P2P: {payloadDecoded.BlockHash}");
         }
 
-        var validationResult = _blockValidator.Validate(payloadDecoded, payloadData, signature, P2PTopic.BlocksV3);
+        var validationResult = _blockValidator.Validate(payloadDecoded, P2PTopic.BlocksV3);
 
         if (validationResult == ValidityStatus.Reject)
         {
-            // TODO decrease peers rating
+            // TODO: decrease peers rating
             return;
         }
 
