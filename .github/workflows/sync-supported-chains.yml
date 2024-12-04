@@ -125,7 +125,7 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch kch/remove_logs_level_neth --single-branch
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
