@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -52,7 +51,7 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider) ?? throw new ArgumentNullException(nameof(stateProvider));
     private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
     private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
@@ -144,12 +143,12 @@ public partial class BlockProcessor(
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                TimeSpan merkleizationTime = PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = merkleizationTime.TotalMilliseconds;
+                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -233,12 +232,10 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to block processing pipeline
-    private TimeSpan PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
+    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-        long startTime = Stopwatch.GetTimestamp();
         _stateProvider.CommitTree(blockNumber);
-        return Stopwatch.GetElapsedTime(startTime);
     }
 
     // TODO: move to branch processor
