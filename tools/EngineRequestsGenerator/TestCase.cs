@@ -170,8 +170,32 @@ public enum TestCase
     [TestCaseMetadata("Modexp 408 gas, balanced", "Modexp precompile consuming 408 gas, with base and modulo byte size equal 48 and exponent equal 2^35 - 1 (35x 1s in binary)")]
     Modexp408GasBalanced,
 
+    [TestCaseMetadata("Modexp 616 gas, base heavy", "Modexp precompile consuming 616 gas, with base and modulo byte size equal 344 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp616GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 600 gas, exp heavy", "Modexp precompile consuming 600 gas, with base and modulo byte size equal 16 and exponent equal 2^451 - 1 (451x 1s in binary)")]
+    Modexp600GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 600 gas, balanced", "Modexp precompile consuming 600 gas, with base and modulo byte size equal 48 and exponent equal 2^51 - 1 (51x 1s in binary)")]
+    Modexp600GasBalanced,
+
+    [TestCaseMetadata("Modexp 800 gas, base heavy", "Modexp precompile consuming 800 gas, with base and modulo byte size equal 392 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp800GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 800 gas, exp heavy", "Modexp precompile consuming 800 gas, with base and modulo byte size equal 16 and exponent equal 2^601 - 1 (601x 1s in binary)")]
+    Modexp800GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 767 gas, balanced", "Modexp precompile consuming 767 gas, with base and modulo byte size equal 56 and exponent equal 2^48 - 1 (48x 1s in binary)")]
+    Modexp767GasBalanced,
+
     [TestCaseMetadata("Modexp 852 gas, exp heavy", "Modexp precompile consuming 852 gas, with base and modulo byte size equal 16 and exponent equal 2^640 - 1 (640x 1s in binary)")]
     Modexp852GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 867 gas, base heavy", "Modexp precompile consuming 867 gas, with base and modulo byte size equal 408 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp867GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 996 gas, balanced", "Modexp precompile consuming 996 gas, with base and modulo byte size equal 56 and exponent equal 2^63 - 1 (63x 1s in binary)")]
+    Modexp996GasBalanced,
 
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
