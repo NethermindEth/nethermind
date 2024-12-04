@@ -8,6 +8,10 @@ namespace Nethermind.Optimism.CL;
 
 public interface ICLConfig : IConfig
 {
+    [ConfigItem(Description = "Use enshrined op cl.", DefaultValue = "false")]
+    bool Enabled { get; set; }
+    [ConfigItem(Description = "URL to L1 beacon node", DefaultValue = "null")]
     string? L1BeaconApiEndpoint { get; set; }
+    [ConfigItem(Description = "URL to L1 execution node.", DefaultValue = "null")]
     string? L1EthApiEndpoint { get; set; }
 }

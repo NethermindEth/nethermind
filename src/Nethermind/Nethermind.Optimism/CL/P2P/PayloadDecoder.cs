@@ -61,9 +61,9 @@ public class PayloadDecoder : IPayloadDecoder
         payload.ExcessBlobGas = BitConverter.ToUInt64(data[offset..(offset + 8)]);
         offset += 8;
 
-        if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset >= transactionsOffset)
+        if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset > transactionsOffset || withdrawalsOffset != data.Length)
         {
-            throw new ArgumentException("Invalid offsets");
+            throw new ArgumentException($"Invalid offsets. Data length: {data.Length}, extraData: {extraDataOffset}, transactions: {transactionsOffset}, withdrawals: {withdrawalsOffset}");
         }
 
         payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset];

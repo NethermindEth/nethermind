@@ -50,7 +50,7 @@ public class OptimismCLP2P
 
     public void Start()
     {
-        _logger.Error("Starting p2p");
+        if (_logger.IsInfo) _logger.Info("Starting Optimism CL p2p");
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddLibp2p(builder => builder)
@@ -70,6 +70,7 @@ public class OptimismCLP2P
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
         _blocksV2Topic.OnMessage += OnMessage;
 
+
         _cancellationTokenSource = new();
         _ = _router.RunAsync(peer, new Settings
         {
@@ -80,7 +81,14 @@ public class OptimismCLP2P
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
         foreach (string peerAddress in _staticPeerList)
         {
-            peerStore.Discover([peerAddress]);
+            try
+            {
+                peerStore.Discover([peerAddress]);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Unable to discover peer({peerAddress}). Error: {e.Message}");
+            }
         }
 
         if (_logger.IsInfo) _logger.Info($"Started P2P: {peer.Address}");
@@ -90,6 +98,7 @@ public class OptimismCLP2P
     {
         // TODO: handle missed payloads
         int length = Snappy.GetUncompressedLength(msg);
+        _logger.Info($"Received length: {length}");
         if (length < 65)
         {
             // TODO: decrease peers rating
@@ -114,9 +123,9 @@ public class OptimismCLP2P
         }
         catch (ArgumentException e)
         {
-            if (_logger.IsTrace)
+            if (_logger.IsWarn)
             {
-                _logger.Trace($"Unable to decode payload from p2p. {e.Message}");
+                _logger.Warn($"Unable to decode payload from p2p. {e.Message}");
             }
             // TODO: decrease peers rating
             return;

@@ -7,6 +7,7 @@ namespace Nethermind.Optimism.CL;
 
 public class CLConfig : ICLConfig
 {
+    public bool Enabled { get; set; } = false;
     public string? L1BeaconApiEndpoint { get; set; }
     public string? L1EthApiEndpoint { get; set; }
 }
