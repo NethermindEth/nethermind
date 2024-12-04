@@ -197,6 +197,9 @@ public enum TestCase
     [TestCaseMetadata("Modexp 996 gas, balanced", "Modexp precompile consuming 996 gas, with base and modulo byte size equal 56 and exponent equal 2^63 - 1 (63x 1s in binary)")]
     Modexp996GasBalanced,
 
+    [TestCaseMetadata("Modexp 1045 gas, base heavy", "Modexp precompile consuming 1045 gas, with base and modulo byte size equal 448 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp1045GasBaseHeavy,
+
     [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
     EcAddInfinities,
 
