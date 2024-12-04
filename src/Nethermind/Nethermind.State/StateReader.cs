@@ -40,8 +40,10 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot) => _factory.HasRoot(stateRoot);
 
-        public IScopedStateReader ForStateRoot(Hash256? stateRoot = null) =>
-            new ScopedStateReader(_factory.GetReadOnly(stateRoot));
+        public IScopedStateReader ForStateRoot(Hash256? stateRoot = null)
+        {
+            return new ScopedStateReader(_factory.GetReadOnly(stateRoot));
+        }
 
         public byte[]? GetCode(Hash256 stateRoot, Address address) =>
             TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();

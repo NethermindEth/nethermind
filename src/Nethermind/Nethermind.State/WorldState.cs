@@ -32,16 +32,13 @@ namespace Nethermind.State
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly IStateFactory _factory;
         private readonly bool _prefetchMerkle;
-        private IState _state;
+        private IState? _state;
         private PreBlockCaches? PreBlockCaches { get; }
 
         public Hash256 StateRoot
         {
             get => _state.StateRoot;
-            set
-            {
-                ResetState(value);
-            }
+            set => ResetStateTo(value);
         }
 
         public WorldState(IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager)
@@ -141,7 +138,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
-            ResetState(stateRoot);
+            ResetStateTo(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
@@ -193,7 +190,7 @@ namespace Nethermind.State
         public void CommitTree(long blockNumber)
         {
             _state.Commit(blockNumber);
-            ResetState(_state.StateRoot);
+            ResetStateTo(_state.StateRoot);
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
@@ -282,14 +279,27 @@ namespace Nethermind.State
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
 
-        private void ResetState(Hash256 stateRoot)
+        private void ResetStateTo(Hash256 stateRoot)
         {
-            Interlocked.Exchange(ref _state, _factory.Get(stateRoot, _prefetchMerkle))?.Dispose();
+            if (_state == null)
+            {
+                _state = _factory.BuildFor(stateRoot, _prefetchMerkle);
+                return;
+            }
+
+            if (_state.StateRoot == stateRoot)
+            {
+                return;
+            }
+
+            _state.Dispose();
+            _state = _factory.BuildFor(stateRoot, _prefetchMerkle);
         }
 
         private void ResetStateToNull()
         {
-            Interlocked.Exchange(ref _state, null)?.Dispose();
+            _state?.Dispose();
+            _state = null;
         }
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();

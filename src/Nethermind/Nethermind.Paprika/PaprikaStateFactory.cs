@@ -28,8 +28,7 @@ public class PaprikaStateFactory : IStateFactory
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
     private readonly IReadOnlyWorldStateAccessor _accessor;
-    private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
-    private uint _lastFinalized;
+    private readonly Queue<(PaprikaKeccak keccak, long blockNumber)> _poorManFinalizationQueue = new();
 
     public PaprikaStateFactory()
     {
@@ -74,15 +73,17 @@ public class PaprikaStateFactory : IStateFactory
     /// </summary>
     private bool Prefetch { get; }
 
-    public IState Get(Hash256 stateRoot, bool prefetchMerkle)
+    public IState BuildFor(Hash256 stateRoot, bool prefetchMerkle)
     {
         return new State(_blockchain.StartNew(Convert(stateRoot)), this, prefetchMerkle);
     }
 
-    public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
-        new ReadOnlyState(stateRoot != null
+    public IReadOnlyState GetReadOnly(Hash256? stateRoot)
+    {
+        return new ReadOnlyState(stateRoot != null
             ? _blockchain.StartReadOnly(Convert(stateRoot))
-            : _blockchain.StartReadOnlyLatestFromDb());
+            : _blockchain.StartReadOnlyLatestFinalized());
+    }
 
     public bool HasRoot(Hash256 stateRoot)
     {
@@ -225,15 +226,30 @@ public class PaprikaStateFactory : IStateFactory
     {
         private readonly IWorldState _wrapped;
         private readonly PaprikaStateFactory _factory;
-        private readonly IPreCommitPrefetcher? _prefetch;
+        private readonly bool _prefetchMerkle;
         private readonly HashSet<int> _prefetched;
+        private IPreCommitPrefetcher? _prefetch;
 
         public State(IWorldState wrapped, PaprikaStateFactory factory, bool prefetchMerkle)
         {
             _wrapped = wrapped;
             _factory = factory;
-            _prefetch = prefetchMerkle && factory.Prefetch ? _wrapped.OpenPrefetcher() : null;
+            _prefetchMerkle = prefetchMerkle && factory.Prefetch;
             _prefetched = new HashSet<int>();
+
+            EnsurePrefetcher();
+        }
+
+        private void EnsurePrefetcher()
+        {
+            if (_prefetchMerkle)
+            {
+                _prefetched.Clear();
+                _prefetch = _wrapped.OpenPrefetcher();
+                return;
+            }
+
+            _prefetch = null;
         }
 
         public void Set(Address address, Account? account, bool isNewHint = false)
@@ -299,8 +315,9 @@ public class PaprikaStateFactory : IStateFactory
 
         public void Commit(long blockNumber)
         {
-            _wrapped.Commit((uint)blockNumber);
-            _factory.Committed(_wrapped);
+            var keccak = _wrapped.Commit((uint)blockNumber);
+            EnsurePrefetcher();
+            _factory.Committed((keccak, blockNumber));
         }
 
         public void Reset() => _wrapped.Reset();
@@ -310,27 +327,22 @@ public class PaprikaStateFactory : IStateFactory
         public void Dispose() => _wrapped.Dispose();
     }
 
-    private void Committed(IWorldState block)
+    private void Committed((PaprikaKeccak keccak, long blockNumber) block)
     {
         const int poorManFinality = 16;
 
         lock (_poorManFinalizationQueue)
         {
-            // Find all the ancestors that are after last finalized.
-            (uint blockNumber, PaprikaKeccak hash)[] beyondFinalized =
-                block.Stats.Ancestors.Where(ancestor => ancestor.blockNumber > _lastFinalized).ToArray();
+            _poorManFinalizationQueue.Enqueue(block);
 
-            if (beyondFinalized.Length < poorManFinality)
+            if (_poorManFinalizationQueue.Count < poorManFinality)
             {
                 // There number of ancestors is not as big as needed.
                 return;
             }
 
-            // If there's more than poorManFinality, finalize the oldest and memoize its number
-            (uint blockNumber, PaprikaKeccak hash) oldest = beyondFinalized.Min(blockNo => blockNo);
-
-            _lastFinalized = oldest.blockNumber;
-            _blockchain.Finalize(oldest.hash);
+            (PaprikaKeccak keccak, _) = _poorManFinalizationQueue.Dequeue();
+            _blockchain.Finalize(keccak);
         }
     }
 }
