@@ -51,6 +51,10 @@ _If yes, link the PR to the docs update or the issue with the details labeled `d
 
 _If yes, fill in the details here. Remove if not applicable._
 
+#### Meets [contribution](../CONTRIBUTING.md) and [code of conduct](../CODE_OF_CONDUCT.md) guidelines
+- [ ] Yes
+- [ ] No
+
 ## Remarks
 
 _Optional. Remove if not applicable._
