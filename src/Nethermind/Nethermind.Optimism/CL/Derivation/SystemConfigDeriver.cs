@@ -102,20 +102,24 @@ public class SystemConfigDeriver(
         if (log.Topics[1] != SystemConfigUpdate.EventVersion0) throw new ArgumentException($"Unrecognized {nameof(SystemConfig)} update event version: {log.Topics[1]}");
 
         var updateType = log.Topics[2];
+        int offset = 0;
+
+        // TODO: Remove
         ReadOnlySpan<byte> data = log.Data;
 
         if (updateType == SystemConfigUpdate.Batcher)
         {
-            // TODO: Use existing `AbiType` interface
-            // var pointer = AbiType.UInt64.Decode(log.Data, 0, packed: false);
-
-            var pointer = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 pointer;
+            (pointer, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (pointer != 32) throw new FormatException("Invalid pointer field");
 
-            var length = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 length;
+            (length, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (length != 32) throw new FormatException("Invalid length field");
 
-            var address = SolidityAbiDecoder.ReadAddress(data.TakeAndMove(32));
+            Address address;
+            (address, offset) = ((Address, int))AbiType.Address.Decode(log.Data, offset, packed: false);
+
             systemConfig.BatcherAddress = address;
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
@@ -180,7 +184,7 @@ public class SystemConfigDeriver(
             throw new FormatException($"Unknown system config update type: {updateType}");
         }
 
-        if (data.Length != 0)
+        if (offset != log.Data.Length)
         {
             throw new FormatException("Too many bytes");
         }
