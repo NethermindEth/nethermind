@@ -32,12 +32,13 @@ namespace Nethermind.State
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly IStateFactory _factory;
         private readonly bool _prefetchMerkle;
-        private IState _state;
+        private IState? _state;
+        private Hash256 _stateRoot;
         private PreBlockCaches? PreBlockCaches { get; }
 
         public Hash256 StateRoot
         {
-            get => _state.StateRoot;
+            get => _state is null ? _stateRoot : _state.StateRoot;
             set
             {
                 ResetState(value);
@@ -61,6 +62,8 @@ namespace Nethermind.State
             _prefetchMerkle = prefetchMerkle;
             PreBlockCaches = preBlockCaches;
             _stateProvider = new StateProvider(this, factory, codeDb, logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
+            _state = _factory.Get(Keccak.EmptyTreeHash, false);
+            _stateRoot = Keccak.EmptyTreeHash;
             _persistentStorageProvider = new PersistentStorageProvider(this, logManager, PreBlockCaches?.StorageCache,
                 populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
@@ -141,6 +144,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
+        	stateRoot ??= _stateRoot;
             ResetState(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
@@ -193,6 +197,7 @@ namespace Nethermind.State
         public void CommitTree(long blockNumber)
         {
             _state.Commit(blockNumber);
+            _stateRoot = _state.StateRoot;
             ResetState(_state.StateRoot);
         }
 

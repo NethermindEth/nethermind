@@ -151,6 +151,12 @@ public partial class BlockProcessor(
                 {
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
+                
+                if (suggestedBlocks[i].IsGenesis)
+                {
+                    //TODO - Paprika - reset state to null to free all dependencies and enable page reuse during sync
+                    _stateProvider.FullReset();
+                }
 
                 // CommitBranch in parts if we have long running branch
                 bool isFirstInBatch = i == 0;
@@ -220,9 +226,12 @@ public partial class BlockProcessor(
 
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
-
             _stateProvider.ResetTo(branchStateRoot);
         }
+
+    	//TODO - always reset - ensures paprika read only transactions are disposed
+    	//_logger.Info($"State reset to {branchStateRoot}");
+    	_stateProvider.ResetTo(branchStateRoot);
     }
 
     // TODO: move to branch processor
