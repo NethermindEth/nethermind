@@ -281,6 +281,12 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         Count = newLength;
     }
 
+    public ref T GetRef(int index)
+    {
+        GuardIndex(index);
+        return ref _array[index];
+    }
+
     public T this[int index]
     {
         get
