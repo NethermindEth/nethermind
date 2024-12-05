@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **Energy Web** · **Linea**
+**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **Linea** · **Energy Web**
 
 ## Download and run
 
