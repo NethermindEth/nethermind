@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero, SpecProvider.GetSpec(parentHeader));
+        public Address[] GetValidators(BlockHeader? parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero, parentHeader is null ? SpecProvider.GenesisSpec : SpecProvider.GetSpec(parentHeader));
 
         internal const string InitiateChange = nameof(InitiateChange);
 
