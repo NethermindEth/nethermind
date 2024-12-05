@@ -81,7 +81,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Warn($"Error pre-warming {suggestedBlock.Number}. {ex}");
+            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
         }
         finally
         {
@@ -122,7 +122,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal", ex);
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming withdrawal", ex);
         }
     }
 
@@ -179,7 +179,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 }
                 catch (Exception ex)
                 {
-                    if (state.PreWarmer._logger.IsDebug) state.PreWarmer._logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
+                    if (state.PreWarmer._logger.IsDebug) state.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
                 }
                 finally
                 {
@@ -196,7 +196,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal", ex);
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming withdrawal", ex);
         }
     }
 
@@ -234,7 +234,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             }
             catch (Exception ex)
             {
-                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"Error pre-warming addresses", ex);
+                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming addresses", ex);
             }
             finally
             {
