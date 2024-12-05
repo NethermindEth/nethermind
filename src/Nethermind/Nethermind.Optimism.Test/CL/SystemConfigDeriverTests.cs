@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL;
+using Nethermind.Optimism.CL.Derivation;
 using NSubstitute;
 using NUnit.Framework;
 
