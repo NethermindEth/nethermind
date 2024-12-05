@@ -87,7 +87,7 @@ public class SystemConfigDeriver(
             {
                 if (log.Address == rollupConfig.L1SystemConfigAddress && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
                 {
-                    UpdateSystemConfigFromLogEvent(ref config, l1Block, log);
+                    config = UpdateSystemConfigFromLogEvent(config, l1Block, log);
                 }
             }
         }
@@ -95,7 +95,7 @@ public class SystemConfigDeriver(
         return config;
     }
 
-    private void UpdateSystemConfigFromLogEvent(ref SystemConfig systemConfig, BlockHeader header, LogEntry log)
+    private SystemConfig UpdateSystemConfigFromLogEvent(SystemConfig systemConfig, BlockHeader header, LogEntry log)
     {
         if (log.Topics.Length != 3) throw new ArgumentException($"Expected 3 event topics (event identity, indexed version, indexed updateType), got {log.Topics.Length}");
         if (log.Topics[0] != SystemConfigUpdate.EventABIHash) throw new ArgumentException($"Invalid {nameof(SystemConfig)} update event: {log.Topics[0]}, expected {SystemConfigUpdate.EventABIHash}");
@@ -120,7 +120,10 @@ public class SystemConfigDeriver(
             Address address;
             (address, offset) = ((Address, int))AbiType.Address.Decode(log.Data, offset, packed: false);
 
-            systemConfig.BatcherAddress = address;
+            systemConfig = systemConfig with
+            {
+                BatcherAddress = address
+            };
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
@@ -138,18 +141,24 @@ public class SystemConfigDeriver(
                 if (!ValidEcotoneL1SystemConfigScalar(scalar))
                 {
                     // ignore invalid scalars, retain the old system-config scalar
-                    return;
+                    return systemConfig;
                 }
 
-                // retain the scalar data in encoded form
-                systemConfig.Scalar = scalar;
-                // zero out the overhead, it will not affect the state-transition after Ecotone
-                systemConfig.Overhead = new byte[32];
+                systemConfig = systemConfig with
+                {
+                    // retain the scalar data in encoded form
+                    Scalar = scalar,
+                    // zero out the overhead, it will not affect the state-transition after Ecotone
+                    Overhead = new byte[32]
+                };
             }
             else
             {
-                systemConfig.Overhead = overhead;
-                systemConfig.Scalar = scalar;
+                systemConfig = systemConfig with
+                {
+                    Overhead = overhead,
+                    Scalar = scalar,
+                };
             }
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
@@ -161,7 +170,10 @@ public class SystemConfigDeriver(
             if (length != 32) throw new FormatException("Invalid length field");
 
             var gasLimit = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
-            systemConfig.GasLimit = gasLimit;
+            systemConfig = systemConfig with
+            {
+                GasLimit = gasLimit
+            };
         }
         else if (updateType == SystemConfigUpdate.EIP1559Params)
         {
@@ -172,22 +184,27 @@ public class SystemConfigDeriver(
             if (length != 32) throw new FormatException("Invalid length field");
 
             var eip1559Params = data.TakeAndMove(32).ToArray();
-            systemConfig.EIP1559Params = eip1559Params;
+            systemConfig = systemConfig with
+            {
+                EIP1559Params = eip1559Params
+            };
         }
         else if (updateType == SystemConfigUpdate.UnsafeBlockSigner)
         {
             // Ignored in derivation. This configurable applies to runtime configuration outside of the derivation.
-            return;
+            return systemConfig;
         }
         else
         {
             throw new FormatException($"Unknown system config update type: {updateType}");
         }
 
-        if (offset != log.Data.Length)
+        if (offset != log.Data.Length && data.Length != 0)
         {
             throw new FormatException("Too many bytes");
         }
+
+        return systemConfig;
     }
 
     private static bool ValidEcotoneL1SystemConfigScalar(ReadOnlySpan<byte> scalar)
