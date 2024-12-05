@@ -17,15 +17,15 @@ public class P2PBlockValidator : IP2PBlockValidator
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
     private readonly ConcurrentDictionary<long, long> _numberOfBlocksSeen = new();
-    private readonly byte[] _sequencerPubkey;
+    private readonly Address _sequencerP2PAddress;
     private readonly byte[] _chainId;
 
 
-    public P2PBlockValidator(UInt256 chainId, byte[] sequencerPubkey, ITimestamper timestamper, ILogger logger)
+    public P2PBlockValidator(UInt256 chainId, Address sequencerP2PAddress, ITimestamper timestamper, ILogger logger)
     {
         _logger = logger;
         _timestamper = timestamper;
-        _sequencerPubkey = sequencerPubkey;
+        _sequencerP2PAddress = sequencerP2PAddress;
         _chainId = chainId.ToBigEndian();
     }
 
@@ -139,6 +139,7 @@ public class P2PBlockValidator : IP2PBlockValidator
 
     private bool IsSignatureValid(byte[] payloadData, byte[] signature)
     {
+        if (signature[64] > 3) return false;
         // domain(all zeros) + chain id + payload hash
         byte[] SequencerSignedData = new byte[32 + 32 + 32];
 
@@ -146,16 +147,16 @@ public class P2PBlockValidator : IP2PBlockValidator
         Array.Copy(KeccakHash.ComputeHashBytes(payloadData), 0, SequencerSignedData, 64, 32);
         byte[] signedHash = KeccakHash.ComputeHashBytes(SequencerSignedData);
 
-        // Span<byte> publicKey = stackalloc byte[65];
-        // bool success = SpanSecP256k1.RecoverKeyFromCompact(
-        //     publicKey,
-        //     signedHash,
-        //     signature[..64],
-        //     signature[64],
-        //     false);
+        Span<byte> publicKey = stackalloc byte[65];
+        bool success = SpanSecP256k1.RecoverKeyFromCompact(
+            publicKey,
+            signedHash,
+            signature[..64],
+            signature[64],
+            false);
 
-        // _logger.Error($"SIGNATURE: {BitConverter.ToString(publicKey.ToArray()).Replace("-", "").ToLower()}");
+        Address? address = success ? PublicKey.ComputeAddress(publicKey.Slice(1, 64)) : null;
 
-        return true;// && publicKey.SequenceEqual(_sequencerPubkey);
+        return address == _sequencerP2PAddress;
     }
 }

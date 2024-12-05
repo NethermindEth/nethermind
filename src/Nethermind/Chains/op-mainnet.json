@@ -18,7 +18,7 @@
       }
     },
     "OptimismCL": {
-      "sequencerPubkey": "",
+      "sequencerP2PAddress": "0xAAAA45d9549EDA09E70937013520214382Ffc4A2",
       "nodes": ["/ip4/23.92.177.87/tcp/20254/p2p/16Uiu2HAm4pKiPJoM8ub3jH9chumSpEfX5pCd8sm9njkzaH7mFUN3", "/ip4/144.76.158.143/tcp/30311/p2p/16Uiu2HAmEHh2HSzK3Ff9BYpzXch68guMytNyjKvogFLanaKCcUES", "/ip4/51.91.72.147/tcp/9003/p2p/16Uiu2HAmGXwim6g3kQd3tehvWtqab7JcvT4bWpkCAnhzY56vZubc", "/ip4/45.42.140.30/tcp/21727/p2p/16Uiu2HAm4KH5k1Qkq2gEk74WhWvfunLJLSE7ptVaX5nGy7mdVR7g", "/ip4/35.173.48.199/tcp/9222/p2p/16Uiu2HAmHKzkXepNhPBmUrVNShk26WBvaZB5edjCNCpV5sza8Sgd", "/ip4/5.39.71.166/tcp/9003/p2p/16Uiu2HAkw4vemhwxVdNa5VaudjBRnA4XRKUDZmrxynVHFgMrG84c", "/ip4/3.239.211.184/tcp/9222/p2p/16Uiu2HAkxFNPGjdqZXXTdUr9xHKUJyUZbXqZC1EgDqStG2RxxzZ8", "/ip4/34.71.206.92/tcp/9003/p2p/16Uiu2HAmNRGrco5LGvaGT8Q85eqCxwWeWGsbgw9cL6HFsTbyci7m", "/ip4/15.204.213.68/tcp/9003/p2p/16Uiu2HAmAAP78k6MEFKbZjFvwC2Syr86ePVKJGRa9eXeCqrnXiAq", "/ip4/116.202.215.20/tcp/9222/p2p/16Uiu2HAm6h61WPbW7tySjVqJsF1ArvQ5G2HWSGicNTh31TBdHcVB", "/ip4/142.132.209.114/tcp/21367/p2p/16Uiu2HAmA6ECeJPQGUrcEhF4XFvKkLJvpr2nHbkTL4hZ2777K3d3", "/ip4/85.17.108.76/tcp/9222/p2p/16Uiu2HAm9bjq6bjVfQtM9SwGV7W3tC5NUaLJPsSBRn4SoqzCXhLq", "/ip4/18.208.138.113/tcp/9222/p2p/16Uiu2HAmUcc9SxrGewq68TG4EoYB7noYqQrVr1yzinCVHqg4WRGF"]
     }
   },

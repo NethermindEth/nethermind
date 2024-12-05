@@ -22,11 +22,11 @@ using Snappier;
 
 namespace Nethermind.Optimism;
 
-public class OptimismCLP2P
+public class OptimismCLP2P : IDisposable
 {
     private ServiceProvider? _serviceProvider;
-    private CancellationTokenSource? _cancellationTokenSource;
     private PubsubRouter? _router;
+    private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
     private readonly ILogger _logger;
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly IPayloadDecoder _payloadDecoder;
@@ -37,13 +37,13 @@ public class OptimismCLP2P
 
     private ITopic? _blocksV2Topic;
 
-    public OptimismCLP2P(ulong chainId, string[] staticPeerList, byte[] sequencerPubkey, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
+    public OptimismCLP2P(ulong chainId, string[] staticPeerList, Address sequencerP2PAddress, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
         _logger = logManager.GetClassLogger();
         _staticPeerList = staticPeerList;
         _engineRpcModule = engineRpcModule;
         _payloadDecoder = new PayloadDecoder();
-        _blockValidator = new P2PBlockValidator(chainId, sequencerPubkey, timestamper, _logger);
+        _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, _logger);
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
     }
@@ -70,8 +70,6 @@ public class OptimismCLP2P
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
         _blocksV2Topic.OnMessage += OnMessage;
 
-
-        _cancellationTokenSource = new();
         _ = _router.RunAsync(peer, new Settings
         {
             DefaultSignaturePolicy = Settings.SignaturePolicy.StrictNoSign,
@@ -96,9 +94,7 @@ public class OptimismCLP2P
 
     async void OnMessage(byte[] msg)
     {
-        // TODO: handle missed payloads
         int length = Snappy.GetUncompressedLength(msg);
-        _logger.Info($"Received length: {length}");
         if (length < 65)
         {
             // TODO: decrease peers rating
@@ -110,7 +106,7 @@ public class OptimismCLP2P
         byte[] signature = decompressed[0..65];
         byte[] payloadData = decompressed[65..];
 
-        if (_blockValidator.ValidateSignature(signature, payloadData) != ValidityStatus.Valid)
+        if (_blockValidator.ValidateSignature(payloadData, signature) != ValidityStatus.Valid)
         {
             // TODO: decrease peers rating
             return;
@@ -188,5 +184,11 @@ public class OptimismCLP2P
         sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
         sha256.AppendData(message.Data.Span);
         return new MessageId(sha256.GetHashAndReset());
+    }
+
+    public void Dispose()
+    {
+        _blocksV2Topic?.Unsubscribe();
+        _cancellationTokenSource.Cancel();
     }
 }

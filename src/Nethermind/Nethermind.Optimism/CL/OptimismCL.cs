@@ -3,13 +3,9 @@
 
 using System;
 using System.Threading;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Init.Steps;
-using Nethermind.JsonRpc.Client;
-using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
@@ -24,23 +20,23 @@ public class OptimismCL
     private readonly EthereumL1Bridge _l1Bridge;
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly CLChainSpecEngineParameters _chainSpecEngineParameters;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-    public OptimismCL(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters, ICLConfig config, IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa,
-        CancellationToken cancellationToken, ITimestamper timestamper, ILogManager logManager,
-        IOptimismEngineRpcModule engineRpcModule)
+    public OptimismCL(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters, ICLConfig config, IJsonSerializer jsonSerializer,
+        IEthereumEcdsa ecdsa, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
-        ArgumentNullException.ThrowIfNull(engineParameters.SequencerPubkey);
+        ArgumentNullException.ThrowIfNull(engineParameters.SequencerP2PAddress);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
 
         _engineRpcModule = engineRpcModule;
         _logger = logManager.GetClassLogger();
         _chainSpecEngineParameters = engineParameters;
 
-        _p2p = new OptimismCLP2P(specProvider.ChainId, engineParameters.Nodes, Convert.FromHexString(_chainSpecEngineParameters.SequencerPubkey), timestamper, logManager, engineRpcModule);
+        _p2p = new OptimismCLP2P(specProvider.ChainId, engineParameters.Nodes, _chainSpecEngineParameters.SequencerP2PAddress, timestamper, logManager, engineRpcModule);
         IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint!), jsonSerializer, ecdsa, _logger,
-            cancellationToken);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, cancellationToken, logManager);
+            _cancellationTokenSource.Token);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, _cancellationTokenSource.Token, logManager);
         _driver = new Driver(_l1Bridge, config, _logger);
     }
 

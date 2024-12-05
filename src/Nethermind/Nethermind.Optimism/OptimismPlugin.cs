@@ -288,10 +288,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
-            // TODO: fix cancellation
             _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa,
-                new CancellationToken(), _api.Timestamper, _api!.LogManager, opEngine);
+                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
             _cl.Start();
         }
 
