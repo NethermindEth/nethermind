@@ -75,7 +75,7 @@ public class SystemConfigDeriver(
     public SystemConfig UpdateSystemConfigFromL1BLock(SystemConfig systemConfig, BlockHeader l1Block)
     {
         var config = systemConfig;
-        var blockHash = l1Block.Hash ?? throw new InvalidOperationException("Block hash is null");
+        var blockHash = l1Block.Hash ?? throw new ArgumentNullException(nameof(l1Block));
         var receipts = receiptFinder.Get(blockHash);
 
         foreach (var receipt in receipts)
