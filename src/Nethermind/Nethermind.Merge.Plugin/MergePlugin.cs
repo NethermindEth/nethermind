@@ -442,7 +442,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.SealValidator!,
                 _syncConfig,
                 _api.BetterPeerStrategy!,
-                new FullStateFinder(_api.BlockTree, _api.StateReader),
+                new FullStateFinder(_api.BlockTree, _api.StateReader, _api.StateFactory!),
                 _api.LogManager);
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
@@ -464,6 +464,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.ChainSpec,
                 _beaconSync,
                 _api.StateReader,
+                _api.StateFactory!,
                 _api.LogManager
             );
             _api.Synchronizer = synchronizer;

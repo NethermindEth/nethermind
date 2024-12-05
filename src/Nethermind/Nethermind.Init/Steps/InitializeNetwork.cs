@@ -35,6 +35,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -126,7 +127,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
-                null!,
+                new NodeStorageFactory(INodeStorage.KeyScheme.Current, _api.LogManager).WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -139,6 +140,7 @@ public class InitializeNetwork : IStep
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _api.StateReader!,
+                _api.StateFactory!,
                 _api.LogManager);
         }
 
@@ -152,7 +154,7 @@ public class InitializeNetwork : IStep
         _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
-            new MemDb(),
+            new MemDb(), // TODO: provide tree nodes here
             _api.DbProvider.CodeDb,
             _api.BlockTree,
             _api.ReceiptStorage!,
