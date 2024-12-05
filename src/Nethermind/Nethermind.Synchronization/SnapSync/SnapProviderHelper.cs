@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
@@ -108,15 +108,13 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight, ProgressTracker.IStorageRangeLock? storageLock) AddStorageRange(
+        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
-            long blockNumber,
             in ValueHash256? startingHash,
             IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256 expectedRootHash,
             in ValueHash256? limitHash,
-            ValueHash256 accountHash,
-            ProgressTracker progressTracker,
+            PathWithAccount account,
             IReadOnlyList<byte[]>? proofs = null
         )
         {
@@ -129,7 +127,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true, null);
+                return (result, true);
             }
 
             for (var index = 0; index < slots.Count; index++)
@@ -141,19 +139,21 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true, null);
+                return (AddRangeResult.DifferentRootHash, true);
             }
 
-            var storageLock = progressTracker.GetLockObjectForPath(accountHash);
-            storageLock.ExecuteSafe(() =>
+            // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
+            // If this is not true, StorageRange request should be extended with a lock object.
+            // That lock object should be shared between all other StorageRange requests for same account.
+            lock(account.Account)
             {
                 StitchBoundaries(sortedBoundaryList, tree.TrieStore);
                 tree.Commit(writeFlags: WriteFlags.DisableWAL);
-            });
+            }
 
-            return (AddRangeResult.OK, moreChildrenToRight, storageLock);
+            return (AddRangeResult.OK, moreChildrenToRight);
         }
 
         [SkipLocalsInit]

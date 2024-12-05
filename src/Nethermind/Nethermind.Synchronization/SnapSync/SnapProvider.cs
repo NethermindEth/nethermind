@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     PathWithAccount account = request.Accounts[i];
-                    result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs, request.LimitHash);
+                    result = AddStorageRange(account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs, request.LimitHash);
 
                     slotCount += responses[i].Count;
                 }
@@ -194,19 +194,17 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null, ValueHash256? hashLimit = null)
+        public AddRangeResult AddStorageRange(PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null, ValueHash256? hashLimit = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
-            bool canRemoveFurtherLock = false;
-            ProgressTracker.IStorageRangeLock? rangeLock = null;
+
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight, rangeLock) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, hashLimit, pathWithAccount.Path, _progressTracker, proofs);
+                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, startingHash, slots, expectedRootHash, hashLimit, pathWithAccount, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
-                    canRemoveFurtherLock = (moreChildrenToRight && slots[^1].Path > hashLimit) || !moreChildrenToRight;
                     if (moreChildrenToRight)
                     {
                         _progressTracker.EnqueueStorageRange(pathWithAccount, startingHash, slots[^1].Path, hashLimit);
@@ -229,7 +227,6 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                rangeLock?.Decrement(pathWithAccount.Path, canRemoveFurtherLock);
                 _trieStorePool.Return(store);
             }
         }
