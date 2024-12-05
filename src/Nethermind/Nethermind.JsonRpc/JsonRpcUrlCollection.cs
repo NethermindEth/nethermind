@@ -137,6 +137,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
     }
     private void LogTable(List<string[]> rows)
     {
+        
         string[] headers = ["Additional Url", "Protocols", "Modules"];
         string redSeparator = "\u001b[31m|\u001b[0m"; 
         var columnWidths = new int[headers.Length];
@@ -155,7 +156,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
 
         var separator = "-" + string.Join("-", columnWidths.Select(width => new string('-', width + 2))) + "-";
 
-
+        _logger.Info("\u001b[31m*****\u001b[0m Additional RPC URLs \u001b[31m*****\u001b[0m");
         _logger.Info(separator);
         _logger.Info(redSeparator + " " + string.Join(" " + redSeparator + " ", headers.Select((h, i) => h.PadRight(columnWidths[i]))) + " " + redSeparator);
         _logger.Info(separator);
