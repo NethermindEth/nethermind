@@ -172,6 +172,61 @@ public class SystemConfigDeriverTests
         actualConfig.Should().Be(expectedConfig);
     }
 
+    [TestCase(1)]
+    [TestCase(8)]
+    [TestCase(10)]
+    [TestCase(12)]
+    [TestCase(20)]
+    [TestCase(23)]
+    public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_InvalidEcotone(int indexOfNonZero)
+    {
+        var scalarData = new byte[Hash256.Size];
+        scalarData[0] = 1;
+        scalarData[indexOfNonZero] = 0xFF;
+        var scalar = new ValueHash256(scalarData).ToUInt256();
+        var overhead = 0xFF;
+
+        var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
+
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+        specHelper.IsEcotone(blockHeader).Returns(true);
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithData(encodedData)
+                        .WithTopics(
+                            SystemConfigUpdate.EventABIHash,
+                            SystemConfigUpdate.EventVersion0,
+                            SystemConfigUpdate.FeeScalars)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            specHelper
+        );
+        var initialConfig = new SystemConfig();
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLock(initialConfig, blockHeader);
+
+        // Invalid scalars should be ignored and we should keep the initial config.
+        actualConfig.Should().Be(initialConfig);
+    }
+
     [Test]
     public void UpdateSystemConfigFromL1BLock_UpdatedUnsafeBlockSigner()
     {
