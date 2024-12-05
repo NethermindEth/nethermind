@@ -21,6 +21,7 @@ public class SystemConfigDeriverTests
 
     private static readonly AbiSignature AddressSignature = new("address", AbiType.Address);
     private static readonly AbiSignature BytesSignature = new("bytes", AbiType.DynamicBytes);
+    private static readonly AbiSignature UInt256Signature = new("oneUint256", AbiType.UInt256);
     private static readonly AbiSignature UInt256TupleSignature = new("twoUint256", AbiType.UInt256, AbiType.UInt256);
 
     [Test]
@@ -216,6 +217,55 @@ public class SystemConfigDeriverTests
 
         // The log data is ignored by consensus and no modifications to the
         // system config occur.
+        actualConfig.Should().Be(expectedConfig);
+    }
+
+
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_UpdatedGasLimit()
+    {
+        UInt256 gasLimit = 0xBB;
+
+        var encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithData(encodedData)
+                        .WithTopics(
+                            SystemConfigUpdate.EventABIHash,
+                            SystemConfigUpdate.EventVersion0,
+                            SystemConfigUpdate.GasLimit)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            specHelper
+        );
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
+
+        var expectedConfig = new SystemConfig()
+        {
+            GasLimit = 0xBB
+        };
+
         actualConfig.Should().Be(expectedConfig);
     }
 }
