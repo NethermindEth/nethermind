@@ -147,7 +147,7 @@ namespace Nethermind.Synchronization.SnapSync
             // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
             // If this is not true, StorageRange request should be extended with a lock object.
             // That lock object should be shared between all other StorageRange requests for same account.
-            lock(account.Account)
+            lock (account.Account)
             {
                 StitchBoundaries(sortedBoundaryList, tree.TrieStore);
                 tree.Commit(writeFlags: WriteFlags.DisableWAL);
