@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                rangeLock?.Decrement(pathWithAccount.Path, canRemoveFurtherLock);
+                rangeLock?.Decrement(canRemoveFurtherLock);
                 _trieStorePool.Return(store);
             }
         }

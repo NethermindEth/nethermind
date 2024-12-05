@@ -517,7 +517,14 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void IncrementStorageRangeLock(ValueHash256 accountPath, uint number = 1)
         {
-            _storageRangeLocks.AddOrUpdate(accountPath, k => new StorageRangeLock(number, _storageRangeLocks), (k, old) => old.Increment(number));
+            _storageRangeLocks.AddOrUpdate(
+                accountPath,
+                k => new StorageRangeLock(k, number, _storageRangeLocks),
+                (k, old) =>
+                {
+                    old.Increment(number);
+                    return old;
+                });
         }
 
         public void IncrementStorageRangeLockIfExists(ValueHash256 accountPath, uint number = 1)
@@ -545,26 +552,25 @@ namespace Nethermind.Synchronization.SnapSync
 
         public interface IStorageRangeLock
         {
-            IStorageRangeLock Increment(uint value = 1);
-            void Decrement(ValueHash256 key, bool removeFromOwner);
+            void Increment(uint value = 1);
+            void Decrement(bool removeFromOwner);
             void ExecuteSafe(Action action);
         }
 
-        public class StorageRangeLock(uint counter, ConcurrentDictionary<ValueHash256, IStorageRangeLock> owner)
+        public class StorageRangeLock(ValueHash256 key, uint counter, ConcurrentDictionary<ValueHash256, IStorageRangeLock> owner)
             : IStorageRangeLock
         {
             private readonly object _lock = new();
 
-            public IStorageRangeLock Increment(uint value = 1)
+            public void Increment(uint value = 1)
             {
                 lock (_lock)
                 {
                     Counter += value;
                 }
-                return this;
             }
 
-            public void Decrement(ValueHash256 key, bool removeFromOwner)
+            public void Decrement(bool removeFromOwner)
             {
                 lock (_lock)
                 {
@@ -586,9 +592,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public class StorageRangeLockPassThrough : IStorageRangeLock
         {
-            public IStorageRangeLock Increment(uint value = 1) => this;
+            public void Increment(uint value = 1) { }
 
-            public void Decrement(ValueHash256 key, bool removeFromOwner) { }
+            public void Decrement(bool removeFromOwner) { }
 
             public void ExecuteSafe(Action action) => action();
         }

@@ -279,7 +279,7 @@ public class ProgressTrackerTests
                 }
                 finally
                 {
-                    rangeLock?.Decrement(accountPath, canRemove);
+                    rangeLock?.Decrement(canRemove);
                 }
             }
         }
