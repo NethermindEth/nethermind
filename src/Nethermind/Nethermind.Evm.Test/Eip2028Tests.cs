@@ -24,8 +24,7 @@ namespace Nethermind.Evm.Test
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
                 var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-                cost.FloorGas.Should().Be(0);
-                cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
+                cost.Should().Be(new(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028), 0);
             }
 
             [Test]
