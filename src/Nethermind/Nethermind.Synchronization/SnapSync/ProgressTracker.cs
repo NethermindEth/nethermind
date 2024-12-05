@@ -59,8 +59,8 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
-        private readonly ConcurrentDictionary<ValueHash256, IStorageRangeLock> _storageRangeLocks = new();
-        private readonly StorageRangeLockPassThrough _emptyStorageLock = new();
+        private const int StorageRangeLockCount = 1024;
+        private readonly object[] _storageRangeLocks = Enumerable.Range(0, 1024).Select(i => new object()).ToArray();
 
         private readonly FastSync.StateSyncPivot _pivot;
 
@@ -360,8 +360,6 @@ namespace Nethermind.Synchronization.SnapSync
                 var halfOfLeft = (limit - lastProcessed) / 2 + lastProcessed;
                 var halfOfLeftHash = new ValueHash256(halfOfLeft);
 
-                IncrementStorageRangeLock(account.Path, 2);
-
                 NextSlotRange.Enqueue(new StorageRange()
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
@@ -383,7 +381,6 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             //default - no split
-            IncrementStorageRangeLockIfExists(account.Path); //if this storage trie was split before, need to continue execution with sync/lock
             var storageRange = new StorageRange()
             {
                 Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
@@ -510,27 +507,13 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
-        public IStorageRangeLock GetLockObjectForPath(ValueHash256 accountPath)
+        public StorageRangeLock Lock(ValueHash256 accountPath)
         {
-            return _storageRangeLocks.GetValueOrDefault(accountPath, _emptyStorageLock);
-        }
+            var at = accountPath.GetHashCode() % StorageRangeLockCount;
+            var @lock = _storageRangeLocks[at];
 
-        public void IncrementStorageRangeLock(ValueHash256 accountPath, uint number = 1)
-        {
-            _storageRangeLocks.AddOrUpdate(
-                accountPath,
-                k => new StorageRangeLock(k, number, _storageRangeLocks),
-                (k, old) =>
-                {
-                    old.Increment(number);
-                    return old;
-                });
-        }
-
-        public void IncrementStorageRangeLockIfExists(ValueHash256 accountPath, uint number = 1)
-        {
-            if (!_storageRangeLocks.TryGetValue(accountPath, out IStorageRangeLock lockInfo)) return;
-            lockInfo.Increment(number);
+            Monitor.Enter(@lock);
+            return new StorageRangeLock(@lock);
         }
 
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
@@ -550,53 +533,9 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public interface IStorageRangeLock
+        public readonly struct StorageRangeLock(object @lock) : IDisposable
         {
-            void Increment(uint value = 1);
-            void Decrement(bool removeFromOwner);
-            void ExecuteSafe(Action action);
-        }
-
-        public class StorageRangeLock(ValueHash256 key, uint counter, ConcurrentDictionary<ValueHash256, IStorageRangeLock> owner)
-            : IStorageRangeLock
-        {
-            private readonly object _lock = new();
-
-            public void Increment(uint value = 1)
-            {
-                lock (_lock)
-                {
-                    Counter += value;
-                }
-            }
-
-            public void Decrement(bool removeFromOwner)
-            {
-                lock (_lock)
-                {
-                    if (--Counter == 0 && removeFromOwner)
-                        owner.TryRemove(key, out _);
-                }
-            }
-
-            public void ExecuteSafe(Action action)
-            {
-                lock (_lock)
-                {
-                    action();
-                }
-            }
-
-            public uint Counter { get; private set; } = counter;
-        }
-
-        public class StorageRangeLockPassThrough : IStorageRangeLock
-        {
-            public void Increment(uint value = 1) { }
-
-            public void Decrement(bool removeFromOwner) { }
-
-            public void ExecuteSafe(Action action) => action();
+            public void Dispose() => Monitor.Exit(@lock);
         }
     }
 }

@@ -147,11 +147,13 @@ public class ProgressTrackerTests
             .TestObject).TestObject;
         TestMemDb memDb = new();
         SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
-        using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(memDb, syncConfig,
+            new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
-        progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
+        progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value,
+            Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
         request.Dispose();
         bool finished = progressTracker.IsFinished(out _);
@@ -161,10 +163,18 @@ public class ProgressTrackerTests
         memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
     }
 
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-    [TestCase("0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000", "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0x67ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-    public void Should_partition_storage_request_if_last_processed_less_than_threshold(string start, string lastProcessed, string? limit, string expectedSplit)
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000",
+        "0x2000000000000000000000000000000000000000000000000000000000000000", null,
+        "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    [TestCase("0x2000000000000000000000000000000000000000000000000000000000000000",
+        "0x4000000000000000000000000000000000000000000000000000000000000000",
+        "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "0x67ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null,
+        "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    public void Should_partition_storage_request_if_last_processed_less_than_threshold(string start,
+        string lastProcessed, string? limit, string expectedSplit)
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
@@ -172,7 +182,8 @@ public class ProgressTrackerTests
         var lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
-        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
+        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash,
+            limitHash);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -194,9 +205,12 @@ public class ProgressTrackerTests
     }
 
 
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0xb100000000000000000000000000000000000000000000000000000000000000", null)]
-    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null)]
-    public void Should_not_partition_storage_request_if_last_processed_more_than_threshold(string start, string lastProcessed, string? limit)
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000",
+        "0xb100000000000000000000000000000000000000000000000000000000000000", null)]
+    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null)]
+    public void Should_not_partition_storage_request_if_last_processed_more_than_threshold(string start,
+        string lastProcessed, string? limit)
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
@@ -204,7 +218,8 @@ public class ProgressTrackerTests
         var lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
-        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
+        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash,
+            limitHash);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -229,69 +244,50 @@ public class ProgressTrackerTests
         CounterWrapper testValue = new(0);
         for (int i = 0; i < threadNumber; i++)
         {
-            tasks[i] = Task.Run(() => EnqueueRange(progressTracker, testValue, true));
+            tasks[i] = Task.Run(() => EnqueueRange(progressTracker, testValue));
         }
 
         Task.WaitAll(tasks);
 
-        var rangeLock = progressTracker.GetLockObjectForPath(accountPath);
+        using ProgressTracker.StorageRangeLock lock1 = progressTracker.Lock(accountPath);
 
         //all should be removed
-        rangeLock.Should().BeOfType<ProgressTracker.StorageRangeLockPassThrough>();
         testValue.Counter.Should().Be(threadNumber * 20);
 
         //same test but don't remove lock structs at the end
         testValue = new(0);
         for (int i = 0; i < threadNumber; i++)
         {
-            tasks[i] = Task.Run(() => EnqueueRange(progressTracker, testValue, false));
+            tasks[i] = Task.Run(() => EnqueueRange(progressTracker, testValue));
         }
 
         Task.WaitAll(tasks);
 
-        rangeLock = progressTracker.GetLockObjectForPath(accountPath);
-        rangeLock.Should().BeOfType<ProgressTracker.StorageRangeLock>();
-        ((ProgressTracker.StorageRangeLock)rangeLock).Counter.Should().Be(0);
+        using var lock2 = progressTracker.Lock(accountPath);
         testValue.Counter.Should().Be(threadNumber * 20);
 
 
-        void EnqueueRange(ProgressTracker pt, CounterWrapper checkValue, bool shouldRemove)
+        void EnqueueRange(ProgressTracker pt, CounterWrapper checkValue)
         {
-            ProgressTracker.IStorageRangeLock? rangeLock = null;
-            bool canRemove = false;
             int loopCount = 20;
-
-            //assume AddStorageRange does split
-            pt?.IncrementStorageRangeLock(accountPath, 1);
 
             for (int i = 0; i < loopCount; i++)
             {
-                try
-                {
-                    rangeLock = pt?.GetLockObjectForPath(accountPath);
-
-                    rangeLock?.ExecuteSafe(() => checkValue.Counter++);
-
-                    canRemove = shouldRemove && i == loopCount - 1;
-
-                    if (i < loopCount - 1) //no more ranges on last iteration
-                        pt?.IncrementStorageRangeLockIfExists(accountPath, 1);
-                }
-                finally
-                {
-                    rangeLock?.Decrement(canRemove);
-                }
+                using ProgressTracker.StorageRangeLock @lock = pt.Lock(accountPath);
+                checkValue.Counter++;
             }
         }
-
     }
 
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
+        BlockTree blockTree = Build.A.BlockTree()
+            .WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
         SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
-        return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance),
+            LimboLogs.Instance);
     }
+
     private class CounterWrapper(int c)
     {
         public int Counter = c;

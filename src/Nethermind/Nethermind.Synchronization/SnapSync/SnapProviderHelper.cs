@@ -17,15 +17,16 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
-        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
-            StateTree tree,
-            long blockNumber,
-            in ValueHash256 expectedRootHash,
-            in ValueHash256 startingHash,
-            in ValueHash256 limitHash,
-            IReadOnlyList<PathWithAccount> accounts,
-            IReadOnlyList<byte[]> proofs = null
-        )
+        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots,
+            List<ValueHash256> codeHashes) AddAccountRange(
+                StateTree tree,
+                long blockNumber,
+                in ValueHash256 expectedRootHash,
+                in ValueHash256 startingHash,
+                in ValueHash256 limitHash,
+                IReadOnlyList<PathWithAccount> accounts,
+                IReadOnlyList<byte[]> proofs = null
+            )
         {
             // TODO: Check the accounts boundaries and sorting
             if (accounts.Count == 0)
@@ -108,7 +109,7 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight, ProgressTracker.IStorageRangeLock? storageLock) AddStorageRange(
+        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
             long blockNumber,
             in ValueHash256? startingHash,
@@ -124,12 +125,13 @@ namespace Nethermind.Synchronization.SnapSync
 
             ValueHash256 lastHash = slots[^1].Path;
 
-            (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, expectedRootHash, proofs);
+            (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
+                FillBoundaryTree(
+                    tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true, null);
+                return (result, true);
             }
 
             for (var index = 0; index < slots.Count; index++)
@@ -143,28 +145,28 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true, null);
+                return (AddRangeResult.DifferentRootHash, true);
             }
 
-            var storageLock = progressTracker.GetLockObjectForPath(accountHash);
-            storageLock.ExecuteSafe(() =>
-            {
-                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-                tree.Commit(writeFlags: WriteFlags.DisableWAL);
-            });
+            // Lock for stiching and commit
+            using ProgressTracker.StorageRangeLock @lock = progressTracker.Lock(accountHash);
 
-            return (AddRangeResult.OK, moreChildrenToRight, storageLock);
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            tree.Commit(writeFlags: WriteFlags.DisableWAL);
+
+            return (AddRangeResult.OK, moreChildrenToRight);
         }
 
         [SkipLocalsInit]
-        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
-            PatriciaTree tree,
-            in ValueHash256? startingHash,
-            in ValueHash256 endHash,
-            in ValueHash256 limitHash,
-            in ValueHash256 expectedRootHash,
-            IReadOnlyList<byte[]>? proofs = null
-        )
+        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight)
+            FillBoundaryTree(
+                PatriciaTree tree,
+                in ValueHash256? startingHash,
+                in ValueHash256 endHash,
+                in ValueHash256 limitHash,
+                in ValueHash256 expectedRootHash,
+                IReadOnlyList<byte[]>? proofs = null
+            )
         {
             if (proofs is null || proofs.Count == 0)
             {
@@ -224,9 +226,15 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsBranch)
                 {
-                    int left = leftBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? leftBoundaryPath[path.Length] : 0;
-                    int right = rightBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? rightBoundaryPath[path.Length] : 15;
-                    int limit = rightLimitPath.CompareToTruncated(path, path.Length) == 0 ? rightLimitPath[path.Length] : 15;
+                    int left = leftBoundaryPath.CompareToTruncated(path, path.Length) == 0
+                        ? leftBoundaryPath[path.Length]
+                        : 0;
+                    int right = rightBoundaryPath.CompareToTruncated(path, path.Length) == 0
+                        ? rightBoundaryPath[path.Length]
+                        : 15;
+                    int limit = rightLimitPath.CompareToTruncated(path, path.Length) == 0
+                        ? rightLimitPath[path.Length]
+                        : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
@@ -242,7 +250,8 @@ namespace Nethermind.Synchronization.SnapSync
                             node.SetChild(ci, null);
                         }
 
-                        if (hasKeccak && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (hasKeccak && (ci == left || ci == right) &&
+                            dict.TryGetValue(childKeccak, out TrieNode child))
                         {
                             TreePath childPath = path.Append(ci);
 
@@ -257,7 +266,8 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 // If its an extension, its path + key must be outside or equal to the boundary.
                                 TreePath wholePath = childPath.Append(child.Key);
-                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) >= 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) <= 0)
+                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) >= 0 ||
+                                    rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) <= 0)
                                 {
                                     node.SetChild(ci, child);
                                     proofNodesToProcess.Push((child, childPath));
@@ -268,7 +278,8 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 // If its a leaf, its path + key must be outside the boundary.
                                 TreePath wholePath = childPath.Append(child.Key);
-                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
+                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 ||
+                                    rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
                                 {
                                     node.SetChild(ci, child);
                                     proofNodesToProcess.Push((child, childPath));
@@ -283,7 +294,8 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IReadOnlyList<byte[]> proofs, IScopedTrieStore store)
+        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IReadOnlyList<byte[]> proofs,
+            IScopedTrieStore store)
         {
             Dictionary<ValueHash256, TrieNode> dict = new();
 
@@ -353,7 +365,8 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IScopedTrieStore store)
+        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex,
+            IScopedTrieStore store)
         {
             TrieNode data = node.GetData(childIndex) as TrieNode;
             if (data is not null)
