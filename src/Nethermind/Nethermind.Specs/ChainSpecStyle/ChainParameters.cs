@@ -97,6 +97,7 @@ public class ChainParameters
     /// </summary>
     public long? Eip1559BaseFeeMinValueTransition { get; set; }
 
+    public long? OntakeTransition { get; set; }
     /// <summary>
     /// Optional, minimal value of EIP1559 base fee
     /// </summary>
@@ -130,6 +131,7 @@ public class ChainParameters
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? Eip7762TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
+    public ulong? OpHoloceneTransitionTimestamp { get; set; }
 
     #region EIP-4844 parameters
     /// <summary>

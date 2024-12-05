@@ -56,6 +56,6 @@ public class ProcessedTransactionsDbCleanerTests
 
         await dbCleaner.CleaningTask;
 
-        blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out returnedTxs).Should().Be(blockOfTxs > finalizedBlock);
+        blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out _).Should().Be(blockOfTxs > finalizedBlock);
     }
 }

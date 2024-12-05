@@ -13,8 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
@@ -37,7 +36,8 @@ public class EthSimulateTestsPrecompilesWithRedirection
             GasPrice = 20.GWei()
         };
 
-        TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(systemTransactionForModifiedVm);
+        ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -143,17 +143,15 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);
         chain.State.StateRoot = chain.BlockFinder.Head!.StateRoot!;
 
-        TransactionForRpc transactionForRpc = new(new Transaction
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(new Transaction
         {
             Data = transactionData,
             To = contractAddress,
             SenderAddress = TestItem.AddressA,
             GasLimit = 3_500_000,
             GasPrice = 20.GWei()
-        })
-        {
-            Nonce = null
-        };
+        });
+        ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
         SimulatePayload<TransactionForRpc> payload = new()
         {

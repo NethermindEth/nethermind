@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -422,7 +421,7 @@ namespace Nethermind.AuRa.Test.Contract
             private async Task AddFile()
             {
                 SemaphoreSlim fileSemaphore = new(0);
-                EventHandler releaseHandler = (sender, args) => fileSemaphore.Release();
+                void releaseHandler(object? sender, EventArgs args) => fileSemaphore.Release();
                 SendersWhitelist.Loaded += releaseHandler;
                 ((ContractDataStoreWithLocalData<TxPriorityContract.Destination>)MinGasPrices.ContractDataStore).Loaded += releaseHandler;
                 ((ContractDataStoreWithLocalData<TxPriorityContract.Destination>)Priorities.ContractDataStore).Loaded += releaseHandler;

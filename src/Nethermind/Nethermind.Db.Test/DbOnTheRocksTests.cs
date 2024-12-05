@@ -19,7 +19,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -61,22 +60,6 @@ namespace Nethermind.Db.Test
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
             Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
-        }
-
-        [Test]
-        public void Throws_whenMaxWriteBufferNumIs0()
-        {
-            IDbConfig config = new DbConfig();
-            DbSettings settings = new("Blocks", DbPath)
-            {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
-                WriteBufferNumber = 0,
-                WriteBufferSize = (ulong)1.KiB()
-            };
-
-            Action act = () => new DbOnTheRocks(DbPath, settings, config, LimboLogs.Instance);
-            act.Should().Throw<InvalidConfigurationException>();
         }
 
         [Test]
@@ -126,7 +109,7 @@ namespace Nethermind.Db.Test
         {
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
-            IWriteBatch writeBatch = db.StartWriteBatch();
+            _ = db.StartWriteBatch();
             db.Dispose();
         }
 
@@ -229,10 +212,6 @@ namespace Nethermind.Db.Test
         {
             return new(dbName, dbPath)
             {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
-                WriteBufferNumber = 4,
-                WriteBufferSize = (ulong)1.KiB()
             };
         }
     }
@@ -381,10 +360,6 @@ namespace Nethermind.Db.Test
         {
             return new(dbName, dbPath)
             {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
-                WriteBufferNumber = 4,
-                WriteBufferSize = (ulong)1.KiB()
             };
         }
 
@@ -404,6 +379,16 @@ namespace Nethermind.Db.Test
             allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
         }
 
+        [Test]
+        public void TestExtractOptions()
+        {
+            string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
+            IDictionary<string, string> parsedOptions = DbOnTheRocks.ExtractOptions(options);
+            parsedOptions["compression"].Should().Be("kSnappyCompression");
+            parsedOptions["block_based_table_factory.metadata_block_size"].Should().Be("4096");
+            parsedOptions["optimize_filters_for_hits"].Should().Be("false");
+            parsedOptions["memtable_whole_key_filtering"].Should().Be("true");
+        }
     }
 
     class CorruptedDbOnTheRocks : DbOnTheRocks

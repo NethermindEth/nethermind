@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Nethermind.Shutter</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -30,6 +31,7 @@
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" />
     <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 
@@ -42,6 +44,7 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
     <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
   </ItemGroup>
 
 </Project>

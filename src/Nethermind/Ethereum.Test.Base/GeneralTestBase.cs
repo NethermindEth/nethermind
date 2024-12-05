@@ -4,14 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -89,7 +86,7 @@ namespace Ethereum.Test.Base
                 codeInfoRepository,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, specProvider);
+            InitializeTestState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -109,7 +106,7 @@ namespace Ethereum.Test.Base
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
-            header.RequestsRoot = test.RequestsRoot;
+            header.RequestsHash = test.RequestsHash;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -134,8 +131,6 @@ namespace Ethereum.Test.Base
                 };
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
-
-            Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
 
             ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
 
@@ -172,9 +167,9 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, WorldState stateProvider, ISpecProvider specProvider)
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
@@ -190,22 +185,6 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
-        }
-
-        private bool IsValidBlock(Block block, ISpecProvider specProvider)
-        {
-            IBlockTree blockTree = Build.A.BlockTree()
-                .WithSpecProvider(specProvider)
-                .WithoutSettingHead
-                .TestObject;
-
-            var difficultyCalculator = new EthashDifficultyCalculator(specProvider);
-            var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default);
-            IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, _logManager);
-            IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
-            IBlockValidator blockValidator = new BlockValidator(_txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-
-            return blockValidator.ValidateOrphanedBlock(block, out _);
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)

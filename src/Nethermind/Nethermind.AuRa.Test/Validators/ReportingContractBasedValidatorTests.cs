@@ -83,11 +83,11 @@ namespace Nethermind.AuRa.Test.Validators
             bool isPosDao = blockNumber >= context.PosdaoTransition;
 
             // resend transactions
-            context.Validator.OnBlockProcessingEnd(block, Array.Empty<TxReceipt>());
+            context.Validator.OnBlockProcessingEnd(block, []);
 
             // not resending on next block!
             Block childBlock = Build.A.Block.WithParent(block).TestObject;
-            context.Validator.OnBlockProcessingEnd(childBlock, Array.Empty<TxReceipt>());
+            context.Validator.OnBlockProcessingEnd(childBlock, []);
 
             context.TxSender.Received(isPosDao ? Math.Min(ReportingContractBasedValidator.MaxQueuedReports, validatorsToReport) : 0)
                 .SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);

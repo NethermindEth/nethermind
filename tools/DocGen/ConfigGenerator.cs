@@ -107,6 +107,7 @@ internal static class ConfigGenerator
                   <Tabs groupId="usage">
                   <TabItem value="cli" label="CLI">
                   ```
+                  --{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}} <value>
                   --{{moduleName}}.{{prop.Name}} <value>
                   ```
                   </TabItem>
@@ -165,7 +166,7 @@ internal static class ConfigGenerator
                 var attr = field.GetCustomAttribute<DescriptionAttribute>();
                 var description = string.IsNullOrEmpty(attr?.Description) ? null : $": {attr.Description}";
 
-                file.WriteLine($"    - `{field.Name}{description}`");
+                file.WriteLine($"    - `{field.Name}`{description}");
             }
 
             file.WriteLine();

@@ -102,6 +102,8 @@ internal class ChainSpecParamsJson
     // we can disable it if needed, but its expected not to cause issues
     public long? Eip3607Transition { get; set; } = 0;
 
+    public long? OntakeTransition { get; set; }
+
     public UInt256? Eip1559BaseFeeInitialValue { get; set; }
 
     public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }
@@ -159,4 +161,5 @@ internal class ChainSpecParamsJson
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? Eip7762TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
+    public ulong? OpHoloceneTransitionTimestamp { get; set; }
 }

@@ -37,7 +37,7 @@ public class CompositeBlockTracerTests
         Transaction tx2 = Build.A.Transaction.TestObject;
         Transaction tx3 = Build.A.Transaction.TestObject;
 
-        block = block.WithReplacedBody(new BlockBody(new[] { tx1, tx2, tx3 }, new BlockHeader[0]));
+        block = block.WithReplacedBody(new BlockBody(new[] { tx1, tx2, tx3 }, []));
 
         GethLikeBlockMemoryTracer gethLikeBlockTracer = new(GethTraceOptions.Default);
         ParityLikeBlockTracer parityLikeBlockTracer = new(ParityTraceTypes.All);

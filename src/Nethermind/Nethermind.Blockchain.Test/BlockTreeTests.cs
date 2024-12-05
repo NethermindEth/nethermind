@@ -1170,46 +1170,37 @@ public class BlockTreeTests
         Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
-    public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
+    [TestCase(5, 10)]
+    [TestCase(10, 10)]
+    [TestCase(12, 0)]
+    public void Does_not_load_bestKnownNumber_before_syncPivot(long syncPivot, long expectedBestKnownNumber)
     {
-        // left old code to prove that it does not matter for the result nowadays
-        // we store and no longer binary search lowest body number
-
-        MemDb blocksDb = new();
-        blocksDb.Set(BlockTree.LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(1L).Bytes);
-
         SyncConfig syncConfig = new()
         {
-            PivotNumber = beginIndex.ToString(),
+            FastSync = true,
+            PivotNumber = $"{syncPivot}"
         };
 
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithBlocksDb(blocksDb)
-            .WithSyncConfig(syncConfig)
-            .WithoutSettingHead;
+        MemDb blockInfosDb = new MemDb();
+        MemDb headersDb = new MemDb();
+        MemDb blockDb = new MemDb();
 
-        BlockTree tree = builder.TestObject;
-
-        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-
-        for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
-        {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
-            tree.Insert(block.Header);
-            tree.Insert(block);
-        }
-
-        BlockTree loadedTree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .WithDatabaseFrom(builder)
-            .WithSyncConfig(syncConfig)
+        _ = Build.A.BlockTree()
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blockInfosDb)
+            .WithBlocksDb(blockDb)
+            .OfChainLength(11)
             .TestObject;
 
-        Assert.That(tree.LowestInsertedBodyNumber, Is.EqualTo(null), "tree");
-        Assert.That(loadedTree.LowestInsertedBodyNumber, Is.EqualTo(1), "loaded tree");
-    }
+        BlockTree tree = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blockInfosDb)
+            .WithBlocksDb(blockDb)
+            .TestObject;
 
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
+    }
 
     private static readonly object[] SourceOfBSearchTestCases =
     {
@@ -1362,7 +1353,6 @@ public class BlockTreeTests
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
         Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(1), "loaded tree - lowest header");
-        Assert.That(tree.LowestInsertedBodyNumber, Is.EqualTo(null), "loaded tree - lowest body");
         Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
     }
 
@@ -1869,7 +1859,7 @@ public class BlockTreeTests
                 number: 0,
                 gasLimit: 25000000,
                 timestamp: 1695902100,
-                extraData: Array.Empty<byte>())
+                extraData: [])
             {
                 Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
                 Bloom = Core.Bloom.Empty
@@ -1884,7 +1874,7 @@ public class BlockTreeTests
                 number: genesis.Header.Number + 1,
                 gasLimit: 25000000,
                 timestamp: genesis.Header.Timestamp + 100,
-                extraData: Array.Empty<byte>())
+                extraData: [])
             {
                 Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
@@ -1900,7 +1890,7 @@ public class BlockTreeTests
                 number: second.Header.Number + 1,
                 gasLimit: 25000000,
                 timestamp: second.Header.Timestamp + 100,
-                extraData: Array.Empty<byte>())
+                extraData: [])
             {
                 Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,

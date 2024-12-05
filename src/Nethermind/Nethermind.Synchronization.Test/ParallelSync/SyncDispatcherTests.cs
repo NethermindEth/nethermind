@@ -35,10 +35,6 @@ public class SyncDispatcherTests
             _peerSemaphore = new SemaphoreSlim(peerCount, peerCount);
         }
 
-        public void Dispose()
-        {
-        }
-
         public async Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
             AllocationContexts contexts,
@@ -117,6 +113,12 @@ public class SyncDispatcherTests
 
         public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = delegate { };
         public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = delegate { };
+
+        public ValueTask DisposeAsync()
+        {
+            _peerSemaphore.Dispose();
+            return ValueTask.CompletedTask;
+        }
     }
 
     private class TestBatch
@@ -253,7 +255,7 @@ public class SyncDispatcherTests
         TestSyncFeed syncFeed = new();
         TestDownloader downloader = new TestDownloader();
         SyncDispatcher<TestBatch> dispatcher = new(
-            0,
+            new TestSyncConfig(),
             syncFeed,
             downloader,
             new TestSyncPeerPool(),
@@ -280,7 +282,10 @@ public class SyncDispatcherTests
 
         TestDownloader downloader = new TestDownloader();
         SyncDispatcher<TestBatch> dispatcher = new(
-            processingThread,
+            new TestSyncConfig()
+            {
+                MaxProcessingThreads = processingThread,
+            },
             syncFeed,
             downloader,
             new TestSyncPeerPool(peerCount),

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,13 +13,13 @@ namespace Nethermind.Network.P2P.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
-            (int totalLength, int innerLength) length = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), force: true);
+            (int totalLength, int innerLength) = GetLength(msg);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
             NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(length.totalLength);
+            stream.StartSequence(totalLength);
             stream.Encode(msg.P2PVersion);
             stream.Encode(msg.ClientId);
-            stream.StartSequence(length.innerLength);
+            stream.StartSequence(innerLength);
             foreach (Capability? capability in msg.Capabilities)
             {
                 string protocolCode = capability.ProtocolCode.ToLowerInvariant();

@@ -52,7 +52,7 @@ public class BlockProcessorTests
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance);
 
@@ -84,7 +84,7 @@ public class BlockProcessorTests
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance);
 

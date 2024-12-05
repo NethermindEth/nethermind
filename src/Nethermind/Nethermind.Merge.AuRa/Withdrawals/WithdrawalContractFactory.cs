@@ -3,11 +3,11 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Contracts;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa.Withdrawals;
 
@@ -17,7 +17,7 @@ public class WithdrawalContractFactory : IWithdrawalContractFactory
     private readonly Address _contractAddress;
     private readonly ISpecProvider _specProvider;
 
-    public WithdrawalContractFactory(AuRaParameters parameters, IAbiEncoder abiEncoder, ISpecProvider specProvider)
+    public WithdrawalContractFactory(AuRaChainSpecEngineParameters parameters, IAbiEncoder abiEncoder, ISpecProvider specProvider)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 

@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using System.IO;
 using Nethermind.Abi;
 using Nethermind.Facade.Find;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Shutter;
 
@@ -127,6 +128,7 @@ public class ShutterTxLoader(
             .ToPooledList(sequencedTransactions.Count);
     }
 
+    [SkipLocalsInit]
     private Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key) decryptionKey)
     {
         try
@@ -209,6 +211,7 @@ public class ShutterTxLoader(
         }
     }
 
+    [SkipLocalsInit]
     private static SequencedTransaction EventToSequencedTransaction(ISequencerContract.TransactionSubmitted e, int index, ulong eon)
     {
         byte[] identityPreimage = new byte[52];

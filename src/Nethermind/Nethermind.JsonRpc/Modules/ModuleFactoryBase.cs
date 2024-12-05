@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Reflection;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -18,12 +15,7 @@ namespace Nethermind.JsonRpc.Modules
                 throw new InvalidOperationException($"Module factory type should be an interface and not {typeof(T).Name}");
             }
 
-            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
-            if (attribute is null)
-            {
-                throw new InvalidOperationException($"RPC module {typeof(T).Name} is missing {nameof(RpcModuleAttribute)}");
-            }
-
+            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>() ?? throw new InvalidOperationException($"RPC module {typeof(T).Name} is missing {nameof(RpcModuleAttribute)}");
             ModuleType = attribute.ModuleType;
         }
 

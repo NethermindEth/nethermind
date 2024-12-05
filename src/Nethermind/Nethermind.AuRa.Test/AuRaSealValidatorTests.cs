@@ -7,10 +7,10 @@ using System.Collections.Generic;
 using System.Net;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -24,7 +24,7 @@ namespace Nethermind.AuRa.Test
     public class AuRaSealValidatorTests
     {
         private AuRaSealValidator _sealValidator;
-        private AuRaParameters _auRaParameters;
+        private AuRaChainSpecEngineParameters _auRaParameters;
         private IAuRaStepCalculator _auRaStepCalculator;
         private ILogManager _logManager;
         private IWallet _wallet;
@@ -38,7 +38,7 @@ namespace Nethermind.AuRa.Test
         [SetUp]
         public void SetUp()
         {
-            _auRaParameters = new AuRaParameters();
+            _auRaParameters = new AuRaChainSpecEngineParameters();
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _logManager = LimboLogs.Instance;
             _wallet = new DevWallet(new WalletConfig(), _logManager);
@@ -78,18 +78,18 @@ namespace Nethermind.AuRa.Test
                 long parentStep = 9;
 
                 BlockHeaderBuilder GetBlock() => Build.A.BlockHeader
-                        .WithAura(10, Array.Empty<byte>())
+                        .WithAura(10, [])
                         .WithBeneficiary(TestItem.AddressA)
                         .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(parentStep, step));
 
                 BlockHeaderBuilder GetParentBlock() => Build.A.BlockHeader
-                    .WithAura(parentStep, Array.Empty<byte>())
+                    .WithAura(parentStep, [])
                     .WithBeneficiary(TestItem.AddressB);
 
                 TestCaseData GetTestCaseData(
                     BlockHeaderBuilder parent,
                     BlockHeaderBuilder block,
-                    Action<AuRaParameters> paramAction = null,
+                    Action<AuRaChainSpecEngineParameters> paramAction = null,
                     Repeat repeat = Repeat.No,
                     bool parentIsHead = true,
                     bool isValidSealer = true) =>
@@ -102,16 +102,16 @@ namespace Nethermind.AuRa.Test
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(step, null))
                     .Returns((false, (object)null)).SetName("Missing AuRaSignature").SetCategory("ValidParams");
 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep, Array.Empty<byte>()))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep, []))
                     .Returns((false, IReportingValidator.MaliciousCause.DuplicateStep)).SetName("Duplicate block.").SetCategory("ValidParams");
 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Array.Empty<byte>()))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, []))
                     .Returns((false, IReportingValidator.MaliciousCause.DuplicateStep)).SetName("Past block.").SetCategory("ValidParams");
 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 7, Array.Empty<byte>()))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 7, []))
                     .Returns((false, IReportingValidator.BenignCause.FutureBlock)).SetName("Future block.").SetCategory("ValidParams");
 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 3, Array.Empty<byte>()))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 3, []))
                     .Returns((false, IReportingValidator.BenignCause.SkippedStep)).SetName("Skipped steps.").SetCategory("ValidParams");
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(AuraDifficultyCalculator.MaxDifficulty))
@@ -123,7 +123,7 @@ namespace Nethermind.AuRa.Test
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(1000), a => a.ValidateScoreTransition = 100)
                     .Returns((true, (object)null)).SetName("Skip difficulty validation due to ValidateScoreTransition.").SetCategory("ValidParams");
 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Array.Empty<byte>()), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, []), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
                     .Returns((true, (object)null)).SetName("Skip step validation due to ValidateStepTransition.").SetCategory("ValidParams");
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.Yes)
@@ -141,7 +141,7 @@ namespace Nethermind.AuRa.Test
         }
 
         [TestCaseSource(nameof(ValidateParamsTests))]
-        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
+        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaChainSpecEngineParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
             _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value, out _).Returns(isValidSealer);
@@ -191,7 +191,7 @@ namespace Nethermind.AuRa.Test
             recoveredAddress ??= _address;
 
             BlockHeader block = Build.A.BlockHeader
-                .WithAura(10, Array.Empty<byte>())
+                .WithAura(10, [])
                 .WithBeneficiary(_address)
                 .WithNumber(blockNumber)
                 .TestObject;

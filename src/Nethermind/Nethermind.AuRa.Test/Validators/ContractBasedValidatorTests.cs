@@ -15,7 +15,6 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -30,7 +29,6 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Evm;
-using Nethermind.Core.Specs;
 using System.Text.Json;
 using Nethermind.Consensus.Processing;
 
@@ -73,7 +71,7 @@ public class ContractBasedValidatorTests
             Addresses = new[] { _contractAddress },
             ValidatorType = AuRaParameters.ValidatorType.Contract
         };
-        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
+        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, []).TestObject, new BlockBody());
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
@@ -168,7 +166,7 @@ public class ContractBasedValidatorTests
     public void loads_initial_validators_from_contract(long blockNumber)
     {
         Address initialValidator = TestItem.AddressA;
-        Block block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, Array.Empty<byte>()).TestObject;
+        Block block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, []).TestObject;
         SetupInitialValidators(block.Header, initialValidator);
         int startBlockNumber = 1;
         ContractBasedValidator validator = new(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, startBlockNumber);
@@ -547,7 +545,7 @@ public class ContractBasedValidatorTests
     [TestCase(1, 7, null)]
     public void nonconsecutive_non_producing_preProcess_loads_pending_validators_from_receipts(int lastLevelFinalized, int initialValidatorsIndex, int? expectedBlockValidators)
     {
-        IEnumerable<Block> GetAllBlocks(BlockTree bt)
+        static IEnumerable<Block> GetAllBlocks(BlockTree bt)
         {
 
             Block? block = bt.FindBlock(bt.Head.Hash, BlockTreeLookupOptions.None);
@@ -643,7 +641,7 @@ public class ContractBasedValidatorTests
                     args.Arg<Transaction>().To,
                     0,
                     SetupAbiAddresses(_initialValidators),
-                    Array.Empty<LogEntry>()));
+                    []));
     }
 
     private byte[] SetupAbiAddresses(Address[] addresses)
@@ -696,7 +694,7 @@ public class ContractBasedValidatorTests
             Address[] validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == block.Number)?.Addresses;
             if (validators is null)
             {
-                return Array.Empty<TxReceipt>();
+                return [];
             }
             else
             {

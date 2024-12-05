@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Consensus;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
@@ -16,6 +15,7 @@ namespace Nethermind.Merge.Plugin.GC;
 public class GCKeeper
 {
     private static ulong _forcedGcCount = 0;
+    private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
     private readonly ILogger _logger;
     private static readonly long _defaultSize = 512.MB();
@@ -125,7 +125,7 @@ public class GCKeeper
     {
         if (_gcScheduleTask.IsCompleted)
         {
-            lock (_gcStrategy)
+            lock (_lock)
             {
                 long timeStamp = Environment.TickCount64;
                 if (TimeSpan.FromMilliseconds(timeStamp - _lastGcTimeMs).TotalSeconds <= 3)
@@ -150,8 +150,8 @@ public class GCKeeper
         {
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
-            // Lets say we process block in 2s, then delay 500ms, then invoke GC
-            await Task.Delay(500);
+            // Lets say we process block in 2s, then delay 125ms, then invoke GC
+            await Task.Delay(125);
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {

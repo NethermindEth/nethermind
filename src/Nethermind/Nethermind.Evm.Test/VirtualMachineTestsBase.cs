@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -329,7 +328,7 @@ public class VirtualMachineTestsBase
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
         return Build.A.Block.WithNumber(activation.BlockNumber)
             .WithTimestamp(activation.Timestamp ?? 0)
-            .WithTransactions(tx is null ? Array.Empty<Transaction>() : new[] { tx })
+            .WithTransactions(tx is null ? [] : new[] { tx })
             .WithGasLimit(blockGasLimit)
             .WithBeneficiary(senderRecipientAndMiner.Miner)
             .WithBlobGasUsed(0)

@@ -76,7 +76,7 @@ public class DevBlockProducerTests
             stateProvider,
             NullReceiptStorage.Instance,
             txProcessor,
-            new BeaconBlockRootHandler(txProcessor),
+            new BeaconBlockRootHandler(txProcessor, stateProvider),
             new BlockhashStore(specProvider, stateProvider),
             LimboLogs.Instance);
         BlockchainProcessor blockchainProcessor = new(
