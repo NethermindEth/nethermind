@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
@@ -16,6 +17,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+
+    [Flags]
+    public enum GasOptions
+    {
+        None = 0,
+        AfterRepricing = 1,
+        FloorCostEnabled = 2,
+    }
+
     [TestFixture]
     public class IntrinsicGasCalculatorTests
     {
@@ -97,9 +107,14 @@ namespace Nethermind.Evm.Test
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(testCase.Data).TestObject;
 
-            void Test(IReleaseSpec spec, bool isAfterRepricing, bool floorCostEnabled)
+
+            void Test(IReleaseSpec spec, GasOptions options)
             {
                 IntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+
+                bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
+                bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
+
                 gas.Standard.Should()
                     .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
                         testCase.Data.ToHexString());
@@ -111,20 +126,20 @@ namespace Nethermind.Evm.Test
                     spec.Name, testCase.Data.ToHexString());
             }
 
-            Test(Homestead.Instance, false, false);
-            Test(Frontier.Instance, false, false);
-            Test(SpuriousDragon.Instance, false, false);
-            Test(TangerineWhistle.Instance, false, false);
-            Test(Byzantium.Instance, false, false);
-            Test(Constantinople.Instance, false, false);
-            Test(ConstantinopleFix.Instance, false, false);
-            Test(Istanbul.Instance, true, false);
-            Test(MuirGlacier.Instance, true, false);
-            Test(Berlin.Instance, true, false);
-            Test(GrayGlacier.Instance, true, false);
-            Test(Shanghai.Instance, true, false);
-            Test(Cancun.Instance, true, false);
-            Test(Prague.Instance, true, true);
+            Test(Homestead.Instance, GasOptions.None);
+            Test(Frontier.Instance, GasOptions.None);
+            Test(SpuriousDragon.Instance, GasOptions.None);
+            Test(TangerineWhistle.Instance, GasOptions.None);
+            Test(Byzantium.Instance, GasOptions.None);
+            Test(Constantinople.Instance, GasOptions.None);
+            Test(ConstantinopleFix.Instance, GasOptions.None);
+            Test(Istanbul.Instance, GasOptions.AfterRepricing);
+            Test(MuirGlacier.Instance,  GasOptions.AfterRepricing);
+            Test(Berlin.Instance,  GasOptions.AfterRepricing);
+            Test(GrayGlacier.Instance,  GasOptions.AfterRepricing);
+            Test(Shanghai.Instance,  GasOptions.AfterRepricing);
+            Test(Cancun.Instance,  GasOptions.AfterRepricing);
+            Test(Prague.Instance,  GasOptions.AfterRepricing | GasOptions.FloorCostEnabled);
         }
 
         public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
