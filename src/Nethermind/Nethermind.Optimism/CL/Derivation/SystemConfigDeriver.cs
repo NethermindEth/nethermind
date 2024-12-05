@@ -127,14 +127,19 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
-            var pointer = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 pointer;
+            (pointer, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (pointer != 32) throw new FormatException("Invalid pointer field");
 
-            var length = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 length;
+            (length, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (length != 64) throw new FormatException("Invalid length field");
 
-            var overhead = data.TakeAndMove(32).ToArray();
-            var scalar = data.TakeAndMove(32).ToArray();
+            byte[] overhead;
+            (overhead, offset) = ((byte[], int))AbiType.Bytes32.Decode(log.Data, offset, packed: false);
+
+            byte[] scalar;
+            (scalar, offset) = ((byte[], int))AbiType.Bytes32.Decode(log.Data, offset, packed: false);
 
             if (specHelper.IsEcotone(header))
             {
