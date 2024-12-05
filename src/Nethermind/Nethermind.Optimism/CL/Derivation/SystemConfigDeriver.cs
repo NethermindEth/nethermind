@@ -168,13 +168,17 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
-            var pointer = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 pointer;
+            (pointer, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (pointer != 32) throw new FormatException("Invalid pointer field");
 
-            var length = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 length;
+            (length, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (length != 32) throw new FormatException("Invalid length field");
 
-            var gasLimit = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 gasLimit;
+            (gasLimit, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
+
             systemConfig = systemConfig with
             {
                 GasLimit = gasLimit
