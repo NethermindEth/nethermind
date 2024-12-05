@@ -140,7 +140,7 @@ namespace Nethermind.Trie
                 int position = Rlp.StartSequence(resultSpan, 0, contentLength);
                 WriteChildrenRlpBranch(tree, ref path, item, resultSpan.Slice(position, contentLength - valueRlpLength), pool);
                 position = sequenceLength - valueRlpLength;
-                result.AsSpan()[position] = 128;
+                resultSpan[position] = 128;
 
                 return result;
 
