@@ -249,7 +249,7 @@ namespace Nethermind.Network
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsDebug) _logger.Error("Candidate peers cleanup failed", e);
+                        if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Candidate peers cleanup failed", e);
                     }
 
                     _peerUpdateRequested.Wait(_cancellationTokenSource.Token);
@@ -687,7 +687,7 @@ namespace Nethermind.Network
             }
             catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Error($"Error trying to initiate connection with peer: {candidate.Node:s}", ex);
+                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error trying to initiate connection with peer: {candidate.Node:s}", ex);
                 return false;
             }
         }
