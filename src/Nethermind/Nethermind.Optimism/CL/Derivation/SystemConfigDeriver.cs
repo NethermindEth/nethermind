@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Optimism.CL.Decoders;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
@@ -186,13 +185,17 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.EIP1559Params)
         {
-            var pointer = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 pointer;
+            (pointer, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (pointer != 32) throw new FormatException("Invalid pointer field");
 
-            var length = SolidityAbiDecoder.ReadUInt64(data.TakeAndMove(32));
+            UInt64 length;
+            (length, offset) = ((UInt64, int))AbiType.UInt64.Decode(log.Data, offset, packed: false);
             if (length != 32) throw new FormatException("Invalid length field");
 
-            var eip1559Params = data.TakeAndMove(32).ToArray();
+            byte[] eip1559Params;
+            (eip1559Params, offset) = ((byte[], int))AbiType.Bytes32.Decode(log.Data, offset, packed: false);
+
             systemConfig = systemConfig with
             {
                 EIP1559Params = eip1559Params
