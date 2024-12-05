@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
@@ -267,5 +268,39 @@ public class SystemConfigDeriverTests
         };
 
         actualConfig.Should().Be(expectedConfig);
+    }
+
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_InvalidTopics()
+    {
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithTopics(SystemConfigUpdate.EventABIHash)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            specHelper
+        );
+        var update = () => deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
+
+        update.Should().Throw<ArgumentException>();
     }
 }
