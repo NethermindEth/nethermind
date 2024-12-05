@@ -14,33 +14,45 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 
-public struct StaticGas
+public readonly record struct IntrinsicGas(long Standard, long FloorGas)
 {
-    public long IntrinsicGas { get; set; }
-    public long FloorGas { get; set; }
-    public long DelegationRefunds { get; set; }
+    public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
+    public static explicit operator long(IntrinsicGas gas) => gas.MinimalGas;
 }
 
 public static class IntrinsicGasCalculator
 {
-    public static StaticGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+    public static IntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
     {
         var intrinsicGas = GasCostOf.Transaction
-               + DataCost(transaction, releaseSpec, out var floorGas)
+               + DataCost(transaction, releaseSpec)
                + CreateCost(transaction, releaseSpec)
                + AccessListCost(transaction, releaseSpec)
                + AuthorizationListCost(transaction, releaseSpec);
-        return new StaticGas()
-        {
-            IntrinsicGas = intrinsicGas,
-            FloorGas = floorGas
-        };
+        var floorGas = CalculateFloorCost(transaction, releaseSpec);
+        return new IntrinsicGas(intrinsicGas, floorGas);
+    }
+
+    public static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
+            ? GasCostOf.TxDataNonZeroMultiplierEip2028
+            : GasCostOf.TxDataNonZeroMultiplier;
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+
+        int totalZeros = data.CountZeros();
+
+        var tokensInCallData = totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
+
+        return releaseSpec.IsEip7623Enabled
+            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
+            : 0;
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
-    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec, out long floorGas)
+    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
@@ -54,10 +66,6 @@ public static class IntrinsicGasCalculator
             : 0;
 
         var tokensInCallData = totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
-
-        floorGas = releaseSpec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
-            : 0;
 
         return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
     }

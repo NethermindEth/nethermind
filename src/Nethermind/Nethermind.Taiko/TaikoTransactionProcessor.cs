@@ -22,7 +22,7 @@ public class TaikoTransactionProcessor(
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        out StaticGas intrinsicGas)
+        out IntrinsicGas intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, out intrinsicGas);
 
     protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
@@ -30,8 +30,8 @@ public class TaikoTransactionProcessor(
         => base.BuyGas(tx, header, spec, tracer, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
 
     protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, in StaticGas staticGas)
-        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, substate, unspentGas, gasPrice, staticGas);
+        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
+        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
     {

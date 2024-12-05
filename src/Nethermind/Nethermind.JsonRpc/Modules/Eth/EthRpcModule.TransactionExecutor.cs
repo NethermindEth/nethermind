@@ -118,9 +118,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     // TODO: this looks wrong after EIP7623 - have to revisit this
                     // if we generated access list, we need to fix actual gas cost, as all storage was considered warm
-                    gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance).IntrinsicGas;
+                    gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance).Standard;
                     transaction.AccessList = result.AccessList;
-                    gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance).IntrinsicGas;
+                    gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance).Standard;
                 }
 
                 return (UInt256)gas;

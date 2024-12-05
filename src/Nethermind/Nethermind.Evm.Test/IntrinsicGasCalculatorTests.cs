@@ -44,9 +44,8 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
-            var gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
-            gas.IntrinsicGas.Should().Be(testCase.Cost);
-            gas.FloorGas.Should().Be(0);
+            IntrinsicGas gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
+            gas.Should().Be(new IntrinsicGas(Standard: testCase.Cost, FloorGas: 0));
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -76,9 +75,8 @@ namespace Nethermind.Evm.Test
                 }
                 else
                 {
-                    var gas = IntrinsicGasCalculator.Calculate(tx, spec);
-                    gas.IntrinsicGas.Should().Be(21000 + testCase.Cost, spec.Name);
-                    gas.FloorGas.Should().Be(0);
+                    IntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                    gas.Should().Be(new IntrinsicGas(Standard: 21000 + testCase.Cost, FloorGas: 0), spec.Name);
                 }
             }
 
@@ -101,11 +99,16 @@ namespace Nethermind.Evm.Test
 
             void Test(IReleaseSpec spec, bool isAfterRepricing, bool floorCostEnabled)
             {
-                var gas = IntrinsicGasCalculator.Calculate(tx, spec);
-                gas.IntrinsicGas.Should()
+                IntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                gas.Standard.Should()
                     .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
                         testCase.Data.ToHexString());
                 gas.FloorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
+
+                gas.Should().Be(new IntrinsicGas(
+                        Standard: 21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
+                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0),
+                    spec.Name, testCase.Data.ToHexString());
             }
 
             Test(Homestead.Instance, false, false);
@@ -187,8 +190,8 @@ namespace Nethermind.Evm.Test
                 .WithAuthorizationCode(testCase.AuthorizationList)
                 .TestObject;
 
-            var gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
-            gas.IntrinsicGas.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
+            IntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+            gas.Standard.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
         }
 
         [Test]
