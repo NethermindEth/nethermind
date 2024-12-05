@@ -271,6 +271,55 @@ public class SystemConfigDeriverTests
     }
 
     [Test]
+    public void UpdateSystemConfigFromL1BLock_UpdatedEIP1559Params()
+    {
+        byte[] eip1559ParamsRaw = [0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8];
+        var eip1559Params = new UInt256(eip1559ParamsRaw, isBigEndian: true);
+
+        var encodedEIP1559Params = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, eip1559Params);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedEIP1559Params);
+
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithData(encodedData)
+                        .WithTopics(
+                            SystemConfigUpdate.EventABIHash,
+                            SystemConfigUpdate.EventVersion0,
+                            SystemConfigUpdate.EIP1559Params)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            specHelper
+        );
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
+
+        var expectedConfig = new SystemConfig()
+        {
+            EIP1559Params = [.. new byte[24], 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]
+        };
+
+        actualConfig.Should().Be(expectedConfig);
+    }
+
+    [Test]
     public void UpdateSystemConfigFromL1BLock_InvalidTopics()
     {
         var blockHeader = Build.A.BlockHeader
