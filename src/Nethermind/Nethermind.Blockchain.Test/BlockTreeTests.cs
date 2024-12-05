@@ -1161,7 +1161,12 @@ public class BlockTreeTests
             tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
         }
 
-        tree.RecalculateTreeLevels();
+        builder.MetadataDb.Delete(MetadataDbKeys.LowestInsertedFastHeaderHash);
+
+        tree = Build.A.BlockTree()
+            .WithDatabaseFrom(builder)
+            .WithSyncConfig(syncConfig)
+            .TestObject;
 
         Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "tree");
     }
