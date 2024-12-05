@@ -221,7 +221,6 @@ public class SystemConfigDeriverTests
         actualConfig.Should().Be(expectedConfig);
     }
 
-
     [Test]
     public void UpdateSystemConfigFromL1BLock_UpdatedGasLimit()
     {
@@ -262,7 +261,7 @@ public class SystemConfigDeriverTests
         );
         var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
 
-        var expectedConfig = new SystemConfig()
+        var expectedConfig = new SystemConfig
         {
             GasLimit = 0xBB
         };
@@ -311,7 +310,7 @@ public class SystemConfigDeriverTests
         );
         var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
 
-        var expectedConfig = new SystemConfig()
+        var expectedConfig = new SystemConfig
         {
             EIP1559Params = [.. new byte[24], 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]
         };
