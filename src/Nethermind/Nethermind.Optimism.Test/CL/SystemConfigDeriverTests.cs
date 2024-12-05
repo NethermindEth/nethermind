@@ -226,8 +226,8 @@ public class SystemConfigDeriverTests
     {
         UInt256 gasLimit = 0xBB;
 
-        var encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+        var encodedGasLimit = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedGasLimit);
 
         var blockHeader = Build.A.BlockHeader
             .WithHash(TestItem.KeccakA)
