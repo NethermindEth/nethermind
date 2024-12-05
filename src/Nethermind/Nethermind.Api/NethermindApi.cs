@@ -190,6 +190,7 @@ namespace Nethermind.Api
         public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
 
         public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
+        public ISyncPointers? SyncPointers => ApiWithNetworkServiceContainer?.Resolve<ISyncPointers>();
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();

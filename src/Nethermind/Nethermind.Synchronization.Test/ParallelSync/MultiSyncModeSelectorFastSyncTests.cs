@@ -621,7 +621,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
+            ISyncConfig syncConfig = new TestSyncConfig() { FastSyncCatchUpHeightDelta = 2 };
             syncConfig.FastSync = true;
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
@@ -671,7 +671,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig
+            ISyncConfig syncConfig = new TestSyncConfig
             {
                 FastSyncCatchUpHeightDelta = 2,
                 FastSync = true,
@@ -685,7 +685,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             selector.Current.Should().Be(SyncMode.Full);
 
             CancellationTokenSource waitTokenSource = new();
-            ReceiptsSyncFeed receiptsSyncFeed = Substitute.ForPartsOf<ReceiptsSyncFeed>(MainnetSpecProvider.Instance, Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), syncPeerPool, syncConfig, Substitute.For<ISyncReport>(), Substitute.For<IDb>(), LimboLogs.Instance);
+            ReceiptsSyncFeed receiptsSyncFeed = Substitute.ForPartsOf<ReceiptsSyncFeed>(
+                MainnetSpecProvider.Instance,
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IReceiptStorage>(),
+                Substitute.For<ISyncPointers>(),
+                syncPeerPool,
+                syncConfig,
+                Substitute.For<ISyncReport>(),
+                Substitute.For<IDb>(),
+                LimboLogs.Instance);
             receiptsSyncFeed.When(rsf => rsf.InitializeFeed()).DoNotCallBase();
             receiptsSyncFeed.When(rsf => rsf.InitializeFeed()).Do(e =>
             {
