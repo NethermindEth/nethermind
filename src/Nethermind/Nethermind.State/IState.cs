@@ -49,6 +49,36 @@ public interface IReadOnlyState : IDisposable
     Hash256 StateRoot { get; }
 }
 
+public interface IRawState : IReadOnlyState
+{
+    void SetAccount(ValueHash256 hash, Account? account);
+    void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
+    void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue);
+    void Commit(bool ensureHash);
+    ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength, bool ignoreCache);
+    ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength, bool ignoreCache);
+    ValueHash256 RecalculateRootHash();
+
+    bool IsPersisted(ValueHash256 accountHash, ReadOnlySpan<byte> path, int pathLength);
+
+    void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
+        byte[] childNibbles, Hash256[] childHashes, bool persist = true);
+
+    void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
+        int extPathLength, bool persist = true);
+
+    void CreateProofLeaf(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, int leafKeyIndex);
+
+    void RegisterDeleteByPrefix(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength);
+
+    void Finalize(uint blockNumber);
+    string DumpTrie();
+    ValueHash256 RefreshRootHash();
+    ValueHash256 RecalculateStorageRoot(ValueHash256 accountHash);
+    public void Discard();
+    void ProcessProofNodes(ValueHash256 accountHash, Span<byte> packedProofPaths, int proofCount);
+}
+
 /// <summary>
 /// The factory allowing to get a state at the given keccak.
 /// </summary>
@@ -60,11 +90,18 @@ public interface IStateFactory : IAsyncDisposable
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
+    public IRawState GetRaw();
+    public IRawState GetRaw(ValueHash256 rootHash);
+
     bool HasRoot(Hash256 stateRoot);
 
     public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
 
     public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, scoped in Address address, in UInt256 index);
+    
+    void ForceFlush();
+
+    void ResetAccessor();
 }
 
 public interface IStateOwner

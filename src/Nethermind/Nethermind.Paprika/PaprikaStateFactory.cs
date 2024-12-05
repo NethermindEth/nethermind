@@ -10,8 +10,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
+using Paprika.Data;
 using Paprika.Merkle;
 using Paprika.Store;
+using Account = Nethermind.Core.Account;
+using IRawState = Paprika.Chain.IRawState;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
 using PaprikaAccount = Paprika.Account;
@@ -30,6 +33,7 @@ public class PaprikaStateFactory : IStateFactory
     private readonly IReadOnlyWorldStateAccessor _accessor;
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized;
+    private readonly ReaderWriterLockSlim _commitLock = new();
 
     public PaprikaStateFactory()
     {
@@ -78,6 +82,9 @@ public class PaprikaStateFactory : IStateFactory
     {
         return new State(_blockchain.StartNew(Convert(stateRoot)), this, prefetchMerkle);
     }
+    
+    public Nethermind.State.IRawState GetRaw() => new RawState(_blockchain.StartRaw(), this);
+    public Nethermind.State.IRawState GetRaw(ValueHash256 rootHash) => new RawState(_blockchain.StartRaw(Convert(rootHash)), this);
 
     public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
         new ReadOnlyState(stateRoot != null
@@ -101,6 +108,16 @@ public class PaprikaStateFactory : IStateFactory
 
         bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(bytes), bytes);
         return MaterializeStorageValue(bytes);
+    }
+    
+    public void ForceFlush()
+    {
+        _blockchain.ForceFlush();
+    }
+
+    public void ResetAccessor()
+    {
+        _accessor.Reset();
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -177,6 +194,16 @@ public class PaprikaStateFactory : IStateFactory
         account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
             Convert(retrieved.CodeHash));
         return true;
+    }
+    
+    public void AquireRawStateCommitLock()
+    {
+        _commitLock.EnterWriteLock();
+    }
+
+    public void ReleaseRawStateCommitLock()
+    {
+        _commitLock.ExitWriteLock();
     }
 
     [SkipLocalsInit]
@@ -304,6 +331,235 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         public void Reset() => _wrapped.Reset();
+
+        public Hash256 StateRoot => Convert(_wrapped.Hash);
+
+        public void Dispose() => _wrapped.Dispose();
+    }
+    
+    class RawState : Nethermind.State.IRawState
+    {
+        private readonly IRawState _wrapped;
+        private readonly PaprikaStateFactory _factory;
+
+        public RawState(IRawState wrapped, PaprikaStateFactory factory)
+        {
+            _wrapped = wrapped;
+            _factory = factory;
+        }
+
+        public Account? Get(ValueHash256 hash)
+        {
+            PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
+            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (account.Balance.IsZero &&
+                account.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+                return null;
+
+            if (hasEmptyStorageAndCode)
+                return new Account(account.Nonce, account.Balance);
+
+            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
+                Convert(account.CodeHash));
+        }
+
+        public bool TryGet(Address address, out AccountStruct account)
+        {
+            PaprikaAccount retrieved = _wrapped.GetAccount(Convert(address));
+            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (retrieved.Balance.IsZero &&
+                retrieved.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+            {
+                account = default;
+                return false;
+            }
+
+            if (hasEmptyStorageAndCode)
+            {
+                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
+                return true;
+            }
+
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+                Convert(retrieved.CodeHash));
+            return true;
+        }
+
+        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            GetKey(cell.Index, bytes);
+
+            bytes = _wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            return MaterializeStorageValue(bytes);
+        }
+
+        [SkipLocalsInit]
+        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            bytes = _wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            return MaterializeStorageValue(bytes);
+        }
+
+        [SkipLocalsInit]
+        public ReadOnlySpan<byte> GetStorageAt(in ValueHash256 accountHash, in ValueHash256 hash)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            bytes = _wrapped.GetStorage(new PaprikaKeccak(accountHash.Bytes), new PaprikaKeccak(hash.Bytes), bytes);
+            return MaterializeStorageValue(bytes);
+        }
+
+        [SkipLocalsInit]
+        public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
+        {
+            Span<byte> key = stackalloc byte[32];
+            GetKey(cell.Index, key);
+            PaprikaKeccak converted = Convert(cell.Address);
+            _wrapped.SetStorage(converted, new PaprikaKeccak(key), value);
+        }
+
+        public void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue)
+        {
+            PaprikaKeccak addressKey = Convert(accountHash);
+            PaprikaKeccak storageKey = Convert(storageSlotHash);
+            _wrapped.SetStorage(addressKey, storageKey, encodedValue);
+        }
+
+        public void SetAccount(ValueHash256 hash, Account? account)
+        {
+            PaprikaKeccak key = Convert(hash);
+
+            if (account is null)
+            {
+                _wrapped.DestroyAccount(key);
+            }
+            else
+            {
+                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
+                    Convert(account.StorageRoot));
+                _wrapped.SetAccount(key, actual);
+            }
+        }
+
+        public void CreateProofBranch(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, byte[] childNibbles, Hash256?[] childHashes, bool persist = true)
+        {
+            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            PaprikaKeccak[] hashes = new PaprikaKeccak[childHashes.Length];
+            for (int i = 0; i < childHashes.Length; i++)
+            {
+                hashes[i] = childHashes[i] is not null ? Convert(childHashes[i]!) : PaprikaKeccak.Zero;
+            }
+            _wrapped.CreateMerkleBranch(Convert(accountHash), path, childNibbles, hashes, persist);
+        }
+
+        public void CreateProofExtension(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength,
+            int extPathLength, bool persist = true)
+        {
+            var fullPath = NibblePath.FromKey(keyPath);
+            NibblePath storagePath = fullPath.SliceTo(targetKeyLength);
+            NibblePath extensionPath = fullPath.SliceFrom(targetKeyLength).SliceTo(extPathLength);
+
+            _wrapped.CreateMerkleExtension(Convert(accountHash), storagePath, extensionPath, persist);
+        }
+
+        public void CreateProofLeaf(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, int leafKeyIndex)
+        {
+            var fullPath = NibblePath.FromKey(keyPath);
+            NibblePath storagePath = fullPath.SliceTo(targetKeyLength);
+            NibblePath leafPath = fullPath.SliceFrom(targetKeyLength);
+
+            _wrapped.CreateMerkleLeaf(Convert(accountHash), storagePath, leafPath);
+        }
+
+        public void RegisterDeleteByPrefix(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength)
+        {
+            var fullPath = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            Key key = accountHash == Keccak.Zero
+                ? Key.Account(fullPath)
+                : Key.StorageCell(NibblePath.FromKey(Convert(accountHash)), fullPath);
+            _wrapped.RegisterDeleteByPrefix(key);
+        }
+
+        public void Commit(bool ensureHash)
+        {
+            try
+            {
+                _factory.AquireRawStateCommitLock();
+                _wrapped.Commit(ensureHash);
+            }
+            finally
+            {
+                _factory.ReleaseRawStateCommitLock();
+            }
+        }
+
+        public ValueHash256 GetHash(ReadOnlySpan<byte> path, int pathLength, bool ignoreCache)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(path).SliceTo(pathLength);
+            return Convert(_wrapped.GetHash(nibblePath, ignoreCache));
+        }
+
+        public ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength, bool ignoreCache)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(storagePath).SliceTo(pathLength);
+            return Convert(_wrapped.GetStorageHash(Convert(accountHash), nibblePath, ignoreCache));
+        }
+
+        public bool IsPersisted(ValueHash256 accountHash, ReadOnlySpan<byte> path, int pathLength)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(path).SliceTo(pathLength);
+            return _wrapped.IsPersisted(Convert(accountHash), nibblePath);
+        }
+
+        public ValueHash256 RecalculateRootHash()
+        {
+            return Convert(_wrapped.RecalculateRootHash());
+        }
+
+        public void Finalize(uint blockNumber)
+        {
+            try
+            {
+                _factory.AquireRawStateCommitLock();
+                _wrapped.Finalize(blockNumber);
+            }
+            finally
+            {
+                _factory.ReleaseRawStateCommitLock();
+            }
+        }
+
+        public string DumpTrie()
+        {
+            return _wrapped.DumpTrie();
+        }
+
+        public ValueHash256 RefreshRootHash()
+        {
+            return Convert(_wrapped.RefreshRootHash());
+        }
+
+        public ValueHash256 RecalculateStorageRoot(ValueHash256 accountHash)
+        {
+            PaprikaKeccak account = Convert(accountHash);
+            return Convert(_wrapped.RecalculateStorageRoot(account));
+        }
+
+        public void Discard()
+        {
+            _wrapped.Discard();
+        }
+
+        public void ProcessProofNodes(ValueHash256 accountHash, Span<byte> packedProofPaths, int proofCount)
+        {
+            PaprikaKeccak account = Convert(accountHash);
+            _wrapped.ProcessProofNodes(account, packedProofPaths, proofCount);
+        }
 
         public Hash256 StateRoot => Convert(_wrapped.Hash);
 

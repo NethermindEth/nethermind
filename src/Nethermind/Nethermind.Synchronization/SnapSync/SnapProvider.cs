@@ -32,6 +32,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         // This is actually close to 97% effective.
         private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
+        private bool _usePaprika;
+        private int _paprikaFlushEvery = 100_000;
+        private int _paprikaCommitCount;
 
         public SnapProvider(ProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
@@ -41,6 +44,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
+            _usePaprika = true;
+            _paprikaCommitCount = 0;
         }
 
         public bool CanSync() => _progressTracker.CanSync();
@@ -51,7 +56,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result;
 
-            if (response.PathAndAccounts.Count == 0)
+            if (response.PathAndAccounts.Count == 0 && response.Proofs.Count == 0)
             {
                 _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
@@ -96,8 +101,31 @@ namespace Nethermind.Synchronization.SnapSync
 
                 ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
-                (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
+                AddRangeResult result;
+                bool moreChildrenToRight;
+                List<PathWithAccount> accountsWithStorage;
+                List<ValueHash256> codeHashes;
+
+                if (_usePaprika)
+                {
+                    using IRawState rawState = _progressTracker.GetNewRawState();
+
+                    (result, moreChildrenToRight, accountsWithStorage, codeHashes) =
+                        SnapProviderHelperPaprika.AddAccountRange(rawState, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+
+                    if (result == AddRangeResult.OK)
+                    {
+                        Interlocked.Increment(ref _paprikaCommitCount);
+                        if (_paprikaCommitCount % _paprikaFlushEvery == 0)
+                            _progressTracker.FlushPaprika();
+                    }
+                }
+                else
+                {
+                    (result, moreChildrenToRight, accountsWithStorage, codeHashes) =
                     SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+                }
+
 
                 if (result == AddRangeResult.OK)
                 {
@@ -192,11 +220,32 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
-            ITrieStore store = _trieStorePool.Get();
-            StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
+            ITrieStore? store = null;
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+                AddRangeResult result;
+                bool moreChildrenToRight;
+                StorageTree? tree = null;
+
+                if (_usePaprika)
+                {
+                    using IRawState rawState = _progressTracker.GetNewRawState();
+                    (result, moreChildrenToRight) = SnapProviderHelperPaprika.AddStorageRange(rawState, pathWithAccount, blockNumber, startingHash, slots, expectedRootHash, proofs);
+
+                    if (result == AddRangeResult.OK)
+                    {
+                        Interlocked.Increment(ref _paprikaCommitCount);
+                        if (_paprikaCommitCount % _paprikaFlushEvery == 0)
+                            _progressTracker.FlushPaprika();
+                    }
+                }
+                else
+                {
+                    store = _trieStorePool.Get();
+                    tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
+
+                    (result, moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+                }
 
                 if (result == AddRangeResult.OK)
                 {
@@ -228,6 +277,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
+                if (store is not null)
                 _trieStorePool.Return(store);
             }
         }
