@@ -351,4 +351,46 @@ public class SystemConfigDeriverTests
 
         update.Should().Throw<ArgumentException>();
     }
+
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_InvalidTooManyBytes()
+    {
+        UInt256 overhead = 0xFF;
+        UInt256 scalar = 0xAA;
+
+        var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
+
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithData([..encodedData, 0x00]) // One extra empty byte
+                        .WithTopics(
+                            SystemConfigUpdate.EventABIHash,
+                            SystemConfigUpdate.EventVersion0,
+                            SystemConfigUpdate.FeeScalars)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            Substitute.For<IOptimismSpecHelper>()
+        );
+        var update = () => deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
+
+        update.Should().Throw<AbiException>();
+    }
 }
