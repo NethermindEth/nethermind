@@ -103,7 +103,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task Test_data_dir()
+    public async Task Test_admin_dataDir()
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);

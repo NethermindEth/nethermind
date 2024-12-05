@@ -92,6 +92,6 @@ csharp_style_var_elsewhere = false:suggestion
 
 # Coding convention
 
-dotnet_diagnostic.IDE0005.severity = error
+dotnet_diagnostic.IDE0005.severity = suggestion
 dotnet_diagnostic.IDE0041.severity = error
 

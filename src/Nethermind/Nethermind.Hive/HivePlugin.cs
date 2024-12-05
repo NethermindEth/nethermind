@@ -52,6 +52,8 @@ public class HivePlugin : INethermindPlugin
             if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
             if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
 
+            _api.TxPool!.AcceptTxWhenNotSynced = true;
+
             _api.TxGossipPolicy.Policies.Clear();
 
             HiveRunner hiveRunner = new(
