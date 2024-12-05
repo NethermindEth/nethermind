@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using Nethermind.Api;
@@ -11,87 +10,73 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using ILogger = Nethermind.Logging.InterfaceLogger;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Runner.Ethereum.Api;
+
+public class ApiBuilder
 {
-    public class ApiBuilder
+    private readonly IConfigProvider _configProvider;
+    private readonly IJsonSerializer _jsonSerializer;
+    private readonly ILogManager _logManager;
+    private readonly ILogger _logger;
+    private readonly IInitConfig _initConfig;
+
+    public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
     {
-        private readonly IConfigProvider _configProvider;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogManager _logManager;
-        private readonly Nethermind.Logging.ILogger _logger;
-        private readonly IInitConfig _initConfig;
+        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = _logManager.GetClassLogger();
+        _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
+        _initConfig = configProvider.GetConfig<IInitConfig>();
+        _jsonSerializer = new EthereumJsonSerializer();
+    }
 
-        public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
+    public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
+        Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
+
+    public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
+    {
+        ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
+        bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
+        if (wasCreated)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = _logManager.GetClassLogger();
-            _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
-            _initConfig = configProvider.GetConfig<IInitConfig>();
-            _jsonSerializer = new EthereumJsonSerializer();
+            throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
-            Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
+        string engine = chainSpec.SealEngineType;
+        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
 
-        public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
-        {
-            ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
-            bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
-            if (wasCreated)
-            {
-                throw new NotSupportedException("Creation of multiple APIs not supported.");
-            }
+        INethermindApi nethermindApi =
+            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
+            new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
+        nethermindApi.SealEngineType = engine;
+        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
+        nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 
-            string engine = chainSpec.SealEngineType;
-            IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
+        SetLoggerVariables(chainSpec);
 
-            INethermindApi nethermindApi =
-                enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
-                new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
-            nethermindApi.SealEngineType = engine;
-            nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
-            nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
+        return nethermindApi;
+    }
 
-            SetLoggerVariables(chainSpec);
+    private int _apiCreated;
 
-            return nethermindApi;
-        }
+    private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
-        private int _apiCreated;
+        ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
-        {
-            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
-            bool hiveChainSpecExists = File.Exists(_initConfig.HiveChainSpecPath);
+        IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath, _logger);
+        return chainSpec;
+    }
 
-            string chainSpecFile;
-            if (hiveEnabled && hiveChainSpecExists)
-                chainSpecFile = _initConfig.HiveChainSpecPath;
-            else
-                chainSpecFile = _initConfig.ChainSpecPath;
-
-            if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {chainSpecFile}");
-
-            ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
-
-            IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
-            TransactionForRpc.DefaultChainId = chainSpec.ChainId;
-            return chainSpec;
-        }
-
-        private void SetLoggerVariables(ChainSpec chainSpec)
-        {
-            _logManager.SetGlobalVariable("chain", chainSpec.Name);
-            _logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
-            _logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
-        }
+    private void SetLoggerVariables(ChainSpec chainSpec)
+    {
+        _logManager.SetGlobalVariable("chain", chainSpec.Name);
+        _logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
+        _logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
     }
 }

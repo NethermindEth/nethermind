@@ -16,13 +16,13 @@ public static class Wait
         Func<T, bool> condition)
     {
         TaskCompletionSource completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<T> handler = (sender, t) =>
+        void handler(object? sender, T t)
         {
             if (condition(t))
             {
                 completion.TrySetResult();
             }
-        };
+        }
 
         register(handler);
 

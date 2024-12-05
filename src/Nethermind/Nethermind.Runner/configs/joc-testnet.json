@@ -1,0 +1,31 @@
+{
+  "Init": {
+    "ChainSpecPath": "chainspec/joc-testnet.json",
+    "GenesisHash": "0x0fb7b4779aae36dc557227283f182bc9a3b232c07fae4a2553734c5817df1d06",
+    "BaseDbPath": "nethermind_db/joc-testnet",
+    "LogFileName": "joc-testnet.logs.txt"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 8280000,
+    "PivotHash": "0x38d9958d5a82723ec6c217fbe37c7ea2829c22c3e8dc838765cc996002e5cf94",
+    "PivotTotalDifficulty": "14865312"
+  },
+  "Metrics": {
+    "NodeName": "JOC-Testnet"
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 30000000,
+    "GasToken": "JOC"
+  },
+  "JsonRpc": {
+    "Enabled": true
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

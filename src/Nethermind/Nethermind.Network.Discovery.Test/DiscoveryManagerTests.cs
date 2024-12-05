@@ -145,7 +145,7 @@ namespace Nethermind.Network.Discovery.Test
                     INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node(TestItem.PublicKeyA, $"{a}.{b}.1.1", 8000));
                     manager?.SendPingAsync();
 
-                    PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
+                    PongMsg pongMsg = new(_publicKey, GetExpirationTime(), []);
                     pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), Port);
                     _discoveryManager.OnIncomingMsg(pongMsg);
                 }
@@ -186,7 +186,7 @@ namespace Nethermind.Network.Discovery.Test
 
         private void ReceiveSomePong()
         {
-            PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
+            PongMsg pongMsg = new(_publicKey, GetExpirationTime(), []);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(pongMsg);
         }
@@ -200,15 +200,15 @@ namespace Nethermind.Network.Discovery.Test
                 MaxOutgoingMessagePerSecond = 5
             });
 
-            Stopwatch sw = Stopwatch.StartNew();
-            FindNodeMsg msg = new(_publicKey, 0, Array.Empty<byte>());
+            long startTime = Stopwatch.GetTimestamp();
+            FindNodeMsg msg = new(_publicKey, 0, []);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
-            sw.Elapsed.Should().BeGreaterOrEqualTo(TimeSpan.FromSeconds(0.9));
+            Stopwatch.GetElapsedTime(startTime).Should().BeGreaterOrEqualTo(TimeSpan.FromSeconds(0.9));
         }
     }
 }

@@ -7,7 +7,6 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;

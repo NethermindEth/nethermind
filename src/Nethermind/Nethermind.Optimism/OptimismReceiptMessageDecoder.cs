@@ -125,8 +125,8 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
     /// </summary>
     public int GetLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)
     {
-        (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
-        int receiptPayloadLength = Rlp.LengthOfSequence(length.Total);
+        (int Total, _) = GetContentLength(item, rlpBehaviors);
+        int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
         bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
         int result = item.TxType != TxType.Legacy

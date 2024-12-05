@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -9,11 +8,15 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
-public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBlockRootHandler
+public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
     private const long GasLimit = 30_000_000L;
+
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+        => BeaconRootsAccessList(block, spec).accessList;
 
     public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
     {
@@ -26,7 +29,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
             spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress :
             null;
 
-        if (eip4788ContractAddress is null)
+        if (eip4788ContractAddress is null || !stateProvider.AccountExists(eip4788ContractAddress))
         {
             return (null, null);
         }
@@ -42,7 +45,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
         return (eip4788ContractAddress, builder.Build());
     }
 
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
     {
         (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
@@ -62,7 +65,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, header, NullTxTracer.Instance);
+            processor.Execute(transaction, header, tracer);
         }
     }
 }

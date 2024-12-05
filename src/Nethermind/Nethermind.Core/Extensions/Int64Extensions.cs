@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
@@ -46,7 +45,7 @@ public static class Int64Extensions
     {
         if (value == 0L)
         {
-            return "0x0";
+            return Bytes.ZeroHexValue;
         }
 
         Span<byte> bytes = stackalloc byte[8];
@@ -59,7 +58,7 @@ public static class Int64Extensions
     {
         if (value == 0UL)
         {
-            return "0x0";
+            return Bytes.ZeroHexValue;
         }
 
         Span<byte> bytes = stackalloc byte[8];
@@ -74,7 +73,7 @@ public static class Int64Extensions
         {
             if (value == default)
             {
-                return "0x0";
+                return Bytes.ZeroHexValue;
             }
 
             if (value == UInt256.One)

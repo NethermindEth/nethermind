@@ -18,7 +18,7 @@ using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -312,9 +312,9 @@ public class DebugRpcModule : IDebugRpcModule
             return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
-        if (!receipts.Any())
+        if (receipts.Length == 0)
         {
-            return ResultWrapper<byte[][]>.Success(Array.Empty<byte[]>());
+            return ResultWrapper<byte[][]>.Success([]);
         }
         RlpBehaviors behavior =
             (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?

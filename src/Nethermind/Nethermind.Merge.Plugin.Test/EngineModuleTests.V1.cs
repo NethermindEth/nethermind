@@ -25,7 +25,6 @@ using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -36,8 +35,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie;
-
 using NSubstitute;
 using NUnit.Framework;
 
@@ -98,7 +95,7 @@ public partial class EngineModuleTests
             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
             StateRoot = chain.BlockTree.Head!.StateRoot!,
             Timestamp = timestamp.ToUInt64(null),
-            Transactions = Array.Empty<byte[]>()
+            Transactions = []
         });
         // get the payload
         result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
@@ -172,12 +169,12 @@ public partial class EngineModuleTests
         expected.BlockNumber = 1;
         expected.PrevRandao = random;
         expected.ParentHash = startingHead;
-        expected.SetTransactions(Array.Empty<Transaction>());
+        expected.SetTransactions([]);
         expected.Timestamp = timestamp;
         expected.PrevRandao = random;
         expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");
 
-        executionPayloadV1.Should().BeEquivalentTo(expected);
+        executionPayloadV1.Should().BeEquivalentTo(expected, o => o.IgnoringCyclicReferences());
         Hash256 actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(expected.BlockHash);
         actualHead.Should().Be(startingHead);
@@ -852,7 +849,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = ExecutionPayload.Create(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
+        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
     [Test]
@@ -908,7 +905,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
+        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
     [Test]
@@ -1081,7 +1078,7 @@ public partial class EngineModuleTests
             chain.StateReader.HasStateForRoot(executionPayload.StateRoot).Should().BeTrue();
 
             UInt256 fromBalanceAfter = chain.StateReader.GetBalance(executionPayload.StateRoot, from.Address);
-            Assert.True(fromBalanceAfter < fromBalance - toBalanceAfter);
+            Assert.That(fromBalanceAfter, Is.LessThan(fromBalance - toBalanceAfter));
             chain.StateReader.GetBalance(executionPayload.StateRoot, to).Should().Be(toBalanceAfter);
             Block findBlock = chain.BlockTree.FindBlock(executionPayload.BlockHash, BlockTreeLookupOptions.None)!;
             TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
@@ -1089,9 +1086,10 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
+    protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null)
+        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
+        ulong slotLength = 12)
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
@@ -1104,7 +1102,7 @@ public partial class EngineModuleTests
         for (int i = 0; i < count; i++)
         {
             ExecutionPayload? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
-                parentBlock.Timestamp + 12,
+                parentBlock.Timestamp + slotLength,
                 random ?? TestItem.KeccakA, Address.Zero);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
@@ -1235,7 +1233,7 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    private async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
+    protected async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
         IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
         ulong timestamp, Hash256 random, Address feeRecipient)
     {
@@ -1490,7 +1488,7 @@ public partial class EngineModuleTests
             forkchoiceUpdatedResult2.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
             Hash256 currentBlockHash = chain.BlockTree.Head!.Hash!;
-            Assert.True(currentBlockHash == executionPayloadV12.BlockHash);
+            Assert.That(currentBlockHash == executionPayloadV12.BlockHash, Is.True);
         }
 
         // re-org
@@ -1512,9 +1510,9 @@ public partial class EngineModuleTests
             forkchoiceUpdatedResult3.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
             Hash256 currentBlockHash = chain.BlockTree.Head!.Hash!;
-            Assert.False(currentBlockHash != forkChoiceState3.HeadBlockHash ||
+            Assert.That(currentBlockHash != forkChoiceState3.HeadBlockHash ||
                          currentBlockHash == forkChoiceState3.SafeBlockHash ||
-                         currentBlockHash == forkChoiceState3.FinalizedBlockHash);
+                         currentBlockHash == forkChoiceState3.FinalizedBlockHash, Is.False);
         }
     }
 

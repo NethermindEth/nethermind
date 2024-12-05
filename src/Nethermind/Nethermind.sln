@@ -221,6 +221,13 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Paprika", "Nethermind.Paprika\Nethermind.Paprika.csproj", "{3D788B3F-9184-4B45-9F74-1F11BA7E6868}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Paprika", "..\Paprika\src\Paprika\Paprika.csproj", "{92FEA376-E5F9-4A27-B475-4B5F328F8DBC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Taiko", "Nethermind.Taiko\Nethermind.Taiko.csproj", "{B4070433-328E-40E6-B89A-6554F015694C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Taiko.Test", "Nethermind.Taiko.Test\Nethermind.Taiko.Test.csproj", "{3E097797-F8D5-4BB5-B544-C78FF0A14986}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter", "Nethermind.Shutter\Nethermind.Shutter.csproj", "{F38037D2-98EA-4263-887A-4B383635F605}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter.Test", "Nethermind.Shutter.Test\Nethermind.Shutter.Test.csproj", "{CEA1C413-A96C-4339-AC1C-839B603DECC8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -612,6 +619,22 @@ Global
 		{92FEA376-E5F9-4A27-B475-4B5F328F8DBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{92FEA376-E5F9-4A27-B475-4B5F328F8DBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{92FEA376-E5F9-4A27-B475-4B5F328F8DBC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4070433-328E-40E6-B89A-6554F015694C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4070433-328E-40E6-B89A-6554F015694C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4070433-328E-40E6-B89A-6554F015694C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4070433-328E-40E6-B89A-6554F015694C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E097797-F8D5-4BB5-B544-C78FF0A14986}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E097797-F8D5-4BB5-B544-C78FF0A14986}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E097797-F8D5-4BB5-B544-C78FF0A14986}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E097797-F8D5-4BB5-B544-C78FF0A14986}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F38037D2-98EA-4263-887A-4B383635F605}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F38037D2-98EA-4263-887A-4B383635F605}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F38037D2-98EA-4263-887A-4B383635F605}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F38037D2-98EA-4263-887A-4B383635F605}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CEA1C413-A96C-4339-AC1C-839B603DECC8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

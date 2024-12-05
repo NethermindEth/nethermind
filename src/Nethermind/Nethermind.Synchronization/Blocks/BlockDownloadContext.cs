@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization.Blocks
 
             int mappedIndex = _indexMapping[index];
             block = Blocks[_indexMapping[index]];
-            receipts ??= Array.Empty<TxReceipt>();
+            receipts ??= [];
 
             bool result = _receiptsRecovery.TryRecover(block, receipts, false) != ReceiptsRecoveryResult.Fail;
             if (result)

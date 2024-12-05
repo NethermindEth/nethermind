@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -124,9 +123,21 @@ public class VirtualMachineTestsBase
         return tracer;
     }
 
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, Transaction tx)
+    {
+        (Block block, _) = PrepareTx(activation, 100000, null);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(tx, block.Header, tracer);
+        return tracer;
+    }
+
     protected TestAllTracerWithOutput Execute(params byte[] code)
     {
         return Execute(Activation, code);
+    }
+    protected TestAllTracerWithOutput Execute(Transaction tx)
+    {
+        return Execute(Activation, tx);
     }
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
@@ -197,7 +208,8 @@ public class VirtualMachineTestsBase
         int value = 1,
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
-        ulong excessBlobGas = 0)
+        ulong excessBlobGas = 0,
+        Transaction transaction = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -227,7 +239,7 @@ public class VirtualMachineTestsBase
         TestState.CommitTree(0);
         GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
-        Transaction transaction = Build.A.Transaction
+        transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
             .WithGasPrice(1)
             .WithValue(value)
@@ -316,7 +328,7 @@ public class VirtualMachineTestsBase
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
         return Build.A.Block.WithNumber(activation.BlockNumber)
             .WithTimestamp(activation.Timestamp ?? 0)
-            .WithTransactions(tx is null ? Array.Empty<Transaction>() : new[] { tx })
+            .WithTransactions(tx is null ? [] : new[] { tx })
             .WithGasLimit(blockGasLimit)
             .WithBeneficiary(senderRecipientAndMiner.Miner)
             .WithBlobGasUsed(0)

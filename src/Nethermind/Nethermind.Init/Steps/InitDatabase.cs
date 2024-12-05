@@ -19,7 +19,6 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Paprika;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps

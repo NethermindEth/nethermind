@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,6 +18,7 @@ using System.Text;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Buffers;
 
 namespace Nethermind.Core.Extensions
 {
@@ -25,19 +26,32 @@ namespace Nethermind.Core.Extensions
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
-        public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
-        public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
-        public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
+        public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
+        public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
+        public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
+        public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
 
-        private class BytesEqualityComparer : EqualityComparer<byte[]>
+        public const string ZeroHexValue = "0x0";
+        public const string ZeroValue = "0";
+        public const string EmptyHexValue = "0x";
+
+        private class BytesEqualityComparer : EqualityComparer<byte[]>, IAlternateEqualityComparer<ReadOnlySpan<byte>, byte[]>
         {
+            public byte[] Create(ReadOnlySpan<byte> alternate)
+                => alternate.ToArray();
+
             public override bool Equals(byte[]? x, byte[]? y)
-            {
-                return AreEqual(x, y);
-            }
+                => AreEqual(x, y);
+
+            public bool Equals(ReadOnlySpan<byte> alternate, byte[] other)
+                => AreEqual(alternate, other.AsSpan());
 
             public override int GetHashCode(byte[] obj) => new ReadOnlySpan<byte>(obj).FastHash();
+
+            public int GetHashCode(ReadOnlySpan<byte> alternate) => alternate.FastHash();
         }
 
         private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
@@ -48,13 +62,6 @@ namespace Nethermind.Core.Extensions
             }
 
             public override int GetHashCode(byte[]? obj) => new ReadOnlySpan<byte>(obj).FastHash();
-        }
-
-        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
-        {
-            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
-
-            public int GetHashCode(ReadOnlySpan<byte> obj) => obj.FastHash();
         }
 
         public class BytesComparer : Comparer<byte[]>
@@ -128,7 +135,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Empty = Array.Empty<byte>();
+        public static readonly byte[] Empty = [];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
@@ -193,7 +200,7 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
         {
-            if (bytes is null || bytes.Length == 0) return Array.Empty<byte>();
+            if (bytes is null || bytes.Length == 0) return [];
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
@@ -207,7 +214,7 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0) return ZeroByte.Span;
+            if (bytes.Length == 0) return ZeroByteSpan;
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
             // Keep one or it will be interpreted as null
@@ -281,18 +288,24 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] Concat(params byte[][] parts)
         {
+            return Concat(parts.AsSpan());
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte[]> bytes)
+        {
             int totalLength = 0;
-            for (int i = 0; i < parts.Length; i++)
+            foreach (byte[] byteArray in bytes)
             {
-                totalLength += parts[i].Length;
+                totalLength += byteArray.Length;
             }
 
             byte[] result = new byte[totalLength];
-            int position = 0;
-            for (int i = 0; i < parts.Length; i++)
+            int offset = 0;
+
+            foreach (byte[] byteArray in bytes)
             {
-                Buffer.BlockCopy(parts[i], 0, result, position, parts[i].Length);
-                position += parts[i].Length;
+                Array.Copy(byteArray, 0, result, offset, byteArray.Length);
+                offset += byteArray.Length;
             }
 
             return result;
@@ -647,7 +660,7 @@ namespace Nethermind.Core.Extensions
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                return withZeroX ? "0x0" : "0";
+                return withZeroX ? ZeroHexValue : ZeroValue;
             }
 
             State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX);
@@ -1016,7 +1029,7 @@ namespace Nethermind.Core.Extensions
         {
             if (hexString.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
@@ -1063,11 +1076,11 @@ namespace Nethermind.Core.Extensions
         public static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
         {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.Slice(start);
+            ReadOnlySpan<char> chars = hexString[start..];
 
             if (chars.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
@@ -1098,11 +1111,11 @@ namespace Nethermind.Core.Extensions
         private static byte[] FromHexString(ReadOnlySpan<char> hexString)
         {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.Slice(start);
+            ReadOnlySpan<char> chars = hexString[start..];
 
             if (chars.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
@@ -1140,5 +1153,94 @@ namespace Nethermind.Core.Extensions
                     (BinaryPrimitives.ReverseEndianness(endIth), BinaryPrimitives.ReverseEndianness(ith));
             }
         }
+
+        public static string ToCleanUtf8String(this ReadOnlySpan<byte> bytes)
+        {
+            // The maximum number of UTF-16 chars is bytes.Length, but each Rune can be up to 2 chars.
+            // So we allocate bytes.Length to bytes.Length * 2 chars.
+            const int maxOutputChars = 32 * 2;
+
+            if (bytes.IsEmpty || bytes.Length > 32)
+                return string.Empty;
+
+            // Allocate a char buffer on the stack.
+            char[]? charsArray = null;
+            Span<char> outputBuffer = stackalloc char[maxOutputChars];
+
+            int outputPos = 0;
+            int index = 0;
+            bool hasValidContent = false;
+            bool shouldAddSpace = false;
+
+            while (index < bytes.Length)
+            {
+                ReadOnlySpan<byte> span = bytes[index..];
+
+                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
+                if (status == OperationStatus.Done)
+                {
+                    if (!IsControlCharacter(rune))
+                    {
+                        if (shouldAddSpace)
+                        {
+                            outputBuffer[outputPos++] = ' ';
+                            shouldAddSpace = false;
+                        }
+
+                        int charsNeeded = rune.Utf16SequenceLength;
+                        if (outputPos + charsNeeded > outputBuffer.Length)
+                        {
+                            // Expand output buffer
+                            int newSize = outputBuffer.Length * 2;
+                            char[] newBuffer = ArrayPool<char>.Shared.Rent(newSize);
+                            outputBuffer[..outputPos].CopyTo(newBuffer);
+                            outputBuffer = newBuffer;
+                            if (charsArray is not null)
+                            {
+                                ArrayPool<char>.Shared.Return(charsArray);
+                            }
+                            charsArray = newBuffer;
+                        }
+
+                        rune.EncodeToUtf16(outputBuffer[outputPos..]);
+                        outputPos += charsNeeded;
+                        hasValidContent = true;
+                    }
+                    else
+                    {
+                        // Control character encountered; set flag to add space if needed
+                        shouldAddSpace |= hasValidContent;
+                    }
+                    index += bytesConsumed;
+                }
+                else if (status == OperationStatus.NeedMoreData)
+                {
+                    // Incomplete sequence at the end; break out of the loop
+                    break;
+                }
+                else
+                {
+                    // Unexpected status; treat as invalid data
+                    shouldAddSpace |= hasValidContent;
+                    index++;
+                }
+            }
+
+            // Create the final string from the output buffer.
+            string outputString = outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
+            if (charsArray is not null)
+            {
+                ArrayPool<char>.Shared.Return(charsArray);
+            }
+
+            return outputString;
+        }
+
+        private static bool IsControlCharacter(Rune rune)
+        {
+            // Control characters are U+0000 to U+001F and U+007F to U+009F
+            return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
+        }
+
     }
 }

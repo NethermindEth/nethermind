@@ -90,15 +90,15 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        TransactionResult result = Execute(tx, block, tracer);
+        _ = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {
-            Assert.Null(tracer.TxReceipts![0].PostTransactionState);
+            Assert.That(tracer.TxReceipts![0].PostTransactionState, Is.Null);
         }
         else
         {
-            Assert.NotNull(tracer.TxReceipts![0].PostTransactionState);
+            Assert.That(tracer.TxReceipts![0].PostTransactionState, Is.Not.Null);
         }
     }
 
@@ -395,7 +395,7 @@ public class TransactionProcessorTests
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
@@ -440,7 +440,7 @@ public class TransactionProcessorTests
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
@@ -459,7 +459,7 @@ public class TransactionProcessorTests
     {
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
-        TestContext.WriteLine(tx.GasLimit);
+        TestContext.Out.WriteLine(tx.GasLimit);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -470,13 +470,13 @@ public class TransactionProcessorTests
 
         outputTracer = new CallOutputTracer();
         tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
-        TestContext.WriteLine(tx.GasLimit);
+        TestContext.Out.WriteLine(tx.GasLimit);
 
         gethTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
 
         string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-        TestContext.WriteLine(traceOutOfGas);
+        TestContext.Out.WriteLine(traceOutOfGas);
 
         _transactionProcessor.CallAndRestore(tx, block.Header, outputTracer);
 
@@ -502,7 +502,7 @@ public class TransactionProcessorTests
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
@@ -544,7 +544,7 @@ public class TransactionProcessorTests
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+        TestContext.Out.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, block.Header, tracer);

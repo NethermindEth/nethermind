@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -15,7 +16,6 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Facade.Eth;
@@ -31,6 +31,9 @@ using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
+using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -45,6 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
+        public OverridableWorldStateManager OverridableWorldStateManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -129,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, new SyncConfig(),
+            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
@@ -146,8 +150,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                WorldStateManager,
+            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider, WorldStateManager.TrieStore, LogManager);
+            OverridableTxProcessingEnv processingEnv = new(
+                overridableWorldStateManager,
                 roBlockTree,
                 SpecProvider,
                 LimboLogs.Instance);
@@ -170,14 +175,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
             EthRpcModule = _ethRpcModuleBuilder(this);
+            OverridableWorldStateManager = overridableWorldStateManager;
 
             return this;
         }
 
-        public Task<string> TestEthRpc(string method, params string[] parameters) =>
+        public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
             RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
-
-        public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
-            RpcTest.TestSerializedRequest(module, method, parameters);
     }
 }

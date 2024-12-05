@@ -27,8 +27,8 @@ namespace Nethermind.State
 {
     public class WorldState : IWorldState, IPreBlockCaches, IStateOwner
     {
-        internal readonly StateProvider _stateProvider;
-        internal readonly PersistentStorageProvider _persistentStorageProvider;
+        private readonly StateProvider _stateProvider;
+        private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly IStateFactory _factory;
         private readonly bool _prefetchMerkle;
@@ -102,7 +102,7 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections)
+        public void Reset(bool resizeCollections = false)
         {
             _stateProvider.Reset(resizeCollections);
             _persistentStorageProvider.Reset(resizeCollections);
@@ -161,7 +161,7 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
@@ -169,9 +169,9 @@ namespace Nethermind.State
         {
             _stateProvider.AddToBalance(address, balanceChange, spec);
         }
-        public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
+            return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
@@ -219,6 +219,12 @@ namespace Nethermind.State
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
         }
+
+        public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
+        {
+            _stateProvider.Accept(visitor, stateRoot, visitingOptions);
+        }
+
         public bool AccountExists(Address address)
         {
             return _stateProvider.AccountExists(address);
@@ -293,6 +299,10 @@ namespace Nethermind.State
         }
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
+        public void ResetTransient()
+        {
+            _transientStorageProvider.Reset();
+        }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
         public IState State => _state;

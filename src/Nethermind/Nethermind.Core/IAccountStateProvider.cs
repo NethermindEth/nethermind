@@ -39,4 +39,17 @@ namespace Nethermind.Core
             return account.CodeHash;
         }
     }
+
+    public interface ICodeProvider
+    {
+        byte[]? GetCode(Address address);
+
+        byte[]? GetCode(Hash256 codeHash);
+
+        byte[]? GetCode(ValueHash256 codeHash);
+    }
+
+    public interface IAccountStateProviderWithCode : IAccountStateProvider, ICodeProvider
+    {
+    }
 }

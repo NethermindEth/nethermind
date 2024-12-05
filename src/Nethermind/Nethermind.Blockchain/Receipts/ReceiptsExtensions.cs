@@ -4,9 +4,6 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.State.Proofs;
-using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Receipts
 {
