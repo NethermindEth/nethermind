@@ -11,7 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Derivation;
 
 public static class SystemConfigUpdate
 {
@@ -19,35 +19,11 @@ public static class SystemConfigUpdate
     public static readonly Hash256 EventABIHash = Keccak.Compute(EventABI);
     public static readonly Hash256 EventVersion0 = Hash256.Zero;
 
-    public static readonly Hash256 Batcher;
-    public static readonly Hash256 FeeScalars;
-    public static readonly Hash256 GasLimit;
-    public static readonly Hash256 UnsafeBlockSigner;
-    public static readonly Hash256 EIP1559Params;
-
-    // TODO: There has to be a more elegant way of doing this
-    static SystemConfigUpdate()
-    {
-        var updateBatcher = new byte[32];
-        updateBatcher[31] = 0;
-        Batcher = new Hash256(updateBatcher);
-
-        var updateFeeScalars = new byte[32];
-        updateFeeScalars[31] = 1;
-        FeeScalars = new Hash256(updateFeeScalars);
-
-        var updateGasLimit = new byte[32];
-        updateGasLimit[31] = 2;
-        GasLimit = new Hash256(updateGasLimit);
-
-        var updateUnsafeBlockSigner = new byte[32];
-        updateUnsafeBlockSigner[31] = 3;
-        UnsafeBlockSigner = new Hash256(updateUnsafeBlockSigner);
-
-        var updateEIP1559Params = new byte[32];
-        updateEIP1559Params[31] = 4;
-        EIP1559Params = new Hash256(updateEIP1559Params);
-    }
+    public static readonly Hash256 Batcher = new([.. new byte[31], 0]);
+    public static readonly Hash256 FeeScalars = new([.. new byte[31], 1]);
+    public static readonly Hash256 GasLimit = new([.. new byte[31], 2]);
+    public static readonly Hash256 UnsafeBlockSigner = new([.. new byte[31], 3]);
+    public static readonly Hash256 EIP1559Params = new([.. new byte[31], 4]);
 }
 
 public class SystemConfigDeriver(
