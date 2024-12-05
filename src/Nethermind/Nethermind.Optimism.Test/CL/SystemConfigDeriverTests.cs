@@ -169,4 +169,53 @@ public class SystemConfigDeriverTests
 
         actualConfig.Should().Be(expectedConfig);
     }
+
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_UpdatedUnsafeBlockSigner()
+    {
+        var rawAddress = new byte[Address.Size];
+        rawAddress[19] = 0xAA;
+        var address = new Address(rawAddress);
+
+        var encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithData(encodedData)
+                        .WithTopics(
+                            SystemConfigUpdate.EventABIHash,
+                            SystemConfigUpdate.EventVersion0,
+                            SystemConfigUpdate.UnsafeBlockSigner)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            specHelper
+        );
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
+
+        var expectedConfig = new SystemConfig();
+
+        // The log data is ignored by consensus and no modifications to the
+        // system config occur.
+        actualConfig.Should().Be(expectedConfig);
+    }
 }
