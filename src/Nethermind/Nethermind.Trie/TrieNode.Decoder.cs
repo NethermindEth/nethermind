@@ -132,7 +132,7 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
-                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value.AsSpan()) : 1;
+                const int valueRlpLength = 1;
                 int contentLength = valueRlpLength + (UseParallel(canBeParallel) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 CappedArray<byte> result = pool.SafeRentBuffer(sequenceLength);
@@ -140,14 +140,7 @@ namespace Nethermind.Trie
                 int position = Rlp.StartSequence(resultSpan, 0, contentLength);
                 WriteChildrenRlpBranch(tree, ref path, item, resultSpan.Slice(position, contentLength - valueRlpLength), pool);
                 position = sequenceLength - valueRlpLength;
-                if (AllowBranchValues)
-                {
-                    Rlp.Encode(resultSpan, position, item.Value);
-                }
-                else
-                {
-                    result.AsSpan()[position] = 128;
-                }
+                result.AsSpan()[position] = 128;
 
                 return result;
 
