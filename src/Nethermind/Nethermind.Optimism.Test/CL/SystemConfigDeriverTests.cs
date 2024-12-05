@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Optimism.CL;
 using NSubstitute;
 using NUnit.Framework;
@@ -19,6 +20,7 @@ public class SystemConfigDeriverTests
 
     private static readonly AbiSignature AddressSignature = new("address", AbiType.Address);
     private static readonly AbiSignature BytesSignature = new("bytes", AbiType.DynamicBytes);
+    private static readonly AbiSignature UInt256TupleSignature = new("twoUint256", AbiType.UInt256, AbiType.UInt256);
 
     [Test]
     public void UpdateSystemConfigFromL1BLock_UpdatedBatcher()
@@ -60,6 +62,54 @@ public class SystemConfigDeriverTests
         );
         var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
         var expectedConfig = new SystemConfig { BatcherAddress = address };
+
+        actualConfig.Should().Be(expectedConfig);
+    }
+
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars()
+    {
+        UInt256 overhead = 0xFF;
+        UInt256 scalar = 0xAA;
+
+        var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
+
+        var blockHeader = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .TestObject;
+
+        var receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(TestItem.KeccakA).Returns([
+            new TxReceipt
+            {
+                StatusCode = StatusCode.Success,
+                Logs =
+                [
+                    Build.A.LogEntry
+                        .WithAddress(L1SystemConfigAddress)
+                        .WithData(encodedData)
+                        .WithTopics(
+                            SystemConfigUpdate.EventABIHash,
+                            SystemConfigUpdate.EventVersion0,
+                            SystemConfigUpdate.FeeScalars)
+                        .TestObject
+                ]
+            }
+        ]);
+
+        var deriver = new SystemConfigDeriver(
+            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            receiptFinder,
+            Substitute.For<IOptimismSpecHelper>()
+        );
+        var actualConfig = deriver.UpdateSystemConfigFromL1BLock(new SystemConfig(), blockHeader);
+
+        var expectedConfig = new SystemConfig
+        {
+            Overhead = [.. new byte[31], 0xFF],
+            Scalar = [.. new byte[31], 0xAA]
+        };
 
         actualConfig.Should().Be(expectedConfig);
     }
