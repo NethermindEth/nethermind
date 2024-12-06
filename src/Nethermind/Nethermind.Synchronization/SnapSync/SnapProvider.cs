@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     PathWithAccount account = request.Accounts[i];
-                    result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs);
+                    result = AddStorageRange(account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs, request.LimitHash);
 
                     slotCount += responses[i].Count;
                 }
@@ -194,38 +194,33 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
+        public AddRangeResult AddStorageRange(PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null, ValueHash256? hashLimit = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
+
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, startingHash, slots, expectedRootHash, hashLimit, pathWithAccount, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
                     if (moreChildrenToRight)
                     {
-                        StorageRange range = new()
-                        {
-                            Accounts = new ArrayPoolList<PathWithAccount>(1) { pathWithAccount },
-                            StartingHash = slots[^1].Path
-                        };
-
-                        _progressTracker.EnqueueStorageRange(range);
+                        _progressTracker.EnqueueStorageRange(pathWithAccount, startingHash, slots[^1].Path, hashLimit);
                     }
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
                     _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash, hashLimit);
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
                     _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash, hashLimit);
                 }
 
                 return result;
@@ -272,7 +267,8 @@ namespace Nethermind.Synchronization.SnapSync
                                 StorageRange range = new()
                                 {
                                     Accounts = new ArrayPoolList<PathWithAccount>(1) { requestedPath.PathAndAccount },
-                                    StartingHash = requestedPath.StorageStartingHash
+                                    StartingHash = requestedPath.StorageStartingHash,
+                                    LimitHash = requestedPath.StorageHashLimit
                                 };
 
                                 _progressTracker.EnqueueStorageRange(range);
@@ -305,7 +301,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
         {
-            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
+            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
         }
 
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IOwnedReadOnlyList<byte[]> codes)
