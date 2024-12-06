@@ -115,6 +115,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
                             _activeTasks.AddCount();
+                        try
+                        {
                             Task task = Task.Run(
                                 () =>
                                 {
@@ -127,6 +129,12 @@ namespace Nethermind.Synchronization.ParallelSync
                                         _activeTasks.Signal();
                                     }
                                 });
+                            }
+                            catch
+                            {
+                                _activeTasks.Signal();
+                                throw;
+                            }
 
                             if (!Feed.IsMultiFeed)
                             {
