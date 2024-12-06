@@ -18,8 +18,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -124,8 +124,7 @@ public partial class BlockProcessor(
                 if (!skipPrewarming)
                 {
                     using CancellationTokenSource cancellationTokenSource = new();
-                    (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
+                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     cancellationTokenSource.Cancel();
@@ -335,11 +334,15 @@ public partial class BlockProcessor(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
-        int index = 0;
-        Parallel.For(0, receipts.Length, _ =>
+        ParallelUnbalancedWork.For(
+            0,
+            receipts.Length,
+            ParallelUnbalancedWork.DefaultOptions,
+            receipts,
+            static (i, receipts) =>
         {
-            int i = Interlocked.Increment(ref index) - 1;
             receipts[i].CalculateBloom();
+            return receipts;
         });
     }
 
@@ -437,14 +440,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        if (!_stateProvider.AccountExists(reward.Address))
-        {
-            _stateProvider.CreateAccount(reward.Address, reward.Value);
-        }
-        else
-        {
-            _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
-        }
+        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
 
     // TODO: block processor pipeline

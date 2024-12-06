@@ -33,7 +33,7 @@ namespace Nethermind.Network.IP
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error($"Error while getting external ip from {_url}", e);
+                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while getting external ip from {_url}", e);
                 return Task.FromResult((false, (IPAddress)null));
             }
         }

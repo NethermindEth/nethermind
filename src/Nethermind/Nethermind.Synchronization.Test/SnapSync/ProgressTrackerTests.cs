@@ -146,7 +146,7 @@ public class ProgressTrackerTests
             .WithStateRoot(Keccak.EmptyTreeHash)
             .TestObject).TestObject;
         TestMemDb memDb = new();
-        SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
         using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
@@ -221,7 +221,7 @@ public class ProgressTrackerTests
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
-        SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.FastSync
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
         }
 

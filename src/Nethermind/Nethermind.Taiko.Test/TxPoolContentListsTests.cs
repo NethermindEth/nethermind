@@ -98,7 +98,7 @@ public class TxPoolContentListsTests
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
 
-        return result.Data.Select(list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(tx => (int)tx.Input![0]).ToArray()).ToArray();
+        return result.Data!.Select(list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(tx => (int)tx.Input![0]).ToArray()).ToArray();
     }
 
     public static IEnumerable FinalizingTests
