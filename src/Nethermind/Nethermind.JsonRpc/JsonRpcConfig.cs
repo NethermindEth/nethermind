@@ -38,7 +38,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
     public int? EthModuleConcurrentInstances { get; set; } = null;
-    public string JwtSecretFile { get; set; } = "keystore/jwt-secret";
+    public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
     public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
     public string[]? MethodsLoggingFiltering { get; set; } =
@@ -58,4 +58,3 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int EstimateErrorMargin { get; set; } = 150;
     public string[] CorsOrigins { get; set; } = ["*"];
 };
-

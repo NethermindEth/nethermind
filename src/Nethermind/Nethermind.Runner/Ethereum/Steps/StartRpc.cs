@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -14,6 +16,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -30,7 +33,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         public async Task Execute(CancellationToken cancellationToken)
         {
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+            IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
+
+            if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
+            {
+                ConfigureJwtSecret(keyStoreConfig, jsonRpcConfig, logger);
+            }
 
             if (jsonRpcConfig.Enabled)
             {
@@ -103,6 +112,26 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
+            }
+        }
+        private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
+        {
+            string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));
+            string oldPath = Path.GetFullPath("keystore/jwt-secret");
+            jsonRpcConfig.JwtSecretFile = newPath;
+            // check if jwt-secret file already exists in previous default directory
+            if (!File.Exists(newPath) && File.Exists(oldPath))
+            {
+                try
+                {
+                    File.Move(oldPath, newPath);
+                    if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                }
+                catch (Exception ex)
+                {
+                    if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                    jsonRpcConfig.JwtSecretFile = oldPath;
+                }
             }
         }
     }
