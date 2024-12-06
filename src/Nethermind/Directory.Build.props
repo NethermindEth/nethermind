@@ -1,15 +1,18 @@
 <Project>
+  <Target Name="EnsureOutputDirectoryExists" BeforeTargets="BeforeBuild">
+    <MakeDir Directories="$(BaseOutputPath)$(Configuration)" />
+  </Target>
 
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>13.0</LangVersion>
     <NuGetAuditMode>direct</NuGetAuditMode>
     <TargetFramework>net9.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
-    <BaseOutputPath>$(SolutionDir)\artifacts\</BaseOutputPath>
-    <OutputPath>$(BaseOutputPath)$(Configuration)\</OutputPath>
+    <BaseOutputPath>$(SolutionDir)/artifacts/</BaseOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)/</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
