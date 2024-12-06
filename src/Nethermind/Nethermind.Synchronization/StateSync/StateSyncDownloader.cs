@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.StateSync
                 else
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
-                    GetTrieNodesRequest request = GetGroupedRequest(batch);
+                    using GetTrieNodesRequest request = GetGroupedRequest(batch);
                     task = snapHandler.GetTrieNodes(request, cancellationToken);
                 }
             }
