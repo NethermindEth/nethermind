@@ -31,6 +31,7 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         {
             throw new FormatException("Invalid batch version.");
         }
+
         int length = decoderContext.ReadSequenceLength();
         int batchCheck = length + decoderContext.Position;
         Hash256? parentHash = decoderContext.DecodeKeccak();
@@ -125,6 +126,7 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         {
             throw new FormatException("Invalid batch version.");
         }
+
         ulong relTimestamp = rlpStream.DecodeUlong();
         ulong l1OriginNum = rlpStream.DecodeULong();
         byte[] parentCheck = rlpStream.DecodeByteArray();
@@ -132,11 +134,13 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         {
             throw new FormatException("Invalid parent check.");
         }
+
         byte[] l1OriginCheck = rlpStream.DecodeByteArray();
         if (l1OriginCheck.Length != 20)
         {
             throw new FormatException("Invalid l1 origin check.");
         }
+
         ulong blockCount = rlpStream.DecodeUlong();
         BigInteger originBits = rlpStream.DecodeUBigInt();
         ulong[] blockTransactionCounts = rlpStream.DecodeArray(x => x.DecodeUlong());
@@ -167,7 +171,8 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         for (int i = 0; i < ULongMaxLength; i++)
         {
             byte b = data[i];
-            if (b < 0x80) {
+            if (b < 0x80)
+            {
                 return (x | ((ulong)b << s), i + 1);
             }
 
@@ -191,6 +196,7 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         {
             throw new FormatException("Invalid bit length.");
         }
+
         return (x, (int)bufLen);
     }
 
@@ -305,6 +311,7 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
             {
                 legacyTxCnt++;
             }
+
             n += n8;
         }
 

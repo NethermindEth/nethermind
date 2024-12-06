@@ -96,8 +96,10 @@ public class EthereumBeaconApi : IBeaconApi
         GetBlobSidecarsResponse data = await GetData<GetBlobSidecarsResponse>($"/eth/v1/beacon/blob_sidecars/{slot}");
         for (int i = 0; i < data.Data.Length; ++i)
         {
-            data.Data[i].BlobVersionedHash = (new byte[]{1}).Concat(SHA256.HashData(data.Data[i].KzgCommitment)[1..]).ToArray();
+            data.Data[i].BlobVersionedHash =
+                (new byte[] { 1 }).Concat(SHA256.HashData(data.Data[i].KzgCommitment)[1..]).ToArray();
         }
+
         return data.Data;
     }
 

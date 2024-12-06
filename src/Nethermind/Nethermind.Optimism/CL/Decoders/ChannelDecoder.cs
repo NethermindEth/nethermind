@@ -25,7 +25,8 @@ public class ChannelDecoder
             // TODO: test
             var deflateStream = new DeflateStream(new MemoryStream(frame.FrameData[2..]), CompressionMode.Decompress);
             deflateStream.CopyTo(memoryStream);
-        } else if (frame.FrameData[0] == 1)
+        }
+        else if (frame.FrameData[0] == 1)
         {
             // brotli
             BrotliStream stream = new BrotliStream(new MemoryStream(frame.FrameData[1..]), CompressionMode.Decompress);
