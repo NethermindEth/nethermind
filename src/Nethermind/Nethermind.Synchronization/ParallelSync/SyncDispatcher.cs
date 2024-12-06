@@ -126,8 +126,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                     {
                                         _activeTasks.Signal();
                                     }
-                                },
-                                cancellationToken);
+                                });
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -302,7 +301,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _activeTasks.Signal();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout ))
             {
-                if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name}");
+                if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");
             }
             _concurrentProcessingSemaphore.Dispose();
             return ValueTask.CompletedTask;
