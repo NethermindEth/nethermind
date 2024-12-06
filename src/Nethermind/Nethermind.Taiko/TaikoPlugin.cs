@@ -155,7 +155,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
 
-        OverridableWorldStateManager overridableWorldStateManager = new(_api.DbProvider!, _api.WorldStateManager!.TrieStore, _api.LogManager);
+        OverridableWorldStateManager overridableWorldStateManager = new(_api.DbProvider!, null!, _api.LogManager);
 
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(overridableWorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);

@@ -11,8 +11,8 @@ namespace Nethermind.State;
 public class OverridableWorldStateManager : IWorldStateManager
 {
     private readonly ReadOnlyDbProvider _readOnlyDbProvider;
-    private readonly StateReader _reader;
-    private readonly WorldState _state;
+    private readonly StateReader _reader = default!;
+    private readonly WorldState _state= default!;
 
     private readonly OverlayTrieStore _overlayTrieStore;
     private readonly ILogManager? _logManager;
@@ -23,8 +23,8 @@ public class OverridableWorldStateManager : IWorldStateManager
         OverlayTrieStore overlayTrieStore = new(dbProvider.StateDb, trieStore, logManager);
 
         _logManager = logManager;
-        _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
-        _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        // _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        // _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
         _overlayTrieStore = overlayTrieStore;
     }
 
@@ -34,10 +34,12 @@ public class OverridableWorldStateManager : IWorldStateManager
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        if (forWarmup is not null)
-            throw new NotSupportedException("Overridable world state with warm up is not supported.");
+        throw new NotImplementedException();
 
-        return new OverridableWorldState(_overlayTrieStore, _readOnlyDbProvider, _logManager);
+        // if (forWarmup is not null)
+        //     throw new NotSupportedException("Overridable world state with warm up is not supported.");
+        //
+        // return new OverridableWorldState(_overlayTrieStore, _readOnlyDbProvider, _logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

@@ -41,9 +41,9 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        // private readonly IOverridableTxProcessorSource _processingEnv;
-        // private readonly IBlockTree _blockTree;
-        // private readonly IStateReader _stateReader;
+        private readonly IOverridableTxProcessorSource _processingEnv;
+        private readonly IBlockTree _blockTree;
+        private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumEcdsa _ecdsa;
@@ -68,9 +68,9 @@ namespace Nethermind.Facade
             IBlocksConfig blocksConfig,
             bool isMining)
         {
-            // _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
-            // _blockTree = processingEnv.BlockTree;
-            // _stateReader = processingEnv.StateReader;
+            _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
+            _blockTree = processingEnv.BlockTree;
+            _stateReader = processingEnv.StateReader;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));

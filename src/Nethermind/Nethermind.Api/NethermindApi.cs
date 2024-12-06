@@ -77,7 +77,7 @@ namespace Nethermind.Api
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider!, WorldStateManager!.TrieStore, LogManager);
+            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider!, null!, LogManager);
 
             // TODO: reuse the same trie cache here
             OverridableTxProcessingEnv txProcessingEnv = new(

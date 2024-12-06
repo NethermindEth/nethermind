@@ -37,6 +37,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using No = Nethermind.Synchronization.No;
 
 namespace Nethermind.Init.Steps;
 
