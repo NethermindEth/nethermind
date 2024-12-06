@@ -54,7 +54,10 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
 
         return new()
         {
-            ParentHash = parentHash, EpochNumber = epochNumber, EpochHash = epochHash, Timestamp = timestamp,
+            ParentHash = parentHash,
+            EpochNumber = epochNumber,
+            EpochHash = epochHash,
+            Timestamp = timestamp,
             Transactions = transactionList.ToArray()
         };
     }
@@ -97,7 +100,10 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
 
             return new()
             {
-                ParentHash = parentHash, EpochNumber = epochNumber, EpochHash = epochHash, Timestamp = timestamp,
+                ParentHash = parentHash,
+                EpochNumber = epochNumber,
+                EpochHash = epochHash,
+                Timestamp = timestamp,
                 Transactions = transactionList.ToArray()
             };
         }
