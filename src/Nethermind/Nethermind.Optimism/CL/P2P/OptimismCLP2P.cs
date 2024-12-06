@@ -26,20 +26,22 @@ public class OptimismCLP2P : IDisposable
 {
     private ServiceProvider? _serviceProvider;
     private PubsubRouter? _router;
-    private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly ILogger _logger;
     private readonly IOptimismEngineRpcModule _engineRpcModule;
     private readonly IPayloadDecoder _payloadDecoder;
     private readonly IP2PBlockValidator _blockValidator;
     private readonly string[] _staticPeerList;
+    private readonly ICLConfig _config;
 
     private readonly string _blocksV2TopicId;
 
     private ITopic? _blocksV2Topic;
 
-    public OptimismCLP2P(ulong chainId, string[] staticPeerList, Address sequencerP2PAddress, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
+    public OptimismCLP2P(ulong chainId, string[] staticPeerList, ICLConfig config, Address sequencerP2PAddress, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
         _logger = logManager.GetClassLogger();
+        _config = config;
         _staticPeerList = staticPeerList;
         _engineRpcModule = engineRpcModule;
         _payloadDecoder = new PayloadDecoder();
@@ -63,7 +65,7 @@ public class OptimismCLP2P : IDisposable
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/3030");
+        ILocalPeer peer = peerFactory.Create(new Identity(), $"/ip4/{_config.P2PHost}/tcp/{_config.P2PPort}");
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
@@ -97,7 +99,6 @@ public class OptimismCLP2P : IDisposable
         int length = Snappy.GetUncompressedLength(msg);
         if (length < 65)
         {
-            // TODO: decrease peers rating
             return;
         }
         byte[] decompressed = new byte[length];
@@ -108,7 +109,6 @@ public class OptimismCLP2P : IDisposable
 
         if (_blockValidator.ValidateSignature(payloadData, signature) != ValidityStatus.Valid)
         {
-            // TODO: decrease peers rating
             return;
         }
 
@@ -123,7 +123,6 @@ public class OptimismCLP2P : IDisposable
             {
                 _logger.Warn($"Unable to decode payload from p2p. {e.Message}");
             }
-            // TODO: decrease peers rating
             return;
         }
 
@@ -136,7 +135,6 @@ public class OptimismCLP2P : IDisposable
 
         if (validationResult == ValidityStatus.Reject)
         {
-            // TODO: decrease peers rating
             return;
         }
 
