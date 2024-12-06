@@ -16,6 +16,7 @@ using Nethermind.Shutter.Config;
 using System.Linq;
 
 using Update = (byte[] Message, byte[] Signature);
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -24,9 +25,9 @@ public class ValidatorRegistryContract(
     IAbiEncoder abiEncoder,
     Address contractAddress,
     ILogManager logManager,
-    ulong chainId,
+    ISpecProvider specProvider,
     ulong messageVersion)
-    : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
+    : CallableContract(transactionProcessor, specProvider, abiEncoder, contractAddress), IValidatorRegistryContract
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
 
@@ -128,9 +129,9 @@ public class ValidatorRegistryContract(
             return false;
         }
 
-        if (msg.ChainId != chainId)
+        if (msg.ChainId != SpecProvider.ChainId)
         {
-            err = $"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}.";
+            err = $"Registration message has incorrect chain ID ({msg.ChainId}) should be {SpecProvider.ChainId}.";
             return false;
         }
 

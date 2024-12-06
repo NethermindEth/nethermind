@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -14,10 +15,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private static readonly UInt256 Two = 2;
 
         public TransactionPermissionContractV2(
+            ISpecProvider specProvider,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
+            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
         {
         }
 

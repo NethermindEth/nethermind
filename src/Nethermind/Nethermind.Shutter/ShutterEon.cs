@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter;
 
@@ -19,7 +20,8 @@ public class ShutterEon(
     ReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
-    ILogManager logManager) : IShutterEon
+    ILogManager logManager,
+    ISpecProvider specProvider) : IShutterEon
 {
     private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
@@ -36,20 +38,20 @@ public class ShutterEon(
 
         try
         {
-            KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
+            KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress, specProvider);
             ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
 
             if (_currentInfo is null || _currentInfo.Value.Eon != eon)
             {
                 Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
-                KeyperSetContract keyperSetContract = new(processor, abiEncoder, keyperSetContractAddress);
+                KeyperSetContract keyperSetContract = new(processor, abiEncoder, keyperSetContractAddress, specProvider);
 
                 if (keyperSetContract.IsFinalized(header))
                 {
                     ulong threshold = keyperSetContract.GetThreshold(header);
                     Address[] addresses = keyperSetContract.GetMembers(header);
 
-                    KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress);
+                    KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress, specProvider);
                     byte[] eonKey = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
 
                     // update atomically

@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         {
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
-                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas, _specProvider.GetSpec(b.Header));
                 return new(
                     b.Number,
                     b.BaseFeePerGas,

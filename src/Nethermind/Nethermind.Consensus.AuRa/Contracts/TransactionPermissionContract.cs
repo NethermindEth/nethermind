@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -63,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public virtual UInt256 ContractVersion(BlockHeader blockHeader)
         {
-            return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
+            return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero, SpecProvider.GetSpec(blockHeader));
         }
 
         /// <summary>
@@ -82,7 +83,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache, bool ContractExists) AllowedTxTypes(BlockHeader parentHeader, Transaction tx)
         {
             object[] parameters = GetAllowedTxTypesParameters(tx, parentHeader);
-            PermissionConstantContract.PermissionCallInfo callInfo = new(parentHeader, nameof(AllowedTxTypes), Address.Zero, parameters, tx.To ?? Address.Zero);
+            PermissionConstantContract.PermissionCallInfo callInfo = new(parentHeader, nameof(AllowedTxTypes), Address.Zero, SpecProvider.GetSpec(parentHeader), parameters, tx.To ?? Address.Zero);
             (ITransactionPermissionContract.TxPermissions, bool) result = CallAllowedTxTypes(callInfo);
             return (result.Item1, result.Item2, callInfo.ToIsContract);
         }
@@ -95,10 +96,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         protected IConstantContract Constant { get; }
 
         protected TransactionPermissionContract(
+            ISpecProvider specProvider,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress)
+            : base(specProvider, abiEncoder, contractAddress)
         {
             Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
         }
@@ -128,9 +130,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     BlockHeader parentHeader,
                     string functionName,
                     Address sender,
+                    IReleaseSpec spec,
                     object[] arguments,
                     Address to)
-                    : base(parentHeader, functionName, sender, arguments)
+                    : base(parentHeader, functionName, sender, spec, arguments)
                 {
                     To = to;
                 }

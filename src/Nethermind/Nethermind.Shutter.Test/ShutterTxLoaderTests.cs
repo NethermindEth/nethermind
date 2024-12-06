@@ -11,13 +11,22 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
 class ShutterTxLoaderTests : EngineModuleTests
 {
-    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
+    private class ShutterEventSimulatorHalfInvalid(
+        Random rnd,
+        ulong chainId,
+        ulong threshold,
+        ulong slot,
+        IAbiEncoder abiEncoder,
+        Address sequencerContractAddress,
+        ISpecProvider specProvider
+        ) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress, specProvider)
     {
         private readonly Transaction _validTx = Build.A.Transaction.WithChainId(chainId).Signed().TestObject;
         private readonly Transaction _invalidTx = Build.A.Transaction.TestObject;
@@ -37,7 +46,15 @@ class ShutterTxLoaderTests : EngineModuleTests
         }
     }
 
-    private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
+    private class ShutterEventSimulatorHalfNextEon(
+        Random rnd,
+        ulong chainId,
+        ulong threshold,
+        ulong slot,
+        IAbiEncoder abiEncoder,
+        Address sequencerContractAddress,
+        ISpecProvider specProvider
+        ) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress, specProvider)
     {
         protected override IEnumerable<Event> EmitEvents()
         {
@@ -86,7 +103,8 @@ class ShutterTxLoaderTests : EngineModuleTests
             ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
             ShutterTestsCommon.AbiEncoder,
-            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
+            new(ShutterTestsCommon.Cfg.SequencerContractAddress!),
+            ShutterTestsCommon.SpecProvider
         );
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
@@ -199,7 +217,8 @@ class ShutterTxLoaderTests : EngineModuleTests
             ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
             ShutterTestsCommon.AbiEncoder,
-            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
+            new(ShutterTestsCommon.Cfg.SequencerContractAddress!),
+            ShutterTestsCommon.SpecProvider
         );
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);

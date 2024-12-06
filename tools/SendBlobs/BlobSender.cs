@@ -12,6 +12,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
 
 namespace SendBlobs;
 internal class BlobSender
@@ -21,6 +23,7 @@ internal class BlobSender
     private INodeManager _nodeManager;
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
+    private readonly ISpecProvider _specProvider = GnosisSpecProvider.Instance;
 
     public BlobSender(string rpcUrl, ILogManager logManager)
     {
@@ -287,7 +290,8 @@ internal class BlobSender
                 (block.ExcessBlobGas ?? 0) +
                 excessBlobs * Eip4844Constants.MaxBlobGasPerBlock +
                 excessBlobsReserve,
-                out UInt256 blobGasPrice);
+                out UInt256 blobGasPrice,
+                _specProvider.GetSpec(block.ToBlock().Header));
             result.maxFeePerBlobGas = blobGasPrice;
         }
         else

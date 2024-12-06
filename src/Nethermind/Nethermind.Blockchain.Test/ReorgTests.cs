@@ -74,7 +74,7 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,

@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Int256;
@@ -26,10 +27,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private IConstantContract Constant { get; }
 
         public TxPriorityContract(
+            ISpecProvider specProvider,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Constant = GetConstant(readOnlyTxProcessorSource);
             SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet);
@@ -38,14 +40,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public Address[] GetSendersWhitelist(BlockHeader parentHeader) =>
-            Constant.Call<Address[]>(new CallInfo(parentHeader, nameof(GetSendersWhitelist), Address.SystemUser) { MissingContractResult = MissingSenderWhitelistResult });
+            Constant.Call<Address[]>(new CallInfo(parentHeader, nameof(GetSendersWhitelist), Address.SystemUser, SpecProvider.GetSpec(parentHeader)) { MissingContractResult = MissingSenderWhitelistResult });
 
         public Destination[] GetMinGasPrices(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
+            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser, SpecProvider.GetSpec(parentHeader)) { MissingContractResult = MissingPrioritiesResult })
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public Destination[] GetPriorities(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
+            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser, SpecProvider.GetSpec(parentHeader)) { MissingContractResult = MissingPrioritiesResult })
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)

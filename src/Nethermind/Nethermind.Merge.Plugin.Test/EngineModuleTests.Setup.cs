@@ -251,7 +251,7 @@ public partial class EngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State, SpecProvider),
                 State,
                 ReceiptStorage,
                 TxProcessor,

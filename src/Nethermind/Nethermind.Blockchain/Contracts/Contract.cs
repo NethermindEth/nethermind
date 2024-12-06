@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Contracts
 {
@@ -34,6 +35,7 @@ namespace Nethermind.Blockchain.Contracts
         public const long DefaultContractGasLimit = 1_600_000L;
 
         protected IAbiEncoder AbiEncoder { get; }
+        protected ISpecProvider SpecProvider { get; }
         public AbiDefinition AbiDefinition { get; }
         public Address? ContractAddress { get; protected set; }
 
@@ -43,8 +45,9 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
         /// <param name="contractAddress">Address where contract is deployed.</param>
         /// <param name="abiDefinition">Binary definition of contract.</param>
-        protected Contract(IAbiEncoder? abiEncoder = null, Address? contractAddress = null, AbiDefinition? abiDefinition = null)
+        protected Contract(ISpecProvider specProvider, IAbiEncoder? abiEncoder = null, Address? contractAddress = null, AbiDefinition? abiDefinition = null)
         {
+            SpecProvider = specProvider;
             AbiEncoder = abiEncoder ?? Abi.AbiEncoder.Instance;
             ContractAddress = contractAddress;
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
@@ -168,7 +171,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
         /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
-        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
+        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, IReleaseSpec spec, bool callAndRestore = false)
         {
             bool failure;
 
@@ -178,11 +181,11 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header, spec), tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header, spec), tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;

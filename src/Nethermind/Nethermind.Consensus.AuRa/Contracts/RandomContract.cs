@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -77,12 +78,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private IConstantContract Constant { get; }
 
         public RandomContract(
+            ISpecProvider specProvider,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             long transitionBlock,
             ISigner signer)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _signer = signer;
             Activation = transitionBlock;
@@ -125,7 +127,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool SentReveal(BlockHeader parentHeader, in UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(SentReveal), SignerAddress, collectRound, SignerAddress);
+        private bool SentReveal(BlockHeader parentHeader, in UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(SentReveal), SignerAddress, SpecProvider.GetSpec(parentHeader), collectRound, SignerAddress);
 
         /// <summary>
         /// Returns a boolean flag indicating whether the specified validator has committed their secret's hash for the specified collection round.
@@ -136,7 +138,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool IsCommitted(BlockHeader parentHeader, in UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(IsCommitted), SignerAddress, collectRound, SignerAddress);
+        private bool IsCommitted(BlockHeader parentHeader, in UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(IsCommitted), SignerAddress, SpecProvider.GetSpec(parentHeader), collectRound, SignerAddress);
 
         /// <summary>
         /// Returns the serial number of the current collection round.
@@ -144,7 +146,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Serial number of the current collection round.</returns>
         private UInt256 CurrentCollectRound(BlockHeader parentHeader) =>
-            Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), SignerAddress);
+            Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), SignerAddress, SpecProvider.GetSpec(parentHeader));
 
 
         /// <summary>
@@ -153,7 +155,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Boolean flag indicating whether the current phase of the current collection round is a `commits phase`.</returns>
-        private bool IsCommitPhase(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(IsCommitPhase), SignerAddress);
+        private bool IsCommitPhase(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(IsCommitPhase), SignerAddress, SpecProvider.GetSpec(parentHeader));
 
         /// <summary>
         /// Returns the Keccak-256 hash and cipher of the validator's secret for the specified collection round and the specified validator stored by the validator through the `commitHash` function.
@@ -166,7 +168,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </remarks>
         public (Hash256 Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, in UInt256 collectRound)
         {
-            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, collectRound, SignerAddress);
+            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, SpecProvider.GetSpec(parentHeader), collectRound, SignerAddress);
             return (new Hash256(hash), cipher);
         }
 

@@ -33,48 +33,56 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
         }
 
-        private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV1 CreateV1(
+            ISpecProvider specProvider,
+            IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             return new(
+                specProvider,
                 abiEncoder,
                 contractAddress,
                 readOnlyTxProcessorSource);
         }
 
-        private static TransactionPermissionContractV2 CreateV2(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV2 CreateV2(
+            ISpecProvider specProvider,
+            IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             return new(
+                specProvider,
                 abiEncoder,
                 contractAddress,
                 readOnlyTxProcessorSource);
         }
 
-        private static TransactionPermissionContractV3 CreateV3(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV3 CreateV3(
+            ISpecProvider specProvider,
+            IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             return new(
+                specProvider,
                 abiEncoder,
                 contractAddress,
-                readOnlyTxProcessorSource,
-                specProvider);
+                readOnlyTxProcessorSource);
         }
 
-        private static TransactionPermissionContractV4 CreateV4(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV4 CreateV4(
+            ISpecProvider specProvider,
+            IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             return new(
+                specProvider,
                 abiEncoder,
                 contractAddress,
-                readOnlyTxProcessorSource,
-                specProvider);
+                readOnlyTxProcessorSource);
         }
 
 
@@ -87,29 +95,35 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 {
                     UInt256.One,
-                    CreateV1(abiEncoder,
+                    CreateV1(
+                        specProvider,
+                        abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
                     2,
-                    CreateV2(abiEncoder,
+                    CreateV2(
+                        specProvider,
+                        abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
                     3,
-                    CreateV3(abiEncoder,
+                    CreateV3(
+                        specProvider,
+                        abiEncoder,
                         contractAddress,
-                        readOnlyTxProcessorSource,
-                        specProvider)
+                        readOnlyTxProcessorSource)
                 },
                 {
                     4,
-                    CreateV4(abiEncoder,
+                    CreateV4(
+                        specProvider,
+                        abiEncoder,
                         contractAddress,
-                        readOnlyTxProcessorSource,
-                        specProvider)
+                        readOnlyTxProcessorSource)
                 },
             };
         }

@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -31,10 +32,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private IConstantContract Constant { get; }
 
         public RegisterContract(
+            ISpecProvider specProvider,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
@@ -56,6 +58,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address GetAddress(BlockHeader header, string key) =>
             // 2 arguments: name and key (category)
             Constant.Call<Address>(
-                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).BytesToArray(), DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
+                new CallInfo(header, nameof(GetAddress), Address.Zero, SpecProvider.GetSpec(header), Keccak.Compute(key).BytesToArray(), DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
     }
 }

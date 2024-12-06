@@ -31,7 +31,7 @@ class ShutterValidatorRegistryTests
             ShutterTestsCommon.AbiEncoder,
             Address.Zero,
             LimboLogs.Instance,
-            ShutterTestsCommon.ChainId,
+            ShutterTestsCommon.SpecProvider,
             1);
         ShutterValidatorsInfo validatorsInfo = new();
         List<(uint, Update)> updates = [];

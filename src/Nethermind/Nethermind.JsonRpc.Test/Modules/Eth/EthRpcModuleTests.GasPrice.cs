@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 
@@ -110,6 +111,7 @@ public partial class EthRpcModuleTests
         return [firstBlock, secondBlock, thirdBlock];
     }
 
+    // todo: add test cases
     public static IEnumerable<TestCaseData> GetBlobBaseFeeTestCases
     {
         get
@@ -125,17 +127,17 @@ public partial class EthRpcModuleTests
             yield return new TestCaseData(0ul)
             {
                 TestName = $"Cancun block no {nameof(BlockHeader.ExcessBlobGas)} accumulated",
-                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
+                ExpectedResult = Success(Eip4844Constants.GetMinBlobGasPrice(London.Instance))
             };
             yield return new TestCaseData(1ul)
             {
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
-                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
+                ExpectedResult = Success(Eip4844Constants.GetMinBlobGasPrice(London.Instance))
             };
             yield return new TestCaseData(Eip4844Constants.GasPerBlob)
             {
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
-                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
+                ExpectedResult = Success(Eip4844Constants.GetMinBlobGasPrice(London.Instance))
             };
             yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock * 4)
             {

@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Processing
                     }
 
                     if (transaction.SupportsBlobs && (
-                        !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, out UInt256 blobBaseFee) ||
+                        !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, out UInt256 blobBaseFee, releaseSpec) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {
                         e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobBaseFee: {blobBaseFee}");

@@ -323,6 +323,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsRip7212Enabled { get; }
 
+        /// <summary>
+        /// Increase min blob base fee
+        /// </summary>
+        bool IsEip7762Enabled { get; }
+
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
 

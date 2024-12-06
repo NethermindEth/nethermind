@@ -20,11 +20,12 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockValidationTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider)
+            IWorldState stateProvider,
+            ISpecProvider specProvider)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, ISpecProvider specProvider)
+                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider, specProvider)
             {
             }
 
@@ -43,7 +44,7 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block) => new(block.Header);
+            protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block) => new(block.Header, specProvider.GetSpec(block.Header));
 
             protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
