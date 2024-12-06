@@ -67,7 +67,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -86,7 +85,6 @@ public partial class EngineModuleTests
         block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
-        pointers.LowestInsertedHeader = block.Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
@@ -237,7 +235,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -256,7 +253,6 @@ public partial class EngineModuleTests
         block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
-        pointers.LowestInsertedHeader = block.Header;
 
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
@@ -762,7 +758,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -792,7 +787,6 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(pivotBlock.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot!, pivotBlock.Header);
         pointers.LowestInsertedBeaconHeader = missingBlocks[^filledNum].Header;
-        pointers.LowestInsertedHeader = missingBlocks[^filledNum].Header;
         pointers.BestKnownBeaconBlock = 9;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         // finish rest of headers sync
@@ -803,7 +797,6 @@ public partial class EngineModuleTests
 
         // headers sync should be finished but not forwards beacon sync
         pointers.LowestInsertedBeaconHeader = missingBlocks[0].Header;
-        pointers.LowestInsertedHeader = missingBlocks[0].Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
@@ -913,7 +906,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -940,7 +932,6 @@ public partial class EngineModuleTests
         // verify correct pointers
         requests[0].TryGetBlock(out Block? destinationBlock);
         pointers.LowestInsertedBeaconHeader = destinationBlock!.Header;
-        pointers.LowestInsertedHeader = destinationBlock.Header;
         pointers.BestKnownBeaconBlock = 13;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
@@ -1061,7 +1052,6 @@ public partial class EngineModuleTests
         blockTree.BestSuggestedBody.Should().Be(pointers.BestSuggestedBody);
         // TODO: post merge sync change to best beacon block
         (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
-        blockTree.LowestInsertedHeader.Should().BeEquivalentTo(pointers.LowestInsertedHeader);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
     }
 
@@ -1079,7 +1069,6 @@ public partial class EngineModuleTests
         public BlockHeader? BestSuggestedHeader;
         public Block? BestSuggestedBody;
         public long BestKnownBeaconBlock;
-        public BlockHeader? LowestInsertedHeader;
         public BlockHeader? LowestInsertedBeaconHeader;
     }
 }

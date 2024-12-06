@@ -36,7 +36,15 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
                                                     _pivot.PivotDestinationNumber || _chainMerged;
 
-    protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
+    protected override BlockHeader? LowestInsertedBlockHeader
+    {
+        get => _blockTree.LowestInsertedBeaconHeader;
+        set
+        {
+            // Set in blocktree
+        }
+    }
+
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
 
     protected override MeasuredProgress HeadersSyncQueueReport => _syncReport.BeaconHeadersInQueue;
