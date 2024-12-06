@@ -2292,7 +2292,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private EvmExceptionType InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracing : struct, IIsTracing
     {
-        Metrics.SelfDestructs++;
+        Metrics.IncrementSelfDestructs();
 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;

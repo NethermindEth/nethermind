@@ -13,11 +13,11 @@ public static class ThreadExtensions
         private readonly Thread? _thread;
         private readonly ThreadPriority _previousPriority;
 
-        internal Disposable(Thread thread)
+        internal Disposable(Thread thread, ThreadPriority priority = ThreadPriority.AboveNormal)
         {
             _thread = thread;
             _previousPriority = thread.Priority;
-            thread.Priority = ThreadPriority.AboveNormal;
+            thread.Priority = priority;
         }
 
         public void Dispose()
@@ -32,5 +32,10 @@ public static class ThreadExtensions
     public static Disposable BoostPriority(this Thread thread)
     {
         return new Disposable(thread);
+    }
+
+    public static Disposable BoostPriorityHighest(this Thread thread)
+    {
+        return new Disposable(thread, ThreadPriority.Highest);
     }
 }
