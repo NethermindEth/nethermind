@@ -37,7 +37,7 @@ public class SnapProviderTests
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -55,7 +55,7 @@ public class SnapProviderTests
     public void AddAccountRange_ResponseHasEmptyListOfAccountsAndOneProof_ReturnsExpiredRootHash()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -85,7 +85,7 @@ public class SnapProviderTests
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 1
             }))
@@ -127,7 +127,7 @@ public class SnapProviderTests
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new SyncConfig()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 2
             }))

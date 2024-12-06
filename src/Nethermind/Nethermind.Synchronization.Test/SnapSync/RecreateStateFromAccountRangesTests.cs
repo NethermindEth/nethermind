@@ -113,7 +113,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -132,7 +132,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -148,7 +148,7 @@ public class RecreateStateFromAccountRangesTests
     {
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -165,7 +165,7 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -201,7 +201,7 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -234,7 +234,7 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -267,7 +267,7 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
@@ -390,7 +390,7 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new TestSyncConfig())).Build();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
