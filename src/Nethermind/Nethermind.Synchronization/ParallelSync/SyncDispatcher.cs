@@ -13,7 +13,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncDispatcher<T>: IAsyncDisposable
+    public class SyncDispatcher<T> : IAsyncDisposable
     {
         private readonly Lock _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _disposed = true;
 
             _activeTasks.Signal();
-            if (!_activeTasks.Wait(ActiveTaskDisposeTimeout ))
+            if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
             {
                 if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");
             }
