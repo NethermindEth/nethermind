@@ -8,6 +8,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
+    <BaseOutputPath>$(SolutionDir)\artifacts\</BaseOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)\</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
