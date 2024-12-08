@@ -62,7 +62,12 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(payloadAttributes?.MaxBlobCount ?? Eip4844Constants.GetMaxBlobsPerBlock()));
+            if (spec.IsEip7742Enabled && payloadAttributes == null)
+            {
+                if (_logger.IsDebug) _logger.Debug("Eip-7742 is enabled, but no payload attributes were provided.");
+                yield break;
+            }
+            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(payloadAttributes.MaxBlobCount ?? Eip4844Constants.GetMaxBlobsPerBlock()));
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
@@ -119,7 +124,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs, PayloadAttributes? payloadAttributes = null)
         {
             int checkedBlobTransactions = 0;
             int selectedBlobTransactions = 0;
@@ -128,7 +133,8 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (!spec.IsEip7742Enabled && blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock)
+                if ((spec.IsEip7742Enabled && blobGasCounter >= payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob)
+                    || (!spec.IsEip7742Enabled && blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
                     break;
@@ -137,8 +143,9 @@ namespace Nethermind.Consensus.Producers
                 checkedBlobTransactions++;
 
                 ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
-                // no validation is needed when eip7742 is activated
-                if (!spec.IsEip7742Enabled && txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
+
+                if ((spec.IsEip7742Enabled && txBlobGas >= payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob - blobGasCounter)
+                     || (!spec.IsEip7742Enabled && txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
