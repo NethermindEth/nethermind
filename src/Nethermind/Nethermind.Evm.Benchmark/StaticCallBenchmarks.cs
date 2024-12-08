@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(Bytecode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
+                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
                 inputData: default
             );
 

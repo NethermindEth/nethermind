@@ -137,7 +137,7 @@ namespace Ethereum.Test.Base
 
             if (txIsValid)
             {
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                transactionProcessor.Execute(test.Transaction, header, txTracer);
             }
             else
             {
