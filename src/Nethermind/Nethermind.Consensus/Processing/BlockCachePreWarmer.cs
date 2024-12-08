@@ -170,7 +170,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = scope.TransactionProcessor.Warmup(systemTransaction, new BlockExecutionContext(state.Block.Header.Clone(), spec), NullTxTracer.Instance);
+                    TransactionResult result = scope.TransactionProcessor.Warmup(systemTransaction, new BlockExecutionContext(state.Block.Header.Clone()), NullTxTracer.Instance);
                     if (state.PreWarmer._logger.IsTrace) state.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)

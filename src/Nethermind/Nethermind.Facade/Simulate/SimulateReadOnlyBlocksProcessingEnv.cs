@@ -29,8 +29,8 @@ public class SimulateBlockValidationTransactionsExecutor(
     UInt256? blobBaseFeeOverride)
     : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    protected override BlockExecutionContext CreateBlockExecutionContext(Block block, IReleaseSpec spec) =>
-        blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block, spec);
+    protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
+        blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
 
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
