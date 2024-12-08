@@ -11,5 +11,5 @@ public class Eip7742Constants
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
-    public static UInt256 BlobGasPriceUpdateFraction { get; private set; } = 1112825;
+    public const ulong BlobGasPriceUpdateFraction = 1112825;
 }
