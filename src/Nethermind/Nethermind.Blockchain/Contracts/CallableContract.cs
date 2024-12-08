@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -25,8 +24,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transactionProcessor">Transaction processor on which all <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> should be run on.</param>
         /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
         /// <param name="contractAddress">Address where contract is deployed.</param>
-        /// <param name="specProvider">Address where contract is deployed.</param>
-        protected CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISpecProvider specProvider) : base(specProvider, abiEncoder, contractAddress)
+        protected CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(abiEncoder, contractAddress)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
@@ -89,7 +87,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
         protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) =>
-            TryCall(header, functionName, sender, DefaultContractGasLimit, out result);
+            TryCall(header, functionName, sender, DefaultContractGasLimit, out result, arguments);
 
         /// <summary>
         /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.

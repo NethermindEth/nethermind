@@ -5,7 +5,6 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -48,9 +47,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public ReportingValidatorContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            ISigner signer,
-            ISpecProvider specProvider)
-            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            ISigner signer)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }

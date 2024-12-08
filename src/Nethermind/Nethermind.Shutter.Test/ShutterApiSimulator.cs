@@ -121,7 +121,7 @@ public class ShutterApiSimulator(
         P2P = Substitute.For<IShutterP2P>();
     }
 
-    protected override IShutterEon InitEon(ISpecProvider specProvider)
+    protected override IShutterEon InitEon()
     {
         IShutterEon eon = Substitute.For<IShutterEon>();
         eon.GetCurrentEonInfo().Returns(_ => eventSimulator.GetCurrentEonInfo());

@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Test;
 
@@ -18,7 +17,7 @@ namespace Nethermind.Shutter.Test;
 [TestFixture]
 class ShutterTxLoaderTests : EngineModuleTests
 {
-    private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress, ISpecProvider specProvider) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress, specProvider)
+    private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
     {
         protected override IEnumerable<Event> EmitEvents()
         {
@@ -67,8 +66,7 @@ class ShutterTxLoaderTests : EngineModuleTests
             ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
             ShutterTestsCommon.AbiEncoder,
-            new(ShutterTestsCommon.Cfg.SequencerContractAddress!),
-            ShutterTestsCommon.SpecProvider
+            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
@@ -181,8 +179,7 @@ class ShutterTxLoaderTests : EngineModuleTests
             ShutterTestsCommon.Threshold,
             ShutterTestsCommon.InitialSlot,
             ShutterTestsCommon.AbiEncoder,
-            new(ShutterTestsCommon.Cfg.SequencerContractAddress!),
-            ShutterTestsCommon.SpecProvider
+            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
         );
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);

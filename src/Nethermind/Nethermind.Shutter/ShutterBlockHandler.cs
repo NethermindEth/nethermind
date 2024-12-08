@@ -16,7 +16,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Specs;
 using Nethermind.Shutter.Config;
 
 namespace Nethermind.Shutter;
@@ -43,7 +42,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
     private readonly Lock _syncObject = new();
-    private readonly ISpecProvider _specProvider;
 
     public ShutterBlockHandler(
         ulong chainId,
@@ -58,8 +56,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         ShutterTime time,
         ILogManager logManager,
         TimeSpan slotLength,
-        TimeSpan blockWaitCutoff,
-        ISpecProvider specProvider)
+        TimeSpan blockWaitCutoff)
     {
         _chainId = chainId;
         _cfg = cfg;
@@ -76,7 +73,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _envFactory = envFactory;
         _slotLength = slotLength;
         _blockWaitCutoff = blockWaitCutoff;
-        _specProvider = specProvider;
 
         _blockTree.NewHeadBlock += OnNewHeadBlock;
     }
@@ -204,7 +200,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent.StateRoot!);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
-        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!, _specProvider);
+        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");

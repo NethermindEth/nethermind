@@ -9,7 +9,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Rewards
@@ -19,7 +18,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<IRewardContract> _contracts;
 
-        public AuRaRewardCalculator(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor, ISpecProvider specProvider)
+        public AuRaRewardCalculator(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
             ArgumentNullException.ThrowIfNull(auRaParameters);
             ArgumentNullException.ThrowIfNull(abiEncoder);
@@ -31,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
                 if (auRaParameters.BlockRewardContractTransitions is not null)
                 {
-                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key, specProvider)));
+                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
                     contracts.Sort((a, b) => a.Activation.CompareTo(b.Activation));
                 }
 
@@ -43,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                         throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
 
-                    contracts.Insert(0, new RewardContract(transactionProcessor, abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition, specProvider));
+                    contracts.Insert(0, new RewardContract(transactionProcessor, abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
                 }
 
                 return contracts;
@@ -109,16 +108,14 @@ namespace Nethermind.Consensus.AuRa.Rewards
         {
             private readonly AuRaChainSpecEngineParameters _auRaParameters;
             private readonly IAbiEncoder _abiEncoder;
-            private readonly ISpecProvider _specProvider;
 
-            public AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder, ISpecProvider specProvider)
+            public AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder)
             {
                 _auRaParameters = auRaParameters;
                 _abiEncoder = abiEncoder;
-                _specProvider = specProvider;
             }
 
-            public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor, _specProvider);
+            public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
         }
 
         public static class BenefactorKind

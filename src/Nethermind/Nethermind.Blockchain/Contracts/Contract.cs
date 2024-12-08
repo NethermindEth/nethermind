@@ -37,21 +37,18 @@ namespace Nethermind.Blockchain.Contracts
         protected IAbiEncoder AbiEncoder { get; }
         public AbiDefinition AbiDefinition { get; }
         public Address? ContractAddress { get; protected set; }
-        protected ISpecProvider SpecProvider { get; set; }
 
         /// <summary>
         /// Creates contract
         /// </summary>
-        /// <param name="specProvider">Binary interface encoder/decoder.</param>
         /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
         /// <param name="contractAddress">Address where contract is deployed.</param>
         /// <param name="abiDefinition">Binary definition of contract.</param>
-        protected Contract(ISpecProvider specProvider, IAbiEncoder? abiEncoder = null, Address? contractAddress = null, AbiDefinition? abiDefinition = null)
+        protected Contract(IAbiEncoder? abiEncoder = null, Address? contractAddress = null, AbiDefinition? abiDefinition = null)
         {
             AbiEncoder = abiEncoder ?? Abi.AbiEncoder.Instance;
             ContractAddress = contractAddress;
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
-            SpecProvider = specProvider;
         }
 
         protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)

@@ -33,7 +33,7 @@ public class ShutterTxLoader(
     ILogManager logManager)
 {
     private readonly ShutterLogScanner _logScanner = new(
-                new(new Address(cfg.SequencerContractAddress!), specProvider),
+                new(new Address(cfg.SequencerContractAddress!)),
                 logFinder,
                 logManager,
                 abiEncoder);

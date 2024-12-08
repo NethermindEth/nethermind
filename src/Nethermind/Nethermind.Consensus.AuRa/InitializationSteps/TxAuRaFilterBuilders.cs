@@ -48,8 +48,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.CreateReadOnlyTransactionProcessorSource(), specProvider);
-                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.CreateReadOnlyTransactionProcessorSource(), specProvider);
+                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.CreateReadOnlyTransactionProcessorSource());
+                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.CreateReadOnlyTransactionProcessorSource());
                 return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager), gasPriceTxFilter);
             }
 
@@ -63,8 +63,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.CreateReadOnlyTransactionProcessorSource(), api.SpecProvider!);
-                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.CreateReadOnlyTransactionProcessorSource(), api.SpecProvider!);
+                RegisterContract registerContract = new(api.AbiEncoder, registrar, api.CreateReadOnlyTransactionProcessorSource());
+                CertifierContract certifierContract = new(api.AbiEncoder, registerContract, api.CreateReadOnlyTransactionProcessorSource());
                 return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, api.SpecProvider, api.LogManager));
             }
 
@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             TxPriorityContract? txPriorityContract = null;
             if (usesTxPriorityContract)
             {
-                txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, api.CreateReadOnlyTransactionProcessorSource(), api.SpecProvider!);
+                txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, api.CreateReadOnlyTransactionProcessorSource());
             }
 
             return txPriorityContract;

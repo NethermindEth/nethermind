@@ -15,9 +15,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public TransactionPermissionContractV1(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource, specProvider)
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
         {
         }
 

@@ -33,7 +33,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder, _api.SpecProvider!);
+            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder);
             IWorldState worldState = _api.WorldState!;
             ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 

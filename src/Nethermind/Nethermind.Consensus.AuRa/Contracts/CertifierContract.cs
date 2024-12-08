@@ -3,7 +3,6 @@
 
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -23,9 +22,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public CertifierContract(
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
-            IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource,
-            ISpecProvider specProvider)
-            : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName, specProvider)
+            IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource)
+            : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }

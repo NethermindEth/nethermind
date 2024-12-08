@@ -4,12 +4,11 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Shutter.Contracts;
 
-public class KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISpecProvider specProvider) : CallableContract(transactionProcessor, abiEncoder, contractAddress, specProvider), IKeyperSetManagerContract
+public class KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyperSetManagerContract
 {
     public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
     {

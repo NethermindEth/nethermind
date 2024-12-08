@@ -5,7 +5,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -19,9 +18,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
             string registryKey,
-            ISpecProvider specProvider,
             AbiDefinition? abiDefinition = null)
-            : base(specProvider, abiEncoder, abiDefinition: abiDefinition)
+            : base(abiEncoder, abiDefinition: abiDefinition)
         {
             _registerContract = registerContract;
             _registryKey = registryKey;

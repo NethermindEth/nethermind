@@ -298,8 +298,7 @@ public class StartBlockProducerAuRa
                         kvp.Value,
                         txProcessorSource,
                         kvp.Key,
-                        signerLocal,
-                        _api.SpecProvider!))
+                        signerLocal))
                     .ToArray<IRandomContract>();
 
             if (randomnessContractAddress?.Any() == true)
@@ -368,8 +367,7 @@ public class StartBlockProducerAuRa
                                 api.AbiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,
-                                api.CreateReadOnlyTransactionProcessorSource(),
-                                api.SpecProvider!))
+                                api.CreateReadOnlyTransactionProcessorSource()))
                         .ToArray<IBlockGasLimitContract>(),
                     api.GasLimitCalculatorCache,
                     api.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,

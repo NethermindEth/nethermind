@@ -4,7 +4,6 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -13,8 +12,8 @@ public class SequencerContract : Contract, ISequencerContract
     public AbiEncodingInfo TransactionSubmittedAbi { get => _transactionSubmittedAbi; }
     private readonly AbiEncodingInfo _transactionSubmittedAbi;
 
-    public SequencerContract(Address address, ISpecProvider specProvider)
-        : base(specProvider, null, address)
+    public SequencerContract(Address address)
+        : base(null, address)
     {
         _transactionSubmittedAbi = AbiDefinition.GetEvent(nameof(ISequencerContract.TransactionSubmitted)).GetCallInfo(AbiEncodingStyle.None);
     }

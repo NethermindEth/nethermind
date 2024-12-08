@@ -6,7 +6,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -34,9 +33,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public RegisterContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
