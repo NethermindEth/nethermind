@@ -129,7 +129,7 @@ namespace Nethermind.Facade
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                 bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
-                return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
+                return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header, _specProvider.GetSpec(block.Header)), logIndexStart);
             }
 
             return (null, null, 0);
@@ -292,13 +292,14 @@ namespace Nethermind.Facade
             {
                 callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
                 callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
-                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
+                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec, blockHeader)
                     : blockHeader.ExcessBlobGas;
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
+            callHeader.TargetBlobCount = blockHeader.TargetBlobCount;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
 
         public ulong GetChainId()

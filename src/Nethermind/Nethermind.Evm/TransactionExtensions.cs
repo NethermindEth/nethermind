@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm
@@ -14,7 +15,7 @@ namespace Nethermind.Evm
                 ? tx.SenderAddress
                 : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce));
 
-        public static TxGasInfo GetGasInfo(this Transaction tx, bool is1559Enabled, BlockHeader header)
+        public static TxGasInfo GetGasInfo(this Transaction tx, bool is1559Enabled, BlockHeader header, IReleaseSpec spec)
         {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, header.BaseFeePerGas);
 
@@ -25,7 +26,7 @@ namespace Nethermind.Evm
                     throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
                 }
 
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, out UInt256 feePerBlobGas))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, out UInt256 feePerBlobGas, spec))
                 {
                     throw new OverflowException("Blob gas price calculation led to overflow.");
                 }

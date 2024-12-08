@@ -317,7 +317,7 @@ public class BlockValidator(
 
             if (feePerBlobGas.IsZero)
             {
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas, spec))
                 {
                     error = BlockErrorMessages.BlobGasPriceOverflow;
                     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
@@ -337,7 +337,8 @@ public class BlockValidator(
 
         ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
-        if (blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
+        // no validation is needed when eip7742 is activated
+        if (!spec.IsEip7742Enabled && blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
         {
             error = BlockErrorMessages.BlobGasUsedAboveBlockLimit;
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");

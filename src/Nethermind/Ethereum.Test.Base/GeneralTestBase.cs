@@ -107,6 +107,7 @@ namespace Ethereum.Test.Base
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
             header.RequestsHash = test.RequestsHash;
+            header.TargetBlobCount = test.Fork is Prague ? 0 : null;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -129,14 +130,14 @@ namespace Ethereum.Test.Base
                     BlobGasUsed = (ulong)test.ParentBlobGasUsed,
                     ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
                 };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec, header);
             }
 
             ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
 
             if (txIsValid)
             {
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                transactionProcessor.Execute(test.Transaction, header, txTracer);
             }
             else
             {

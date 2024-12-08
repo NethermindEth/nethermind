@@ -108,14 +108,17 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         {
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
-                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas, _specProvider.GetSpec(block.Header));
+
+                var maxBlobGasPerBlock = (double)(block.TargetBlobCount * 2 ?? Eip4844Constants.GetMaxBlobsPerBlock()) * Eip4844Constants.GasPerBlob;
+
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
-                    (b.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
+                    (b.BlobGasUsed ?? 0) / maxBlobGasPerBlock,
                     b.ParentHash,
                     b.GasUsed,
                     b.Transactions.Length,

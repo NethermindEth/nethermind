@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -29,9 +30,9 @@ public static class BlobGasCalculator
         return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee)
+    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee, IReleaseSpec? spec = null)
     {
-        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out UInt256 feePerBlobGas))
+        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas, out UInt256 feePerBlobGas, header.TargetBlobCount, spec))
         {
             blobBaseFee = UInt256.MaxValue;
             return false;
@@ -39,14 +40,12 @@ public static class BlobGasCalculator
         return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), feePerBlobGas, out blobBaseFee);
     }
 
-    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas)
+    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas, IReleaseSpec? spec = null)
     {
-        feePerBlobGas = UInt256.MaxValue;
-        return header.ExcessBlobGas is not null
-            && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out feePerBlobGas);
+        return TryCalculateFeePerBlobGas(header.ExcessBlobGas, out feePerBlobGas, header.TargetBlobCount, spec);
     }
 
-    public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, out UInt256 feePerBlobGas)
+    public static bool TryCalculateFeePerBlobGas(ulong? excessBlobGas, out UInt256 feePerBlobGas, UInt256? targetBlobCount = null, IReleaseSpec? spec = null)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {
@@ -85,10 +84,16 @@ public static class BlobGasCalculator
             return false;
         }
 
-        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out feePerBlobGas);
+        var denominator = spec?.IsEip7742Enabled ?? false
+            ? Eip7742Constants.BlobGasPriceUpdateFraction * targetBlobCount
+              ?? throw new InvalidDataException("header is missing target blob count")
+            : Eip4844Constants.BlobGasPriceUpdateFraction;
+
+        feePerBlobGas = UInt256.MaxValue;
+        return excessBlobGas is not null && !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas.Value, denominator, out feePerBlobGas);
     }
 
-    public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)
+    public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec, BlockHeader header)
     {
         if (!releaseSpec.IsEip4844Enabled)
         {
@@ -102,8 +107,13 @@ public static class BlobGasCalculator
 
         ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
         excessBlobGas += parentBlockHeader.BlobGasUsed ?? 0;
-        return excessBlobGas < Eip4844Constants.TargetBlobGasPerBlock
+        var targetBlobCount = releaseSpec.IsEip7742Enabled
+            ? header.TargetBlobCount * Eip4844Constants.GasPerBlob
+              ?? throw new InvalidDataException("header is missing target blob count")
+            : Eip4844Constants.TargetBlobGasPerBlock;
+
+        return excessBlobGas < targetBlobCount
             ? 0
-            : (excessBlobGas - Eip4844Constants.TargetBlobGasPerBlock);
+            : excessBlobGas - targetBlobCount;
     }
 }

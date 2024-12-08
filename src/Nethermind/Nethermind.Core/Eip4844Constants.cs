@@ -69,5 +69,5 @@ public class Eip4844Constants
             TargetBlobGasPerBlock = targetBlobGasPerBlock.Value;
     }
 
-    public static int GetMaxBlobsPerBlock() => (int)(MaxBlobGasPerBlock / GasPerBlob);
+    public static ulong GetMaxBlobsPerBlock() => MaxBlobGasPerBlock / GasPerBlob;
 }
