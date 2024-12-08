@@ -17,6 +17,26 @@ namespace Nethermind.Shutter.Test;
 [TestFixture]
 class ShutterTxLoaderTests : EngineModuleTests
 {
+    private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
+    {
+        private readonly Transaction _validTx = Build.A.Transaction.WithChainId(chainId).Signed().TestObject;
+        private readonly Transaction _invalidTx = Build.A.Transaction.TestObject;
+        protected override IEnumerable<Event> EmitEvents()
+        {
+            IEnumerable<Transaction> EmitHalfInvalid()
+            {
+                bool valid = false;
+                while (true)
+                {
+                    valid = !valid;
+                    yield return valid ? _validTx : _invalidTx;
+                }
+            }
+
+            return EmitEvents(EmitDefaultEons(), EmitHalfInvalid());
+        }
+    }
+
     private class ShutterEventSimulatorHalfNextEon(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
     {
         protected override IEnumerable<Event> EmitEvents()

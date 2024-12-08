@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -22,8 +21,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => new object[] { tx.SenderAddress };
 
-        protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(
-            PermissionConstantContract.PermissionCallInfo callInfo) =>
+        protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) =>
             (Constant.Call<ITransactionPermissionContract.TxPermissions>(callInfo), true);
 
         public override UInt256 Version => UInt256.One;

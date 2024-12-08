@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using Nethermind.Shutter.Config;
 using Nethermind.Crypto;
 using Nethermind.Core.Crypto;
+
 using Update = (byte[] Message, byte[] Signature);
 using G1 = Nethermind.Crypto.Bls.P1;
 

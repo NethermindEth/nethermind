@@ -17,7 +17,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
 
     private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
-    protected readonly ISpecProvider _specProvider;
+    private readonly ISpecProvider _specProvider;
     protected readonly ILogger _logger;
 
     public EngineRpcModule(

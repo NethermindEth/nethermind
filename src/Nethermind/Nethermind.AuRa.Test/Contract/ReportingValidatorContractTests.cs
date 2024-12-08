@@ -7,7 +7,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
