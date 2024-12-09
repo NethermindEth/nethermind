@@ -14,6 +14,9 @@
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063
   },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
   "Pruning": {
     "Mode": "None"
   },
