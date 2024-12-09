@@ -26,7 +26,7 @@ namespace Nethermind.Evm
                     throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
                 }
 
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, out UInt256 feePerBlobGas, spec))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, out UInt256 feePerBlobGas))
                 {
                     throw new OverflowException("Blob gas price calculation led to overflow.");
                 }

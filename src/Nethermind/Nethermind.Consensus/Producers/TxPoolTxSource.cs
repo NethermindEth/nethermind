@@ -196,7 +196,7 @@ namespace Nethermind.Consensus.Producers
 
         private bool TryUpdateFeePerBlobGas(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
         {
-            ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec, parent);
+            ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             if (excessDataGas is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
@@ -204,7 +204,7 @@ namespace Nethermind.Consensus.Producers
                 return false;
             }
 
-            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas, parent.TargetBlobCount, spec))
+            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
                 feePerBlobGas = UInt256.Zero;

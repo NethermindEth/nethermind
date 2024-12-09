@@ -317,7 +317,7 @@ public class BlockValidator(
 
             if (feePerBlobGas.IsZero)
             {
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas, spec))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas))
                 {
                     error = BlockErrorMessages.BlobGasPriceOverflow;
                     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");

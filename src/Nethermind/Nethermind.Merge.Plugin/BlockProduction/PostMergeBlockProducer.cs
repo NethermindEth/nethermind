@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             if (spec.IsEip4844Enabled)
             {
                 blockHeader.BlobGasUsed = 0;
-                blockHeader.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec, blockHeader);
+                blockHeader.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
         }
     }

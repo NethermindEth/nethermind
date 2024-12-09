@@ -111,9 +111,8 @@ public partial class EthRpcModule(
         {
             return ResultWrapper<UInt256?>.Success(UInt256.Zero);
         }
-        IReleaseSpec? spec = _blockFinder.Head?.Header is null ? null : specProvider.GetSpec(_blockFinder.Head.Header);
         if (!BlobGasCalculator.TryCalculateFeePerBlobGas(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
-            out UInt256 feePerBlobGas, _blockFinder.Head?.Header.TargetBlobCount, spec))
+            out UInt256 feePerBlobGas))
         {
             return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
         }

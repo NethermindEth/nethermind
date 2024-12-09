@@ -353,7 +353,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                ulong? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec, header);
+                ulong? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
