@@ -102,7 +102,7 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, block.Header, blockReceiptsTracer);
+                .Execute(transaction, new BlockExecutionContext(block.Header), blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);

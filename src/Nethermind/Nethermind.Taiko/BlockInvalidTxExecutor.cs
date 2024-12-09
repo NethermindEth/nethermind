@@ -32,6 +32,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         block.Transactions[0].IsAnchorTx = true;
 
+        BlockExecutionContext blkCtx = new(block.Header);
         using ArrayPoolList<Transaction> correctTransactions = new(block.Transactions.Length);
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -49,7 +50,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
             try
             {
-                if (!_txProcessor.Execute(tx, block.Header, receiptsTracer))
+                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue
                     _worldState.Restore(snap);

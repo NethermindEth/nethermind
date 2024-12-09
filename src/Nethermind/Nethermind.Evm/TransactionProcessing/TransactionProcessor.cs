@@ -125,7 +125,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsSystem())
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, blCtx, tracer, opts);
+                return _systemTransactionProcessor.Execute(tx, blCtx.Header, tracer, opts);
             }
 
             return Execute(tx, in blCtx, tracer, opts);

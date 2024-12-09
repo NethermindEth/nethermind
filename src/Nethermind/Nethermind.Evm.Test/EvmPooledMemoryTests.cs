@@ -196,7 +196,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         MyTracer tracer = new();
         transactionProcessor.Execute(
                 tx,
-                block.Header,
+                new BlockExecutionContext(block.Header),
                 tracer);
         return tracer.lastmemline;
     }
