@@ -346,9 +346,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 30_000_000L)]
-    [TestCase("sepolia", 30_000_000L)]
-    [TestCase("holesky", 30_000_000L)]
+    [TestCase("mainnet", 36_000_000L)]
+    [TestCase("sepolia", 36_000_000L)]
+    [TestCase("holesky", 36_000_000L)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
     public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
     {

@@ -17,7 +17,7 @@
         "NodeName": "Holesky"
     },
     "Blocks": {
-        "TargetBlockGasLimit": 30000000
+        "TargetBlockGasLimit": 36000000
     },
     "JsonRpc": {
         "Enabled": true,
