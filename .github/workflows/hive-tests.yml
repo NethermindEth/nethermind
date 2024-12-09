@@ -20,6 +20,10 @@ on:
           - ethereum/rpc
           - ethereum/rpc-compat
           - ethereum/sync
+          - ethereum/snap
+          - ethereum/legacy
+          - ethereum/legacy-cancun
+          - ethereum/eth
       limit:
         description: Limit
         required: false
