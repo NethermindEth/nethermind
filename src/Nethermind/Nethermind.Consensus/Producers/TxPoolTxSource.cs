@@ -146,8 +146,10 @@ namespace Nethermind.Consensus.Producers
 
                 ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
 
-                if ((spec.IsEip7742Enabled && txBlobGas >= payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob - blobGasCounter)
-                     || (!spec.IsEip7742Enabled && txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter))
+                UInt256? blobGasLeft = spec.IsEip7742Enabled
+                    ? payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob - blobGasCounter
+                    : _eip4844Config.MaxBlobGasPerBlock - blobGasCounter;
+                if (txBlobGas > blobGasLeft)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
