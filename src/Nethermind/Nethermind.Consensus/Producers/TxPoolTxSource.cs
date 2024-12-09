@@ -133,8 +133,10 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if ((spec.IsEip7742Enabled && blobGasCounter >= payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob)
-                    || (!spec.IsEip7742Enabled && blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock))
+                UInt256 maxBlobGas = spec.IsEip7742Enabled
+                    ? payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob ?? UInt256.Zero
+                    : _eip4844Config.MaxBlobGasPerBlock;
+                if (blobGasCounter >= maxBlobGas)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
                     break;
