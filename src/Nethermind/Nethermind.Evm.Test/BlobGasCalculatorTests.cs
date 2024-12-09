@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -41,7 +42,6 @@ public class BlobGasCalculatorTests
         Test(Cancun.Instance, true);
     }
 
-    // todo: add eip7763 test cases
     [TestCaseSource(nameof(BlobGasCostTestCaseSource))]
     public void Blob_base_fee_is_calculated_properly(
         (Transaction tx, ulong excessBlobGas, UInt256 expectedCost) testCase)
@@ -64,6 +64,33 @@ public class BlobGasCalculatorTests
 
         Assert.That(success, Is.False);
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+    }
+
+    [Test]
+    public void Should_use_correct_min_blob_base_fee_with_eip7762()
+    {
+        // Arrange
+        ulong excessBlobGas = 0;
+        var preFork = new ReleaseSpec() { IsEip7762Enabled = false };
+        var postFork = new ReleaseSpec() { IsEip7762Enabled = true };
+
+        // Act
+        BlobGasCalculator.TryCalculateFeePerBlobGas(
+            excessBlobGas,
+            out UInt256 preForkPrice,
+            preFork);
+
+        BlobGasCalculator.TryCalculateFeePerBlobGas(
+            excessBlobGas,
+            out UInt256 postForkPrice,
+            postFork);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(preForkPrice, Is.EqualTo(new UInt256(1)));
+            Assert.That(postForkPrice, Is.EqualTo(new UInt256(1 << 25)));
+        });
     }
 
     public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()

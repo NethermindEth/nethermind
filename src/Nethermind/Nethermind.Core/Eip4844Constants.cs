@@ -12,7 +12,7 @@ namespace Nethermind.Core;
 public class Eip4844Constants
 {
     private static UInt256? OveriddenMinBlobGasPrice;
-    private static readonly UInt256 Eip7762MinBlobGasPrice = new(2 ^ 25);
+    private static readonly UInt256 Eip7762MinBlobGasPrice = new(1 << 25); // 2^25
 
     public const int MinBlobsPerTransaction = 1;
 
