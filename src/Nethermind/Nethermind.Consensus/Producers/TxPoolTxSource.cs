@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            if (spec.IsEip7742Enabled && payloadAttributes == null)
+            if (spec.IsEip7742Enabled && payloadAttributes is null)
             {
                 if (_logger.IsDebug) _logger.Debug("Eip-7742 is enabled, but no payload attributes were provided.");
                 yield break;
