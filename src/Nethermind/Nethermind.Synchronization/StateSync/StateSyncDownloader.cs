@@ -39,6 +39,7 @@ namespace Nethermind.Synchronization.StateSync
             ISyncPeer peer = peerInfo.SyncPeer;
             Task<IOwnedReadOnlyList<byte[]>> task = null;
             HashList? hashList = null;
+            GetTrieNodesRequest? getTrieNodesRequest = null;
             // Use GETNODEDATA if possible. Firstly via dedicated NODEDATA protocol
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
             {
@@ -65,8 +66,8 @@ namespace Nethermind.Synchronization.StateSync
                 else
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
-                    using GetTrieNodesRequest request = GetGroupedRequest(batch);
-                    task = snapHandler.GetTrieNodes(request, cancellationToken);
+                    getTrieNodesRequest = GetGroupedRequest(batch);
+                    task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
             }
 
@@ -80,6 +81,7 @@ namespace Nethermind.Synchronization.StateSync
                 batch.Responses = await task;
 
                 if (hashList is not null) HashList.Return(hashList);
+                getTrieNodesRequest?.Dispose();
             }
             catch (Exception e)
             {
