@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -31,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <summary>
         /// Returns a boolean flag indicating whether the `emitInitiateChange` function can be called at the moment. Used by a validator's node and `TxPermission` contract (to deny dummy calling).
         /// </summary>
-        public bool EmitInitiateChangeCallable(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(EmitInitiateChangeCallable), Address.SystemUser);
+        public bool EmitInitiateChangeCallable(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(EmitInitiateChangeCallable), Address.SystemUser, SpecProvider.GetSpec(parentHeader));
 
         /// <summary>
         /// Emits the `InitiateChange` event to pass a new validator set to the validator nodes.
@@ -45,6 +46,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         // This was mistakenly put here in POSDAO it should belong to ReportingValidatorContract
         public bool ShouldValidatorReport(BlockHeader parentHeader, Address validatorAddress, Address maliciousMinerAddress, in UInt256 blockNumber) =>
-            Constant.Call<bool>(parentHeader, nameof(ShouldValidatorReport), Address.SystemUser, validatorAddress, maliciousMinerAddress, blockNumber);
+            Constant.Call<bool>(parentHeader, nameof(ShouldValidatorReport), Address.SystemUser, SpecProvider.GetSpec(parentHeader), validatorAddress, maliciousMinerAddress, blockNumber);
     }
 }

@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -47,7 +48,7 @@ public class BlobGasCalculatorTests
     {
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(testCase.excessBlobGas).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, out UInt256 blobBaseFee);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, out UInt256 blobBaseFee, London.Instance);
 
         Assert.That(success, Is.True);
         Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
@@ -59,10 +60,37 @@ public class BlobGasCalculatorTests
         var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(ulong.MaxValue).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out UInt256 blobBaseFee);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out UInt256 blobBaseFee, London.Instance);
 
         Assert.That(success, Is.False);
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+    }
+
+    [Test]
+    public void Should_use_correct_min_blob_base_fee_with_eip7762()
+    {
+        // Arrange
+        ulong excessBlobGas = 0;
+        var preFork = new ReleaseSpec() { IsEip7762Enabled = false };
+        var postFork = new ReleaseSpec() { IsEip7762Enabled = true };
+
+        // Act
+        BlobGasCalculator.TryCalculateFeePerBlobGas(
+            excessBlobGas,
+            out UInt256 preForkPrice,
+            preFork);
+
+        BlobGasCalculator.TryCalculateFeePerBlobGas(
+            excessBlobGas,
+            out UInt256 postForkPrice,
+            postFork);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(preForkPrice, Is.EqualTo(new UInt256(1)));
+            Assert.That(postForkPrice, Is.EqualTo(new UInt256(1 << 25)));
+        });
     }
 
     public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()

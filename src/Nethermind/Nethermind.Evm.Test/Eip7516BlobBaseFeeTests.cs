@@ -8,12 +8,14 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
 {
+    //todo eip7762 testcases
 
     [TestCase(true, 0ul)]
     [TestCase(true, 100ul)]
@@ -41,7 +43,7 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, block.Header, tracer);
 
-        _ = BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, out UInt256 expectedFeePerBlobGas);
+        _ = BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, out UInt256 expectedFeePerBlobGas, London.Instance);
         if (eip7516Enabled)
         {
             AssertStorage((UInt256)0, expectedFeePerBlobGas);

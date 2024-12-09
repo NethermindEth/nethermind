@@ -72,7 +72,7 @@ public class DevBlockProducerTests
             specProvider,
             Always.Valid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider, specProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             txProcessor,

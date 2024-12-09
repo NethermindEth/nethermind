@@ -5,6 +5,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Contracts;
 
@@ -14,19 +15,21 @@ public class WithdrawalContractFactory : IWithdrawalContractFactory
 {
     private readonly IAbiEncoder _abiEncoder;
     private readonly Address _contractAddress;
+    private readonly ISpecProvider _specProvider;
 
-    public WithdrawalContractFactory(AuRaChainSpecEngineParameters parameters, IAbiEncoder abiEncoder)
+    public WithdrawalContractFactory(AuRaChainSpecEngineParameters parameters, IAbiEncoder abiEncoder, ISpecProvider specProvider)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
         _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
         _contractAddress = parameters.WithdrawalContractAddress;
+        _specProvider = specProvider;
     }
 
     public IWithdrawalContract Create(ITransactionProcessor processor)
     {
         ArgumentNullException.ThrowIfNull(processor);
 
-        return new WithdrawalContract(processor, _abiEncoder, _contractAddress);
+        return new WithdrawalContract(processor, _abiEncoder, _contractAddress, _specProvider);
     }
 }

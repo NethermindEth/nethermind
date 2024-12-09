@@ -70,7 +70,7 @@ public class ParityStyleTracerTests
             specProvider,
             Always.Valid,
             new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Contracts
@@ -33,17 +34,17 @@ namespace Nethermind.Blockchain.Contracts
                 return ((T1)objects[0], (T2)objects[1]);
             }
 
-            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
-                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments));
+            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, IReleaseSpec spec, params object[] arguments) =>
+                Call<T>(new CallInfo(parentHeader, functionName, sender, spec, arguments));
 
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
-                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments));
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, IReleaseSpec spec, params object[] arguments) =>
+                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, spec, arguments));
 
-            public T Call<T>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
-                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
+            public T Call<T>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, IReleaseSpec spec, params object[] arguments) =>
+                Call<T>(new CallInfo(parentHeader, functionName, sender, spec, arguments) { ContractAddress = contractAddress });
 
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
-                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, IReleaseSpec spec, params object[] arguments) =>
+                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, spec, arguments) { ContractAddress = contractAddress });
         }
 
         protected abstract class ConstantContractBase : IConstantContract
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain.Contracts
                 _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
 
             protected byte[] CallCore(CallInfo callInfo, ITransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
-                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
+                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, callInfo.Spec, true);
 
             protected object[] DecodeReturnData(string functionName, byte[] data) => _contract.DecodeReturnData(functionName, data);
 
@@ -112,6 +113,7 @@ namespace Nethermind.Blockchain.Contracts
         public class CallInfo
         {
             public BlockHeader ParentHeader { get; }
+            public IReleaseSpec Spec { get; }
             public string FunctionName { get; }
             public Address Sender { get; }
             public object[] Arguments { get; }
@@ -119,9 +121,10 @@ namespace Nethermind.Blockchain.Contracts
             public object[]? MissingContractResult { get; set; }
             public Address? ContractAddress { get; set; }
 
-            public CallInfo(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
+            public CallInfo(BlockHeader parentHeader, string functionName, Address sender, IReleaseSpec spec, params object[] arguments)
             {
                 ParentHeader = parentHeader;
+                Spec = spec;
                 FunctionName = functionName;
                 Sender = sender;
                 Arguments = arguments;
