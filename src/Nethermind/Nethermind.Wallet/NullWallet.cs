@@ -50,7 +50,7 @@ namespace Nethermind.Wallet
 
         public Address[] GetAccounts()
         {
-            return Array.Empty<Address>();
+            return [];
         }
 
         public bool IsUnlocked(Address address)

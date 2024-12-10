@@ -25,7 +25,6 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
-        private long? _lowestInsertedReceiptBlock;
         private readonly IDb _blocksDb;
         private readonly IDb _defaultColumn;
         private readonly IDb _transactionDb;
@@ -65,8 +64,6 @@ namespace Nethermind.Blockchain.Receipts
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
-            byte[] lowestBytes = _defaultColumn.Get(Keccak.Zero);
-            _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
             KeyValuePair<byte[], byte[]>? firstValue = _blocksDb.GetAll().FirstOrDefault();
@@ -141,13 +138,13 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
-                return Array.Empty<TxReceipt>();
+                return [];
             }
 
             Hash256 blockHash = block.Hash;
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
             {
-                return receipts ?? Array.Empty<TxReceipt>();
+                return receipts ?? [];
             }
 
             Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
@@ -156,7 +153,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (receiptsData.IsNullOrEmpty())
                 {
-                    return Array.Empty<TxReceipt>();
+                    return [];
                 }
                 else
                 {
@@ -222,7 +219,7 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             Block? block = _blockTree.FindBlock(blockHash);
-            if (block is null) return Array.Empty<TxReceipt>();
+            if (block is null) return [];
             return Get(block, recover, false);
         }
 
@@ -265,7 +262,7 @@ namespace Nethermind.Blockchain.Receipts
         [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
         {
-            txReceipts ??= Array.Empty<TxReceipt>();
+            txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
 
             if (block.Transactions.Length != txReceiptsLength)
@@ -299,19 +296,6 @@ namespace Nethermind.Blockchain.Receipts
             if (ensureCanonical)
             {
                 EnsureCanonical(block);
-            }
-        }
-
-        public long? LowestInsertedReceiptBlockNumber
-        {
-            get => _lowestInsertedReceiptBlock;
-            set
-            {
-                _lowestInsertedReceiptBlock = value;
-                if (value.HasValue)
-                {
-                    _defaultColumn.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
-                }
             }
         }
 

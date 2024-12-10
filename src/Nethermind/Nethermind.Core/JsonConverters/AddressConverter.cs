@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -18,7 +17,7 @@ public class AddressConverter : JsonConverter<Address>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
+        var bytes = ByteArrayConverter.Convert(ref reader);
         return bytes is null ? null : new Address(bytes);
     }
 
@@ -38,7 +37,7 @@ public class AddressConverter : JsonConverter<Address>
         Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
         addressBytes[0] = (byte)'0';
         addressBytes[1] = (byte)'x';
-        Span<byte> hex = addressBytes.Slice(2);
+        Span<byte> hex = addressBytes[2..];
         value.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
         writer.WritePropertyName(addressBytes);
     }

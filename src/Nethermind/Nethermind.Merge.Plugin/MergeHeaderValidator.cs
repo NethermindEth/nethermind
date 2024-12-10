@@ -22,7 +22,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
-        private readonly ISpecProvider _specProvider;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
@@ -36,7 +35,6 @@ namespace Nethermind.Merge.Plugin
             _poSSwitcher = poSSwitcher;
             _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
-            _specProvider = specProvider;
         }
 
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
@@ -79,9 +77,9 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
-            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header);
-            bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
-            bool valid = !switchInfo.IsPostMerge ||
+            (bool IsTerminal, bool IsPostMerge) = _poSSwitcher.GetBlockConsensusInfo(header);
+            bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, IsTerminal);
+            bool valid = !IsPostMerge ||
                         ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
                         && ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce))
                         && ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));

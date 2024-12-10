@@ -125,22 +125,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IAnalyticsConfig, bool>(configWildcard, c => c.LogPublishedData, false);
     }
 
-    [TestCase("fast")]
-    public void Caches_in_fast_blocks(string configWildcard)
-    {
-        Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, false);
-        Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, false);
-        Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
-        Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
-    }
-
-    [TestCase("^archive", false)]
-    [TestCase("archive", false)]
-    public void Cache_state_index(string configWildcard, bool expectedValue)
-    {
-        Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
-    }
-
     [TestCase("mainnet archive", 4096000000)]
     [TestCase("mainnet ^archive", 2048000000)]
     [TestCase("volta archive", 768000000)]
@@ -162,7 +146,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IMetricsConfig, bool>(configWildcard, c => c.Enabled, false);
         Test<IMetricsConfig, string>(configWildcard, c => c.NodeName.ToUpperInvariant(), (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
         Test<IMetricsConfig, int>(configWildcard, c => c.IntervalSeconds, 5);
-        Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
+        Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, (string)null);
     }
 
     [TestCase("^spaceneth ^volta", 50)]

@@ -82,7 +82,7 @@ public partial class EngineModuleTests
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
-        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block);
+        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block, o => o.IgnoringCyclicReferences());
         sentItem.Profit.Should().Be(0);
     }
 
@@ -140,7 +140,7 @@ public partial class EngineModuleTests
                 ExtraData = Bytes.FromHexString(expected_extraData),
                 BaseFeePerGas = expected_baseFeePerGas,
                 BlockHash = new(expected_blockHash),
-                Transactions = Array.Empty<byte[]>()
+                Transactions = []
             },
             Profit = UInt256.Parse(expected_profit.AsSpan(2), NumberStyles.HexNumber)
         };

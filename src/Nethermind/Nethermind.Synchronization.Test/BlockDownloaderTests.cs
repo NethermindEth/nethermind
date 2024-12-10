@@ -38,6 +38,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -108,7 +109,7 @@ public partial class BlockDownloaderTests
     {
         Context ctx = new()
         {
-            BlockTree = Build.A.BlockTree().OfChainLength(1024).TestObject,
+            BlockTree = CachedBlockTreeBuilder.OfLength(1024),
         };
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -139,7 +140,7 @@ public partial class BlockDownloaderTests
     {
         Context ctx = new()
         {
-            BlockTree = Build.A.BlockTree().OfChainLength(1024).TestObject,
+            BlockTree = CachedBlockTreeBuilder.OfLength(1024),
         };
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -168,7 +169,7 @@ public partial class BlockDownloaderTests
     {
         Context ctx = new()
         {
-            BlockTree = Build.A.BlockTree().OfChainLength(2048 + 1).TestObject,
+            BlockTree = CachedBlockTreeBuilder.OfLength(2048 + 1),
         };
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -186,7 +187,7 @@ public partial class BlockDownloaderTests
     {
         Context ctx = new()
         {
-            BlockTree = Build.A.BlockTree().OfChainLength(2048 + 1).TestObject,
+            BlockTree = CachedBlockTreeBuilder.OfLength(2048 + 1),
         };
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -263,7 +264,7 @@ public partial class BlockDownloaderTests
 
                 if (blockHashes.Count == 0)
                 {
-                    return new OwnedBlockBodies(Array.Empty<BlockBody>());
+                    return new OwnedBlockBodies([]);
                 }
 
                 BlockBody?[] response = ctx.ResponseBuilder
@@ -596,7 +597,7 @@ public partial class BlockDownloaderTests
         BlockDownloader downloader = ctx.BlockDownloader;
 
         using IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
-        BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? Array.Empty<BlockHeader>();
+        BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? [];
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -1024,11 +1025,9 @@ public partial class BlockDownloaderTests
 
         private SyncDispatcher<BlocksRequest>? _dispatcher;
         public SyncDispatcher<BlocksRequest> Dispatcher => _dispatcher ??= new SyncDispatcher<BlocksRequest>(
-            new SyncConfig()
+            new TestSyncConfig()
             {
                 MaxProcessingThreads = 0,
-                SyncDispatcherEmptyRequestDelayMs = 1,
-                SyncDispatcherAllocateTimeoutMs = 1
             },
             Feed!,
             BlockDownloader,
@@ -1062,7 +1061,7 @@ public partial class BlockDownloaderTests
         private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
         private readonly Response _flags;
 
-        public BlockTree BlockTree { get; private set; } = null!;
+        public IBlockTree BlockTree { get; private set; } = null!;
         private IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
 
         public string Name => "Mock";

@@ -71,6 +71,7 @@ jobs:
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
           - Nethermind.Synchronization.Test
+          - Nethermind.Taiko.Test
           - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
@@ -79,12 +80,6 @@ jobs:
       uses: actions/checkout@v4
     - name: Set up .NET
       uses: actions/setup-dotnet@v4
-    - name: Cache dotnet packages
-      id: cache-dotnet
-      uses: actions/cache/restore@v4
-      with:
-        path: ~/.nuget/packages/
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
     - name: ${{ matrix.project }}
       id: test
       run: |
@@ -138,6 +133,7 @@ jobs:
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
           - Ethereum.Transaction.Test

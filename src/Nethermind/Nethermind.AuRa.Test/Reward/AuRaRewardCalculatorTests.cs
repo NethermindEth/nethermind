@@ -207,7 +207,7 @@ namespace Nethermind.AuRa.Test.Reward
                         recipient,
                         0,
                         SetupAbiAddresses(rewards[recipient]),
-                        Array.Empty<LogEntry>());
+                        []);
                 });
         }
 

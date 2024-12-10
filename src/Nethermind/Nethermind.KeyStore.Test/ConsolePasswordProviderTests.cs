@@ -105,7 +105,7 @@ public class ConsolePasswordProviderTests
 
     public class ConsolePasswordProviderTest
     {
-        public ConsoleKeyInfo[] InputChars { get; set; } = Array.Empty<ConsoleKeyInfo>();
+        public ConsoleKeyInfo[] InputChars { get; set; } = [];
         public string ExpectedPassword { get; set; }
 
         public override string ToString() => string.Join("; ", ExpectedPassword);

@@ -13,7 +13,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Test.Validators;
@@ -103,7 +102,7 @@ public class BlockValidatorTests
 
         Assert.That(sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock), Is.True);
     }
 
@@ -119,7 +118,7 @@ public class BlockValidatorTests
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock, out error);
 
         Assert.That(error, Is.Null);
@@ -136,7 +135,7 @@ public class BlockValidatorTests
 
         Assert.That(sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock), Is.False);
     }
 
@@ -152,7 +151,7 @@ public class BlockValidatorTests
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock, out error);
 
         Assert.That(error, Does.StartWith("InvalidStateRoot"));

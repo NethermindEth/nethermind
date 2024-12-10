@@ -13,6 +13,7 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     private readonly ulong? _ecotoneTimestamp = parameters.EcotoneTimestamp;
     private readonly ulong? _fjordTimestamp = parameters.FjordTimestamp;
     private readonly ulong? _graniteTimestamp = parameters.GraniteTimestamp;
+    private readonly ulong? _holoceneTimestamp = parameters.HoloceneTimestamp;
 
     public Address? L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
@@ -44,6 +45,11 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     public bool IsGranite(BlockHeader header)
     {
         return header.Timestamp >= _graniteTimestamp;
+    }
+
+    public bool IsHolocene(BlockHeader header)
+    {
+        return header.Timestamp >= _holoceneTimestamp;
     }
 
     public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;
