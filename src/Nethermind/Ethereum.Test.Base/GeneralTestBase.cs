@@ -132,7 +132,7 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
-            ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
+            ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, new Block(header), spec);
 
             if (txIsValid)
             {
