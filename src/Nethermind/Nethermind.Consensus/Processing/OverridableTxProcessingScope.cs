@@ -21,9 +21,12 @@ public class OverridableTxProcessingScope(
 
     public void Dispose()
     {
+        // TODO: .FullReset
         worldState.StateRoot = originalStateRoot;
         worldState.Reset();
         worldState.ResetOverrides();
+
+
         codeInfoRepository.ResetOverrides();
     }
 }

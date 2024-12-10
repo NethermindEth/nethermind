@@ -20,7 +20,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(
-    IReadOnlyTrieStore trieStore,
+    IStateFactory? factory,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
@@ -31,7 +31,7 @@ public class TraceModuleFactory(
     IPoSSwitcher poSSwitcher,
     ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected readonly IReadOnlyTrieStore _trieStore = trieStore;
+    protected readonly IStateFactory Factory = factory;
     protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
     protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
     protected readonly IReceiptStorage _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -57,7 +57,7 @@ public class TraceModuleFactory(
 
     public override ITraceRpcModule Create()
     {
-        OverridableWorldStateManager worldStateManager = new(dbProvider, _trieStore, logManager);
+        OverridableWorldStateManager worldStateManager = new(dbProvider, Factory, logManager);
         OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv(worldStateManager);
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 

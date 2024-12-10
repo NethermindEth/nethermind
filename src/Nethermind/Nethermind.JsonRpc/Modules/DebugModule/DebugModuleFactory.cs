@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IReadOnlyTrieStore _trieStore;
+    private readonly IStateFactory _factory;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -41,7 +41,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IFileSystem _fileSystem;
 
     public DebugModuleFactory(
-        IReadOnlyTrieStore trieStore,
+        IStateFactory factory,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -57,7 +57,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IFileSystem fileSystem,
         ILogManager logManager)
     {
-        _trieStore = trieStore;
+        _factory = factory;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -76,7 +76,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
     public override IDebugRpcModule Create()
     {
-        OverridableWorldStateManager worldStateManager = new(_dbProvider, _trieStore, _logManager);
+        OverridableWorldStateManager worldStateManager = new(_dbProvider, _factory, _logManager);
         OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);

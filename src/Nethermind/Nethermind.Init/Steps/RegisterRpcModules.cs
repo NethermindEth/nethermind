@@ -268,7 +268,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         return new TraceModuleFactory(
-            null!,
+            _api.StateFactory,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,

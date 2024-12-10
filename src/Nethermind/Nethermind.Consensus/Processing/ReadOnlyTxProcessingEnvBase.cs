@@ -21,7 +21,7 @@ public class ReadOnlyTxProcessingEnvBase
     public ILogManager? LogManager { get; set; }
 
     protected ReadOnlyTxProcessingEnvBase(
-        IWorldStateManager worldStateManager,
+        IResettableWorldStateManager worldStateManager,
         IBlockTree readOnlyBlockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager,

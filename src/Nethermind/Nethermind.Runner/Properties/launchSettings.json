@@ -70,6 +70,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Mainnet (Paprika)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mainnet -dd E:\\nethermind --Sync.NonValidatorNode true --Sync.DownloadBodiesInFastSync false --Sync.DownloadReceiptsInFastSync false --Sync.FastSync false --Sync.SnapSync false --Sync.SnapServingEnabled false --Metrics.EnableDbSizeMetrics false --JsonRpc.JwtSecretFile C:\\Users\\Szymon\\ethereum\\consensus\\prysm\\jwt.hex --Blocks.PreWarmStateOnBlockProcessing false",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Mekong": {
       "commandName": "Project",
       "commandLineArgs": "-c mekong --data-dir .data",

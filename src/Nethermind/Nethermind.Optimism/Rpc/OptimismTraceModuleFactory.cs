@@ -20,7 +20,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Optimism.Rpc;
 
 public class OptimismTraceModuleFactory(
-    IReadOnlyTrieStore trieStore,
+    IStateFactory? factory,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
@@ -34,7 +34,7 @@ public class OptimismTraceModuleFactory(
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
-        trieStore,
+        factory,
         dbProvider,
         blockTree,
         jsonRpcConfig,

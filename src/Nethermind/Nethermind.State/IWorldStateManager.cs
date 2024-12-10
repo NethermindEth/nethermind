@@ -6,9 +6,15 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public interface IWorldStateManager
+public interface IWorldStateManager : IResettableWorldStateManager
 {
     IWorldState GlobalWorldState { get; }
+
+    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+}
+
+public interface IResettableWorldStateManager
+{
     IStateReader GlobalStateReader { get; }
 
     /// <summary>
@@ -17,6 +23,4 @@ public interface IWorldStateManager
     /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
     IWorldState CreateResettableWorldState(IWorldState? forWarmup = null);
-
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 }

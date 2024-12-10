@@ -17,10 +17,10 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Taiko.Rpc;
 
 class TaikoTraceModuleFactory(
-    IReadOnlyTrieStore trieStore, IDbProvider dbProvider, IBlockTree blockTree, IJsonRpcConfig jsonRpcConfig,
+    IStateFactory? factory, IDbProvider dbProvider, IBlockTree blockTree, IJsonRpcConfig jsonRpcConfig,
     IBlockPreprocessorStep recoveryStep, IRewardCalculatorSource rewardCalculatorSource, IReceiptStorage receiptFinder,
     ISpecProvider specProvider, IPoSSwitcher poSSwitcher, ILogManager logManager) :
-    TraceModuleFactory(trieStore, dbProvider, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource, receiptFinder, specProvider, poSSwitcher, logManager)
+    TraceModuleFactory(factory, dbProvider, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource, receiptFinder, specProvider, poSSwitcher, logManager)
 {
     protected override OverridableTxProcessingEnv CreateTxProcessingEnv(OverridableWorldStateManager worldStateManager) => new TaikoReadOnlyTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
 }

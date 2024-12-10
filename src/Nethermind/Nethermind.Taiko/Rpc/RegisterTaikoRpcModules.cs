@@ -85,7 +85,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.WorldState);
 
         TaikoTraceModuleFactory traceModuleFactory = new(
-            null!,
+            _api.StateFactory,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
