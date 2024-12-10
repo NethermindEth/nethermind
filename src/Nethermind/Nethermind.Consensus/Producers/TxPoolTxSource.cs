@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(payloadAttributes?.MaxBlobCount ?? Eip4844Constants.GetMaxBlobsPerBlock()));
 
-            if (spec.IsEip7742Enabled && payloadAttributes?.MaxBlobCount is not null)
+            if (!spec.IsEip7742Enabled || payloadAttributes?.MaxBlobCount is not null)
             {
                 SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
             }
