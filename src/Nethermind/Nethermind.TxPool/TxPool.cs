@@ -304,8 +304,7 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
-            var blockTransactionsCount = blockTransactions.Count(transaction => transaction.Type == TxType.Blob);
-            using ArrayPoolList<Transaction> blobTxsToSave = new(blockTransactionsCount);
+            using ArrayPoolList<Transaction> blobTxsToSave = new(blockTransactions.Length);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
