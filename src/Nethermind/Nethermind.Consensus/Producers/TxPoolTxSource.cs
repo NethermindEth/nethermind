@@ -62,14 +62,13 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            if (spec.IsEip7742Enabled && payloadAttributes is null)
-            {
-                if (_logger.IsDebug) _logger.Debug("Eip-7742 is enabled, but no payload attributes were provided.");
-                yield break;
-            }
+
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(payloadAttributes?.MaxBlobCount ?? Eip4844Constants.GetMaxBlobsPerBlock()));
 
-            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
+            if (spec.IsEip7742Enabled && payloadAttributes?.MaxBlobCount is not null)
+            {
+                SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
+            }
 
             foreach (Transaction tx in transactions)
             {
