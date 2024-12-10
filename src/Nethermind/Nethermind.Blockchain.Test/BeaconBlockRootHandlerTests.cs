@@ -149,6 +149,6 @@ public class BeaconBlockRootHandlerTests
 
         transaction.Hash = transaction.CalculateHash();
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
-            t.Hash == transaction.Hash), header, NullTxTracer.Instance);
+            t.Hash == transaction.Hash), new(header, Cancun.Instance), NullTxTracer.Instance);
     }
 }

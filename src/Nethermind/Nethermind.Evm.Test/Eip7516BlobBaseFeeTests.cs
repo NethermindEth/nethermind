@@ -15,8 +15,6 @@ namespace Nethermind.Evm.Test;
 
 public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
 {
-    //todo eip7762 testcases
-
     [TestCase(true, 0ul)]
     [TestCase(true, 100ul)]
     [TestCase(true, 20ul)]
@@ -41,7 +39,7 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
         block.Header.ExcessBlobGas = excessBlobGas;
 
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, London.Instance), tracer);
 
         _ = BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, out UInt256 expectedFeePerBlobGas, London.Instance);
         if (eip7516Enabled)

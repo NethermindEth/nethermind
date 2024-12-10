@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
@@ -32,8 +31,4 @@ public readonly struct BlockExecutionContext
         Header = blockHeader;
         BlobBaseFee = forceBlobBaseFee;
     }
-
-    // todo: maybe remove
-    // for testing
-    public static implicit operator BlockExecutionContext(BlockHeader header) => new(header, London.Instance);
 }

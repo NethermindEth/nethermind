@@ -111,7 +111,6 @@ public partial class EthRpcModuleTests
         return [firstBlock, secondBlock, thirdBlock];
     }
 
-    // todo: add test cases
     public static IEnumerable<TestCaseData> GetBlobBaseFeeTestCases
     {
         get

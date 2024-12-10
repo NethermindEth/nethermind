@@ -8,6 +8,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
@@ -65,7 +66,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, header, tracer);
+            processor.Execute(transaction, new(header, spec), tracer);
         }
     }
 }

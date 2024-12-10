@@ -79,7 +79,7 @@ public class VirtualMachineTestsBase
     {
         GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default with { EnableMemory = true });
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -87,7 +87,7 @@ public class VirtualMachineTestsBase
     {
         GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -95,7 +95,7 @@ public class VirtualMachineTestsBase
     {
         GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -103,7 +103,7 @@ public class VirtualMachineTestsBase
     {
         GethLikeTxFileTracer tracer = new(dumpCallback, options);
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -119,7 +119,7 @@ public class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -127,7 +127,7 @@ public class VirtualMachineTestsBase
     {
         (Block block, _) = PrepareTx(activation, 100000, null);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(tx, block.Header, tracer);
+        _processor.Execute(tx, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -148,7 +148,7 @@ public class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         tracer.StartNewBlockTrace(block);
         ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
-        _processor.Execute(transaction, block.Header, txTracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
         return tracer;
@@ -157,7 +157,7 @@ public class VirtualMachineTestsBase
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -170,7 +170,7 @@ public class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -180,7 +180,7 @@ public class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 

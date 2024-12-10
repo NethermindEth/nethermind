@@ -5,6 +5,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
@@ -109,7 +110,7 @@ namespace Nethermind.Evm.Test
             transaction.To = null;
             transaction.Data = createCode;
             TestAllTracerWithOutput tracer = CreateTracer();
-            TransactionResult result = _processor.Execute(transaction, block.Header, tracer);
+            TransactionResult result = _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
             return (result, tracer);
         }
     }
