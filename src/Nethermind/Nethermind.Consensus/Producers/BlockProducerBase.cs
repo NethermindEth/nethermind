@@ -234,6 +234,7 @@ namespace Nethermind.Consensus.Producers
                 MixHash = payloadAttributes?.PrevRandao,
                 ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot,
                 TargetBlobCount = payloadAttributes?.TargetBlobCount,
+                MaxBlobCount = payloadAttributes?.MaxBlobCount,
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);

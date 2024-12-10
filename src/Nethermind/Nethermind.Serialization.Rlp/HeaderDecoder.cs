@@ -99,6 +99,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     blockHeader.TargetBlobCount = decoderContext.DecodeULong();
                 }
+
+                if (itemsRemaining >= 7 && decoderContext.Position != headerCheck)
+                {
+                    blockHeader.MaxBlobCount = decoderContext.DecodeULong();
+                }
             }
 
 
@@ -196,6 +201,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     blockHeader.TargetBlobCount = rlpStream.DecodeULong();
                 }
+
+                if (itemsRemaining >= 7 && rlpStream.Position != headerCheck)
+                {
+                    blockHeader.MaxBlobCount = rlpStream.DecodeULong();
+                }
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -275,6 +285,11 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(header.TargetBlobCount.GetValueOrDefault());
             }
+
+            if (header.MaxBlobCount is not null)
+            {
+                rlpStream.Encode(header.MaxBlobCount.GetValueOrDefault());
+            }
         }
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -318,7 +333,8 @@ namespace Nethermind.Serialization.Rlp
                                 + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
                                 + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value))
                                 + (item.RequestsHash is null ? 0 : Rlp.LengthOf(item.RequestsHash))
-                                + (item.TargetBlobCount is null ? 0 : Rlp.LengthOf(item.TargetBlobCount));
+                                + (item.TargetBlobCount is null ? 0 : Rlp.LengthOf(item.TargetBlobCount))
+                                + (item.MaxBlobCount is null ? 0 : Rlp.LengthOf(item.MaxBlobCount));
 
             if (notForSealing)
             {

@@ -298,6 +298,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             callHeader.TargetBlobCount = blockHeader.TargetBlobCount;
+            callHeader.MaxBlobCount = blockHeader.MaxBlobCount;
             transaction.Hash = transaction.CalculateHash();
             return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }

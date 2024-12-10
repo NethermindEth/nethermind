@@ -289,6 +289,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 IsPostMerge = parent.Difficulty == 0,
             };
         result.TargetBlobCount = parent.TargetBlobCount;
+        result.MaxBlobCount = parent.MaxBlobCount;
         result.Timestamp = parent.Timestamp + 1;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
