@@ -33,8 +33,6 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
-using BlockTree = Nethermind.Blockchain.BlockTree;
-
 namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
@@ -113,9 +111,8 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
-                .AddModule(new TestSynchronizerModule(new SyncConfig()
+                .AddModule(new TestSynchronizerModule(new TestSyncConfig()
                 {
-                    SyncDispatcherEmptyRequestDelayMs = 1,
                     SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
                     FastSync = true
                 }))
@@ -125,7 +122,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
 
                 // Use factory function to make it lazy in case test need to replace IBlockTree
-                .AddSingleton<IBlockTree>((ctx) => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject)
+                .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(
+                    $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{BlockTree.BestSuggestedHeader!.Number}",
+                    () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength((int)BlockTree.BestSuggestedHeader!.Number)))
 
                 .Add<SafeContext>();
 

@@ -411,7 +411,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 if (downloadTask.HasTimeoutException())
                 {
-                    if (_logger.IsDebug) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
+                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
                     _syncBatchSize.Shrink();
                 }
 
