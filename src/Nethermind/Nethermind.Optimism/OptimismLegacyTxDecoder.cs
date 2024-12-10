@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -11,7 +12,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
+public sealed class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
 {
     protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -24,16 +25,26 @@ public class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
     }
 }
 
-public class OptimismLegacyTxValidator : ITxValidator
+public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
 {
+    private ITxValidator _postBedrockValidator = new CompositeTxValidator([
+        IntrinsicGasTxValidator.Instance,
+        new LegacySignatureTxValidator(chainId),
+        ContractSizeTxValidator.Instance,
+        NonBlobFieldsTxValidator.Instance,
+        NonSetCodeFieldsTxValidator.Instance
+    ]);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        // In op bedrock eip1559 activated with bedrock
-        if (releaseSpec.IsEip1559Enabled)
+        // In Optimism, EIP1559 is activated in Bedrock
+        var isPreBedrock = !releaseSpec.IsEip1559Enabled;
+        if (isPreBedrock)
         {
-            return transaction.Signature is null ? new ValidationResult("Empty signature") : ValidationResult.Success;
+            // Pre-Bedrock we peform no validation at all
+            return ValidationResult.Success;
         }
 
-        return ValidationResult.Success;
+        return _postBedrockValidator.IsWellFormed(transaction, releaseSpec);
     }
 }
