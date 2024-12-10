@@ -26,7 +26,7 @@ public class ShutterTxFilter(
         }
 
         IReleaseSpec releaseSpec = specProvider.GetSpec(parentHeader);
-        ValidationResult wellFormed = _txValidator.IsWellFormed(tx, releaseSpec);
+        ValidationResult wellFormed = _txValidator.IsWellFormed(tx, null, releaseSpec);
 
         if (_logger.IsDebug && !wellFormed) _logger.Debug($"Decrypted Shutter transaction was not well-formed: {wellFormed}");
 

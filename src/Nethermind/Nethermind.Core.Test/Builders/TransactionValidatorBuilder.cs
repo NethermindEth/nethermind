@@ -36,8 +36,8 @@ namespace Nethermind.Core.Test.Builders
 
         protected override void BeforeReturn()
         {
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_always);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_always);
             base.BeforeReturn();
         }
     }
