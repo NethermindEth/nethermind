@@ -11,19 +11,25 @@ namespace Nethermind.Optimism.Test;
 
 public class RlpDecoderTests
 {
+    private TxDecoder _decoder = null!;
+
+    [SetUp]
+    public void Setup()
+    {
+        _decoder = TxDecoder.Instance;
+        _decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+    }
+
     [Test]
     public void Can_decode_non_null_Transaction()
     {
-        TxDecoder decoder = TxDecoder.Instance;
-        decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
-
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        RlpStream rlpStream = new(decoder.GetLength(tx, RlpBehaviors.None));
-        decoder.Encode(rlpStream, tx);
+        RlpStream rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
+        _decoder.Encode(rlpStream, tx);
         rlpStream.Reset();
 
-        Transaction? decodedTx = decoder.Decode(rlpStream);
+        Transaction? decodedTx = _decoder.Decode(rlpStream);
 
         decodedTx.Should().NotBeNull();
     }
@@ -31,13 +37,12 @@ public class RlpDecoderTests
     [Test]
     public void Can_decode_non_null_Transaction_through_Rlp()
     {
-        TxDecoder decoder = TxDecoder.Instance;
-        decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+        _decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
 
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        RlpStream rlpStream = new(decoder.GetLength(tx, RlpBehaviors.None));
-        decoder.Encode(rlpStream, tx);
+        RlpStream rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
+        _decoder.Encode(rlpStream, tx);
         rlpStream.Reset();
 
         Transaction? decodedTx = Rlp.Decode<Transaction?>(rlpStream);
