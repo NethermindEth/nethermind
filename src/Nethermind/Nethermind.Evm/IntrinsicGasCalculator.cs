@@ -35,8 +35,8 @@ public static class IntrinsicGasCalculator
 
     public static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-if(!releaseSpec.IsEip7623Enabled)
-   return 0;
+        if (!releaseSpec.IsEip7623Enabled) return 0;
+
         long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
