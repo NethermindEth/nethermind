@@ -16,7 +16,7 @@ public class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
     protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        return base.DecodeSignature(v, rBytes, sBytes, fallbackSignature, rlpBehaviors | RlpBehaviors.AllowUnsigned);
+        return base.DecodeSignature(v, rBytes, sBytes, null, rlpBehaviors | RlpBehaviors.AllowUnsigned);
     }
 }
 
