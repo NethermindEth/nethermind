@@ -43,7 +43,9 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         G1 x = new(stackalloc long[G1.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
 
-        using ArrayPoolList<long> buf = new(GT.Sz * 2 + PrecomputeLinesSize, GT.Sz * 2 + PrecomputeLinesSize);
+        int sz = GT.Sz * 2 + PrecomputeLinesSize;
+        using ArrayPoolList<long> buf = new(sz, sz);
+
         var acc = GT.One(buf.AsSpan());
         GT p = new(buf.AsSpan()[GT.Sz..(GT.Sz * 2)]);
         Span<long> lines = buf.AsSpan()[(GT.Sz * 2)..];
