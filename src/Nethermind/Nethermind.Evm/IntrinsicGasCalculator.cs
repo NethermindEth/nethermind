@@ -35,6 +35,8 @@ public static class IntrinsicGasCalculator
 
     public static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
+if(!releaseSpec.IsEip7623Enabled)
+   return 0;
         long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
@@ -44,9 +46,7 @@ public static class IntrinsicGasCalculator
 
         var tokensInCallData = totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
 
-        return releaseSpec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
-            : 0;
+        return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
