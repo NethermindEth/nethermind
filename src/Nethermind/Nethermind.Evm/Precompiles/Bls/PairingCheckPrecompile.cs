@@ -19,6 +19,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 {
     private const int PairSize = 384;
+    private const int PrecomputeLinesSize = 6 * 6 * 68;
     public static readonly PairingCheckPrecompile Instance = new();
 
     private PairingCheckPrecompile() { }
@@ -42,9 +43,10 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         G1 x = new(stackalloc long[G1.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
 
-        using ArrayPoolList<long> buf = new(GT.Sz * 2, GT.Sz * 2);
+        using ArrayPoolList<long> buf = new(GT.Sz * 2 + PrecomputeLinesSize, GT.Sz * 2 + PrecomputeLinesSize);
         var acc = GT.One(buf.AsSpan());
-        GT p = new(buf.AsSpan()[GT.Sz..]);
+        GT p = new(buf.AsSpan()[GT.Sz..(GT.Sz * 2)]);
+        Span<long> lines = buf.AsSpan()[(GT.Sz * 2)..];
 
         for (int i = 0; i < inputData.Length / PairSize; i++)
         {
@@ -64,7 +66,8 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
                 continue;
             }
 
-            p.MillerLoop(y, x);
+            y.ToAffine().PrecomputeLines(lines);
+            p.MillerLoopLines(lines, x.ToAffine());
             acc.Mul(p);
         }
 

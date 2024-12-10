@@ -45,7 +45,7 @@
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
-    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.4" />
+    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.4-preview.25" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.1.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.4.0" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
