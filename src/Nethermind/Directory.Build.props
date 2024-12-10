@@ -16,7 +16,7 @@
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
     <VersionPrefix>1.30.0</VersionPrefix>
-    <VersionSuffix>unstable</VersionSuffix>
+    <VersionSuffix></VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
