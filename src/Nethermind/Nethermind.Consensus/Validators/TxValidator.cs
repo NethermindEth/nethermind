@@ -82,19 +82,19 @@ public sealed class TxValidator : ITxValidator
     /// As such, we can decide whether tx is well formed as long as we also validate nonce
     /// just before the execution of the block / tx.
     /// </remarks>
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? validator.IsWellFormed(transaction, block, releaseSpec)
+            ? validator.IsWellFormed(transaction, releaseSpec, header)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
 public sealed class CompositeTxValidator(List<ITxValidator> validators) : ITxValidator
 {
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null)
     {
         foreach (ITxValidator validator in validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, block, releaseSpec);
+            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, header);
             if (!isWellFormed)
             {
                 return isWellFormed;
@@ -110,7 +110,7 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public static readonly IntrinsicGasTxValidator Instance = new();
     private IntrinsicGasTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         // This is unnecessarily calculated twice - at validation and execution times.
         transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec)
             ? TxErrorMessages.IntrinsicGasTooLow
@@ -119,13 +119,13 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
 
 public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
 {
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         !validate(releaseSpec) ? TxErrorMessages.InvalidTxType(releaseSpec.Name) : ValidationResult.Success;
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
 {
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         transaction.ChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, transaction.ChainId) : ValidationResult.Success;
 }
 
@@ -134,7 +134,7 @@ public sealed class GasFieldsTxValidator : ITxValidator
     public static readonly GasFieldsTxValidator Instance = new();
     private GasFieldsTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
 }
 
@@ -143,7 +143,7 @@ public sealed class ContractSizeTxValidator : ITxValidator
     public static readonly ContractSizeTxValidator Instance = new();
     private ContractSizeTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         transaction.IsAboveInitCode(releaseSpec) ? TxErrorMessages.ContractSizeTooBig : ValidationResult.Success;
 }
 
@@ -156,7 +156,7 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
     public static readonly NonBlobFieldsTxValidator Instance = new();
     private NonBlobFieldsTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) => transaction switch
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) => transaction switch
     {
         // Execution-payload version verification
         { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
@@ -171,7 +171,7 @@ public sealed class NonSetCodeFieldsTxValidator : ITxValidator
     public static readonly NonSetCodeFieldsTxValidator Instance = new();
     private NonSetCodeFieldsTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) => transaction switch
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) => transaction switch
     {
         { AuthorizationList: not null } => TxErrorMessages.NotAllowedAuthorizationList,
         _ => ValidationResult.Success
@@ -183,7 +183,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     public static readonly BlobFieldsTxValidator Instance = new();
     private BlobFieldsTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         transaction switch
         {
             { To: null } => TxErrorMessages.TxMissingTo,
@@ -225,7 +225,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     public static readonly MempoolBlobTxValidator Instance = new();
     private MempoolBlobTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
@@ -275,7 +275,7 @@ public abstract class BaseSignatureTxValidator : ITxValidator
     protected virtual ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
         releaseSpec.ValidateChainId ? TxErrorMessages.InvalidTxSignature : ValidationResult.Success;
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null)
     {
         Signature? signature = transaction.Signature;
         if (signature is null)
@@ -315,7 +315,7 @@ public sealed class NoContractCreationTxValidator : ITxValidator
 {
     public static readonly NoContractCreationTxValidator Instance = new();
     private NoContractCreationTxValidator() { }
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         transaction.IsContractCreation ? TxErrorMessages.NotAllowedCreateTransaction : ValidationResult.Success;
 }
 
@@ -324,7 +324,7 @@ public sealed class AuthorizationListTxValidator : ITxValidator
     public static readonly AuthorizationListTxValidator Instance = new();
     private AuthorizationListTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null) =>
         transaction.AuthorizationList switch
         {
             null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,

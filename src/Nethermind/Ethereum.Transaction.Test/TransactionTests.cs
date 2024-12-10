@@ -183,7 +183,7 @@ public class TransactionTests
             Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
             Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");
             Assert.That(transaction.To, Is.EqualTo(validTest.To), "to");
-            Assert.That(validator.IsWellFormed(transaction, null, spec), Is.True);
+            Assert.That(validator.IsWellFormed(transaction, spec), Is.True);
 
             Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
             Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
@@ -196,7 +196,7 @@ public class TransactionTests
         }
         else
         {
-            Assert.That(validator.IsWellFormed(transaction, null, spec), Is.False);
+            Assert.That(validator.IsWellFormed(transaction, spec), Is.False);
         }
     }
 

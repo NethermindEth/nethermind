@@ -26,9 +26,9 @@ public class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
 
 public class OptimismLegacyTxValidator(OptimismSpecHelper specHelper) : ITxValidator
 {
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null)
     {
-        if (block is null || specHelper.IsBedrock(block.Header))
+        if (header is null || specHelper.IsBedrock(header))
         {
             return transaction.Signature is null ? new ValidationResult("Empty signature") : ValidationResult.Success;
         }

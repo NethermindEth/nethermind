@@ -88,7 +88,7 @@ public static class T8nExecutor
 
         foreach (Transaction transaction in test.Transactions)
         {
-            ValidationResult txIsValid = txValidator.IsWellFormed(transaction, null, test.Spec);
+            ValidationResult txIsValid = txValidator.IsWellFormed(transaction, test.Spec);
 
             if (!txIsValid)
             {

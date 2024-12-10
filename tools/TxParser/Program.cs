@@ -18,7 +18,7 @@ while (true)
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input), RlpBehaviors.SkipTypedWrapping);
         TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
-        if (txValidator.IsWellFormed(tx, null, GrayGlacier.Instance))
+        if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
             Address? sender = ecdsa.RecoverAddress(tx);

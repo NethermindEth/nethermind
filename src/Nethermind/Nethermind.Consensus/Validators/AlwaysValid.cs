@@ -81,7 +81,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public ValidationResult IsWellFormed(Transaction transaction, Block? block, IReleaseSpec releaseSpec)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null)
     {
         return _validationResult;
     }
