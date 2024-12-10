@@ -24,11 +24,12 @@ public class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
     }
 }
 
-public class OptimismLegacyTxValidator(OptimismSpecHelper specHelper) : ITxValidator
+public class OptimismLegacyTxValidator : ITxValidator
 {
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, BlockHeader? header = null)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        if (header is null || specHelper.IsBedrock(header))
+        // In op bedrock eip1559 activated with bedrock
+        if (releaseSpec.IsEip1559Enabled)
         {
             return transaction.Signature is null ? new ValidationResult("Empty signature") : ValidationResult.Success;
         }
