@@ -288,5 +288,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
+
+        public BlockBuilder WithTargetBlobCount(ulong? targetBlobCount)
+        {
+            TestObjectInternal.Header.TargetBlobCount = targetBlobCount;
+            return this;
+        }
     }
 }
