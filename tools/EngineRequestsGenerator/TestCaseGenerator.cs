@@ -305,6 +305,7 @@ public class TestCaseGenerator
             case TestCase.ModexpMinGasBaseHeavy:
             case TestCase.ModexpMinGasExpHeavy:
             case TestCase.ModexpMinGasBalanced:
+            case TestCase.Modexp208GasBalanced:
             case TestCase.Modexp215GasExpHeavy:
             case TestCase.Modexp408GasBaseHeavy:
             case TestCase.Modexp400GasExpHeavy:

@@ -158,6 +158,9 @@ public enum TestCase
     [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
     ModexpMinGasBalanced,
 
+    [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 32 and exponent equal 2^25 - 1 (25x 1s in binary)")]
+    Modexp208GasBalanced,
+
     [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
     Modexp215GasExpHeavy,
 

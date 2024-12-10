@@ -41,6 +41,8 @@ public static class Modexp
                 return PrepareCode(8, 603);
             case TestCase.ModexpMinGasBalanced:
                 return PrepareCode(40, 25);
+            case TestCase.Modexp208GasBalanced:
+                return PrepareCode(32, 40);
             case TestCase.Modexp215GasExpHeavy:
                 return PrepareCode(8, 648);
             case TestCase.Modexp408GasBaseHeavy:
