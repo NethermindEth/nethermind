@@ -14,9 +14,11 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -36,6 +38,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         await base.InitBlockchain();
 
         api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), Always.Valid);
     }
 
     protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
