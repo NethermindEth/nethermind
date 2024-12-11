@@ -109,7 +109,7 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, _jsonRpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
-            null!,
+            _api.StateFactory!,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,

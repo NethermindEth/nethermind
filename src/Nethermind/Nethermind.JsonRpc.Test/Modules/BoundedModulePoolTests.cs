@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
@@ -52,8 +51,7 @@ public class BoundedModulePoolTests
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IGasPriceOracle>(),
             Substitute.For<IEthSyncingInfo>(),
-            Substitute.For<IFeeHistoryOracle>(),
-            new BlocksConfig().SecondsPerSlot),
+            Substitute.For<IFeeHistoryOracle>()),
              1, 1000);
 
         return Task.CompletedTask;

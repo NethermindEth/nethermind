@@ -16,7 +16,7 @@ public class OverridableWorldState(
     /// <summary>
     /// Resets changes applied via <see cref="Nethermind.Evm.StateOverridesExtensions.ApplyStateOverrides"/>
     /// </summary>
-    public void ResetOverrides()
+    public void ResetStateAndOverrides()
     {
         // Fully reset the world state
         FullReset();

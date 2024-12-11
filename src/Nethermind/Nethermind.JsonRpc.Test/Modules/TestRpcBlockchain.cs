@@ -136,8 +136,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
-            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
-            new BlocksConfig().SecondsPerSlot);
+            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider));
 
         protected override async Task<TestBlockchain> Build(
             ISpecProvider? specProvider = null,

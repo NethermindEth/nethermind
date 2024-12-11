@@ -46,9 +46,8 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverrida
 
     public OverridableTxProcessingScope Build(Hash256 stateRoot)
     {
-        Hash256 originalStateRoot = StateProvider.StateRoot;
         StateProvider.StateRoot = stateRoot;
-        return new(CodeInfoRepository, TransactionProcessor, StateProvider, originalStateRoot);
+        return new(CodeInfoRepository, TransactionProcessor, StateProvider);
     }
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
