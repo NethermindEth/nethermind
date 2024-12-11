@@ -63,7 +63,7 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
             if (x.IsInf() || y.IsInf())
             {
                 hasInf = true;
-                break;
+                continue;
             }
 
             p.MillerLoop(y, x);
