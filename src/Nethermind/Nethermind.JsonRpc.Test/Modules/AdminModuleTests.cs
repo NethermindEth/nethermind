@@ -46,6 +46,7 @@ public class AdminModuleTests
         peerPool.ActivePeers.Returns(dict);
 
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         Enode enode = new(_enodeString);
         ChainSpec chainSpec = new()
         {
@@ -60,7 +61,8 @@ public class AdminModuleTests
             enode,
             _exampleDataDir,
             new ManualPruningTrigger(),
-            chainSpec.Parameters);
+            chainSpec.Parameters,
+            trustedNodesManager);
 
         _serializer = new EthereumJsonSerializer();
     }

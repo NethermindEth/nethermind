@@ -28,6 +28,7 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
+        private readonly ITrustedNodesManager _trustedNodesManager;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -50,7 +51,9 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             INetworkStorage peerStorage,
             INetworkConfig networkConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            ITrustedNodesManager trustedNodesManager)
+
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -58,6 +61,7 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
             // Early explicit closure
             _createNewNodePeer = CreateNew;
@@ -83,6 +87,13 @@ namespace Nethermind.Network
 
         private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
+            string enodeString = arg.Node.ToString(Node.Format.ENode);
+
+            if (_trustedNodesManager.IsTrusted(enodeString))
+            {
+                arg.Node.IsTrusted = true;
+            }
+
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
             {
                 if (_logger.IsDebug) _logger.Debug(
@@ -101,6 +112,15 @@ namespace Nethermind.Network
         private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
             Node node = new(arg.Node);
+
+            string enodeString = node.ToString(Node.Format.ENode);
+
+            // Check if this node is trusted
+            if (_trustedNodesManager.IsTrusted(enodeString))
+            {
+                node.IsTrusted = true;
+            }
+
             Peer peer = new(node, _stats.GetOrAdd(node));
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
