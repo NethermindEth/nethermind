@@ -11,11 +11,8 @@ namespace Nethermind.Evm.Precompiles.Bls
     /// </summary>
     internal static class Discount
     {
-        public static int For(int k, bool isG2) => k switch
-        {
-            var x when x >= 128 => isG2 ? _maxDiscountG2 : _maxDiscountG1,
-            _ => isG2 ? _discountTable[k].g2 : _discountTable[k].g1
-        };
+        public static int ForG1(int k) => k >= 128 ? _maxDiscountG1 : _discountTable[k].g1;
+        public static int ForG2(int k) => k >= 128 ? _maxDiscountG2 : _discountTable[k].g2;
 
         private const int _maxDiscountG1 = 435;
         private const int _maxDiscountG2 = 696;
