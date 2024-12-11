@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -193,6 +194,7 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedUncles(uncles));
+            TestObjectInternal.Header.UnclesHash = UnclesHash.Calculate(uncles);
             return this;
         }
 
