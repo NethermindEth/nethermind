@@ -20,7 +20,7 @@ namespace Nethermind.Evm.Precompiles.Bls
         private const int _maxDiscountG1 = 435;
         private const int _maxDiscountG2 = 696;
 
-        private static readonly (int g1, int g2)[] _discountTable = 
+        private static readonly (int g1, int g2)[] _discountTable =
         {
             (0, 0),        // 0
             (1800, 1800),  // 1
