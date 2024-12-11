@@ -99,7 +99,7 @@ namespace Nethermind.Config
         }
 
         private static bool IsNullString(string valueString) =>
-            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase);
+            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.OrdinalIgnoreCase);
 
         public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
 

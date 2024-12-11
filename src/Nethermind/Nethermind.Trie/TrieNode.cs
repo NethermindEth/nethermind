@@ -41,15 +41,6 @@ namespace Nethermind.Trie
         private int _isDirty;
 
         /// <summary>
-        /// Ethereum Patricia Trie specification allows for branch values,
-        /// although branched never have values as all the keys are of equal length.
-        /// Keys are of length 64 for TxTrie and ReceiptsTrie and StateTrie.
-        ///
-        /// We leave this switch for testing purposes.
-        /// </summary>
-        public static bool AllowBranchValues { private get; set; }
-
-        /// <summary>
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
         /// </summary>
         public bool IsSealed => _isDirty == 0;
@@ -135,32 +126,8 @@ namespace Nethermind.Trie
                     return ref Unsafe.Unbox<CappedArray<byte>>(data);
                 }
 
-                if (!AllowBranchValues)
-                {
-                    // branches that we use for state will never have value set as all the keys are equal length
-                    return ref CappedArray<byte>.Empty;
-                }
-
-                ref object? obj = ref _data![BranchesCount];
-                if (obj is null)
-                {
-                    RlpFactory rlp = _rlp;
-                    if (rlp is null)
-                    {
-                        obj = CappedArray<byte>.EmptyBoxed;
-                        return ref CappedArray<byte>.Empty;
-                    }
-                    else
-                    {
-                        ValueRlpStream rlpStream = rlp.GetRlpStream();
-                        SeekChild(ref rlpStream, BranchesCount);
-                        byte[]? bArr = rlpStream.DecodeByteArray();
-                        obj = new CappedArray<byte>(bArr);
-                        return ref Unsafe.Unbox<CappedArray<byte>>(obj);
-                    }
-                }
-
-                return ref Unsafe.Unbox<CappedArray<byte>>(obj);
+                // branches that we use for state will never have value set as all the keys are equal length
+                return ref CappedArray<byte>.Empty;
             }
         }
 
@@ -199,7 +166,7 @@ namespace Nethermind.Trie
                 ThrowAlreadySealed();
             }
 
-            if (IsBranch && !AllowBranchValues)
+            if (IsBranch)
             {
                 // in Ethereum all paths are of equal length, hence branches will never have values
                 // so we decided to save 1/17th of the array size in memory
@@ -245,11 +212,6 @@ namespace Nethermind.Trie
                     {
                         return true;
                     }
-                }
-
-                if (AllowBranchValues)
-                {
-                    nonEmptyNodes += Value.Length > 0 ? 1 : 0;
                 }
 
                 return nonEmptyNodes > 2;
@@ -1144,7 +1106,7 @@ namespace Nethermind.Trie
                 var data = nodeType switch
                 {
                     NodeType.Unknown => ThrowCannotResolveException(),
-                    NodeType.Branch => new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount],
+                    NodeType.Branch => new object[BranchesCount],
                     _ => new object[2],
                 };
 

@@ -16,9 +16,9 @@
   },
   "Sync": {
     "SnapSync": true,
-    "PivotNumber": 6420000,
-    "PivotHash": "0xca464ef9ec6636bd194ea059ef932ae3938ae48956b0c5936e9ebcc5b0823ac1",
-    "PivotTotalDifficulty": "12840001"
+    "PivotNumber": 6830000,
+    "PivotHash": "0x75e380ff226a8b160cdef9c479327c98df28576a4388c90373d2b2931e3e852a",
+    "PivotTotalDifficulty": "13660001"
   },
   "JsonRpc": {
     "Enabled": true,

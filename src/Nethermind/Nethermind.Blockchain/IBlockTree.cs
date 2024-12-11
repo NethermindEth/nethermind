@@ -48,11 +48,6 @@ namespace Nethermind.Blockchain
         BlockHeader? LowestInsertedHeader { get; }
 
         /// <summary>
-        /// Lowest body added in reverse fast sync insert
-        /// </summary>
-        long? LowestInsertedBodyNumber { get; set; }
-
-        /// <summary>
         /// Lowest header number added in reverse beacon sync insert. Used to determine if BeaconHeaderSync is completed.
         /// </summary>
         BlockHeader? LowestInsertedBeaconHeader { get; set; }

@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -40,7 +41,7 @@ public class FastHeadersSyncTests
             HeadersSyncFeed _ = new HeadersSyncFeed(
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
-                syncConfig: new SyncConfig(),
+                syncConfig: new TestSyncConfig(),
                 syncReport: Substitute.For<ISyncReport>(),
                 logManager: LimboLogs.Instance);
         });
@@ -56,7 +57,7 @@ public class FastHeadersSyncTests
         HeadersSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
-            syncConfig: new SyncConfig
+            syncConfig: new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = "1000",
@@ -89,7 +90,7 @@ public class FastHeadersSyncTests
         ResettableHeaderSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: syncPeerPool,
-            syncConfig: new SyncConfig
+            syncConfig: new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = "1000",
@@ -149,7 +150,7 @@ public class FastHeadersSyncTests
         using ResettableHeaderSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
-            syncConfig: new SyncConfig
+            syncConfig: new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = "500",
@@ -196,7 +197,7 @@ public class FastHeadersSyncTests
         using HeadersSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
-            syncConfig: new SyncConfig
+            syncConfig: new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = pivot.Number.ToString(),
@@ -267,7 +268,7 @@ public class FastHeadersSyncTests
         ResettableHeaderSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
-            syncConfig: new SyncConfig
+            syncConfig: new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = "500",
@@ -321,7 +322,7 @@ public class FastHeadersSyncTests
         HeadersSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
-            syncConfig: new SyncConfig
+            syncConfig: new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = "1000",
@@ -349,7 +350,7 @@ public class FastHeadersSyncTests
         report.HeadersInQueue.Returns(new MeasuredProgress());
         MeasuredProgress measuredProgress = new();
         report.FastBlocksHeaders.Returns(measuredProgress);
-        HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+        HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
         await feed.PrepareRequest();
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
         using HeadersSyncBatch? result = await feed.PrepareRequest();
@@ -372,7 +373,7 @@ public class FastHeadersSyncTests
         report.HeadersInQueue.Returns(new MeasuredProgress());
         report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
-        HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+        HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
         feed.InitializeFeed();
         using HeadersSyncBatch? result = await feed.PrepareRequest();
 
@@ -406,8 +407,8 @@ public class FastHeadersSyncTests
     [TestCase(0, 192, 1, false, true)]
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
-        var peerChain = Build.A.BlockTree().OfChainLength(1000).TestObject;
-        var syncConfig = new SyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" };
+        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         const int lowestInserted = 999;
@@ -472,7 +473,7 @@ public class FastHeadersSyncTests
         HeadersSyncFeed feed = new(
             blockTree,
             Substitute.For<ISyncPeerPool>(),
-            new SyncConfig
+            new TestSyncConfig
             {
                 FastSync = true,
                 PivotNumber = "1000",
@@ -538,7 +539,7 @@ public class FastHeadersSyncTests
     public void IsFinished_returns_false_when_headers_not_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        SyncConfig syncConfig = new()
+        TestSyncConfig syncConfig = new()
         {
             FastSync = true,
             DownloadBodiesInFastSync = true,

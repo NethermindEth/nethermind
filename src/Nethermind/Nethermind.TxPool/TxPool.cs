@@ -194,6 +194,8 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
+            if (_headInfo.IsSyncing) return;
+
             try
             {
                 _headBlocksChannel.Writer.TryWrite(e);
@@ -406,8 +408,12 @@ namespace Nethermind.TxPool
             }
         }
 
+        public bool AcceptTxWhenNotSynced { get; set; }
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) return AcceptTxResult.Syncing;
+
             Metrics.PendingTransactionsReceived++;
 
             // assign a sequence number to transaction so we can order them by arrival times when

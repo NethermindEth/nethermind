@@ -90,8 +90,21 @@ namespace Nethermind.Synchronization
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
 
+            if (syncConfig.GCOnFeedFinished)
+            {
+                SyncModeSelector.Changed += GCOnFeedFinished;
+            }
+
             // Make unit test faster.
             SyncModeSelector.Update();
+        }
+
+        private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
+        {
+            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlocks))
+            {
+                GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            }
         }
 
         private void StartFullSyncComponents()
@@ -227,8 +240,9 @@ namespace Nethermind.Synchronization
         {
             _syncCancellation?.Cancel();
 
-            await Task.WhenAny(
-                Task.Delay(FeedsTerminationTimeout),
+            Task timeout = Task.Delay(FeedsTerminationTimeout);
+            Task completedFirst = await Task.WhenAny(
+                timeout,
                 Task.WhenAll(
                     fullSyncComponent.Feed.FeedTask,
                     fastSyncComponent.Feed.FeedTask,
@@ -237,6 +251,11 @@ namespace Nethermind.Synchronization
                     fastHeaderComponent.Feed.FeedTask,
                     oldBodiesComponent.Feed.FeedTask,
                     oldReceiptsComponent.Feed.FeedTask));
+
+            if (completedFirst == timeout)
+            {
+                if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+            }
 
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
@@ -279,6 +298,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
+            .AddSingleton<ISyncPointers, SyncPointers>()
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
