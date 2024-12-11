@@ -300,6 +300,46 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task Test_admin_addTrustedPeer()
+    {
+        // trustedNodesManager and peerPool mocks initialized in Setup()
+        // We'll configure the trustedNodesManager mock to return true when adding a trusted node.
+
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.AddAsync(_enodeString, true).Returns(Task.FromResult(true));
+
+        IPeerPool peerPool = Substitute.For<IPeerPool>();
+        NetworkNode node = new(_enodeString);
+
+        // The AdminRpcModule requires the full constructor call with ITrustedNodesManager:
+        ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
+        IAdminRpcModule adminRpcModule = new AdminRpcModule(
+            _blockTree,
+            _networkConfig,
+            peerPool,
+            Substitute.For<IStaticNodesManager>(),
+            new Enode(_enodeString),
+            _exampleDataDir,
+            new ManualPruningTrigger(),
+            chainSpec.Parameters,
+            trustedNodesManager);
+
+        // Invoke admin_addTrustedPeer
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
+
+        // Check the response to ensure it succeeded
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
+        result.Should().BeTrue();
+
+        // Verify that AddAsync was called
+        await trustedNodesManager.Received(1).AddAsync(_enodeString, Arg.Any<bool>());
+
+        // Verify that peerPool.GetOrAdd was called for that node
+        peerPool.ReceivedWithAnyArgs(1).GetOrAdd(node);
+    }
+
+    [Test]
     public async Task Smoke_solc()
     {
         _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
