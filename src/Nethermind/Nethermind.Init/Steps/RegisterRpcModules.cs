@@ -122,6 +122,7 @@ public class RegisterRpcModules : IStep
 
         StepDependencyException.ThrowIfNull(_api.PeerManager);
         StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
+        StepDependencyException.ThrowIfNull(_api.TrustedNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
 
         ManualPruningTrigger pruningTrigger = new();
@@ -138,7 +139,8 @@ public class RegisterRpcModules : IStep
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,
-            getFromApi.ChainSpec.Parameters);
+            getFromApi.ChainSpec.Parameters,
+            _api.TrustedNodesManager);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);

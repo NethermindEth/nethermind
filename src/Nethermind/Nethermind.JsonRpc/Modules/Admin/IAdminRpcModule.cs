@@ -79,4 +79,14 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<string> admin_verifyTrie(BlockParameter block);
+
+    [JsonRpcMethod(Description = "Adds given node as a trusted peer, allowing the node to always connect even if slots are full.",
+        EdgeCaseHint = "",
+        ResponseDescription = "Boolean indicating success",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_addTrustedPeer(
+        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
+        string enode
+);
 }

@@ -21,5 +21,9 @@ namespace Nethermind.Cli.Modules
 
         [CliFunction("admin", "removePeer", Description = "Removes given node from the static nodes")]
         public string? RemovePeer(string enode, bool removeFromStaticNodes = false) => NodeManager.Post<string>("admin_removePeer", enode, removeFromStaticNodes).Result;
+
+        [CliFunction("admin", "addTrustedPeer", Description = "Adds given node to the trusted nodes")]
+        public bool AddTrustedPeer(string enode) => NodeManager.Post<bool>("admin_addTrustedPeer", enode).Result;
+
     }
 }
