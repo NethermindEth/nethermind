@@ -85,7 +85,11 @@ public class RecoveryTests
     }
 
     [TearDown]
-    public void TearDown() => _syncPeerPool?.DisposeAsync();
+    public void TearDown()
+    {
+        _syncPeerPool?.DisposeAsync();
+        _snapRequest?.Dispose();
+    }
 
     [Test]
     public async Task can_recover_eth66()
