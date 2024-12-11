@@ -184,9 +184,10 @@ public partial class EthRpcModule(
             ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
             return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
         }
-        catch (MissingTrieNodeException)
+        catch (MissingTrieNodeException e)
         {
-            return GetStateFailureResult<byte[]>(header);
+            var hash = e.TrieNodeException.NodeHash;
+            return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
         }
     }
 
