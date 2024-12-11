@@ -140,6 +140,8 @@ public partial class BlockTree
 
             LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Lowest inserted header set to {LowestInsertedHeader?.Number.ToString() ?? "null"}");
     }
 
     private void LoadBestKnown()
