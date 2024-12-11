@@ -116,27 +116,18 @@ namespace Nethermind.Synchronization.ParallelSync
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
                             _activeTasks.AddCount();
 
-                            Task task;
-                            try
-                            {
-                                task = Task.Run(
-                                    () =>
+                            Task task = Task.Run(
+                                () =>
+                                {
+                                    try
                                     {
-                                        try
-                                        {
-                                            return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
-                                        }
-                                        finally
-                                        {
-                                            _activeTasks.Signal();
-                                        }
-                                    });
-                            }
-                            catch
-                            {
-                                _activeTasks.Signal();
-                                throw;
-                            }
+                                        return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                    }
+                                    finally
+                                    {
+                                        _activeTasks.Signal();
+                                    }
+                                });
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -302,11 +293,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public ValueTask DisposeAsync()
         {
-            if (_disposed)
+            if (Interlocked.CompareExchange(ref _disposed, true, false) == true)
             {
                 return ValueTask.CompletedTask;
             }
-            _disposed = true;
 
             _activeTasks.Signal();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
