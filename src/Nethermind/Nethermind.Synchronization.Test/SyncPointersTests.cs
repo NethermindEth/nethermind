@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test;
@@ -17,7 +18,7 @@ public class SyncPointersTests
         SyncPointers pointers = new SyncPointers(new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), new ReceiptConfig()
         {
             StoreReceipts = false
-        });
+        }, LimboLogs.Instance);
 
         pointers.LowestInsertedReceiptBlockNumber.Should().Be(0);
     }
