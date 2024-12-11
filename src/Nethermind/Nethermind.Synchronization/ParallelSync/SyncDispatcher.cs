@@ -65,9 +65,24 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+
         public async Task Start(CancellationToken cancellationToken)
         {
             UpdateState(Feed.CurrentState);
+
+            try
+            {
+                _activeTasks.AddCount(1);
+                await DispatchLoop(cancellationToken);
+            }
+            finally
+            {
+                _activeTasks.Signal();
+            }
+        }
+
+        private async Task DispatchLoop(CancellationToken cancellationToken)
+        {
             while (true)
             {
                 try
