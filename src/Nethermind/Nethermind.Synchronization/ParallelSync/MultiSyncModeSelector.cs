@@ -590,8 +590,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
-            bool stateNotDownloadedYet = (best.TargetBlock - best.State > FastSyncLag + FastChainLag ||
-                                          best.Header > best.State && best.Header > best.Block);
+            bool stateNotDownloadedYet = (best.TargetBlock - best.State > (FastSyncLag + FastChainLag) ||
+                                          best.Header > (best.State + FastChainLag) && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
