@@ -122,8 +122,6 @@ public class Block
 
     public ulong? TargetBlobCount => Header.TargetBlobCount; // do not add setter here
 
-    public ulong? MaxBlobCount => Header.MaxBlobCount;
-
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
     [JsonIgnore]

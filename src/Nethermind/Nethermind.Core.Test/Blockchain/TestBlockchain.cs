@@ -445,7 +445,7 @@ public class TestBlockchain : IDisposable
         Timestamper.Add(TimeSpan.FromSeconds(1));
         var headProcessed = new SemaphoreSlim(0);
         TxPool.TxPoolHeadChanged += (s, a) => headProcessed.Release();
-        await BlockProductionTrigger.BuildBlock(payloadAttributes: new PayloadAttributes { TargetBlobCount = 0, MaxBlobCount = 1 }).ConfigureAwait(false);
+        await BlockProductionTrigger.BuildBlock(payloadAttributes: new PayloadAttributes { TargetBlobCount = 0 }).ConfigureAwait(false);
         await headProcessed.WaitAsync().ConfigureAwait(false);
         return txResults;
     }

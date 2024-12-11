@@ -398,7 +398,6 @@ public partial class BlockProcessor(
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
             TargetBlobCount = bh.TargetBlobCount,
-            MaxBlobCount = bh.MaxBlobCount,
         };
 
         if (!ShouldComputeStateRoot(bh))

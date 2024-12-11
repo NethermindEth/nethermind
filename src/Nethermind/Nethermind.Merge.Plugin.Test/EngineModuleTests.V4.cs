@@ -107,7 +107,6 @@ public partial class EngineModuleTests
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
                 TargetBlobCount = 0,
-                MaxBlobCount = 0,
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
@@ -350,7 +349,6 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = withdrawals,
             TargetBlobCount = 0,
-            MaxBlobCount = 0,
         };
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes).Result;
