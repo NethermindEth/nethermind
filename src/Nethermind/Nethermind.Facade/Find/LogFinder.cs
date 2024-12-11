@@ -7,10 +7,13 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
@@ -31,6 +34,7 @@ namespace Nethermind.Facade.Find
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
+        private readonly ILogIndexStorage _logIndexStorage;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,
@@ -38,6 +42,7 @@ namespace Nethermind.Facade.Find
             IBloomStorage? bloomStorage,
             ILogManager? logManager,
             IReceiptsRecovery? receiptsRecovery,
+            ILogIndexStorage? logIndexStorage,
             int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -45,6 +50,7 @@ namespace Nethermind.Facade.Find
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
@@ -86,6 +92,9 @@ namespace Nethermind.Facade.Find
                 throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (CanUseLogIndexStorage(fromBlock, toBlock))
+                return FilterLogsUsingIndex(filter, fromBlock, toBlock, cancellationToken);
 
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
@@ -163,6 +172,11 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
+        private bool CanUseLogIndexStorage(BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            return toBlock.Number <= _logIndexStorage.GetLastKnownBlockNumber();
+        }
+
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
         {
             // method is designed for convenient debugging
@@ -186,6 +200,104 @@ namespace Nethermind.Facade.Find
             }
 
             return true;
+        }
+
+        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        {
+            // TODO: calculate real-time without list
+            List<HashSet<int>> andBlockNumSets = [];
+
+            if (filter.AddressFilter.Address is { } address)
+            {
+                andBlockNumSets.Add([.._logIndexStorage.GetBlockNumbersFor(address, (int)fromBlock.Number, (int)toBlock.Number)]);
+            }
+            else if (filter.AddressFilter.Addresses is { } addresses)
+            {
+                HashSet<int>? orAddressesFilter = null;
+                foreach (AddressAsKey addressAsKey in addresses)
+                {
+                    orAddressesFilter ??= [];
+                    orAddressesFilter.AddRange(_logIndexStorage.GetBlockNumbersFor(addressAsKey.Value, (int)fromBlock.Number, (int)toBlock.Number));
+                }
+
+                if (orAddressesFilter != null)
+                {
+                    andBlockNumSets.Add(orAddressesFilter);
+                }
+            }
+
+            // TODO: move logic to TopicsFilter and implementations
+            //    OR switch to tree visitor
+            if (filter.TopicsFilter is SequenceTopicsFilter sequenceFilter)
+            {
+                // TODO: confirm topic order doesn't matter
+                foreach (TopicExpression topicExpression in sequenceFilter.Expressions)
+                {
+                    if (topicExpression is SpecificTopic specificTopic)
+                    {
+                        andBlockNumSets.AddRange([.._logIndexStorage.GetBlockNumbersFor(specificTopic.Topic, (int)fromBlock.Number, (int)toBlock.Number)]);
+                    }
+                    if (topicExpression is OrExpression orExpression)
+                    {
+                        HashSet<int>? orTopicsFilter = null;
+                        foreach (TopicExpression subexpression in orExpression.Subexpressions)
+                        {
+                            if (subexpression is SpecificTopic specificSubTopic)
+                            {
+                                orTopicsFilter ??= new();
+                                orTopicsFilter.AddRange([.._logIndexStorage.GetBlockNumbersFor(specificSubTopic.Topic, (int)fromBlock.Number, (int)toBlock.Number)]);
+                            }
+                        }
+
+                        if (orTopicsFilter != null)
+                        {
+                            andBlockNumSets.Add(orTopicsFilter);
+                        }
+                    }
+                }
+            }
+
+            HashSet<int> blockNums = null;
+            foreach (HashSet<int> numSet in andBlockNumSets)
+            {
+                if (blockNums == null) blockNums = numSet;
+                else blockNums.IntersectWith(numSet);
+            }
+
+            if (blockNums == null)
+            {
+                int count = 0;
+                while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
+                {
+                    foreach (FilterLog filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
+                    {
+                        yield return filterLog;
+                    }
+
+                    fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
+                    if (fromBlock is null) break;
+
+                    count++;
+                }
+            }
+            else
+            {
+                int count = 0;
+                foreach (var blockNum in blockNums)
+                {
+                    BlockHeader blockHeader = _blockFinder.FindHeader(blockNum);
+                    if (blockHeader is null)
+                        break;
+
+                    foreach (FilterLog filterLog in FindLogsInBlock(filter, blockHeader!, cancellationToken))
+                    {
+                        yield return filterLog;
+                    }
+
+                    if (++count >= _maxBlockDepth)
+                        break;
+                }
+            }
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

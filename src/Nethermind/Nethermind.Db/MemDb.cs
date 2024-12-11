@@ -167,5 +167,10 @@ namespace Nethermind.Db
                 Size = Count
             };
         }
+
+        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

@@ -308,5 +308,10 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

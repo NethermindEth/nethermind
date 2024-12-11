@@ -149,6 +149,7 @@ namespace Nethermind.Api
         public IKeyStore? KeyStore { get; set; }
         public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
+        public ILogIndexStorage? LogIndexStorage { get; set; }
         public ILogManager LogManager { get; set; }
         public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();

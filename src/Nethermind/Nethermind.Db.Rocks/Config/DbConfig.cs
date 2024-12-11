@@ -217,4 +217,14 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.filter_policy=bloom_filter:15;" +
         "";
     public string? StateDbAdditionalRocksDbOptions { get; set; }
+
+    // TODO: cleanup & optimize settings
+    public string? LogIndexStorageDbRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageDefaultDbRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageDefaultDbAdditionalRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageTopicsDbRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageTopicsDbAdditionalRocksDbOptions { get; set; } = "";
 }

@@ -92,4 +92,13 @@ public interface IDbConfig : IConfig
     double StateDbCompressibilityHint { get; set; }
     string StateDbRocksDbOptions { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }
+
+    string? LogIndexStorageDbRocksDbOptions { get; set; }
+    string? LogIndexStorageDbAdditionalRocksDbOptions { get; set; }
+    string? LogIndexStorageDefaultDbRocksDbOptions { get; set; }
+    string? LogIndexStorageDefaultDbAdditionalRocksDbOptions { get; set; }
+    string? LogIndexStorageAddressesDbRocksDbOptions { get; set; }
+    string? LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; }
+    string? LogIndexStorageTopicsDbRocksDbOptions { get; set; }
+    string? LogIndexStorageTopicsDbAdditionalRocksDbOptions { get; set; }
 }

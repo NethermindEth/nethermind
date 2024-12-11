@@ -119,5 +119,10 @@ namespace Nethermind.Db.Rpc
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
+
+        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        {
+            throw new InvalidOperationException("RPC DB does not support iteration");
+        }
     }
 }

@@ -319,5 +319,10 @@ namespace Nethermind.Db.FullPruning
                 tunableDb.Tune(type);
             }
         }
+
+        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        {
+            return _currentDb.GetIterator(isOrdered);
+        }
     }
 }
