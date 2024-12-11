@@ -33,6 +33,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
@@ -180,8 +181,16 @@ public partial class EthRpcModule(
         }
 
         BlockHeader? header = searchResult.Object;
-        ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
+        try
+        {
+            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+            return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
+        }
+        catch (MissingTrieNodeException e)
+        {
+            var hash = e.TrieNodeException.NodeHash;
+            return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
+        }
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)

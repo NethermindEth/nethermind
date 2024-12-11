@@ -53,7 +53,7 @@ public class ConfigProvider : IConfigProvider
 
         return Categories.TryGetValue(category, out object value) ? value.GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
+            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
     }
 
