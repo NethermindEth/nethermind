@@ -53,7 +53,7 @@ class ShutterBlockHandlerTests : EngineModuleTests
     [Test]
     public void Does_not_wait_after_cutoff()
     {
-        const ulong blockWaitCutoff = 1333;
+        ulong blockWaitCutoff = ShutterTestsCommon.Cfg.BlockUpToDateCutoff;
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 2 * blockWaitCutoff);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);

@@ -26,6 +26,7 @@ namespace Nethermind.Benchmark.Runner
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Descriptor);
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Statistics);
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Params);
+            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Metrics);
             AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
@@ -59,7 +60,7 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core80)), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)), args);
                 }
 
                 foreach (Assembly assembly in simpleJobAssemblies)
