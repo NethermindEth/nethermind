@@ -110,7 +110,19 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             {
                 BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
 
-                var maxBlobGasPerBlock = (double)(block.TargetBlobCount * 2 ?? Eip4844Constants.GetMaxBlobsPerBlock()) * Eip4844Constants.GasPerBlob;
+                double maxBlobGasPerBlock;
+                if (!_specProvider.GetSpec(b.Header).IsEip7742Enabled)
+                {
+                    maxBlobGasPerBlock = Eip4844Constants.GetMaxBlobsPerBlock();
+                }
+                else if (b.Header.TargetBlobCount.HasValue)
+                {
+                    maxBlobGasPerBlock = b.Header.TargetBlobCount.Value * 2;
+                }
+                else
+                {
+                    throw new InvalidBlockException(b, "header is missing TargetBlobCount");
+                }
 
                 return new(
                     b.Number,
@@ -118,7 +130,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
-                    (b.BlobGasUsed ?? 0) / maxBlobGasPerBlock,
+                    (b.BlobGasUsed ?? 0) / (maxBlobGasPerBlock * Eip4844Constants.GasPerBlob),
                     b.ParentHash,
                     b.GasUsed,
                     b.Transactions.Length,
