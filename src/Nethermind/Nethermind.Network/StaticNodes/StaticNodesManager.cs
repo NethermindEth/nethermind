@@ -131,7 +131,7 @@ namespace Nethermind.Network.StaticNodes
         {
             NetworkNode node = new(enode);
             return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-                node.Host, StringComparison.InvariantCultureIgnoreCase);
+                node.Host, StringComparison.OrdinalIgnoreCase);
         }
 
         private Task SaveFileAsync()
