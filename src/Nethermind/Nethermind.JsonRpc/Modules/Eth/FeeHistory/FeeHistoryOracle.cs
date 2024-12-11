@@ -110,19 +110,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             {
                 BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
 
-                double maxBlobGasPerBlock;
-                if (!_specProvider.GetSpec(b.Header).IsEip7742Enabled)
-                {
-                    maxBlobGasPerBlock = Eip4844Constants.GetMaxBlobsPerBlock();
-                }
-                else if (b.Header.TargetBlobCount.HasValue)
-                {
-                    maxBlobGasPerBlock = b.Header.TargetBlobCount.Value * 2;
-                }
-                else
-                {
-                    throw new InvalidBlockException(b, "header is missing TargetBlobCount");
-                }
+                IReleaseSpec spec = _specProvider.GetSpec(b.Header);
+                double maxBlobGasPerBlock = !spec.IsEip7742Enabled 
+                    ? Eip4844Constants.GetMaxBlobsPerBlock()
+                    : b.Header.TargetBlobCount * 2 ?? throw new InvalidBlockException(b, "header is missing TargetBlobCount");
 
                 return new(
                     b.Number,
