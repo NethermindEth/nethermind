@@ -30,7 +30,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 12000L * k * Discount.For(k) / 1000;
+        return 12000L * k * Discount.For(k, false) / 1000;
     }
 
     public const int ItemSize = 160;
