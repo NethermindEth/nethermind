@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false) == true)
+            if (Interlocked.CompareExchange(ref _disposed, true, false))
             {
                 return ValueTask.CompletedTask;
             }
