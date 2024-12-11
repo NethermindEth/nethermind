@@ -120,6 +120,10 @@ public class RegisterRpcModules : IStep
             _api.KeyStore);
         rpcModuleProvider.RegisterSingle<IPersonalRpcModule>(personalRpcModule);
 
+        StepDependencyException.ThrowIfNull(_api.PeerManager);
+        StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
+        StepDependencyException.ThrowIfNull(_api.Enode);
+
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
@@ -141,6 +145,7 @@ public class RegisterRpcModules : IStep
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters,
+            _api.TrustedNodesManager,
             subscriptionManager);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 

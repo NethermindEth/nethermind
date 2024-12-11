@@ -90,6 +90,7 @@ public class AdminModuleTests
 
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         Enode enode = new(_enodeString);
         ChainSpec chainSpec = new()
         {
@@ -116,6 +117,7 @@ public class AdminModuleTests
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters,
+            trustedNodesManager,
             _subscriptionManager);
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
