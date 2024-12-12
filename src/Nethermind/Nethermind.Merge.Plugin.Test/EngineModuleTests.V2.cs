@@ -382,7 +382,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
+        ExecutionPayloadBodyV1Result?[] expected = [];
 
         payloadBodies.Should().BeEquivalentTo(expected);
     }
@@ -544,7 +544,7 @@ public partial class EngineModuleTests
             BaseFeePerGas = 0,
             BlockHash = Keccak.Zero,
             BlockNumber = 1,
-            ExtraData = Array.Empty<byte>(),
+            ExtraData = [],
             FeeRecipient = Address.Zero,
             GasLimit = 0,
             GasUsed = 0,
@@ -554,8 +554,8 @@ public partial class EngineModuleTests
             ReceiptsRoot = Keccak.Zero,
             StateRoot = Keccak.Zero,
             Timestamp = 0,
-            Transactions = Array.Empty<byte[]>(),
-            Withdrawals = Array.Empty<Withdrawal>()
+            Transactions = [],
+            Withdrawals = []
         };
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV1",
@@ -599,7 +599,7 @@ public partial class EngineModuleTests
             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
             StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
             Timestamp = timestamp,
-            Transactions = Array.Empty<byte[]>(),
+            Transactions = [],
             Withdrawals = input.Withdrawals
         };
 
@@ -798,7 +798,7 @@ public partial class EngineModuleTests
             {
                 new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, // 1st payload
                 new[] { TestItem.WithdrawalA_1Eth }, // 2nd payload
-                Array.Empty<Withdrawal>(), // 3rd payload
+                [], // 3rd payload
                 new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
                 new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
             },

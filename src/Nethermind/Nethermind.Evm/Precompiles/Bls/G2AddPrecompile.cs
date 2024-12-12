@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -26,8 +27,11 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG2AddPrecompile++;
+
         const int expectedInputLength = 2 * BlsConst.LenG2;
         if (inputData.Length != expectedInputLength)
         {

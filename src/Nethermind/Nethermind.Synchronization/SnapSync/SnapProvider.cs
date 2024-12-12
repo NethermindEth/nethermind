@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -13,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -36,7 +38,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _paprikaFlushEvery = 100_000;
         private int _paprikaCommitCount;
 
-        public SnapProvider(ProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
@@ -99,7 +101,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 StateTree tree = new(store.GetTrieStore(null), _logManager);
 
-                ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
+                ValueHash256 effectiveHashLimit = hashLimit ?? ValueKeccak.MaxValue;
 
                 AddRangeResult result;
                 bool moreChildrenToRight;
@@ -146,7 +148,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
 
-                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
+                    UInt256 nextPath = accounts[^1].Path.ToUInt256();
+                    nextPath += UInt256.One;
+                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, new ValueHash256(nextPath), moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {

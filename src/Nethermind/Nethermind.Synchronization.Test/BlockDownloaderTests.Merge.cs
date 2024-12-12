@@ -116,7 +116,7 @@ public partial class BlockDownloaderTests
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        Assert.True(ctx.PosSwitcher.HasEverReachedTerminalBlock());
+        Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
     [TestCase(32L, DownloaderOptions.MoveToMain, 16, false, 16)]
@@ -276,7 +276,7 @@ public partial class BlockDownloaderTests
         peerAllocationStrategy
             .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
             .Returns(new PeerInfo(syncPeer1));
-        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks);
+        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
         peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
         ctx.PeerPool
             .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
@@ -332,7 +332,7 @@ public partial class BlockDownloaderTests
             BlockTreeScenario = blockTrees,
         };
 
-        ctx.Feed = new FastSyncFeed(new SyncConfig
+        ctx.Feed = new FastSyncFeed(new TestSyncConfig
         {
             NonValidatorNode = true,
             DownloadBodiesInFastSync = false,
@@ -349,7 +349,7 @@ public partial class BlockDownloaderTests
         peerAllocationStrategy
             .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
             .Returns(peerInfo);
-        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks);
+        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
         peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
 
         ctx.PeerPool
@@ -479,13 +479,13 @@ public partial class BlockDownloaderTests
 
         public PoSSwitcher PosSwitcher => _posSwitcher ??= new(
             MergeConfig,
-            new SyncConfig(),
+            new TestSyncConfig(),
             MetadataDb,
             BlockTree,
             SpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
-        public BeaconPivot BeaconPivot => _beaconPivot ??= new(new SyncConfig(), MetadataDb, BlockTree, _posSwitcher!, LimboLogs.Instance);
+        public BeaconPivot BeaconPivot => _beaconPivot ??= new(new TestSyncConfig(), MetadataDb, BlockTree, _posSwitcher!, LimboLogs.Instance);
 
         protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=
             new MergeBetterPeerStrategy(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), PosSwitcher, BeaconPivot, LimboLogs.Instance);
@@ -498,7 +498,7 @@ public partial class BlockDownloaderTests
                 _chainLevelHelper ??= new ChainLevelHelper(
                     BlockTree,
                     BeaconPivot,
-                    new SyncConfig(),
+                    new TestSyncConfig(),
                     LimboLogs.Instance);
             set => _chainLevelHelper = value;
         }

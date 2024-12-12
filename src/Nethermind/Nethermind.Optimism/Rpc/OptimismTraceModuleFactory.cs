@@ -9,16 +9,19 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Optimism.Rpc;
 
 public class OptimismTraceModuleFactory(
-    IWorldStateManager worldStateManager,
+    IStateFactory? factory,
+    IDbProvider dbProvider,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
     IBlockPreprocessorStep recoveryStep,
@@ -31,7 +34,8 @@ public class OptimismTraceModuleFactory(
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
-        worldStateManager,
+        factory,
+        dbProvider,
         blockTree,
         jsonRpcConfig,
         recoveryStep,
@@ -41,10 +45,10 @@ public class OptimismTraceModuleFactory(
         poSSwitcher,
         logManager)
 {
-    protected override ReadOnlyTxProcessingEnv CreateTxProcessingEnv() =>
-        new OptimismReadOnlyTxProcessingEnv(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
+    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(OverridableWorldStateManager worldStateManager) =>
+        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
 
-    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
+    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(OverridableWorldStateManager worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,
                 Always.Valid,
                 _recoveryStep,
@@ -52,7 +56,7 @@ public class OptimismTraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                _worldStateManager.GlobalStateReader,
+                worldStateManager.GlobalStateReader,
                 _logManager,
                 opSpecHelper,
                 contractRewriter,

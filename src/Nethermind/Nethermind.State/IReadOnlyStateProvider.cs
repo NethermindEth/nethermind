@@ -7,15 +7,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public interface IReadOnlyStateProvider : IAccountStateProvider
+    public interface IReadOnlyStateProvider : IAccountStateProviderWithCode
     {
         Hash256 StateRoot { get; }
-
-        byte[]? GetCode(Address address);
-
-        byte[]? GetCode(Hash256 codeHash);
-
-        byte[]? GetCode(ValueHash256 codeHash);
 
         public bool IsContract(Address address);
 

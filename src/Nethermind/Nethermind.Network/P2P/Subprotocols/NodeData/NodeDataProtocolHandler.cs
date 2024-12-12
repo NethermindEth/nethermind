@@ -13,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Nethermind.Network.P2P.Utils;
@@ -55,6 +54,8 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
     }
     public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
     {

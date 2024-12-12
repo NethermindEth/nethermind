@@ -12,7 +12,6 @@ namespace Nethermind.Serialization.Json
     using System.Runtime.CompilerServices;
     using System.Text.Json;
     using System.Text.Json.Serialization;
-    using Nethermind.Int256;
 
     public class ULongConverter : JsonConverter<ulong>
     {
@@ -31,7 +30,7 @@ namespace Nethermind.Serialization.Json
             ulong value;
             if (s.StartsWith("0x"u8))
             {
-                s = s.Slice(2);
+                s = s[2..];
                 if (Utf8Parser.TryParse(s, out value, out _, 'x'))
                 {
                     return value;

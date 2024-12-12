@@ -19,7 +19,7 @@
     "network": "sepolia",
     "cl": "prysm",
     "cl_image": "prysmaticlabs/prysm-beacon-chain:stable",
-    "checkpoint-sync-url": "https://beaconstate-sepolia.chainsafe.io",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
     "timeout": 180,
     "agent": "g6-standard-6"
   },
@@ -35,8 +35,88 @@
     "network": "mainnet",
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
-    "checkpoint-sync-url": "https://mainnet.checkpoint.sigp.io",
+    "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
     "timeout": 180,
     "agent": "g6-standard-16"
+  },
+  {
+    "network": "op-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-8"
+  },
+  {
+    "network": "base-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-8"
+  },
+  {
+    "network": "op-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-16"
+  },
+  {
+    "network": "base-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-16"
+  },
+  {
+    "network": "taiko-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-8"
+  },
+  {
+    "network": "taiko-hekla",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "joc-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "joc-testnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "linea-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 360,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "linea-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
   }
 ]

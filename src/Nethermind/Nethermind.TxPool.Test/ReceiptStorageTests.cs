@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -59,22 +58,6 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_update_lowest_when_needed_in_memory()
-            => TestAddAndCheckLowest(_inMemoryStorage, true);
-
-        [Test]
-        public void should_update_lowest_when_needed_persistent()
-            => TestAddAndCheckLowest(_persistentStorage, true);
-
-        [Test]
-        public void should_not_update_lowest_when_not_needed_persistent()
-            => TestAddAndCheckLowest(_persistentStorage, false);
-
-        [Test]
-        public void should_not_update_lowest_when_not_needed_in_memory()
-            => TestAddAndCheckLowest(_inMemoryStorage, false);
-
-        [Test]
         public void should_add_and_fetch_receipt_from_in_memory_storage()
             => TestAddAndGetReceipt(_inMemoryStorage);
 
@@ -100,20 +83,6 @@ namespace Nethermind.TxPool.Test
             Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
             TxReceipt[] receipts = _receiptFinder.Get(block.Hash);
             receipts.Should().BeEmpty();
-        }
-
-        private void TestAddAndCheckLowest(IReceiptStorage storage, bool updateLowest)
-        {
-            Transaction transaction = GetSignedTransaction();
-            Block block = GetBlock(transaction);
-            TxReceipt receipt = GetReceipt(transaction, block);
-            storage.Insert(block, receipt);
-            if (updateLowest)
-            {
-                storage.LowestInsertedReceiptBlockNumber = block.Number;
-            }
-
-            storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? 1 : null);
         }
 
         private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)

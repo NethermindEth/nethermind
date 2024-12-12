@@ -184,11 +184,11 @@ public class NodeStorage : INodeStorage
         _keyValueStore.PutSpan(GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
     }
 
-    public void Flush()
+    public void Flush(bool onlyWal)
     {
         if (_keyValueStore is IDb db)
         {
-            db.Flush();
+            db.Flush(onlyWal);
         }
     }
 

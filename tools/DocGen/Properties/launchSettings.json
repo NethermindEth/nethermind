@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DocGen": {
+      "commandName": "Project",
+      "commandLineArgs": "/path/to/docs --config --jsonrpc --metrics"
+    }
+  }
+}

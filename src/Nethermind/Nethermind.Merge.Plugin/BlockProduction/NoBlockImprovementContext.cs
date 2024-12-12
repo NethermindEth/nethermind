@@ -4,16 +4,16 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Consensus.Producers;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class NoBlockImprovementContext : IBlockImprovementContext
+public class NoBlockImprovementContext : NoBlockProductionContext, IBlockImprovementContext
 {
     public NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFees, DateTimeOffset startDateTime)
+        : base(currentBestBlock, blockFees)
     {
-        CurrentBestBlock = currentBestBlock;
-        BlockFees = blockFees;
         StartDateTime = startDateTime;
 
         Disposed = true;
@@ -23,8 +23,6 @@ public class NoBlockImprovementContext : IBlockImprovementContext
     void IDisposable.Dispose() { }
     public bool Disposed { get; }
 
-    public Block? CurrentBestBlock { get; }
-    public UInt256 BlockFees { get; }
     public Task<Block?> ImprovementTask { get; }
     public DateTimeOffset StartDateTime { get; }
 }

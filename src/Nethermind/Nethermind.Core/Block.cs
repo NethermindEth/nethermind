@@ -4,10 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
-using Nethermind.Core.ConsensusRequests;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using System.Text.Unicode;
@@ -29,11 +27,10 @@ public class Block
     public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null,
-        IEnumerable<ConsensusRequest>? requests = null)
+        IEnumerable<Withdrawal>? withdrawals = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), requests?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
     }
 
     public Block(BlockHeader header) : this(
@@ -41,12 +38,11 @@ public class Block
         new(
             null,
             null,
-            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>(),
-            header.RequestsRoot is null ? null : Array.Empty<ConsensusRequest>())
+            header.WithdrawalsRoot is null ? null : [])
     )
     { }
 
-    public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
     public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
 
@@ -67,7 +63,6 @@ public class Block
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
-    public ConsensusRequest[]? Requests => Body.Requests; // do not add setter here
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
@@ -120,7 +115,10 @@ public class Block
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
-    public Hash256? RequestsRoot => Header.RequestsRoot; // do not add setter here
+    public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
+
+    [JsonIgnore]
+    public byte[][]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
@@ -158,20 +156,20 @@ public class Block
         builder.Append(Header.ToString("    "));
 
         builder.AppendLine("  Uncles:");
-        foreach (BlockHeader uncle in Body.Uncles ?? Array.Empty<BlockHeader>())
+        foreach (BlockHeader uncle in Body.Uncles ?? [])
         {
             builder.Append(uncle.ToString("    "));
         }
 
         builder.AppendLine("  Transactions:");
-        foreach (Transaction tx in Body?.Transactions ?? Array.Empty<Transaction>())
+        foreach (Transaction tx in Body?.Transactions ?? [])
         {
             builder.Append(tx.ToString("    "));
         }
 
         builder.AppendLine("  Withdrawals:");
 
-        foreach (Withdrawal w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
+        foreach (Withdrawal w in Body?.Withdrawals ?? [])
         {
             builder.Append(w.ToString("    "));
         }

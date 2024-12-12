@@ -3,20 +3,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using static System.Reflection.Metadata.BlobBuilder;
 using static Nethermind.Core.Extensions.Bytes;
 using Rlp = Nethermind.Serialization.Rlp.Rlp;
 

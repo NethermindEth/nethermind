@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,7 +48,8 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
     {
         while (keyRecoveries.Count > 0)
         {
-            Task<(Recovery, byte[]?)> task = await Task.WhenAny(keyRecoveries.Select(kr => kr.Task!));
+            using ArrayPoolList<Task<(Recovery, byte[]?)>>? tasks = keyRecoveries.Select(kr => kr.Task!).ToPooledList(keyRecoveries.Count);
+            Task<(Recovery, byte[]?)> task = await Task.WhenAny<(Recovery, byte[]?)>(tasks.AsSpan());
             (Recovery Recovery, byte[]? Data) result = await task;
             if (result.Data is null)
             {
@@ -57,7 +59,7 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"Successfully recovered from peer {result.Recovery.Peer} with {result.Data.Length} bytes!");
-                cts.Cancel();
+                await cts.CancelAsync();
                 return result.Data;
             }
         }

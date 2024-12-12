@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test
                     topics[j] = keccakGenerator[i + j];
                 }
 
-                entries[i - start] = new LogEntry(TestItem.Addresses[i], Array.Empty<byte>(), topics);
+                entries[i - start] = new LogEntry(TestItem.Addresses[i], [], topics);
             }
 
             return entries;

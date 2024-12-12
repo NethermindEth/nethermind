@@ -27,7 +27,7 @@ public struct TreePath : IEquatable<TreePath>
     public const int MemorySize = 36;
     public ValueHash256 Path;
 
-    public static TreePath Empty => new TreePath();
+    public static TreePath Empty => new();
 
     public readonly Span<byte> Span => Path.BytesAsSpan;
 
@@ -38,7 +38,7 @@ public struct TreePath : IEquatable<TreePath>
         Length = length;
     }
 
-    public int Length { get; internal set; }
+    public int Length { get; private set; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
@@ -46,7 +46,7 @@ public struct TreePath : IEquatable<TreePath>
         if (pathHash.Length == 32) return new TreePath(new ValueHash256(pathHash), 64);
 
         // Some of the test passes path directly to PatriciaTrie, but its not 32 byte.
-        TreePath newTreePath = new TreePath();
+        TreePath newTreePath = new();
         pathHash.CopyTo(newTreePath.Span);
         newTreePath.Length = pathHash.Length * 2;
         return newTreePath;
@@ -136,7 +136,7 @@ public struct TreePath : IEquatable<TreePath>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AppendMut(int nib)
+    public void AppendMut(int nib)
     {
         this[Length] = nib;
         Length++;
@@ -309,6 +309,12 @@ public struct TreePath : IEquatable<TreePath>
         return Length.CompareTo(otherTree.Length);
     }
 
+    /// <summary>
+    /// Compare with otherTree, as if this TreePath was truncated to `length`.
+    /// </summary>
+    /// <param name="otherTree"></param>
+    /// <param name="length"></param>
+    /// <returns></returns>
     public readonly int CompareToTruncated(in TreePath otherTree, int length)
     {
         int minLength = Math.Min(length, otherTree.Length);

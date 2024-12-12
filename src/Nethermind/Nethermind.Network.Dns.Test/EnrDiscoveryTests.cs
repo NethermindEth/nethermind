@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
@@ -33,10 +31,10 @@ public class EnrDiscoveryTests
         INetworkConfig config = new NetworkConfig();
         config.DiscoveryDns = url;
         EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, testErrorLogManager);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
         List<Node> addedRecords = enrDiscovery.DiscoverNodes(default).ToBlockingEnumerable().ToList();
 
-        await TestContext.Out.WriteLineAsync($"Actually added {addedRecords.Count} in {stopwatch.Elapsed:g}");
+        await TestContext.Out.WriteLineAsync($"Actually added {addedRecords.Count} in {Stopwatch.GetElapsedTime(startTime):g}");
         foreach (TestErrorLogManager.Error error in testErrorLogManager.Errors)
         {
             await TestContext.Out.WriteLineAsync(error.Text);

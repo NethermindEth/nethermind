@@ -3,23 +3,17 @@
 
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using static Nethermind.Core.Eip2930.AccessList;
 
 namespace Nethermind.Evm.Test.Tracing
 {
@@ -60,7 +54,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.AccessList!.Should().BeEquivalentTo(
                 new[]
                 {
-                    (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
+                    (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
                 });
         }
@@ -71,7 +65,7 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressA, TestItem.AddressB },
-                    new Address[] { });
+                    System.Array.Empty<Address>());
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressB },
                     new[] { TestItem.AddressA });

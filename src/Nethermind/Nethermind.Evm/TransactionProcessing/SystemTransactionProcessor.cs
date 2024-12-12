@@ -38,7 +38,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, in blCtx, tracer, !opts.HasFlag(ExecutionOptions.NoValidation)
+        return base.Execute(tx, in blCtx, tracer, (opts != ExecutionOptions.Warmup && !opts.HasFlag(ExecutionOptions.NoValidation))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.NoValidation
             : opts);
     }
@@ -52,7 +52,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode) { }
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {

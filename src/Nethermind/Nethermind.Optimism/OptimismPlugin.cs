@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
@@ -23,12 +25,12 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
@@ -39,6 +41,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
+    private OptimismChainSpecEngineParameters? _chainSpecParameters;
     private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
@@ -80,7 +83,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     {
         if (ShouldRunSteps(api))
         {
-            api.RegisterTxType(TxType.DepositTx, new OptimismTxDecoder<Transaction>(), Always.Valid);
+            api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
         }
     }
@@ -99,7 +102,11 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
-        _api.PoSSwitcher = AlwaysPoS.Instance;
+        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+
+        _chainSpecParameters = _api.ChainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
+        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _chainSpecParameters.BedrockBlockNumber!.Value);
 
         _blockCacheService = new BlockCacheService();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
@@ -129,62 +136,44 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.PeerDifficultyRefreshPool);
-        ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
         ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(_api.BetterPeerStrategy);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
 
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
         _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
+        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-            _api.PoSSwitcher,
-            _beaconPivot,
-            _api.SpecProvider,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _syncConfig,
-            _api.BetterPeerStrategy!,
-            new FullStateFinder(_api.BlockTree, _api.StateReader!, _api.StateFactory!),
-            _api.LogManager);
+        ContainerBuilder builder = new ContainerBuilder();
+        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
+            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+            .AddSingleton(_beaconPivot)
+            .AddSingleton(_api.PoSSwitcher)
+            .AddSingleton(_mergeConfig)
+            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
-        _api.Synchronizer = new MergeSynchronizer(
-            _api.DbProvider,
-            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-            _api.SpecProvider!,
-            _api.BlockTree!,
-            _api.ReceiptStorage!,
-            _api.SyncPeerPool,
-            _api.NodeStatsManager!,
-            _syncConfig,
-            blockDownloaderFactory,
-            _beaconPivot,
-            _api.PoSSwitcher,
-            _mergeConfig,
-            _invalidChainTracker,
-            _api.ProcessExit!,
-            _api.BetterPeerStrategy,
-            _api.ChainSpec,
-            _beaconSync,
-            _api.StateReader!,
-            _api.StateFactory!,
-            _api.LogManager
-        );
+        builder.RegisterModule(new SynchronizerModule(_syncConfig));
+        builder.RegisterModule(new MergeSynchronizerModule());
+        builder.RegisterModule(new OptimismSynchronizerModule(_chainSpecParameters!, _api.SpecProvider));
 
-        _ = new PivotUpdator(
+        IContainer container = builder.Build();
+
+        _api.ApiWithNetworkServiceContainer = container;
+        _api.DisposeStack.Push((IAsyncDisposable)container);
+
+        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
+        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
+
+        _ = new UnsafePivotUpdator(
             _api.BlockTree,
-            _api.Synchronizer.SyncModeSelector,
-            _api.SyncPeerPool,
+            _api.SyncModeSelector,
+            _api.SyncPeerPool!,
             _syncConfig,
             _blockCacheService,
             _beaconSync,
@@ -226,6 +215,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
+            _api.SpecProvider,
             (PostMergeBlockProducer)_api.BlockProducer,
             improvementContextFactory,
             _api.TimerFactory,
@@ -272,8 +262,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),

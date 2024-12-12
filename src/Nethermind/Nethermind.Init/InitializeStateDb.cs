@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
@@ -119,20 +120,10 @@ public class InitializeStateDb : IStep
 
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
-            Task.Run(() =>
-            {
-                try
-                {
-                    _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
-                    _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
-                }
-                catch (Exception ex)
-                {
-                    _logger!.Error(ex.ToString());
-                }
-            });
+            _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+            Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager, _api.ProcessExit!.Token);
+            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
         }
 
         // Init state if we need system calls before actual processing starts

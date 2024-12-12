@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
@@ -154,7 +153,7 @@ public class SnapServer : ISnapServer
 
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
-                response.Add(Array.Empty<byte>());
+                response.Add([]);
                 currentByteCount += 1;
                 continue;
             }

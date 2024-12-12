@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,7 +12,6 @@ using Microsoft.Win32.SafeHandles;
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -24,7 +23,8 @@ namespace Nethermind.Db
 
         private readonly ILogger _logger;
         private bool _hasPendingChanges;
-        private SpanConcurrentDictionary<byte, byte[]> _cache;
+        private ConcurrentDictionary<byte[], byte[]> _cache;
+        private ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
 
         public string DbPath { get; }
         public string Name { get; }
@@ -58,14 +58,14 @@ namespace Nethermind.Db
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            return _cache[key];
+            return _cacheSpan[key];
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)
             {
-                _cache.TryRemove(key, out _);
+                _cacheSpan.TryRemove(key, out _);
             }
             else
             {
@@ -78,15 +78,16 @@ namespace Nethermind.Db
         public void Remove(ReadOnlySpan<byte> key)
         {
             _hasPendingChanges = true;
-            _cache.TryRemove(key, out _);
+            _cacheSpan.TryRemove(key, out _);
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            return _cache.ContainsKey(key);
+            return _cacheSpan.ContainsKey(key);
         }
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear()
         {
             File.Delete(DbPath);
@@ -161,7 +162,7 @@ namespace Nethermind.Db
 
                 try
                 {
-                    BackupPath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
+                    BackupPath = $"{_dbPath}_{Guid.NewGuid()}";
 
                     if (File.Exists(_dbPath))
                     {
@@ -201,7 +202,8 @@ namespace Nethermind.Db
         {
             const int maxLineLength = 2048;
 
-            _cache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
+            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
 
             if (!File.Exists(DbPath))
             {

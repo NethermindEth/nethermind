@@ -15,9 +15,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Find;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -75,6 +76,7 @@ public class TestBlockchain : IDisposable
     public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
+    public IDb BlocksDb => DbProvider.BlocksDb;
     public TrieStore TrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
@@ -118,7 +120,7 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
-    public IConsensusRequestsProcessor? ConsensusRequestsProcessor { get; protected set; } = null!;
+    public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
     public ChainLevelInfoRepository ChainLevelInfoRepository { get; protected set; } = null!;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
@@ -171,7 +173,7 @@ public class TestBlockchain : IDisposable
             new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
             DbProvider.BlockInfosDb,
             DbProvider.MetadataDb,
-            new BlockStore(new TestMemDb(), 100),
+            new BadBlockStore(new TestMemDb(), 100),
             ChainLevelInfoRepository,
             SpecProvider,
             NullBloomStorage.Instance,
@@ -180,15 +182,16 @@ public class TestBlockchain : IDisposable
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
-        TxPool = CreateTxPool();
+        CodeInfoRepository codeInfoRepository = new();
+        TxPool = CreateTxPool(codeInfoRepository);
 
         IChainHeadInfoProvider chainHeadInfoProvider =
-            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader);
+            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader, codeInfoRepository);
 
-        NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+        NonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
 
         _watcher = new BoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-        CodeInfoRepository codeInfoRepository = new();
+
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
@@ -197,7 +200,7 @@ public class TestBlockchain : IDisposable
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, State);
 
         BlockValidator = new BlockValidator(
             new TxValidator(SpecProvider.ChainId),
@@ -213,7 +216,6 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -314,12 +316,12 @@ public class TestBlockchain : IDisposable
 
     public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
-    protected virtual TxPool.TxPool CreateTxPool() =>
+    protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
         new(
             EthereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
+            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState, codeInfoRepository) { HasSynced = true },
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());
@@ -361,8 +363,10 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
 
-        if (SpecProvider.GenesisSpec.ConsensusRequestsEnabled)
-            genesisBlockBuilder.WithConsensusRequests(0);
+        if (SpecProvider.GenesisSpec.RequestsEnabled)
+        {
+            genesisBlockBuilder.WithEmptyRequestsHash();
+        }
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
@@ -384,11 +388,11 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             TxProcessor,
-            new BeaconBlockRootHandler(TxProcessor),
+            new BeaconBlockRootHandler(TxProcessor, State),
             new BlockhashStore(SpecProvider, State),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer(),
-            consensusRequestsProcessor: ConsensusRequestsProcessor);
+            executionRequestsProcessor: ExecutionRequestsProcessor);
 
 
     protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>

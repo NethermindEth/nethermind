@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -25,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IStateFactory _factory;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -38,12 +37,11 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyDbProvider _dbProvider;
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
-    private readonly ILogger _logger;
 
     public DebugModuleFactory(
-        IWorldStateManager worldStateManager,
+        IStateFactory factory,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -55,11 +53,11 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore,
+        IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager)
     {
-        _worldStateManager = worldStateManager;
+        _factory = factory;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -74,16 +72,12 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _logger = logManager.GetClassLogger();
     }
 
     public override IDebugRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txEnv = new(
-            _worldStateManager,
-            _blockTree,
-            _specProvider,
-            _logManager);
+        OverridableWorldStateManager worldStateManager = new(_dbProvider, _factory, _logManager);
+        OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 
@@ -97,7 +91,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _receiptStorage,
             _specProvider,
             _blockTree,
-            _worldStateManager.GlobalStateReader,
+            worldStateManager.GlobalStateReader,
             _logManager,
             transactionsExecutor);
 
@@ -109,7 +103,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _badBlockStore,
             _specProvider,
             transactionProcessorAdapter,
-            _fileSystem);
+            _fileSystem,
+            txEnv);
 
         DebugBridge debugBridge = new(
             _configProvider,

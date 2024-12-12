@@ -40,10 +40,10 @@ namespace Nethermind.Blockchain.Receipts
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block, bool recover = true) => Get(block.Hash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash);
 
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
-            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : Array.Empty<TxReceipt>();
+            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;
         public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
@@ -86,8 +86,6 @@ namespace Nethermind.Blockchain.Receipts
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
         }
-
-        public long? LowestInsertedReceiptBlockNumber { get; set; }
 
         public long MigratedBlockNumber { get; set; }
 

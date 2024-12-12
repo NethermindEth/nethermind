@@ -23,10 +23,10 @@ namespace Nethermind.Blockchain.Receipts
 
         public Hash256 FindBlockHash(Hash256 txHash) => _receiptStorage.FindBlockHash(txHash);
 
-        public TxReceipt[] Get(Block block, bool recover = true)
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
             var receipts = _receiptStorage.Get(block);
-            if (recover && _receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
+            if (recover && _receiptsRecovery.TryRecover(block, receipts, recoverSender) == ReceiptsRecoveryResult.NeedReinsert)
             {
                 _receiptStorage.Insert(block, receipts);
             }
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Receipts
             if (recover && _receiptsRecovery.NeedRecover(receipts))
             {
                 var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
+                if (_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false) == ReceiptsRecoveryResult.NeedReinsert)
                 {
                     _receiptStorage.Insert(block, receipts);
                 }

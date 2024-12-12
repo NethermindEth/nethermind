@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -18,28 +19,36 @@ namespace Nethermind.Blockchain
 {
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new HeadAccountStateProvider(blockTree, stateReader))
+        private readonly IBlockTree _blockTree;
+        // For testing
+        public bool HasSynced { private get; init; }
+
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
+            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new HeadAccountStateProvider(blockTree, stateReader), codeInfoRepository)
         {
         }
 
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider)
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IAccountStateProviderWithCode stateProvider, ICodeInfoRepository codeInfoRepository)
+            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider, codeInfoRepository)
         {
         }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IAccountStateProviderWithCode stateProvider, ICodeInfoRepository codeInfoRepository)
         {
             SpecProvider = specProvider;
-            AccountStateProvider = stateProvider;
+            ReadOnlyStateProvider = stateProvider;
             HeadNumber = blockTree.BestKnownNumber;
+            CodeInfoRepository = codeInfoRepository;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
+            _blockTree = blockTree;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
 
-        public IAccountStateProvider AccountStateProvider { get; }
+        public IAccountStateProviderWithCode ReadOnlyStateProvider { get; }
+
+        public ICodeInfoRepository CodeInfoRepository { get; }
 
         public long HeadNumber { get; private set; }
 
@@ -47,7 +56,21 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentBaseFee { get; private set; }
 
-        public UInt256 CurrentPricePerBlobGas { get; internal set; }
+        public UInt256 CurrentFeePerBlobGas { get; internal set; }
+
+        public bool IsSyncing
+        {
+            get
+            {
+                if (HasSynced)
+                {
+                    return false;
+                }
+
+                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 2);
+                return isSyncing;
+            }
+        }
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
@@ -56,9 +79,9 @@ namespace Nethermind.Blockchain
             HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
-            CurrentPricePerBlobGas =
-                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(e.Block.Header, out UInt256 currentPricePerBlobGas)
-                    ? currentPricePerBlobGas
+            CurrentFeePerBlobGas =
+                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, out UInt256 currentFeePerBlobGas)
+                    ? currentFeePerBlobGas
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
         }
@@ -70,7 +93,7 @@ namespace Nethermind.Blockchain
         ///
         /// The swap is done using a short-lived RLW.Write lock so that it should not hit readers hard.
         /// </summary>
-        private sealed class HeadAccountStateProvider : IAccountStateProvider
+        private sealed class HeadAccountStateProvider : IAccountStateProviderWithCode
         {
             private readonly IStateReader _stateReader;
             private readonly ReaderWriterLockSlim _lock = new();
@@ -116,6 +139,12 @@ namespace Nethermind.Blockchain
                     _lock.ExitReadLock();
                 }
             }
+
+            public byte[]? GetCode(Address address) => _stateReader.GetCode(_reader.StateRoot, address);
+
+            public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);
+
+            public byte[]? GetCode(ValueHash256 codeHash) => _stateReader.GetCode(codeHash);
         }
     }
 }

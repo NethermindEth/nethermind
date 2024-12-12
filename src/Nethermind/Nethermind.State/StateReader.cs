@@ -41,12 +41,12 @@ namespace Nethermind.State
         public bool HasStateForRoot(Hash256 stateRoot) => _factory.HasRoot(stateRoot);
 
         public IScopedStateReader ForStateRoot(Hash256? stateRoot = null) =>
-            new ScopedStateReader(_factory.GetReadOnly(stateRoot));
+            new ScopedStateReader(_factory.GetReadOnly(stateRoot), _codeDb);
 
         public byte[]? GetCode(Hash256 stateRoot, Address address) =>
-            TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();
+            TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : [];
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == ValueKeccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];
 
         private bool TryGetState(Hash256 stateRoot, Address address, out AccountStruct account)
         {
@@ -60,7 +60,7 @@ namespace Nethermind.State
             return _factory.TryGet(stateRoot, address, out account);
         }
 
-        private class ScopedStateReader(IReadOnlyState state) : IScopedStateReader
+        private class ScopedStateReader(IReadOnlyState state, IKeyValueStore codeDb) : IScopedStateReader, ICodeProvider
         {
             public bool TryGetAccount(Address address, out AccountStruct account)
             {
@@ -73,6 +73,22 @@ namespace Nethermind.State
             public void Dispose() => state.Dispose();
 
             public Hash256 StateRoot => state.StateRoot;
+            public byte[] GetCode(Hash256 codeHash)
+            {
+                byte[]? code = codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
+                return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+            }
+
+            public byte[] GetCode(ValueHash256 codeHash)
+            {
+                byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb[codeHash.Bytes];
+                return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+            }
+
+            public byte[] GetCode(Address address)
+            {
+                return TryGetAccount(address, out AccountStruct account) ? [] : GetCode(account.CodeHash);
+            }
         }
     }
 }
