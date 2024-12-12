@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    batch = BuildNewBatch();
+                    batch = ProcessPersistedHeadersOrBuildNewBatch();
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -339,20 +339,23 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch? BuildNewBatch()
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch()
         {
             HeadersSyncBatch? batch = null;
             do
             {
-                batch = new();
-                batch.StartNumber = Math.Max(HeadersDestinationNumber,
-                    _lowestRequestedHeaderNumber - _headersRequestSize);
-                batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber,
-                    _headersRequestSize);
-                _lowestRequestedHeaderNumber = batch.StartNumber;
-
+                batch = BuildNewBatch();
                 batch = ProcessPersistedPortion(batch);
             } while (batch is null && ShouldBuildANewBatch());
+            return batch;
+        }
+
+        private HeadersSyncBatch BuildNewBatch()
+        {
+            HeadersSyncBatch batch = new();
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
+            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
+            _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
 
