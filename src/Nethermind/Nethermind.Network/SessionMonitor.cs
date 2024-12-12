@@ -164,7 +164,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERRUR Error during ping timer stop", e);
+                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during ping timer stop", e);
             }
         }
     }

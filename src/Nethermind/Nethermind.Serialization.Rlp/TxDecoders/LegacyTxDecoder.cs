@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public sealed class LegacyTxDecoder<T>(Func<T>? transactionFactory = null) : BaseTxDecoder<T>(TxType.Legacy, transactionFactory) where T : Transaction, new()
+public class LegacyTxDecoder<T>(Func<T>? transactionFactory = null) : BaseTxDecoder<T>(TxType.Legacy, transactionFactory) where T : Transaction, new()
 {
     private static bool IncludeSigChainIdHack(bool isEip155Enabled, ulong chainId) => isEip155Enabled && chainId != 0;
 

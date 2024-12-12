@@ -247,7 +247,15 @@ namespace Nethermind.Consensus.Ethash
             _cacheStopwatch.Restart();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
             _cacheStopwatch.Stop();
-            if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} with size {cacheSize} and seed {seed.Bytes.ToHexString()} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+            if (_logger.IsInfo)
+            {
+                var seedText = seed.Bytes.ToHexString(withZeroX: true);
+                if (seedText.Length > 17)
+                {
+                    seedText = $"{seedText[..8]}...{seedText[^6..]}";
+                }
+                _logger.Info($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+            }
             return dataSet;
         }
 

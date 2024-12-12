@@ -11,6 +11,7 @@ public class JsonRpcConfig : IJsonRpcConfig
 {
     public static readonly JsonRpcConfig Default = new();
     private int? _webSocketsPort;
+    private string[] _enabledModules = ModuleType.DefaultModules.ToArray();
     public bool Enabled { get; set; }
     public string Host { get; set; } = "127.0.0.1";
     public int Timeout { get; set; } = 20000;
@@ -29,7 +30,15 @@ public class JsonRpcConfig : IJsonRpcConfig
 
     public string? IpcUnixDomainSocketPath { get; set; } = null;
 
-    public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
+    public string[] EnabledModules
+    {
+        get => _enabledModules;
+        set
+        {
+            _enabledModules = value.Where(m => !string.IsNullOrWhiteSpace(m)).ToArray();
+        }
+    }
+
     public string[] AdditionalRpcUrls { get; set; } = [];
     public long? GasCap { get; set; } = 100000000;
     public int ReportIntervalSeconds { get; set; } = 300;
