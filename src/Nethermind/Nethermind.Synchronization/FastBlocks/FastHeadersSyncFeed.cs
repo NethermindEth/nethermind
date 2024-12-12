@@ -511,16 +511,12 @@ namespace Nethermind.Synchronization.FastBlocks
                 lastHeader = nextHeader;
             }
 
-            ArrayPoolList<BlockHeader> reversedBatch = new ArrayPoolList<BlockHeader>(headers.Count);
-            foreach (BlockHeader blockHeader in headers.Reverse())
-            {
-                reversedBatch.Add(blockHeader);
-            }
+            headers.AsSpan().Reverse();
 
             using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
             newBatchToProcess.StartNumber = lastHeader.Number;
             newBatchToProcess.RequestSize = headers.Count;
-            newBatchToProcess.Response = reversedBatch;
+            newBatchToProcess.Response = headers;
             if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
             InsertHeaders(newBatchToProcess);
 
@@ -681,6 +677,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncQueueReport.Update(HeadersInQueue);
             return added;
 
+            // Well, its the last in the batch, but first processed.
             bool ValidateFirstHeader(BlockHeader header)
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
