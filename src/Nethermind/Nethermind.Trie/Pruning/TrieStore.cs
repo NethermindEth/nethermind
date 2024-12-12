@@ -12,6 +12,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -32,7 +33,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private readonly Task[] _dirtyNodesTasks = [];
     private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
     private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorder;
-    private readonly Task[] _disposeTasks = new Task[Environment.ProcessorCount];
+    private readonly Task[] _disposeTasks = new Task[RuntimeInformation.PhysicalCoreCount];
 
     // This seems to attempt prevent multiple block processing at the same time and along with pruning at the same time.
     private readonly object _dirtyNodesLock = new object();
