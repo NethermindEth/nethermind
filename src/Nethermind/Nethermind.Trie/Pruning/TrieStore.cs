@@ -844,14 +844,14 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             PersistNode(address3, path2, node, writeBatch, writeFlags);
 
             persistedNodeCount++;
-            if (persistedNodeCount % 256 == 0)
+            if (persistedNodeCount % 512 == 0)
             {
                 await disposeQueue.Writer.WriteAsync(writeBatch);
                 writeBatch = _nodeStorage.StartWriteBatch();
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, path, GetTrieStore(address2), true, _logger);
+        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStore(address2), _logger);
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 

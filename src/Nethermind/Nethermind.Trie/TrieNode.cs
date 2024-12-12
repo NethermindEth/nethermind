@@ -939,49 +939,57 @@ namespace Nethermind.Trie
             action(this, storageAddress, currentPath);
         }
 
-        public async ValueTask CallRecursivelyAsync(
+        public ValueTask CallRecursivelyAsync(
+            Func<TrieNode, Hash256?, TreePath, ValueTask> action,
+            Hash256? storageAddress,
+            ref TreePath currentPath,
+            ITrieNodeResolver resolver,
+            ILogger logger)
+        {
+            if (IsPersisted)
+            {
+                if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
+                return default;
+            }
+
+            if (currentPath.Length >= Int32.MaxValue || (!IsLeaf && _data is null))
+            {
+                return action(this, storageAddress, currentPath);
+            }
+
+            return CallRecursivelyInnerAsync(
+                action,
+                storageAddress,
+                currentPath,
+                resolver,
+                logger);
+        }
+
+        private async ValueTask CallRecursivelyInnerAsync(
             Func<TrieNode, Hash256?, TreePath, ValueTask> action,
             Hash256? storageAddress,
             TreePath currentPath,
             ITrieNodeResolver resolver,
-            bool skipPersisted,
-            ILogger logger,
-            int maxPathLength = Int32.MaxValue,
-            bool resolveStorageRoot = true)
+            ILogger logger)
         {
-            if (skipPersisted && IsPersisted)
-            {
-                if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
-                return;
-            }
-
-            if (currentPath.Length >= maxPathLength)
-            {
-                await action(this, storageAddress, currentPath);
-                return;
-            }
-
             if (!IsLeaf)
             {
                 object?[] data = _data;
-                if (data is not null)
+                for (int i = 0; i < data.Length; i++)
                 {
-                    for (int i = 0; i < data.Length; i++)
+                    if (data[i] is TrieNode child)
                     {
-                        if (data[i] is TrieNode child)
-                        {
-                            if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                            int previousLength = AppendChildPath(ref currentPath, i);
-                            await child.CallRecursivelyAsync(action, storageAddress, currentPath, resolver, skipPersisted, logger, maxPathLength, resolveStorageRoot);
-                            currentPath.TruncateMut(previousLength);
-                        }
+                        if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
+                        int previousLength = AppendChildPath(ref currentPath, i);
+                        await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, logger);
+                        currentPath.TruncateMut(previousLength);
                     }
                 }
             }
             else
             {
                 TrieNode? storageRoot = _storageRoot;
-                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
+                if (storageRoot is not null || TryResolveStorageRoot(resolver, ref currentPath, out storageRoot))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
                     Hash256 storagePathAddr;
@@ -995,9 +1003,8 @@ namespace Nethermind.Trie
                     await storageRoot!.CallRecursivelyAsync(
                         action,
                         storagePathAddr,
-                        emptyPath,
+                        ref emptyPath,
                         resolver.GetStorageTrieNodeResolver(storagePathAddr),
-                        skipPersisted,
                         logger);
                 }
             }
