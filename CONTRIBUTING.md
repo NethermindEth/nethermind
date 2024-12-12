@@ -28,6 +28,13 @@ The project maintainers will accept changes that improve the product significant
 
 If your PR is not ready for review and merge because you are still working on it, please convert it to draft and label it with `wip` (work in progress).
 
+### Attempting an issue
+Feel free to pick up any **unassigned** issue from the issues page to work on.
+You can begin working on an issue by asking clearifying questions on the specific issues page or by
+submit a pull request linking to the issue even if just a simple draft to indicate you are working on the issue.
+The pull request would be reviewed and merged if it passes the review or more changes would be requested.
+Note: Submitting a pull request does not imply the requested changes would be merged they could be completely rejected.
+
 ### DOs and DON'Ts
 
 Please do:
