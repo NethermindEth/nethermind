@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -25,4 +26,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public async Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId) =>
         await _getPayloadHandlerV4.HandleAsync(payloadId);
+
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Prague);
 }

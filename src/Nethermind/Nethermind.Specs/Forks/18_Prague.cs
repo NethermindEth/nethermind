@@ -22,6 +22,7 @@ public class Prague : Cancun
         IsEip7251Enabled = true;
         IsRip7212Enabled = true;
         Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
+        IsEip7742Enabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());

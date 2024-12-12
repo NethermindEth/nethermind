@@ -368,6 +368,11 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithEmptyRequestsHash();
         }
 
+        if (SpecProvider.GenesisSpec.IsEip7742Enabled)
+        {
+            genesisBlockBuilder.WithTargetBlobCount(0);
+        }
+
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }
@@ -440,7 +445,7 @@ public class TestBlockchain : IDisposable
         Timestamper.Add(TimeSpan.FromSeconds(1));
         var headProcessed = new SemaphoreSlim(0);
         TxPool.TxPoolHeadChanged += (s, a) => headProcessed.Release();
-        await BlockProductionTrigger.BuildBlock().ConfigureAwait(false);
+        await BlockProductionTrigger.BuildBlock(payloadAttributes: new PayloadAttributes { TargetBlobCount = 1 }).ConfigureAwait(false);
         await headProcessed.WaitAsync().ConfigureAwait(false);
         return txResults;
     }
