@@ -22,32 +22,35 @@ namespace Nethermind.Consensus.Processing
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
-        private long _lastBlockNumber;
-        private long _lastElapsedRunningMicroseconds;
-        private double _lastTotalMGas;
-        private long _lastTotalTx;
-        private long _lastTotalCalls;
-        private long _lastTotalEmptyCalls;
-        private long _lastTotalSLoad;
-        private long _lastTotalSStore;
-        private long _lastSelfDestructs;
-        private long _chunkProcessingMicroseconds;
-        private long _lastTotalCreates;
-        private long _lastReportMs;
-        private long _lastContractsAnalyzed;
-        private long _lastCachedContractsUsed;
-        private long _runningMicroseconds;
-        private long _runMicroseconds;
-        private long _reportMs;
+
         private Block? _lastBlock;
         private Hash256? _lastBranchRoot;
-        private long _sloadOpcodeProcessing;
-        private long _sstoreOpcodeProcessing;
-        private long _callsProcessing;
-        private long _emptyCallsProcessing;
-        private long _codeDbCacheProcessing;
-        private long _contractAnalysedProcessing;
-        private long _createsProcessing;
+        private double _lastTotalMGas;
+        private long _lastBlockNumber;
+        private long _lastElapsedRunningMicroseconds;
+        private long _lastTotalTx;
+        private long _runningMicroseconds;
+        private long _runMicroseconds;
+        private long _chunkProcessingMicroseconds;
+        private long _currentReportMs;
+        private long _lastReportMs;
+
+        private long _lastCallOps;
+        private long _currentCallOps;
+        private long _lastEmptyCalls;
+        private long _currentEmptyCalls;
+        private long _lastSLoadOps;
+        private long _currentSLoadOps;
+        private long _lastSStoreOps;
+        private long _currentSStoreOps;
+        private long _lastSelfDestructOps;
+        private long _currentSelfDestructOps;
+        private long _lastCreateOps;
+        private long _currentCreatesOps;
+        private long _lastContractsAnalyzed;
+        private long _currentContractsAnalyzed;
+        private long _lastCachedContractsUsed;
+        private long _currentCachedContractsUsed;
 
         public ProcessingStats(IStateReader stateReader, ILogger logger)
         {
@@ -59,6 +62,18 @@ namespace Nethermind.Consensus.Processing
 #if DEBUG
             _logger.SetDebugMode();
 #endif
+        }
+
+        public void CaptureStartStats()
+        {
+            _lastSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
+            _lastSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
+            _lastCallOps = Evm.Metrics.ThreadLocalCalls;
+            _lastEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
+            _lastCachedContractsUsed = Db.Metrics.ThreadLocalCodeDbCache;
+            _lastContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
+            _lastCreateOps = Evm.Metrics.ThreadLocalCreates;
+            _lastSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
         }
 
         public void UpdateStats(Block? block, Hash256 branchRoot, long blockProcessingTimeInMicros)
@@ -85,19 +100,20 @@ namespace Nethermind.Consensus.Processing
             _runningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             _runMicroseconds = (_runningMicroseconds - _lastElapsedRunningMicroseconds);
 
-            long reportMs = _reportMs = Environment.TickCount64;
+            long reportMs = _currentReportMs = Environment.TickCount64;
             if (reportMs - _lastReportMs > 1000 || _logger.IsDebug)
             {
-                _lastReportMs = _reportMs;
+                _lastReportMs = _currentReportMs;
                 _lastBlock = block;
                 _lastBranchRoot = branchRoot;
-                _sloadOpcodeProcessing = Evm.Metrics.ThreadLocalSLoadOpcode;
-                _sstoreOpcodeProcessing = Evm.Metrics.ThreadLocalSStoreOpcode;
-                _callsProcessing = Evm.Metrics.ThreadLocalCalls;
-                _emptyCallsProcessing = Evm.Metrics.ThreadLocalEmptyCalls;
-                _codeDbCacheProcessing = Db.Metrics.ThreadLocalCodeDbCache;
-                _contractAnalysedProcessing = Evm.Metrics.ThreadLocalContractsAnalysed;
-                _createsProcessing = Evm.Metrics.ThreadLocalCreates;
+                _currentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
+                _currentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
+                _currentCallOps = Evm.Metrics.ThreadLocalCalls;
+                _currentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
+                _currentCachedContractsUsed = Db.Metrics.ThreadLocalCodeDbCache;
+                _currentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
+                _currentCreatesOps = Evm.Metrics.ThreadLocalCreates;
+                _currentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
                 GenerateReport();
             }
         }
@@ -160,8 +176,6 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
             }
 
-            long currentSelfDestructs = Evm.Metrics.SelfDestructs;
-
             long chunkBlocks = Metrics.Blocks - _lastBlockNumber;
 
             double chunkMicroseconds = _chunkProcessingMicroseconds;
@@ -184,13 +198,13 @@ namespace Nethermind.Consensus.Processing
             if (_logger.IsInfo)
             {
                 long chunkTx = Metrics.Transactions - _lastTotalTx;
-                long chunkCalls = _callsProcessing - _lastTotalCalls;
-                long chunkEmptyCalls = _emptyCallsProcessing - _lastTotalEmptyCalls;
-                long chunkCreates = _createsProcessing - _lastTotalCreates;
-                long chunkSload = _sloadOpcodeProcessing - _lastTotalSLoad;
-                long chunkSstore = _sstoreOpcodeProcessing - _lastTotalSStore;
-                long contractsAnalysed = _contractAnalysedProcessing - _lastContractsAnalyzed;
-                long cachedContractsUsed = _codeDbCacheProcessing - _lastCachedContractsUsed;
+                long chunkCalls = _currentCallOps - _lastCallOps;
+                long chunkEmptyCalls = _currentEmptyCalls - _lastEmptyCalls;
+                long chunkCreates = _currentCreatesOps - _lastCreateOps;
+                long chunkSload = _currentSLoadOps - _lastSLoadOps;
+                long chunkSstore = _currentSStoreOps - _lastSStoreOps;
+                long contractsAnalysed = _currentContractsAnalyzed - _lastContractsAnalyzed;
+                long cachedContractsUsed = _currentCachedContractsUsed - _lastCachedContractsUsed;
                 double txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1_000_000.0;
                 double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
                 double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
@@ -271,7 +285,7 @@ namespace Nethermind.Consensus.Processing
                 var recoveryQueue = Metrics.RecoveryQueueSize;
                 var processingQueue = Metrics.ProcessingQueueSize;
 
-                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0}  " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
+                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0}  " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(_currentSelfDestructOps - _lastSelfDestructOps > 0 ? $"{darkGreyText}({-(_currentSelfDestructOps - _lastSelfDestructOps),3:N0}){resetColor}" : "")}");
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
                     _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
@@ -282,18 +296,10 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
-            _lastCachedContractsUsed = _codeDbCacheProcessing;
-            _lastContractsAnalyzed = _contractAnalysedProcessing;
             _lastBlockNumber = Metrics.Blocks;
             _lastTotalMGas = Metrics.Mgas;
             _lastElapsedRunningMicroseconds = _runningMicroseconds;
             _lastTotalTx = Metrics.Transactions;
-            _lastTotalCalls = _callsProcessing;
-            _lastTotalEmptyCalls = _emptyCallsProcessing;
-            _lastTotalCreates = _createsProcessing;
-            _lastTotalSLoad = _sloadOpcodeProcessing;
-            _lastTotalSStore = _sstoreOpcodeProcessing;
-            _lastSelfDestructs = currentSelfDestructs;
             _chunkProcessingMicroseconds = 0;
         }
 
