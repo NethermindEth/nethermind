@@ -1,5 +1,5 @@
 
-// #define ILVM_DEBUG
+// #define ILVM_DEBUGDEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -23,11 +23,12 @@ using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 
 
-#if DEBUG
+#if DEBUGDEBUG
 using Nethermind.Evm.Tracing.Debugger;
 #endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
 
 namespace Nethermind.Evm;
 using Int256;
@@ -175,7 +176,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-#if ILVM_DEBUG
+#if ILVM_DEBUGDEBUG
         _vmConfig = new VMConfig
         {
             IsJitEnabled = true,
@@ -688,7 +689,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (_vmConfig.IsVmOptimizationEnabled)
+            if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsEmpty)
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
@@ -762,7 +763,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
 
-#if ILVM_DEBUG
+#if ILVM_DEBUGDEBUG
         if (env.CodeInfo.IlInfo.IsEmpty)
         {
             //IlAnalyzer.Analyse(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
@@ -770,7 +771,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
         bool isRevert = false;
-#if DEBUG
+#if DEBUGDEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
         SkipInit(out UInt256 a);
@@ -828,23 +829,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     if (chunkExecutionResult.ShouldFail)
                     {
                         exceptionType = chunkExecutionResult.ExceptionType;
-                        switch (exceptionType)
-                        {
-                            case EvmExceptionType.StackOverflow:
-                                goto StackOverflow;
-                            case EvmExceptionType.StackUnderflow:
-                                goto StackUnderflow;
-                            case EvmExceptionType.InvalidJumpDestination:
-                                goto InvalidJumpDestination;
-                            case EvmExceptionType.BadInstruction:
-                                goto InvalidInstruction;
-                            case EvmExceptionType.AccessViolation:
-                                goto AccessViolation;
-                            case EvmExceptionType.OutOfGas:
-                                goto OutOfGas;
-                            case EvmExceptionType.StaticCallViolation:
-                                goto StaticCallViolation;
-                        }
+                        goto ReturnFailure;
                     }
 
                     if (programCounter >= codeLength)
@@ -854,7 +839,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 }
             }
 
-#if DEBUG
+#if DEBUGDEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
             
@@ -2156,7 +2141,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-#if DEBUG
+#if DEBUGDEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
@@ -2184,9 +2169,6 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         goto ReturnFailure;
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
-        goto ReturnFailure;
-    StackOverflow:
-        exceptionType = EvmExceptionType.StackOverflow;
         goto ReturnFailure;
     InvalidJumpDestination:
         exceptionType = EvmExceptionType.InvalidJumpDestination;

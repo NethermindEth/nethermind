@@ -180,7 +180,6 @@ public static class IlAnalyzer
                 segmentsFound.Add(segmentExecutionCtx);
             }
 
-            Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
             if(segmentsFound.Count == 0)
             {
                 return;
@@ -198,6 +197,7 @@ public static class IlAnalyzer
                 ];
                 ilinfo.IlevmChunks = combined.ToArray();
             }
+            Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
         }
 
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
@@ -224,7 +224,6 @@ public static class IlAnalyzer
                 }
             }
 
-            Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
             if (patternsFound.Count == 0)
             {
                 return;
@@ -242,6 +241,7 @@ public static class IlAnalyzer
 
                 ilinfo.IlevmChunks = combined.ToArray();
             }
+            Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
         }
 
         switch (mode)

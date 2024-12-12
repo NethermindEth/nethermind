@@ -243,25 +243,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_uInt0);
-            }
-            else
-            {
-                return _uInt0;
-            }
+            return _uInt0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _uInt0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _uInt0 = value;
-            }
+            _uInt0 = value;
         }
     }
 
@@ -269,25 +255,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_uByte0);
-            }
-            else
-            {
-                return _uByte0;
-            }
+            return _uByte0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _uByte0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _uByte0 = value;
-            }
+            _uByte0 = value;
         }
     }
 
@@ -295,25 +267,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_sInt0);
-            }
-            else
-            {
-                return _sInt0;
-            }
+            return _sInt0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _sInt0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _sInt0 = value;
-            }
+            _sInt0 = value;
         }
     }
 
@@ -321,25 +279,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_ulong0);
-            }
-            else
-            {
-                return _ulong0;
-            }
+            return _ulong0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _ulong0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _ulong0 = value;
-            }
+            _ulong0 = value;
         }
     }
 

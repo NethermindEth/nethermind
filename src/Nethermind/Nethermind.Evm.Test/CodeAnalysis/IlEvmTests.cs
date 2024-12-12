@@ -2390,6 +2390,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
+            state.Dispose();
             Assert.That(iLChunkExecutionResult.ExceptionType == testcase.exceptionType);
         }
 
@@ -2462,6 +2463,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
+            state.Dispose();
             var tracedOpcodes = tracer.BuildResult().Entries;
 
             Assert.That(tracedOpcodes.Count, Is.GreaterThan(0));
@@ -2535,6 +2537,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
+            state.Dispose();
             var tracedOpcodes = tracer.BuildResult().Entries;
 
             Assert.That(tracedOpcodes.Count, Is.EqualTo(0));

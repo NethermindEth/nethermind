@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
 using Nethermind.State;
 using static Nethermind.Evm.VirtualMachine;
