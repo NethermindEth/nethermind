@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using Nethermind.Blockchain;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly IStateFactory _stateFactory;
         private IRawState? _rawState;
 
-        public ProgressTracker(IBlockTree blockTree, IDb db, IStateFactory stateFactory, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager logManager)
+        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, IStateFactory stateFactory, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
