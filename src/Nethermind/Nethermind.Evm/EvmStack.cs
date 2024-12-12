@@ -13,6 +13,7 @@ using System.Runtime.Intrinsics;
 using System.Diagnostics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Extensions;
+using BytesExt = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Evm;
 
@@ -38,6 +39,7 @@ public ref struct EvmStack<TTracing>
     private readonly Span<byte> _bytes;
     public int Head;
 
+    internal readonly Span<byte> Bytes;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
     {
@@ -115,7 +117,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushOne()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.OneByteSpan);
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(BytesExt.OneByteSpan);
 
         ref byte bytes = ref PushBytesRef();
         // Not full entry, clear first
@@ -125,7 +127,7 @@ public ref struct EvmStack<TTracing>
 
     public void PushZero()
     {
-        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(Bytes.ZeroByteSpan);
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(BytesExt.ZeroByteSpan);
 
         ref byte bytes = ref PushBytesRef();
         Unsafe.As<byte, Word>(ref bytes) = default;
@@ -276,7 +278,7 @@ public ref struct EvmStack<TTracing>
             return false;
         }
 
-        ref byte bytes = ref _bytes[head * WordSize];
+        ref byte bytes = ref Bytes[head * WordSize];
         return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
     }
 
@@ -288,10 +290,10 @@ public ref struct EvmStack<TTracing>
             EvmStack.ThrowEvmStackUnderflowException();
         }
 
-        return _bytes.Slice(head * WordSize, WordSize);
+        return Bytes.Slice(head * WordSize, WordSize);
     }
 
-    public Address? PopAddress() => Head-- == 0 ? null : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+    public Address? PopAddress() => Head-- == 0 ? null : new Address(Bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PopBytesByRef()
@@ -326,7 +328,7 @@ public ref struct EvmStack<TTracing>
     {
         if (!EnsureDepth(depth)) return false;
 
-        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+        ref byte bytes = ref MemoryMarshal.GetReference(Bytes);
 
         ref byte from = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
         ref byte to = ref Unsafe.Add(ref bytes, Head * WordSize);
@@ -353,7 +355,7 @@ public ref struct EvmStack<TTracing>
     {
         if (!EnsureDepth(depth)) return false;
 
-        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+        ref byte bytes = ref MemoryMarshal.GetReference(Bytes);
 
         ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
         ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * WordSize);
@@ -374,7 +376,7 @@ public ref struct EvmStack<TTracing>
     {
         for (int i = depth; i > 0; i--)
         {
-            _tracer.ReportStackPush(_bytes.Slice(Head * WordSize - i * WordSize, WordSize));
+            _tracer.ReportStackPush(Bytes.Slice(Head * WordSize - i * WordSize, WordSize));
         }
     }
 }
