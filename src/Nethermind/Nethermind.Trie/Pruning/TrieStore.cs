@@ -791,14 +791,15 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         // However, anything that we are trying to persist here should still be in dirty cache.
         // So parallel read should go there first instead of to the database for these dataset,
         // so it should be fine for these to be non atomic.
-        Channel<INodeStorage.WriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.WriteBatch>(4);
+        Task[] disposeTasks = _disposeTasks;
+        Channel<INodeStorage.WriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.WriteBatch>(disposeTasks.Length * 2);
         try
         {
-            for (int index = 0; index < _disposeTasks.Length; index++)
+            for (int index = 0; index < disposeTasks.Length; index++)
             {
-                _disposeTasks[index] = Task.Run(async () =>
+                disposeTasks[index] = Task.Run(async () =>
                 {
-                    await foreach (var disposable in disposeQueue.Reader.ReadAllAsync())
+                    await foreach (IDisposable disposable in disposeQueue.Reader.ReadAllAsync())
                     {
                         disposable.Dispose();
                     }
@@ -816,7 +817,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             disposeQueue.Writer.Complete();
         }
 
-        Task.WaitAll(_disposeTasks);
+        Task.WaitAll(disposeTasks);
 
         // Dispose top level last in case something goes wrong, at least the root won't be stored
         topLevelWriteBatch.Dispose();
@@ -843,7 +844,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             PersistNode(address3, path2, node, writeBatch, writeFlags);
 
             persistedNodeCount++;
-            if (persistedNodeCount % 512 == 0)
+            if (persistedNodeCount % 256 == 0)
             {
                 await disposeQueue.Writer.WriteAsync(writeBatch);
                 writeBatch = _nodeStorage.StartWriteBatch();
