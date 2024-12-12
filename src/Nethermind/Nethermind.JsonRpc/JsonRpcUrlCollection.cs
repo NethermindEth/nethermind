@@ -30,7 +30,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
 
     private void BuildUrls(bool includeWebSockets)
     {
-        bool HasEngineApi = _jsonRpcConfig.EnabledModules.Any(m => m.Equals(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase));
+        bool HasEngineApi = _jsonRpcConfig.EnabledModules.Any(m => m.Equals(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
         JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, HasEngineApi, _jsonRpcConfig.EnabledModules, HasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize);
 
         Add(defaultUrl.Port, defaultUrl);
