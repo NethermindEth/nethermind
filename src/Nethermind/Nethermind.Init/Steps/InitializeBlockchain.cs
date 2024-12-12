@@ -30,7 +30,13 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeStateDb), typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(
+        typeof(InitializeStateDb),
+        typeof(InitializePlugins),
+        typeof(InitializeBlockTree),
+        typeof(SetupKeyStore),
+        typeof(InitializePrecompiles)
+    )]
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
@@ -51,6 +57,7 @@ namespace Nethermind.Init.Steps
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
+            setApi.TxValidator = CreateTxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
@@ -143,6 +150,11 @@ namespace Nethermind.Init.Steps
             }
 
             return Task.CompletedTask;
+        }
+
+        protected virtual TxValidator? CreateTxValidator(ulong v)
+        {
+            return new TxValidator(_api.SpecProvider!.ChainId);
         }
 
         protected virtual IBlockValidator CreateBlockValidator()
@@ -238,7 +250,7 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new BeaconBlockRootHandler(_api.TransactionProcessor, worldState),
                 new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
                 preWarmer: preWarmer

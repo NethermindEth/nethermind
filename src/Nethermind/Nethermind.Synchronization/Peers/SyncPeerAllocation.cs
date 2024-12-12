@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -12,12 +13,12 @@ namespace Nethermind.Synchronization.Peers
 {
     public class SyncPeerAllocation
     {
-        public static SyncPeerAllocation FailedAllocation = new(NullStrategy.Instance, AllocationContexts.None);
+        public static SyncPeerAllocation FailedAllocation = new(NullStrategy.Instance, AllocationContexts.None, null);
 
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private static readonly object _allocationLock = new();
+        private readonly Lock? _allocationLock;
 
         private readonly IPeerAllocationStrategy _peerAllocationStrategy;
         public AllocationContexts Contexts { get; }
@@ -28,14 +29,15 @@ namespace Nethermind.Synchronization.Peers
         public bool HasPeer => Current is not null;
 
         public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts)
-            : this(new StaticStrategy(peerInfo), contexts)
+            : this(new StaticStrategy(peerInfo), contexts, null)
         {
         }
 
-        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts)
+        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, Lock? allocationLock = null)
         {
             _peerAllocationStrategy = peerAllocationStrategy;
             Contexts = contexts;
+            _allocationLock = allocationLock ?? new Lock();
         }
 
         public void AllocateBestPeer(

@@ -140,7 +140,7 @@ public class CliqueBlockProducerTests
                 stateProvider,
                 NullReceiptStorage.Instance,
                 transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(goerliSpecProvider, stateProvider),
                 nodeLogManager);
 
@@ -161,7 +161,7 @@ public class CliqueBlockProducerTests
                 minerStateProvider,
                 NullReceiptStorage.Instance,
                 minerTransactionProcessor,
-                new BeaconBlockRootHandler(minerTransactionProcessor),
+                new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
                 new BlockhashStore(goerliSpecProvider, minerStateProvider),
                 nodeLogManager);
 
@@ -437,12 +437,7 @@ public class CliqueBlockProducerTests
 
         public Block GetBlock(PrivateKey privateKey, long number)
         {
-            Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
-            if (block is null)
-            {
-                throw new InvalidOperationException($"Cannot find block {number}");
-            }
-
+            Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"Cannot find block {number}");
             return block;
         }
 
@@ -526,10 +521,8 @@ public class CliqueBlockProducerTests
 
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
-            Transaction transaction = new();
-
             // gas limit too high
-            transaction = new Transaction();
+            Transaction transaction = new Transaction();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;

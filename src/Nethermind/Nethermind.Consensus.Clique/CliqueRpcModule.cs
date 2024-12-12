@@ -54,9 +54,13 @@ namespace Nethermind.Consensus.Clique
             cliqueBlockProducer.UncastVote(signer);
         }
 
-        public Snapshot GetSnapshot()
+        public Snapshot GetSnapshot(long? number = null)
         {
             Block head = _blockTree.Head;
+            if (number is not null && head.Number != number)
+            {
+                head = _blockTree.FindBlock(number.Value);
+            }
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
@@ -105,7 +109,7 @@ namespace Nethermind.Consensus.Clique
         public ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals() =>
             ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
 
-        public ResultWrapper<Snapshot> clique_getSnapshot() => ResultWrapper<Snapshot>.Success(GetSnapshot());
+        public ResultWrapper<Snapshot> clique_getSnapshot(long? number) => ResultWrapper<Snapshot>.Success(GetSnapshot(number));
 
         public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash) => ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
 

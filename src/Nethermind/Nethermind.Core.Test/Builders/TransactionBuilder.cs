@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithChainId(ulong chainId)
+        public TransactionBuilder<T> WithChainId(ulong? chainId)
         {
             TestObjectInternal.ChainId = chainId;
             return this;
@@ -251,12 +251,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> Signed(PrivateKey? privateKey = null)
+        public TransactionBuilder<T> Signed(PrivateKey? privateKey = null, bool isEip155Enabled = true)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
             EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId);
 
-            return Signed(ecdsa, privateKey, isEip155Enabled: true);
+            return Signed(ecdsa, privateKey, isEip155Enabled);
         }
 
         // TODO: auto create ecdsa here
@@ -295,6 +295,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
         {
             TestObjectInternal.IsServiceTransaction = isServiceTransaction;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithSourceHash(Hash256? sourceHash)
+        {
+            TestObjectInternal.SourceHash = sourceHash;
             return this;
         }
 

@@ -2,39 +2,43 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.ComponentModel;
 
-namespace Nethermind.Db
+namespace Nethermind.Db;
+
+/// <summary>
+/// Defines pruning mode.
+/// </summary>
+[Flags]
+public enum PruningMode
 {
+    [Description("No pruning (archive).")]
     /// <summary>
-    /// Defines pruning mode.
+    /// No pruning - full archive.
     /// </summary>
-    [Flags]
-    public enum PruningMode
-    {
-        /// <summary>
-        /// No pruning - full archive.
-        /// </summary>
-        None = 0,
+    None = 0,
 
-        /// <summary>
-        /// In memory pruning.
-        /// </summary>
-        Memory = 1,
+    [Description("In-memory pruning.")]
+    /// <summary>
+    /// In memory pruning.
+    /// </summary>
+    Memory = 1,
 
-        /// <summary>
-        /// Full pruning.
-        /// </summary>
-        Full = 2,
+    [Description("Full pruning.")]
+    /// <summary>
+    /// Full pruning.
+    /// </summary>
+    Full = 2,
 
-        /// <summary>
-        /// Both in memory and full pruning.
-        /// </summary>
-        Hybrid = Memory | Full
-    }
+    [Description("Combined in-memory and full pruning.")]
+    /// <summary>
+    /// Both in memory and full pruning.
+    /// </summary>
+    Hybrid = Memory | Full
+}
 
-    public static class PruningModeExtensions
-    {
-        public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
-        public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
-    }
+public static class PruningModeExtensions
+{
+    public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
+    public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
 }

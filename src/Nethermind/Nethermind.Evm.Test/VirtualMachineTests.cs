@@ -42,7 +42,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
         Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
         Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(1), nameof(entry.Storage));
+        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
         Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
         Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
     }
@@ -135,7 +135,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
         Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
         Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(1), nameof(entry.Storage));
+        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
         Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
         Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
     }
@@ -553,7 +553,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
         TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
 
-        Assert.That(receipt.Error, Is.EqualTo("Reverted revert message"));
+        Assert.That(receipt.Error, Is.EqualTo("revert message"));
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }

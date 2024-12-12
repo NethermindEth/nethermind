@@ -26,7 +26,7 @@ public class ShutterTxSource(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private ulong _keyWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
-    private readonly object _syncObject = new();
+    private readonly Lock _syncObject = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
     {
@@ -43,7 +43,7 @@ public class ShutterTxSource(
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
             return [];
         }
 

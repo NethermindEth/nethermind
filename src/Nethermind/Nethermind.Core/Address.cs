@@ -5,7 +5,6 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -110,7 +109,7 @@ namespace Nethermind.Core
                 {
                     if (allowOverflow)
                     {
-                        span = span.Slice(value.Length - size);
+                        span = span[(value.Length - size)..];
                     }
                     else
                     {
@@ -241,7 +240,7 @@ namespace Nethermind.Core
         public ValueHash256 ToHash()
         {
             Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes.Slice(Hash256.Size - Address.Size));
+            Bytes.CopyTo(addressBytes[(Hash256.Size - Address.Size)..]);
             return new ValueHash256(addressBytes);
         }
     }

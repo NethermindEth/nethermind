@@ -91,7 +91,7 @@ public class BlockchainProcessorTests
                             if (_allowedToFail.Contains(hash))
                             {
                                 _allowedToFail.Remove(hash);
-                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
+                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                                 throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                             }
 
@@ -107,7 +107,7 @@ public class BlockchainProcessorTests
                     else
                     {
                         _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                         return suggestedBlocks.ToArray();
                     }
                 }

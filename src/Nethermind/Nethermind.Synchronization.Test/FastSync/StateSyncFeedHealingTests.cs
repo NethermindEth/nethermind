@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -30,11 +32,11 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
-        SafeContext ctx = PrepareDownloader(dbContext);
-        await ActivateAndWait(ctx, dbContext, 1024);
+        await using IContainer container = PrepareDownloader(dbContext);
+        SafeContext ctx = container.Resolve<SafeContext>();
+        await ActivateAndWait(ctx);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
-
 
         dbContext.CompareTrees("END");
         Assert.That(dbContext.LocalStateTree.RootHash, Is.EqualTo(dbContext.RemoteStateTree.RootHash));
@@ -71,7 +73,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             accounts[path] = account;
         }
 
-        dbContext.RemoteStateTree.Commit(0);
+        dbContext.RemoteStateTree.Commit();
 
         int startingHashIndex = 0;
         int endHashIndex;
@@ -115,7 +117,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
                 }
             }
 
-            dbContext.RemoteStateTree.Commit(blockNumber);
+            dbContext.RemoteStateTree.Commit();
         }
 
         endHashIndex = startingHashIndex + 1000;
@@ -136,8 +138,9 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
-        SafeContext ctx = PrepareDownloader(dbContext);
-        await ActivateAndWait(ctx, dbContext, 9, timeout: 10000);
+        await using IContainer container = PrepareDownloader(dbContext, syncDispatcherAllocateTimeoutMs: 1000);
+        SafeContext ctx = container.Resolve<SafeContext>();
+        await ActivateAndWait(ctx, timeout: 20000);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 

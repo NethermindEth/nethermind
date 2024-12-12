@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -45,7 +44,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     out Arg.Any<TxPriorityContract.Destination>())
                 .Returns(x =>
                 {
-                    x[2] = new TxPriorityContract.Destination(TestItem.AddressA, Array.Empty<byte>(), 5);
+                    x[2] = new TxPriorityContract.Destination(TestItem.AddressA, [], 5);
                     return true;
                 });
 

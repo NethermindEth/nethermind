@@ -9,7 +9,6 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -78,7 +77,7 @@ namespace Nethermind.Network.StaticNodes
             string[] nodes;
             try
             {
-                nodes = JsonSerializer.Deserialize<string[]>(data) ?? Array.Empty<string>();
+                nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
             }
             catch (JsonException)
             {
@@ -132,7 +131,7 @@ namespace Nethermind.Network.StaticNodes
         {
             NetworkNode node = new(enode);
             return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-                node.Host, StringComparison.InvariantCultureIgnoreCase);
+                node.Host, StringComparison.OrdinalIgnoreCase);
         }
 
         private Task SaveFileAsync()
@@ -149,10 +148,10 @@ namespace Nethermind.Network.StaticNodes
                 yield return node;
             }
 
-            EventHandler<NodeEventArgs> handler = (_, args) =>
+            void handler(object? _, NodeEventArgs args)
             {
                 ch.Writer.TryWrite(args.Node);
-            };
+            }
 
             try
             {

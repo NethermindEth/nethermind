@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Rewards
         {
             if (block.IsGenesis)
             {
-                return Array.Empty<BlockReward>();
+                return [];
             }
 
             UInt256 blockReward = GetBlockReward(block);

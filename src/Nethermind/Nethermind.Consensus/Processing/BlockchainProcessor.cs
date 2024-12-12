@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime;
-using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -17,7 +15,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -31,10 +29,10 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
-    public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
+    public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
-    [ThreadStatic] private static bool _isMainProcessingThread;
-    public static bool IsMainProcessingThread => _isMainProcessingThread;
+    private static AsyncLocal<bool> _isMainProcessingThread = new();
+    public static bool IsMainProcessingThread => _isMainProcessingThread.Value;
     public bool IsMainProcessor { get; init; }
 
     public ITracerBag Tracers => _compositeBlockTracer;
@@ -46,9 +44,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly BlockingCollection<BlockRef> _recoveryQueue = new(new ConcurrentQueue<BlockRef>());
+    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>();
+    private bool _recoveryComplete = false;
 
-    private readonly BlockingCollection<BlockRef> _blockQueue = new(new ConcurrentQueue<BlockRef>(), MaxProcessingQueueSize);
+    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(MaxProcessingQueueSize);
 
     private int _queueCount;
 
@@ -93,7 +92,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
-        _stats = new ProcessingStats(_logger);
+        _stats = new ProcessingStats(stateReader, _logger);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -125,19 +124,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
 
-        if (!_recoveryQueue.IsAddingCompleted)
+        if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
             try
             {
-                _recoveryQueue.Add(blockRef);
+                _recoveryQueue.Writer.TryWrite(blockRef);
                 if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
             }
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _queueCount);
                 BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
-                if (e is not InvalidOperationException || !_recoveryQueue.IsAddingCompleted)
+                if (e is not InvalidOperationException || !_recoveryComplete)
                 {
                     throw;
                 }
@@ -154,59 +153,42 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
+        _recoveryComplete = true;
         if (processRemainingBlocks)
         {
-            _recoveryQueue.CompleteAdding();
+            _recoveryQueue.Writer.TryComplete();
             await (_recoveryTask ?? Task.CompletedTask);
-            _blockQueue.CompleteAdding();
+            _blockQueue.Writer.TryComplete();
         }
         else
         {
             _loopCancellationSource?.Cancel();
-            _recoveryQueue.CompleteAdding();
-            _blockQueue.CompleteAdding();
+            _recoveryQueue.Writer.TryComplete();
+            _blockQueue.Writer.TryComplete();
         }
 
         await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
         if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
     }
 
-    private Task RunRecovery()
+    private async Task RunRecovery()
     {
-        TaskCompletionSource tcs = new();
-
-        Thread thread = new(() =>
+        try
         {
-            try
-            {
-                RunRecoveryLoop();
-                if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
-            }
-            catch (OperationCanceledException)
-            {
-                if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", ex);
-            }
-            finally
-            {
-                tcs.SetResult();
-            }
-        })
+            await RunRecoveryLoop();
+            if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
+        }
+        catch (OperationCanceledException)
         {
-            IsBackground = true,
-            Name = "Block Recovery",
-            // Boost priority to make sure we process blocks as fast as possible
-            Priority = ThreadPriority.AboveNormal,
-        };
-        thread.Start();
-
-        return tcs.Task;
+            if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", ex);
+        }
     }
 
-    private void RunRecoveryLoop()
+    private async Task RunRecoveryLoop()
     {
         void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
         {
@@ -215,9 +197,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             FireProcessingQueueEmpty();
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
+        if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
         {
             try
             {
@@ -229,9 +211,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                     try
                     {
-                        _blockQueue.Add(blockRef);
+                        await _blockQueue.Writer.WriteAsync(blockRef);
                     }
-                    catch (Exception e)
+                    catch (Exception e) when (e is not OperationCanceledException)
                     {
                         DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException, e);
 
@@ -258,54 +240,37 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Task RunProcessing()
+    private async Task RunProcessing()
     {
-        TaskCompletionSource tcs = new();
+        _isMainProcessingThread.Value = IsMainProcessor;
 
-        Thread thread = new(() =>
+        try
         {
-            _isMainProcessingThread = IsMainProcessor;
-
-            try
-            {
-                RunProcessingLoop();
-                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
-            }
-            catch (OperationCanceledException)
-            {
-                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
-            }
-            finally
-            {
-                tcs.SetResult();
-            }
-        })
+            await RunProcessingLoop();
+            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
+        }
+        catch (OperationCanceledException)
         {
-            IsBackground = true,
-            Name = "Block Processor",
-            // Boost priority to make sure we process blocks as fast as possible
-            Priority = ThreadPriority.Highest,
-        };
-        thread.Start();
-
-        return tcs.Task;
+            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+        }
     }
 
-    private void RunProcessingLoop()
+    private async Task RunProcessingLoop()
     {
-        if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
+        if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
 
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
         {
+            using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
-            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Count);
+            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
 
             try
             {
@@ -332,7 +297,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                 }
             }
-            catch (Exception exception)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
                 BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
@@ -342,10 +307,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 Interlocked.Decrement(ref _queueCount);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
+            if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
 
-            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Count);
+            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
@@ -389,6 +354,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return null;
         }
 
+        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+        if (!readonlyChain) _stats.CaptureStartStats();
+
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
@@ -412,14 +380,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
-        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         if (!readonlyChain)
         {
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            Metrics.RecoveryQueueSize = _recoveryQueue.Count;
-            Metrics.ProcessingQueueSize = _blockQueue.Count;
-            _stats.UpdateStats(lastProcessed, blockProcessingTimeInMicrosecs);
+            Metrics.RecoveryQueueSize = _recoveryQueue.Reader.Count;
+            Metrics.ProcessingQueueSize = _blockQueue.Reader.Count;
+            _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
@@ -571,12 +538,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (!blocksToProcess[0].IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
-                if (parentOfFirstBlock is null)
-                {
-                    throw new InvalidOperationException("Attempted to process a disconnected blockchain");
-                }
-
+                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
@@ -616,7 +578,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            branchingPoint = options.ContainsFlag(ProcessingOptions.ForceSameBlock)
+                ? toBeProcessed.Header
+                : _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
             if (branchingPoint is null)
             {
                 // genesis block
@@ -731,8 +696,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Dispose()
     {
-        _recoveryQueue.Dispose();
-        _blockQueue.Dispose();
+        _recoveryComplete = true;
+        _recoveryQueue.Writer.TryComplete();
+        _blockQueue.Writer.TryComplete();
         _loopCancellationSource?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;

@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -492,7 +491,7 @@ public class DiscoveryApp : IDiscoveryApp
     {
         // TODO: Rewrote this to properly support throttling.
         Channel<Node> ch = Channel.CreateBounded<Node>(64); // Some reasonably large value
-        EventHandler<NodeEventArgs> handler = (_, args) =>
+        void handler(object? _, NodeEventArgs args)
         {
             if (!ch.Writer.TryWrite(args.Node))
             {
@@ -503,7 +502,7 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 _nodesLocator.ShouldThrottle = false;
             }
-        };
+        }
 
         try
         {

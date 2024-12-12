@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -30,13 +29,13 @@ public class KeyStorePasswordProviderTests
     [SetUp]
     public void SetUp()
     {
-        foreach (var file in _files)
+        foreach (var (Name, Content) in _files)
         {
-            var filePath = Path.Combine(TestDir, file.Name);
+            var filePath = Path.Combine(TestDir, Name);
             if (!File.Exists(filePath))
             {
                 File.Create(filePath).Close();
-                File.WriteAllText(filePath, file.Content);
+                File.WriteAllText(filePath, Content);
             }
         }
     }
@@ -44,9 +43,9 @@ public class KeyStorePasswordProviderTests
     [TearDown]
     public void TearDown()
     {
-        foreach (var file in _files)
+        foreach (var (Name, _) in _files)
         {
-            var filePath = Path.Combine(TestDir, file.Name);
+            var filePath = Path.Combine(TestDir, Name);
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
@@ -139,10 +138,10 @@ public class KeyStorePasswordProviderTests
 public class KeyStorePasswordProviderTest
 {
     public string TestName { get; set; } = string.Empty;
-    public string[] Passwords { get; set; } = Array.Empty<string>();
+    public string[] Passwords { get; set; } = [];
     public List<string> PasswordFiles { get; set; } = new List<string>();
-    public string[] ExpectedPasswords { get; set; } = Array.Empty<string>();
-    public Address[] UnlockAccounts { get; set; } = Array.Empty<Address>();
+    public string[] ExpectedPasswords { get; set; } = [];
+    public Address[] UnlockAccounts { get; set; } = [];
     public Address BlockAuthorAccount { get; set; }
     public string ExpectedBlockAuthorAccountPassword { get; set; }
 

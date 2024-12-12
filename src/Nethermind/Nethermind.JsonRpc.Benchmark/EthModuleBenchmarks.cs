@@ -39,7 +39,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -66,7 +68,7 @@ namespace Nethermind.JsonRpc.Benchmark
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            WorldStateManager stateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            OverridableWorldStateManager stateManager = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
@@ -76,7 +78,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb),
                 dbProvider.BlockInfosDb,
                 dbProvider.MetadataDb,
-                new BlockStore(dbProvider.BadBlocksDb),
+                new BadBlockStore(dbProvider.BadBlocksDb, 100),
                 chainLevelInfoRepository,
                 specProvider,
                 NullBloomStorage.Instance,
@@ -104,7 +106,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 stateProvider,
                 NullReceiptStorage.Instance,
                 transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
                 LimboLogs.Instance);
 
@@ -135,7 +137,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new ReceiptsRecovery(ecdsa, specProvider));
 
             BlockchainBridge bridge = new(
-                new ReadOnlyTxProcessingEnv(
+                new OverridableTxProcessingEnv(
                     stateManager,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
@@ -162,7 +164,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, Substitute.For<ISyncPointers>(), syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),

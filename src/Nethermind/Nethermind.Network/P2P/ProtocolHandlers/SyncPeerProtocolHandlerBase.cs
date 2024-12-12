@@ -103,7 +103,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (blockHashes.Count == 0)
             {
-                return new OwnedBlockBodies(Array.Empty<BlockBody>());
+                return new OwnedBlockBodies([]);
             }
 
             OwnedBlockBodies blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>

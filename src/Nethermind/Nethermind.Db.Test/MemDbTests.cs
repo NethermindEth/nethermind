@@ -31,7 +31,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            _ = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
         }
 
         [Test]

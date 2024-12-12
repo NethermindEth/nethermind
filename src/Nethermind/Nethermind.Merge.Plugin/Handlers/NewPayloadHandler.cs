@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -13,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -87,13 +88,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
-
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid request. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+        }
+
+        string requestStr = $"New Block:  {request}";
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"Received {requestStr}, {block.ParsedExtraData()}");
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
@@ -156,7 +160,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error, validateHashes: false))
             {
-                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "suggested block is invalid"));
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
                 return NewPayloadV1Result.Invalid(error);
             }
 
@@ -200,6 +204,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
+        using var handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 

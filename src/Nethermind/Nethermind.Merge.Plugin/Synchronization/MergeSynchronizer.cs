@@ -1,113 +1,52 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
+using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class MergeSynchronizer : Synchronizer
+public class MergeSynchronizer(
+    [KeyFilter(nameof(BeaconHeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> beaconHeaderComponent,
+    ISyncConfig syncConfig,
+    Synchronizer baseSynchronizer,
+    ILogManager logManager)
+    : ISynchronizer
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IMergeConfig _mergeConfig;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private BeaconHeadersSyncFeed _beaconHeadersFeed = null!;
-    private readonly IBeaconSyncStrategy _beaconSync;
+    private readonly CancellationTokenSource? _syncCancellation = new();
+    private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
-    public override ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
-        SyncProgressResolver,
-        _syncPeerPool,
-        _syncConfig,
-        _beaconSync,
-        _betterPeerStrategy!,
-        _logManager);
-
-    public MergeSynchronizer(
-        IDbProvider dbProvider,
-        INodeStorage nodeStorage,
-        ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
-        ISyncPeerPool peerPool,
-        INodeStatsManager nodeStatsManager,
-        ISyncConfig syncConfig,
-        IBlockDownloaderFactory blockDownloaderFactory,
-        IPivot pivot,
-        IPoSSwitcher poSSwitcher,
-        IMergeConfig mergeConfig,
-        IInvalidChainTracker invalidChainTracker,
-        IProcessExitSource exitSource,
-        IBetterPeerStrategy betterPeerStrategy,
-        ChainSpec chainSpec,
-        IBeaconSyncStrategy beaconSync,
-        IStateReader stateReader,
-        ILogManager logManager)
-        : base(
-            dbProvider,
-            nodeStorage,
-            specProvider,
-            blockTree,
-            receiptStorage,
-            peerPool,
-            nodeStatsManager,
-            syncConfig,
-            blockDownloaderFactory,
-            pivot,
-            exitSource,
-            betterPeerStrategy,
-            chainSpec,
-            stateReader,
-            logManager)
+    public void Start()
     {
-        _invalidChainTracker = invalidChainTracker;
-        _poSSwitcher = poSSwitcher;
-        _mergeConfig = mergeConfig;
-        _beaconSync = beaconSync;
-    }
-
-    public override void Start()
-    {
-        if (!_syncConfig.SynchronizationEnabled)
+        if (!syncConfig.SynchronizationEnabled)
         {
             return;
         }
 
-        base.Start();
+        baseSynchronizer.Start();
         StartBeaconHeadersComponents();
         WireMultiSyncModeSelector();
     }
 
+    public ValueTask DisposeAsync()
+    {
+        _syncCancellation?.Cancel();
+        return ValueTask.CompletedTask;
+    }
+
     private void StartBeaconHeadersComponents()
     {
-        FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-        _beaconHeadersFeed =
-            new(_poSSwitcher, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
-        BeaconHeadersSyncDownloader beaconHeadersDownloader = new(_logManager);
-
-        SyncDispatcher<HeadersSyncBatch> dispatcher = CreateDispatcher(
-            _beaconHeadersFeed!,
-            beaconHeadersDownloader,
-            fastFactory
-        );
-
-        dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+        beaconHeaderComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)
             {
@@ -122,6 +61,39 @@ public class MergeSynchronizer : Synchronizer
 
     private void WireMultiSyncModeSelector()
     {
-        WireFeedWithModeSelector(_beaconHeadersFeed);
+        baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
+    }
+
+    // May crash `dotnet format` if declared before any other use of `baseSynchronizer`.
+    // Seems like a bug in dotnet formatter or analyzer somewhere
+    public event EventHandler<SyncEventArgs>? SyncEvent
+    {
+        add => baseSynchronizer.SyncEvent += value;
+        remove => baseSynchronizer.SyncEvent -= value;
+    }
+}
+
+public class MergeSynchronizerModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            .RegisterType<MergeBlockDownloader>()
+            .As<BlockDownloader>()
+            .As<ISyncDownloader<BlocksRequest>>()
+            .InstancePerLifetimeScope();
+
+        builder
+            .AddSingleton<ISynchronizer, MergeSynchronizer>()
+            .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
+            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
+
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
+    }
+
+    private void ConfigureBeaconHeader(ContainerBuilder scopeConfig)
+    {
+        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
+            .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>();
     }
 }

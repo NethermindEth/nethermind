@@ -85,7 +85,7 @@ public class ReorgTests
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(

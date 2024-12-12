@@ -292,7 +292,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
         request.Append("]");
 
-        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, Array.Empty<string>());
+        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
         result.Should().HaveCount(1);

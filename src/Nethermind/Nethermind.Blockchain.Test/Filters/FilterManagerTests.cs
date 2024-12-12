@@ -238,6 +238,35 @@ public class FilterManagerTests
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
                     .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    [TestCase(1, 1)]
+    [TestCase(5, 3)]
+    public void logs_should_have_correct_log_indexes(int filtersCount, int logsPerTx)
+    {
+        const int txCount = 10;
+
+        Assert(
+            filterBuilder: (builder, _) => builder
+                .FromBlock(1L)
+                .ToBlock(10L)
+                .WithAddresses(TestItem.AddressA, TestItem.AddressB)
+                .WithTopicExpressions(TestTopicExpressions.Or(
+                    TestTopicExpressions.Specific(TestItem.KeccakB),
+                    TestTopicExpressions.Specific(TestItem.KeccakD)
+                )),
+            filterCount: filtersCount,
+            receiptBuilder: (builder, _) => builder
+                .WithBlockNumber(6L)
+                .WithLogs(Enumerable.Range(0, logsPerTx).Select(_ =>
+                    Build.A.LogEntry
+                        .WithAddress(TestItem.AddressA)
+                        .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject
+                ).ToArray()),
+            receiptCount: txCount,
+            logsAssertion: logs => logs.Select(l => l.LogIndex).Should().BeEquivalentTo(Enumerable.Range(0, txCount * logsPerTx))
+        );
+    }
+
 
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
         Action<ReceiptBuilder> receiptBuilder)
@@ -254,6 +283,15 @@ public class FilterManagerTests
     private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
         => Assert(filterBuilders, receiptBuilders, logs => logs.Should().BeEmpty());
+
+    private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
+        Action<ReceiptBuilder, int> receiptBuilder, int receiptCount,
+        Action<IEnumerable<FilterLog>> logsAssertion)
+        => Assert(
+            Enumerable.Range(0, filterCount).Select<int, Action<FilterBuilder>>(i => builder => filterBuilder(builder, i)),
+            Enumerable.Range(0, receiptCount).Select<int, Action<ReceiptBuilder>>(i => builder => receiptBuilder(builder, i)),
+            logsAssertion
+        );
 
     private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
@@ -280,7 +318,7 @@ public class FilterManagerTests
         _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
         _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
 
-        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
+        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, []));
 
         int index = 1;
         foreach (TxReceipt receipt in receipts)

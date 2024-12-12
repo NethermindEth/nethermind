@@ -31,7 +31,8 @@ public interface INodeStorage
     /// <summary>
     /// Used by StateSync to make sure values are flushed.
     /// </summary>
-    void Flush();
+    /// <param name="onlyWal">True if only WAL file should be flushed, not memtable.</param>
+    void Flush(bool onlyWal);
     void Compact();
 
     public enum KeyScheme

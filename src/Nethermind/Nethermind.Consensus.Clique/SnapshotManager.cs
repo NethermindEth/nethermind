@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -14,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -86,11 +86,11 @@ namespace Nethermind.Consensus.Clique
         public static byte[] SliceExtraSealFromExtraData(byte[] extraData)
         {
             if (extraData.Length < Clique.ExtraSealLength)
-                new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
+                throw new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
             return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 
-        private readonly object _snapshotCreationLock = new();
+        private readonly Lock _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 
