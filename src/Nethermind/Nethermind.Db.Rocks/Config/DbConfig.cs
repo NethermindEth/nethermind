@@ -160,6 +160,12 @@ public class DbConfig : IDbConfig
         "write_buffer_size=4000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "optimize_filters_for_hits=false;" +
+        "prefix_extractor=capped:8;" +
+        "block_based_table_factory.index_type=kHashSearch;" +
+        "block_based_table_factory.block_size=4096;" +
+        "memtable=prefix_hash:1000000;" +
+        // Bloom crash with kHashSearch index
+        "block_based_table_factory.filter_policy=null;" +
         "allow_concurrent_memtable_write=false;";
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
 
