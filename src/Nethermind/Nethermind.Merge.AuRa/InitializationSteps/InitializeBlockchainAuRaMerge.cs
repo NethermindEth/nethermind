@@ -33,7 +33,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder);
+            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder, _api.SpecProvider!);
             IWorldState worldState = _api.WorldState!;
             ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 
@@ -41,7 +41,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState, _api.SpecProvider!),
                 worldState,
                 _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),

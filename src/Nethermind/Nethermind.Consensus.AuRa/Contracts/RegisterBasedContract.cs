@@ -5,6 +5,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -15,11 +16,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Hash256 _currentHashAddress = Keccak.Zero;
 
         public RegisterBasedContract(
+            ISpecProvider specProvider,
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
             string registryKey,
             AbiDefinition? abiDefinition = null)
-            : base(abiEncoder, abiDefinition: abiDefinition)
+            : base(specProvider, abiEncoder, abiDefinition: abiDefinition)
         {
             _registerContract = registerContract;
             _registryKey = registryKey;

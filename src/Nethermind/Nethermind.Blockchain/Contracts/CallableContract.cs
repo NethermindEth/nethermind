@@ -10,6 +10,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Contracts
 {
@@ -24,12 +25,12 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transactionProcessor">Transaction processor on which all <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> should be run on.</param>
         /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
         /// <param name="contractAddress">Address where contract is deployed.</param>
-        protected CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(abiEncoder, contractAddress)
+        protected CallableContract(ITransactionProcessor transactionProcessor, ISpecProvider specProvider, IAbiEncoder abiEncoder, Address contractAddress) : base(specProvider, abiEncoder, contractAddress)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
-        private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
+        private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction, SpecProvider.GetSpec(header));
 
         /// <summary>
         /// Calls the function in contract, state modification is allowed.
@@ -66,7 +67,7 @@ namespace Nethermind.Blockchain.Contracts
 
             try
             {
-                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
+                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), tracer);
                 result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }

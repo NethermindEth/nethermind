@@ -9,6 +9,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -27,7 +28,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
     {
         Native4ByteTracer tracer = new Native4ByteTracer(GethTraceOptions.Default);
         (Block block, Transaction transaction) = input is null ? PrepareTx(Activation, 100000, code) : PrepareTx(Activation, 100000, code, input, value);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new(block.Header, London.Instance), tracer);
         return tracer.BuildResult();
     }
 

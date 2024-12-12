@@ -7,6 +7,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -47,7 +48,7 @@ namespace Nethermind.Evm.Test
             }
 
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, new(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
             if (eip3198Enabled)
             {
