@@ -760,11 +760,13 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
         {
             long spentGas = tx.GasLimit;
+            long operationGas = tx.GasLimit;
             var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
+                operationGas = spentGas;
                 spentGas = Math.Max(spentGas, floorGas);
 
                 long totalToRefund = codeInsertRefund;
@@ -778,6 +780,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!opts.HasFlag(ExecutionOptions.NoValidation))
                     WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
                 spentGas -= actualRefund;
+                operationGas -= actualRefund;
             }
             else if (codeInsertRefund > 0)
             {
@@ -789,6 +792,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!opts.HasFlag(ExecutionOptions.NoValidation))
                     WorldState.AddToBalance(tx.SenderAddress!, (ulong)refund * gasPrice, spec);
                 spentGas -= refund;
+                operationGas -= refund;
             }
 
             return spentGas;
