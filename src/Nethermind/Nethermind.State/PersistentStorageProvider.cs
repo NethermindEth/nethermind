@@ -8,10 +8,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -19,7 +17,6 @@ using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
-    using Core.Cpu;
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
@@ -125,6 +122,7 @@ namespace Nethermind.State
 
 
             IState state = _owner.State;
+            var storages = new Dictionary<Address, IStorage>();
 
             bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
@@ -181,7 +179,7 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        SaveToTree(state, change);
+                        SaveToTree(state, storages, change);
 
                         if (isTracing)
                         {
@@ -204,7 +202,7 @@ namespace Nethermind.State
             }
         }
 
-        private void SaveToTree(IState state, Change change)
+        private void SaveToTree(IState state, Dictionary<Address, IStorage> storages, Change change)
         {
             if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
                 initialValue.AsSpan().SequenceEqual(change.Value))
@@ -213,7 +211,18 @@ namespace Nethermind.State
                 return;
             }
 
-            state.SetStorage(change.StorageCell, change.Value);
+            // Ensure the setter exists and set storage
+            ref IStorage? storage =
+                ref CollectionsMarshal.GetValueRefOrAddDefault(storages, change.StorageCell.Address,
+                    out var storageExists);
+
+            if (!storageExists)
+            {
+                storage = state.GetStorageSetter(change.StorageCell.Address);
+            }
+            storage.SetStorage(change.StorageCell, change.Value);
+
+            // Report write
             Db.Metrics.StorageTreeWrites++;
 
             ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);

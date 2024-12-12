@@ -14,6 +14,7 @@ public interface IState : IReadOnlyState
     void Set(Address address, Account? account, bool isNewHint = false);
 
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
+    IStorage GetStorageSetter(in Address address);
 
     /// <summary>
     /// Informs the state about the potential of this sell being set.
@@ -30,6 +31,11 @@ public interface IState : IReadOnlyState
     /// Resets all the changes.
     /// </summary>
     void Reset();
+}
+
+public interface IStorage
+{
+    void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 }
 
 public interface IReadOnlyState : IDisposable
