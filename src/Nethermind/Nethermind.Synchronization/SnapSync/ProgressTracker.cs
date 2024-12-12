@@ -9,12 +9,12 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 
@@ -28,6 +28,7 @@ namespace Nethermind.Synchronization.SnapSync
         public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
         private const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
+        private const uint StorageRangeSplitFactor = 2;
         internal static readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
@@ -56,7 +57,6 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
-
 
         private readonly FastSync.StateSyncPivot _pivot;
 
@@ -311,10 +311,10 @@ namespace Nethermind.Synchronization.SnapSync
             StoragesToRetrieve.Enqueue(pwa);
         }
 
-        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash)
+        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
             _pivot.UpdatedStorages.Add(pathWithAccount.Path);
-            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
+            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
         public void ReportFullStorageRequestFinished(IEnumerable<PathWithAccount> storages = default)
@@ -336,6 +336,54 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 NextSlotRange.Enqueue(storageRange);
             }
+        }
+
+        public void EnqueueStorageRange(PathWithAccount account, ValueHash256? startingHash, ValueHash256 lastProcessedHash, ValueHash256? limitHash)
+        {
+            limitHash ??= Keccak.MaxValue;
+
+            if (lastProcessedHash > limitHash)
+                return;
+
+            UInt256 limit = new UInt256(limitHash.Value.Bytes, true);
+            UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
+            UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
+
+            var fullRange = limit - start;
+
+            if (lastProcessed < fullRange / StorageRangeSplitFactor + start)
+            {
+                var halfOfLeft = (limit - lastProcessed) / 2 + lastProcessed;
+                var halfOfLeftHash = new ValueHash256(halfOfLeft);
+
+                NextSlotRange.Enqueue(new StorageRange()
+                {
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                    StartingHash = lastProcessedHash,
+                    LimitHash = halfOfLeftHash
+                });
+
+                NextSlotRange.Enqueue(new StorageRange()
+                {
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                    StartingHash = halfOfLeftHash,
+                    LimitHash = limitHash
+                });
+
+                if (_logger.IsTrace)
+                    _logger.Trace($"EnqueueStorageRange account {account.Path} start hash: {startingHash} | last processed: {lastProcessedHash} | limit: {limitHash} | split {halfOfLeftHash}");
+
+                return;
+            }
+
+            //default - no split
+            var storageRange = new StorageRange()
+            {
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                StartingHash = lastProcessedHash,
+                LimitHash = limitHash
+            };
+            NextSlotRange.Enqueue(storageRange);
         }
 
         public void ReportStorageRangeRequestFinished(StorageRange storageRange = null)
@@ -367,14 +415,14 @@ namespace Nethermind.Synchronization.SnapSync
         public bool IsSnapGetRangesFinished()
         {
             return AccountRangeReadyForRequest.IsEmpty
-                && StoragesToRetrieve.IsEmpty
-                && NextSlotRange.IsEmpty
-                && CodesToRetrieve.IsEmpty
-                && AccountsToRefresh.IsEmpty
-                && _activeAccountRequests == 0
-                && _activeStorageRequests == 0
-                && _activeCodeRequests == 0
-                && _activeAccRefreshRequests == 0;
+                   && StoragesToRetrieve.IsEmpty
+                   && NextSlotRange.IsEmpty
+                   && CodesToRetrieve.IsEmpty
+                   && AccountsToRefresh.IsEmpty
+                   && _activeAccountRequests == 0
+                   && _activeStorageRequests == 0
+                   && _activeCodeRequests == 0
+                   && _activeAccRefreshRequests == 0;
         }
 
         private void GetSyncProgress()
