@@ -14,8 +14,8 @@ namespace Nethermind.Evm.Precompiles.Bls
         public static int ForG1(int k) => k >= 128 ? _maxDiscountG1 : _discountTable[k].g1;
         public static int ForG2(int k) => k >= 128 ? _maxDiscountG2 : _discountTable[k].g2;
 
-        private const int _maxDiscountG1 = 435;
-        private const int _maxDiscountG2 = 696;
+        private const int _maxDiscountG1 = 519;
+        private const int _maxDiscountG2 = 524;
 
         private static readonly (int g1, int g2)[] _discountTable =
         {
