@@ -922,7 +922,7 @@ namespace Nethermind.Synchronization.FastSync
                             TreePath finalStorageRoot = currentStateSyncItem.Path.Append(trieNode.Key);
                             Debug.Assert(finalStorageRoot.Length == 64);
 
-                            Hash256 address = finalStorageRoot.Path;
+                            Hash256 address = finalStorageRoot.Path.ToCommitment();
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
