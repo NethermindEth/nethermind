@@ -65,9 +65,24 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+
         public async Task Start(CancellationToken cancellationToken)
         {
             UpdateState(Feed.CurrentState);
+
+            try
+            {
+                _activeTasks.AddCount(1);
+                await DispatchLoop(cancellationToken);
+            }
+            finally
+            {
+                _activeTasks.Signal();
+            }
+        }
+
+        private async Task DispatchLoop(CancellationToken cancellationToken)
+        {
             while (true)
             {
                 try
@@ -116,27 +131,18 @@ namespace Nethermind.Synchronization.ParallelSync
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
                             _activeTasks.AddCount();
 
-                            Task task;
-                            try
-                            {
-                                task = Task.Run(
-                                    () =>
+                            Task task = Task.Run(
+                                () =>
+                                {
+                                    try
                                     {
-                                        try
-                                        {
-                                            return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
-                                        }
-                                        finally
-                                        {
-                                            _activeTasks.Signal();
-                                        }
-                                    });
-                            }
-                            catch
-                            {
-                                _activeTasks.Signal();
-                                throw;
-                            }
+                                        return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                    }
+                                    finally
+                                    {
+                                        _activeTasks.Signal();
+                                    }
+                                });
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -302,11 +308,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public ValueTask DisposeAsync()
         {
-            if (_disposed)
+            if (Interlocked.CompareExchange(ref _disposed, true, false))
             {
                 return ValueTask.CompletedTask;
             }
-            _disposed = true;
 
             _activeTasks.Signal();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
