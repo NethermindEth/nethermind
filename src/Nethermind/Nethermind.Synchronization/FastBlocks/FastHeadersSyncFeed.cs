@@ -504,8 +504,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
                 BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
                 if (nextHeader is null) break;
+                headers.Add(nextHeader);
                 lastHeader = nextHeader;
-                headers.Add(lastHeader);
             }
 
             ArrayPoolList<BlockHeader> reversedBatch = new ArrayPoolList<BlockHeader>(headers.Count);
