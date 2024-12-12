@@ -10,22 +10,11 @@ using System.Threading;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
-    public interface ILogIndexStorage: IDisposable
-    {
-        int GetLastKnownBlockNumber();
-        IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to);
-
-        IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
-        void SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
-
-        // TODO: remove after testing
-        LogIndexStorage.Measurement SeekForPrevMeasurement { get; set; }
-    }
-
     public class LogIndexStorage : ILogIndexStorage
     {
         private const string FolderName = "log-index";
@@ -46,6 +35,13 @@ namespace Nethermind.Db
         private readonly IDb _mainDb;
         private readonly ILogger _logger;
         private const int FixedLength = 4096;
+
+        public ExecTimeStats SeekForPrevHitStats { get; set; } = new();
+        public ExecTimeStats SeekForPrevMissStats { get; set; } = new();
+
+        public long NewPageCount { get; set; }
+        public long FreePageCount { get; set; }
+        public long TakePageCount { get; set; }
 
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath)
@@ -125,7 +121,7 @@ namespace Nethermind.Db
 
                     if (nextLowestBlockNumber > from && currentLowestBlockNumber <= to)
                     {
-                        IndexInfo indexInfo = new (keyPrefix.ToArray(), db.Get(firstKey));
+                        IndexInfo indexInfo = new(keyPrefix.ToArray(), db.Get(firstKey));
                         SafeFileHandle fileHandle = indexInfo.IsTemp ? _tempFileHandle : _finalFileHandle;
                         var data = LoadData(fileHandle, indexInfo, indexBuffer.AsSpan());
 
@@ -164,24 +160,35 @@ namespace Nethermind.Db
             }
         }
 
-        public void SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync)
+        public int SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken)
         {
-            if (!receipts.Any()) return;
+            return SetReceipts([(blockNumber, receipts)], isBackwardSync, cancellationToken);
+        }
 
-            var addressIndexes = new Dictionary<byte[], IndexInfo>();
-            var topicIndexes = new Dictionary<byte[], IndexInfo>();
+        public int SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken)
+        {
+            var addressIndexes = new Dictionary<byte[], IndexInfo>(Bytes.EqualityComparer);
+            var topicIndexes = new Dictionary<byte[], IndexInfo>(Bytes.EqualityComparer);
+
+            var logsProcessed = 0;
 
             Span<byte> blockNumberBytes = stackalloc byte[4];
             byte[] indexBuffer = ArrayPool<byte>.Shared.Rent(FixedLength);
 
-            //hash-lowesblocknumberinindex
-
             try
             {
-                foreach (TxReceipt? receipt in receipts)
+                foreach ((var blockNumber, TxReceipt[] receipts) in batch)
                 {
-                    if (receipt.Logs != null)
+                    if (!receipts.Any())
+                        continue;
+
+                    foreach (TxReceipt receipt in receipts)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (receipt.Logs == null)
+                            continue;
+
                         foreach (LogEntry log in receipt.Logs)
                         {
                             // Handle address logs
@@ -193,7 +200,8 @@ namespace Nethermind.Db
                                 addressIndexes[addressKey] = addressIndexInfo;
                             }
 
-                            ProcessLog(blockNumber, addressIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), addressKey, _addressDb, addressIndexes);
+                            ProcessLog(blockNumber, addressIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), addressKey, _addressDb,
+                                addressIndexes);
 
                             // Handle topic logs
                             foreach (Hash256 topic in log.Topics)
@@ -207,13 +215,16 @@ namespace Nethermind.Db
                                     topicIndexes[topicKeyArray] = topicIndexInfo;
                                 }
 
-                                ProcessLog(blockNumber, topicIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), topicKeyArray, _topicsDb, topicIndexes);
+                                ProcessLog(blockNumber, topicIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), topicKeyArray, _topicsDb,
+                                    topicIndexes);
                             }
+
+                            logsProcessed++;
                         }
                     }
-                }
 
-                _lastKnownBlock = Math.Max(_lastKnownBlock, blockNumber);
+                    _lastKnownBlock = Math.Max(_lastKnownBlock, blockNumber);
+                }
             }
             finally
             {
@@ -221,9 +232,12 @@ namespace Nethermind.Db
                 FinalizeIndexes(_topicsDb, topicIndexes, blockNumberBytes);
                 ArrayPool<byte>.Shared.Return(indexBuffer);
             }
+
+            return logsProcessed;
         }
 
-        private void ProcessLog(int blockNumber, IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db, Dictionary<byte[], IndexInfo> indexDictionary)
+        private void ProcessLog(int blockNumber, IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db,
+            Dictionary<byte[], IndexInfo> indexDictionary)
         {
             if (blockNumber <= indexInfo.LastBlockNumber)
             {
@@ -256,17 +270,16 @@ namespace Nethermind.Db
 
         private void FinalizeIndexes(IDb db, Dictionary<byte[], IndexInfo> indexes, Span<byte> blockNumberBytes)
         {
-            if (indexes.Any())
+            if (indexes.Count == 0) return;
+
+            Span<byte> dbKey = stackalloc byte[indexes.First().Key.Length + sizeof(int)];
+
+            foreach (IndexInfo? indexInfo in indexes.Values)
             {
-                Span<byte> dbKey = stackalloc byte[indexes.First().Key.Length + sizeof(int)];
+                CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(_tempFileHandle, blockNumberBytes), dbKey);
+                db.PutSpan(dbKey, CreateIndexValue(indexInfo.Offset, indexInfo.Length, indexInfo.IsTemp, indexInfo.LastBlockNumber));
 
-                foreach (IndexInfo? indexInfo in indexes.Values)
-                {
-                    CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(_tempFileHandle, blockNumberBytes), dbKey);
-                    db.PutSpan(dbKey, CreateIndexValue(indexInfo.Offset, indexInfo.Length, indexInfo.IsTemp, indexInfo.LastBlockNumber));
-
-                    indexInfo.Unlock();
-                }
+                indexInfo.Unlock();
             }
         }
 
@@ -281,45 +294,26 @@ namespace Nethermind.Db
 
             CreateDbKey(key, blockNumber, dbKey);
 
-            //iterator.SeekForPrev(dbKey);
-            MeasureSeekForPrev(iterator, dbKey);
+            var watch = Stopwatch.StartNew();
+            iterator.SeekForPrev(dbKey);
 
             if (iterator.Valid() && // Found key is less than or equal to the requested one
                 iterator.Key().AsSpan()[..key.Length].SequenceEqual(key))
             {
+                SeekForPrevHitStats.Add(watch.Elapsed);
+
                 IndexInfo latestIndex = new(key, iterator.Value());
 
                 if (latestIndex.IsTemp)
                     return latestIndex;
             }
+            else
+            {
+                SeekForPrevMissStats.Add(watch.Elapsed);
+            }
 
             long freePage = GetFreePage() ?? GrowFile(_tempFileStream, FixedLength);
             return new(key, freePage, 0, true, 0);
-        }
-
-        public class Measurement
-        {
-            private double TotalMs;
-            private int Count;
-
-            public void Add(TimeSpan elapsed)
-            {
-                TotalMs += elapsed.TotalMilliseconds;
-                Count++;
-            }
-
-            public TimeSpan Average => Count == 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(TotalMs / Count);
-
-            public override string ToString() => $"{Average:g} ({Count})";
-        }
-
-        public Measurement SeekForPrevMeasurement { get; set; } = new();
-
-        private void MeasureSeekForPrev(IIterator<byte[], byte[]> iterator, ReadOnlySpan<byte> key)
-        {
-            var watch = Stopwatch.StartNew();
-            iterator.SeekForPrev(key);
-            SeekForPrevMeasurement.Add(watch.Elapsed);
         }
 
         private void AddFreePage(IndexInfo indexInfo)
@@ -352,7 +346,6 @@ namespace Nethermind.Db
             }
         }
 
-
         private long? GetFreePage()
         {
             byte[] freePages = _mainDb.Get(FreePagesKey);
@@ -371,14 +364,13 @@ namespace Nethermind.Db
             return null;
         }
 
-
         /// <summary>
         /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="buffer"/>
         /// </summary>
         public void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
         {
             key.CopyTo(buffer);
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Slice(key.Length), blockNumber);
+            BinaryPrimitives.WriteInt32BigEndian(buffer[key.Length..], blockNumber);
         }
 
         private ReadOnlySpan<byte> LoadData(SafeFileHandle fileHandle, IndexInfo indexInfo, Span<byte> buffer)
