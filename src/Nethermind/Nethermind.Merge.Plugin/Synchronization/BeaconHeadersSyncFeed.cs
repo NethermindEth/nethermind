@@ -43,7 +43,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         {
             // LowestInsertedBeaconHeader is set in blocktree when BeaconHeaderInsert is set.
             // TODO: Probably should move that logic here so that `LowestInsertedBeaconHeader` is set only once per batch.
-v        }
+        }
     }
 
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
