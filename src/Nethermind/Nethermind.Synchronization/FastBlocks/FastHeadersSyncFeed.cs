@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    batch = BuildNewBatch();
+                    batch = ProcessPersistedHeadersOrBuildNewBatch();
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -339,20 +339,23 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch? BuildNewBatch()
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch()
         {
             HeadersSyncBatch? batch = null;
             do
             {
-                batch = new();
-                batch.StartNumber = Math.Max(HeadersDestinationNumber,
-                    _lowestRequestedHeaderNumber - _headersRequestSize);
-                batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber,
-                    _headersRequestSize);
-                _lowestRequestedHeaderNumber = batch.StartNumber;
-
+                batch = BuildNewBatch();
                 batch = ProcessPersistedPortion(batch);
             } while (batch is null && ShouldBuildANewBatch());
+            return batch;
+        }
+
+        private HeadersSyncBatch BuildNewBatch()
+        {
+            HeadersSyncBatch batch = new();
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
+            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
+            _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
 
@@ -504,20 +507,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
                 BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
                 if (nextHeader is null) break;
+                headers.Add(nextHeader);
                 lastHeader = nextHeader;
-                headers.Add(lastHeader);
             }
 
-            ArrayPoolList<BlockHeader> reversedBatch = new ArrayPoolList<BlockHeader>(headers.Count);
-            foreach (BlockHeader blockHeader in headers.Reverse())
-            {
-                reversedBatch.Add(blockHeader);
-            }
+            headers.AsSpan().Reverse();
 
             using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
             newBatchToProcess.StartNumber = lastHeader.Number;
             newBatchToProcess.RequestSize = headers.Count;
-            newBatchToProcess.Response = reversedBatch;
+            newBatchToProcess.Response = headers;
             if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
             InsertHeaders(newBatchToProcess);
 
@@ -678,6 +677,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncQueueReport.Update(HeadersInQueue);
             return added;
 
+            // Well, its the last in the batch, but first processed.
             bool ValidateFirstHeader(BlockHeader header)
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;

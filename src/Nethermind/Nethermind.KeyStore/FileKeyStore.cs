@@ -71,7 +71,7 @@ namespace Nethermind.KeyStore
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _keyStoreEncoding = _config.KeyStoreEncoding.Equals("UTF-8", StringComparison.InvariantCultureIgnoreCase)
+            _keyStoreEncoding = _config.KeyStoreEncoding.Equals("UTF-8", StringComparison.OrdinalIgnoreCase)
                 ? new UTF8Encoding(false)
                 : Encoding.GetEncoding(_config.KeyStoreEncoding);
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);

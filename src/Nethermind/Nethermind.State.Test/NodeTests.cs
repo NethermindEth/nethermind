@@ -14,18 +14,6 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.Children)]
     public class NodeTest
     {
-        [OneTimeSetUp]
-        public void Setup()
-        {
-            TrieNode.AllowBranchValues = true;
-        }
-
-        [OneTimeTearDown]
-        public void TearDown()
-        {
-            TrieNode.AllowBranchValues = false;
-        }
-
         [Test]
         public void Two_children_store_encode()
         {
@@ -141,7 +129,6 @@ namespace Nethermind.Store.Test
 
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
-            TrieNode.AllowBranchValues = true;
             TreePath emptyPath = TreePath.Empty;
             CappedArray<byte> rlp = node.RlpEncode(null, ref emptyPath);
             node.ResolveKey(null, ref emptyPath, true);
