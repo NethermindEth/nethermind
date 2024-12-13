@@ -23,6 +23,9 @@ using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
+
+    public readonly record struct GasConsumed(long SpentGas, long OperationGas);
+
     public sealed class TransactionProcessor(
         ISpecProvider? specProvider,
         IWorldState? worldState,
@@ -601,13 +604,13 @@ namespace Nethermind.Evm.TransactionProcessing
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
-            out long spentGas,
+            out GasConsumed gasConsumed,
             out byte statusCode)
         {
             _ = ShouldValidate(opts);
 
             substate = null;
-            spentGas = tx.GasLimit;
+            long spentGas = tx.GasLimit;
             statusCode = StatusCode.Failure;
 
             long unspentGas = gasAvailable;
@@ -693,7 +696,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
+                gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
+                    env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
                 goto Complete;
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
@@ -756,7 +760,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
         }
 
-        protected virtual long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+        protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
             in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
         {
             long spentGas = tx.GasLimit;
@@ -766,7 +770,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                operationGas = spentGas;
+                operationGas -= unspentGas;
                 spentGas = Math.Max(spentGas, floorGas);
 
                 long totalToRefund = codeInsertRefund;
@@ -795,7 +799,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 operationGas -= refund;
             }
 
-            return spentGas;
+            return new GasConsumed(spentGas, operationGas);
         }
 
         [DoesNotReturn]
