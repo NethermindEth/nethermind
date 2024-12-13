@@ -97,34 +97,18 @@ namespace Nethermind.Blockchain
         {
             private readonly IStateReader _stateReader;
             private readonly ReaderWriterLockSlim _lock = new();
-            private IScopedStateReader _reader;
+            private Hash256? _stateRoot;
 
             public HeadAccountStateProvider(IBlockTree blockTree, IStateReader stateReader)
             {
                 _stateReader = stateReader;
                 blockTree.BlockAddedToMain += OnHeadChanged;
-
-                // start with the most recent
-                _reader = _stateReader.ForStateRoot();
             }
 
             private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
             {
-                IScopedStateReader current = _stateReader.ForStateRoot(e.Block.StateRoot);
-                IScopedStateReader previous;
-
-                _lock.EnterWriteLock();
-                try
-                {
-                    previous = _reader;
-                    _reader = current;
-                }
-                finally
-                {
-                    _lock.ExitWriteLock();
-                }
-
-                previous.Dispose();
+                //memorize only state root - do not open reader
+                _stateRoot = e.Block.StateRoot;
             }
 
             public bool TryGetAccount(Address address, out AccountStruct account)
@@ -132,7 +116,13 @@ namespace Nethermind.Blockchain
                 _lock.EnterReadLock();
                 try
                 {
-                    return _reader.TryGetAccount(address, out account);
+                    //open and dispose new reader for a single get operation - might have a severe performance penalty
+                    //changed to ensure no pending readers block page reuse in paprika
+                    using IScopedStateReader current = _stateRoot is null || !_stateReader.HasStateForRoot(_stateRoot) ?
+                        _stateReader.ForStateRoot() :
+                        _stateReader.ForStateRoot(_stateRoot);
+
+                    return current.TryGetAccount(address, out account);
                 }
                 finally
                 {
@@ -140,7 +130,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            public byte[]? GetCode(Address address) => _stateReader.GetCode(_reader.StateRoot, address);
+            public byte[]? GetCode(Address address) => _stateReader.GetCode(_stateRoot, address);
 
             public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);
 

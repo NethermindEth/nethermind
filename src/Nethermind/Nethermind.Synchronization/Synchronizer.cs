@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -44,7 +45,8 @@ namespace Nethermind.Synchronization
         SyncDbTuner syncDbTuner,
         MallocTrimmer mallocTrimmer,
 #pragma warning restore CS9113 // Parameter is unread.
-        IProcessExitSource exitSource)
+        IProcessExitSource exitSource,
+        IStateFactory stateFactory)
         : ISynchronizer
     {
         private const int FeedsTerminationTimeout = 5_000;
@@ -89,6 +91,7 @@ namespace Nethermind.Synchronization
             WireMultiSyncModeSelector();
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+            SyncModeSelector.Changing += SyncModeSelector_Changing;
 
             if (syncConfig.GCOnFeedFinished)
             {
@@ -263,6 +266,14 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(fastHeaderComponent.Feed);
             WireFeedWithModeSelector(oldBodiesComponent.Feed);
             WireFeedWithModeSelector(oldReceiptsComponent.Feed);
+        }
+
+        private void SyncModeSelector_Changing(object? sender, SyncModeChangedEventArgs e)
+        {
+            bool wasNotSyncing = !e.Previous.HasFlag(SyncMode.SnapSync) && !e.Previous.HasFlag(SyncMode.StateNodes);
+            bool isSyncing = e.Current.HasFlag(SyncMode.SnapSync) || e.Current.HasFlag(SyncMode.StateNodes);
+            if (wasNotSyncing && isSyncing)
+                stateFactory.ResetAccessor();
         }
 
         public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
