@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -126,7 +127,8 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+        Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -138,7 +140,8 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+        Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

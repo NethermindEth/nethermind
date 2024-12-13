@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Proofs
@@ -85,12 +86,14 @@ namespace Nethermind.Evm.Tracing.Proofs
             Accounts.Add(address);
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+            Hash256? stateRoot = null)
         {
             Output = output;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+            Hash256? stateRoot = null)
         {
             Output = output;
         }

@@ -639,7 +639,7 @@ public class ContractBasedValidatorTests
             .Do(args =>
                 args.Arg<ITxTracer>().MarkAsSuccess(
                     args.Arg<Transaction>().To,
-                    0,
+                    new GasConsumed(0, 0),
                     SetupAbiAddresses(_initialValidators),
                     []));
     }

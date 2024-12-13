@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -12,21 +13,26 @@ namespace Nethermind.Evm.Tracing
         public byte[]? ReturnValue { get; set; }
 
         public long GasSpent { get; set; }
+        public long OperationGas { get; set; }
 
         public string? Error { get; set; }
 
         public byte StatusCode { get; set; }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+            Hash256? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            GasSpent = gasSpent.SpentGas;
+            OperationGas = gasSpent.OperationGas;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+            Hash256? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            GasSpent = gasSpent.SpentGas;
+            OperationGas = gasSpent.OperationGas;
             Error = error;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Failure;

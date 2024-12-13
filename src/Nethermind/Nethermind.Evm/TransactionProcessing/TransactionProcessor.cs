@@ -168,8 +168,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
-            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
+            PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
             // Finalize
             if (restore)
@@ -610,7 +610,7 @@ namespace Nethermind.Evm.TransactionProcessing
             _ = ShouldValidate(opts);
 
             substate = null;
-            long spentGas = tx.GasLimit;
+            gasConsumed = new (tx.GasLimit, tx.GasLimit);
             statusCode = StatusCode.Failure;
 
             long unspentGas = gasAvailable;
@@ -710,7 +710,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                header.GasUsed += spentGas;
+                header.GasUsed += gasConsumed.SpentGas;
         }
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
