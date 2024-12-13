@@ -19,6 +19,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 
@@ -236,6 +237,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
+
+            Transaction firstOrDefault = block.Transactions.FirstOrDefault();
+            new NLogLogger().Warn($"Starting trace of block {block}, first transaction {firstOrDefault?.Hash} with GasPrice {firstOrDefault?.GasPrice}");
 
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));

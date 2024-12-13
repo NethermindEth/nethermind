@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging.NLog;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 namespace Nethermind.Core
@@ -20,6 +21,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        private static readonly Hash256 SpecialHash = new Hash256("0xcb51de5880581f115fe8e3cf8f404de56a56343154db20d7b0daa2ac7ca0cba1");
         public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
 
@@ -42,7 +44,21 @@ namespace Nethermind.Core
         public bool IsOPSystemTransaction { get; set; }
 
         public UInt256 Nonce { get; set; }
-        public UInt256 GasPrice { get; set; }
+
+        private UInt256 _gasPrice;
+        public UInt256 GasPrice
+        {
+            get => _gasPrice;
+            set
+            {
+                _gasPrice = value;
+                if (Hash == SpecialHash)
+                {
+                    new NLogLogger().Warn($"GasPrice for transaction {Hash} has been set to {value} at {new StackTrace(true)}");
+                }
+            }
+        }
+
         public UInt256? GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
