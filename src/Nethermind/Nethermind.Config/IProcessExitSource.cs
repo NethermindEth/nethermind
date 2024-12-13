@@ -16,6 +16,7 @@ public interface IProcessExitSource
 
 public class ProcessExitSource : IProcessExitSource
 {
+    private static readonly CancellationToken _cancelledToken = new(canceled: true);
     private CancellationTokenSource _cancellationTokenSource;
     private readonly TaskCompletionSource _exitResult = new();
 
@@ -38,5 +39,5 @@ public class ProcessExitSource : IProcessExitSource
 
     public Task ExitTask => _exitResult.Task;
 
-    public CancellationToken Token => _cancellationTokenSource.Token;
+    public CancellationToken Token => _cancellationTokenSource?.Token ?? _cancelledToken;
 }

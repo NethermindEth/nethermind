@@ -25,6 +25,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string EthDetails { get; set; }
         public string LastSignal { get; set; }
 
+        public bool Inbound { get; set; }
+
         public PeerInfo()
         {
         }
@@ -45,12 +47,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IsBootnode = peer.Node.IsBootnode;
             IsStatic = peer.Node.IsStatic;
             Enode = peer.Node.ToString(Node.Format.ENode);
+            Inbound = peer.InSession is not null;
 
             if (includeDetails)
             {
                 ClientType = peer.Node.ClientType.ToString();
                 EthDetails = peer.Node.EthDetails;
-                LastSignal = (peer.InSession ?? peer.OutSession)?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
+                LastSignal = (peer.InSession ?? peer.OutSession!).LastPingUtc.ToString(CultureInfo.InvariantCulture);
+
             }
         }
     }

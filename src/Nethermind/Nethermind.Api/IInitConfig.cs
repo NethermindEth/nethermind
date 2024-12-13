@@ -33,9 +33,6 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
     string ChainSpecPath { get; set; }
 
-    [ConfigItem(Description = "The path to the chain spec file for Hive tests.", DefaultValue = "chainspec/test.json")]
-    string HiveChainSpecPath { get; set; }
-
     [ConfigItem(Description = "The base path for all Nethermind databases.", DefaultValue = "db")]
     string BaseDbPath { get; set; }
 

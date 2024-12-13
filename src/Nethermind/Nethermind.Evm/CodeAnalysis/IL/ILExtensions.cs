@@ -19,47 +19,70 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.IL;
 
+public static class WordEmit
+{
+    public static void CallGetter<T>(this Emit<T> il, MethodInfo getterInfo, bool isLittleEndian)
+    {
+        il.Call(getterInfo);
+        if (isLittleEndian)
+        {
+            il.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), [getterInfo.ReturnType]));
+        }
+    }
+
+    public static void CallSetter<T>(this Emit<T> il, MethodInfo setterInfo, bool isLittleEndian)
+    {
+        if (isLittleEndian)
+        {
+            il.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), [setterInfo.GetParameters()[0].ParameterType]));
+        }
+        il.Call(setterInfo);
+    }
+}
 /// <summary>
 /// Extensions for <see cref="ILGenerator"/>.
 /// </summary>
 static class EmitExtensions
 {
-    public static MethodInfo GetReadUnalignedMethodInfo<TResult>()
-    {
-        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.ReadUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
-        return method.MakeGenericMethod(typeof(TResult));
-    }
+    public static class UnsafeEmit {
+        public static MethodInfo GetReadUnalignedMethodInfo<TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.ReadUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
+            return method.MakeGenericMethod(typeof(TResult));
+        }
 
-    public static MethodInfo GetWriteUnalignedMethodInfo<TResult>()
-    {
-        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.WriteUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
-        return method.MakeGenericMethod(typeof(TResult));
-    }
+        public static MethodInfo GetWriteUnalignedMethodInfo<TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.WriteUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
+            return method.MakeGenericMethod(typeof(TResult));
+        }
 
-    public static MethodInfo GetAsMethodInfo<TOriginal, TResult>()
-    {
-        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.As) && m.ReturnType.IsByRef);
-        return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
-    }
+        public static MethodInfo GetAsMethodInfo<TOriginal, TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.As) && m.ReturnType.IsByRef);
+            return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
+        }
 
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
-    public unsafe static MethodInfo GetCastMethodInfo<TOriginal, TResult>() where TResult : struct
-    {
-        MethodInfo method = typeof(EmitExtensions).GetMethod(nameof(EmitExtensions.ReinterpretCast));
-        return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
-    }
-    public unsafe static Span<TResult> ReinterpretCast<TOriginal, TResult>(Span<TOriginal> original)
-        where TOriginal : struct
-        where TResult : struct
-    {
-        Span<TResult> result = Span<TResult>.Empty;
-        fixed (TOriginal* ptr = original)
+        public unsafe static MethodInfo GetCastMethodInfo<TOriginal, TResult>() where TResult : struct
         {
-            result = new Span<TResult>(ptr, original.Length * sizeof(TOriginal) / sizeof(TResult));
+            MethodInfo method = typeof(UnsafeEmit).GetMethod(nameof(UnsafeEmit.ReinterpretCast));
+            return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
         }
-        return result;
-    }
+        public unsafe static Span<TResult> ReinterpretCast<TOriginal, TResult>(Span<TOriginal> original)
+            where TOriginal : struct
+            where TResult : struct
+        {
+            Span<TResult> result = Span<TResult>.Empty;
+            fixed (TOriginal* ptr = original)
+            {
+                result = new Span<TResult>(ptr, original.Length * sizeof(TOriginal) / sizeof(TResult));
+            }
+            return result;
+        }
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+
+    }
 
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
     public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
@@ -78,6 +101,22 @@ static class EmitExtensions
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
+    public static void LoadRefArgument<T, U>(this Emit<T> il, ushort index)
+        => il.LoadRefArgument(index, typeof(U));
+
+    public static void LoadRefArgument<T>(this Emit<T> il, ushort index, Type targetType)
+    {
+        il.LoadArgument(index);
+        if (targetType.IsValueType)
+        {
+            il.LoadObject(targetType);
+        }
+        else
+        {
+            il.LoadIndirect(targetType);
+        }
+    }
+
     public static void Print<T>(this Emit<T> il, Local local)
     {
         if (local.LocalType.IsValueType)
@@ -90,10 +129,7 @@ static class EmitExtensions
             il.LoadLocal(local);
             il.CallVirtual(local.LocalType.GetMethod("ToString", []));
         }
-#if DEBUG
         il.Call(typeof(Debug).GetMethod(nameof(Debug.WriteLine), [typeof(string)]));
-#endif
-        il.Call(typeof(Console).GetMethod(nameof(Console.WriteLine), [typeof(string)]));
     }
 
 
@@ -205,32 +241,28 @@ static class EmitExtensions
 
         int argIndex = op.Arguments.Value;
         byte[] zpbytes = data[argIndex].AsSpan().SliceWithZeroPadding(0, (int)argSize, PadDirection.Left).ToArray();
-        if(BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(zpbytes);
-        }
-        
+
         switch (op.Operation)
         {
             case Instruction.PUSH1:
                 il.LoadConstant(zpbytes[0]);
-                il.Call(Word.SetByte0);
+                il.CallSetter(Word.SetByte0, BitConverter.IsLittleEndian);
                 break;
             case Instruction.PUSH2:
-                il.LoadConstant(BinaryPrimitives.ReadUInt16LittleEndian(zpbytes));
-                il.Call(Word.SetUInt0);
+                il.LoadConstant(BinaryPrimitives.ReadUInt16BigEndian(zpbytes));
+                il.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                 break;
             case Instruction.PUSH3:
             case Instruction.PUSH4:
-                il.LoadConstant(BinaryPrimitives.ReadUInt32LittleEndian(zpbytes));
-                il.Call(Word.SetUInt0);
+                il.LoadConstant(BinaryPrimitives.ReadUInt32BigEndian(zpbytes));
+                il.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                 break;
             case Instruction.PUSH5:
             case Instruction.PUSH6:
             case Instruction.PUSH7:
             case Instruction.PUSH8:
-                il.LoadConstant(BinaryPrimitives.ReadUInt64LittleEndian(zpbytes));
-                il.Call(Word.SetULong0);
+                il.LoadConstant(BinaryPrimitives.ReadUInt64BigEndian(zpbytes));
+                il.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                 break;
         }
     }
@@ -309,7 +341,7 @@ static class EmitExtensions
         il.LoadLocal(count);
         il.BranchIfEqual(end);
 
-        // emit body of loop 
+        // emit body of loop
         action(il, i);
 
         // i++
@@ -360,5 +392,13 @@ static class EmitExtensions
     {
         il.LoadConstant(true);
         il.BranchIfTrue(label);
+    }
+
+    public static Sigil.Label AddExceptionLabel<T>(this Emit<T> il, Dictionary<EvmExceptionType, Sigil.Label> dict, EvmExceptionType evmExceptionType)
+    {
+        if(!dict.ContainsKey(evmExceptionType)) {
+            dict[evmExceptionType] = il.DefineLabel();
+        }
+        return dict[evmExceptionType];
     }
 }

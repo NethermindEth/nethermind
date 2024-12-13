@@ -16,8 +16,11 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -212,41 +215,27 @@ internal struct Word
         }
     }
 
-    public UInt256 UInt256
+    private static Vector256<byte> shuffler = Vector256.Create(
+        (byte)
+        31, 30, 29, 28, 27, 26, 25, 24,
+        23, 22, 21, 20, 19, 18, 17, 16,
+        15, 14, 13, 12, 11, 10, 9, 8,
+        7, 6, 5, 4, 3, 2, 1, 0);
+
+    public unsafe UInt256 UInt256
     {
         get
         {
-            ulong u3 = _ulong3;
-            ulong u2 = _ulong2;
-            ulong u1 = _ulong1;
-            ulong u0 = _ulong0;
-
-            if (BitConverter.IsLittleEndian)
-            {
-                u3 = BinaryPrimitives.ReverseEndianness(u3);
-                u2 = BinaryPrimitives.ReverseEndianness(u2);
-                u1 = BinaryPrimitives.ReverseEndianness(u1);
-                u0 = BinaryPrimitives.ReverseEndianness(u0);
-            }
-
-            return new UInt256(u0, u1, u2, u3);
+            var data = Unsafe.As<byte, Vector256<byte>>(ref _buffer[0]);
+            Vector256<byte> convert = Avx2.Shuffle(data, shuffler);
+            Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Vector256<byte>, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+            return Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _ulong3 = BinaryPrimitives.ReverseEndianness(value.u3);
-                _ulong2 = BinaryPrimitives.ReverseEndianness(value.u2);
-                _ulong1 = BinaryPrimitives.ReverseEndianness(value.u1);
-                _ulong0 = BinaryPrimitives.ReverseEndianness(value.u0);
-            }
-            else
-            {
-                _ulong3 = value.u3;
-                _ulong2 = value.u2;
-                _ulong1 = value.u1;
-                _ulong0 = value.u0;
-            }
+            Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
+            Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
+            Unsafe.WriteUnaligned(ref _buffer[0], Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Vector256<byte>>(ref convert), shuffler));
         }
     }
 
@@ -254,25 +243,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_uInt0);
-            }
-            else
-            {
-                return _uInt0;
-            }
+            return _uInt0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _uInt0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _uInt0 = value;
-            }
+            _uInt0 = value;
         }
     }
 
@@ -280,25 +255,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_uByte0);
-            }
-            else
-            {
-                return _uByte0;
-            }
+            return _uByte0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _uByte0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _uByte0 = value;
-            }
+            _uByte0 = value;
         }
     }
 
@@ -306,25 +267,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_sInt0);
-            }
-            else
-            {
-                return _sInt0;
-            }
+            return _sInt0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _sInt0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _sInt0 = value;
-            }
+            _sInt0 = value;
         }
     }
 
@@ -332,25 +279,11 @@ internal struct Word
     {
         get
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return BinaryPrimitives.ReverseEndianness(_ulong0);
-            }
-            else
-            {
-                return _ulong0;
-            }
+            return _ulong0;
         }
         set
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                _ulong0 = BinaryPrimitives.ReverseEndianness(value);
-            }
-            else
-            {
-                _ulong0 = value;
-            }
+            _ulong0 = value;
         }
     }
 

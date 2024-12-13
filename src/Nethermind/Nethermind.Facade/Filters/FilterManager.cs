@@ -163,8 +163,10 @@ namespace Nethermind.Blockchain.Filters
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
             {
-                StoreLogs(filter, txReceipt, ref _logIndex);
+                StoreLogs(filter, txReceipt, _logIndex);
             }
+
+            _logIndex += txReceipt.Logs?.Length ?? 0;
         }
 
         private void AddBlock(Block block)
@@ -191,7 +193,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, ref long logIndex)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex)
         {
             if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
             {

@@ -33,12 +33,6 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
 
-        public long? LowestInsertedReceiptBlockNumber
-        {
-            get => 0;
-            set { }
-        }
-
         public long MigratedBlockNumber { get; set; } = 0;
 
         public bool HasBlock(long blockNumber, Hash256 hash)

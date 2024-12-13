@@ -168,19 +168,18 @@ public static class IlAnalyzer
                     continue;
                 }
 
-                var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig);
+                var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig, out int[] JumpDestinations);
                 ilinfo.AddMapping(segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
                 if (vmConfig.AggressivePartialAotMode)
                 {
-                    for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
+                    for (int k = 0; k < JumpDestinations.Length; k++)
                     {
-                        ilinfo.AddMapping(segmentExecutionCtx.JumpDestinations[k], segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
+                        ilinfo.AddMapping(JumpDestinations[k], segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
                     }
                 }
                 segmentsFound.Add(segmentExecutionCtx);
             }
 
-            Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
             if(segmentsFound.Count == 0)
             {
                 return;
@@ -198,6 +197,7 @@ public static class IlAnalyzer
                 ];
                 ilinfo.IlevmChunks = combined.ToArray();
             }
+            Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
         }
 
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
@@ -224,7 +224,6 @@ public static class IlAnalyzer
                 }
             }
 
-            Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
             if (patternsFound.Count == 0)
             {
                 return;
@@ -242,6 +241,7 @@ public static class IlAnalyzer
 
                 ilinfo.IlevmChunks = combined.ToArray();
             }
+            Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
         }
 
         switch (mode)

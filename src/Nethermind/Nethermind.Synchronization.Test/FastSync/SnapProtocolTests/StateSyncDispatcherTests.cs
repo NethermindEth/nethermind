@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Net;
 using FluentAssertions;
+using Nethermind.Core.Test;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests;
@@ -43,7 +44,7 @@ public class StateSyncDispatcherTests
     {
         _logManager = LimboLogs.Instance;
 
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
+        IBlockTree blockTree = CachedBlockTreeBuilder.OfLength((int)BlockTree.BestSuggestedHeader!.Number);
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
         _pool.Start();
@@ -57,6 +58,7 @@ public class StateSyncDispatcherTests
     public async Task TearDown()
     {
         await _pool.DisposeAsync();
+        await _dispatcher.DisposeAsync();
     }
 
     [Test]

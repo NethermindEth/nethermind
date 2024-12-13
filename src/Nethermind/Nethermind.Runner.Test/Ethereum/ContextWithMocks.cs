@@ -119,6 +119,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 ApiWithNetworkServiceContainer = new ContainerBuilder()
                     .AddSingleton(Substitute.For<ISyncModeSelector>())
                     .AddSingleton(Substitute.For<ISyncProgressResolver>())
+                    .AddSingleton(Substitute.For<ISyncPointers>())
                     .AddSingleton(Substitute.For<ISynchronizer>())
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())

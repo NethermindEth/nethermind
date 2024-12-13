@@ -771,11 +771,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         if (_pruningStrategy.PruningEnabled)
         {
-            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak?.ToShortString()} in block {commitSet.BlockNumber}");
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root?.Keccak?.ToShortString()} in block {commitSet.BlockNumber}");
         }
 
         long start = Stopwatch.GetTimestamp();
@@ -784,7 +784,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         TreePath path = TreePath.Empty;
         commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
-        // The amount of change in the subtrees are not balanced at all. So their writes ares buffered here
+        // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
         // This unfortunately is not atomic
         // However, anything that we are trying to persist here should still be in dirty cache.
@@ -972,6 +972,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 ParallelPersistBlockCommitSet(blockCommitSet);
             }
             writeBatch.Dispose();
+            _nodeStorage.Flush(onlyWal: false);
 
             if (candidateSets.Count == 0)
             {

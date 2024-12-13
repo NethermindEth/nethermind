@@ -16,8 +16,13 @@ public class Metrics
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
 
+    [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
-    public static long SelfDestructs { get; set; }
+    public static long SelfDestructs => _selfDestructs.GetTotalValue();
+    private static readonly ZeroContentionCounter _selfDestructs = new();
+    [Description("Number of calls to other contracts on thread.")]
+    public static long ThreadLocalSelfDestructs => _selfDestructs.ThreadLocalValue;
+    public static void IncrementSelfDestructs() => _selfDestructs.Increment();
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]

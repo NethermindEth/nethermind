@@ -24,12 +24,14 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
@@ -84,6 +86,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         if (ShouldRunSteps(api))
         {
             api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+            api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
         }
     }
@@ -165,7 +168,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         IContainer container = builder.Build();
 
         _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Append(container);
+        _api.DisposeStack.Push((IAsyncDisposable)container);
 
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
