@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                    _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree?.RootHash}, startingHash:{startingHash}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
