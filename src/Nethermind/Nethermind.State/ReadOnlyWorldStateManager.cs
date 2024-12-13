@@ -37,6 +37,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     public IStateReader GlobalStateReader { get; }
 
     public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
+    public bool SupportHashLookup => _readOnlyTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
