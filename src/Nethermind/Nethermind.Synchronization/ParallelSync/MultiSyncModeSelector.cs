@@ -416,6 +416,14 @@ namespace Nethermind.Synchronization.ParallelSync
                           notHasJustStartedFullSync &&
                           notNeedToWaitForHeaders;
 
+            if (_logger.IsInfo && _syncProgressResolver.IsSnapGetRangesFinished())
+            {
+                LogDetailedSyncModeChecks("FAST",
+                    (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
+                    (nameof(notInAStickyFullSync), notInAStickyFullSync),
+                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
+            }
+
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FAST",
@@ -459,6 +467,17 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInStateSync &&
                           stateSyncFinished &&
                           notNeedToWaitForHeaders;
+
+            if (_logger.IsInfo && _syncProgressResolver.IsSnapGetRangesFinished())
+            {
+                LogDetailedSyncModeChecks("FULL",
+                    (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
+                    (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
+                    (nameof(notInFastSync), notInFastSync),
+                    (nameof(notInStateSync), notInStateSync),
+                    (nameof(stateSyncFinished), stateSyncFinished));
+            }
+
 
             if (_logger.IsTrace)
             {
@@ -607,6 +626,15 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInAStickyFullSync &&
                           notNeedToWaitForHeaders;
 
+            if (_logger.IsInfo && _syncProgressResolver.IsSnapGetRangesFinished())
+            {
+                LogDetailedSyncModeChecks("STATE",
+                    ($"{nameof(notInFastSync)}||{nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
+                    (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
+                    (nameof(notInAStickyFullSync), notInAStickyFullSync),
+                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
+            }
+
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("STATE",
@@ -631,6 +659,13 @@ namespace Nethermind.Synchronization.ParallelSync
             bool snapRangesFinished = _syncProgressResolver.IsSnapGetRangesFinished();
 
             bool result = isInStateSync && (snapSyncDisabled || snapRangesFinished);
+
+            if (_logger.IsInfo && _syncProgressResolver.IsSnapGetRangesFinished())
+            {
+                LogDetailedSyncModeChecks("STATE_NODES",
+                    (nameof(isInStateSync), isInStateSync),
+                    ($"{nameof(snapSyncDisabled)}||{nameof(snapRangesFinished)}", snapSyncDisabled || snapRangesFinished));
+            }
 
             if (_logger.IsTrace)
             {
@@ -780,7 +815,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             bool result = checks.All(c => c.IsSatisfied);
             string text = $"{(result ? " * " : "   ")}{syncType,-20}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
-            _logger.Trace(text);
+            _logger.Info(text);
         }
 
         private ref struct Snapshot
