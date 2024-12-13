@@ -466,6 +466,8 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
                 {
+                    UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice;
+                    Logger.Warn($"MINER_PREMIUM_IS_NEGATIVE, BaseFeePerGas:{header.BaseFeePerGas}, tx_hash {tx.Hash}, tx.IsFree:{tx.IsFree()}, tx.Supports1559 {tx.Supports1559}, fee_cap {feeCap}");
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                     return TransactionResult.MinerPremiumNegative;
                 }
