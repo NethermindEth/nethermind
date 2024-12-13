@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using Nethermind.Config;
@@ -35,6 +36,14 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
+        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
+        {
+            new(Protocol.Eth, 66),
+            new(Protocol.Eth, 67),
+            new(Protocol.Eth, 68),
+            new(Protocol.NodeData, 1)
+        };
+
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
@@ -54,11 +63,10 @@ namespace Nethermind.Network
         private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
-        private readonly HashSet<Capability> _capabilities = new();
+        private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly Regex? _clientIdPattern;
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
@@ -98,7 +106,6 @@ namespace Nethermind.Network
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _snapServer = snapServer;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -413,7 +420,17 @@ namespace Nethermind.Network
         {
             if (_capabilities.Remove(capability))
             {
+                Console.Error.WriteLine($"|NetworkTrace| {capability} is removed from the discovery");
                 if (_logger.IsDebug) _logger.Debug($"Removed supported capability: {capability}");
+            }
+            else
+            {
+                Console.Error.WriteLine($"|NetworkTrace| {capability} is not removed from the discovery");
+
+                foreach (Capability capability1 in _capabilities)
+                {
+                    Console.Error.WriteLine($"Its {capability1}");
+                }
             }
         }
 
