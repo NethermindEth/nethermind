@@ -167,7 +167,7 @@ public abstract class BlockchainTestBase
             specProvider,
             blockValidator,
             rewardCalculator,
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider),
             stateProvider,
             receiptStorage,
             transactionProcessor,

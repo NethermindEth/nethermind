@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -34,8 +35,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public long Activation { get; }
 
-        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock)
-            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISpecProvider specProvider, long transitionBlock)
+            : base(
+                transactionProcessor,
+                specProvider,
+                abiEncoder,
+                contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))
+            )
         {
             Activation = transitionBlock;
         }

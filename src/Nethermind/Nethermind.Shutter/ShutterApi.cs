@@ -45,6 +45,7 @@ public class ShutterApi : IShutterApi
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
+    private readonly ISpecProvider _specProvider;
     private readonly IFileSystem _fileSystem;
     private readonly IKeyStoreConfig _keyStoreConfig;
     private readonly IShutterConfig _cfg;
@@ -73,6 +74,7 @@ public class ShutterApi : IShutterApi
         _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
+        _specProvider = specProvider;
         _slotLength = slotLength;
         _fileSystem = fileSystem;
         _keyStoreConfig = keyStoreConfig;
@@ -85,7 +87,6 @@ public class ShutterApi : IShutterApi
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
-            specProvider.ChainId,
             _cfg,
             _txProcessingEnvFactory,
             blockTree,
@@ -97,7 +98,8 @@ public class ShutterApi : IShutterApi
             Time,
             logManager,
             _slotLength,
-            BlockWaitCutoff);
+            BlockWaitCutoff,
+            specProvider);
 
         TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
 
@@ -155,7 +157,7 @@ public class ShutterApi : IShutterApi
     }
 
     protected virtual IShutterEon InitEon()
-        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
+        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager, _specProvider);
 
     protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
