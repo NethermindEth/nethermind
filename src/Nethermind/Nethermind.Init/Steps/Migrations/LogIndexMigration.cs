@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Timers;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -43,12 +44,11 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IInitConfig _initConfig;
         private const int BatchSize = 100;
         private readonly Channel<(int blockNumber, TxReceipt[] receipts)[]> _blocksChannel;
-        private long _txProcessedPrev;
-        private long _txProcessed;
-        private long _logsProcessedPrev;
-        private long _logsProcessed;
-        private int _blocksProcessed;
+
         private long _totalBlocks;
+
+        private readonly SetReceiptsStats _totalStats = new();
+        private SetReceiptsStats _lastStats = new();
 
         public LogIndexMigration(IApiWithNetwork api) : this(
             api.LogIndexStorage!,
@@ -145,35 +145,29 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
+        private void LogStats(object? sender, ElapsedEventArgs e)
+        {
+            if (_logger.IsInfo)
+            {
+                (SetReceiptsStats last, SetReceiptsStats total) = (_lastStats, _totalStats);
+                _lastStats = new();
+
+                _logger.Info($"LogIndexMigration" +
+                    $"\n\t\tBlocks: {total.BlocksAdded:N0} / {_totalBlocks:N0} ( {(decimal)total.BlocksAdded / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
+                    $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded} )" +
+                    $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
+                    $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
+                    $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}");
+            }
+        }
+
         private async Task RunMigration(CancellationToken token)
         {
             if (_logger.IsInfo) _logger.Info("LogIndexMigration started");
 
             using Timer timer = new(10_000);
             timer.Enabled = true;
-            timer.Elapsed += (_, _) =>
-            {
-                if (_logger.IsInfo)
-                {
-                    var (blocksProcessed, txProcessed, txProcessedPrev, logsProcessed, logsProcessedPrev) = (
-                        _blocksProcessed, _txProcessed, _txProcessedPrev, _logsProcessed, _logsProcessedPrev
-                    );
-
-                    (ExecTimeStats seekForPrevValidMes, ExecTimeStats seekForPrevInvalidMes) = (
-                        _logIndexStorage.SeekForPrevHitStats, _logIndexStorage.SeekForPrevMissStats
-                    );
-                    (_logIndexStorage.SeekForPrevHitStats, _logIndexStorage.SeekForPrevMissStats) = (new(), new());
-
-                    _logger.Info($"LogIndexMigration" +
-                        $"\n\t\tBlocks: {blocksProcessed:N0} / {_totalBlocks:N0} ( {(decimal)blocksProcessed / _totalBlocks * 100:F2} % ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
-                        $"\n\t\tTxs: {txProcessed:N0} ( +{txProcessed - txProcessedPrev:N0} )" +
-                        $"\n\t\tLogs: {logsProcessed:N0} ( +{logsProcessed - logsProcessedPrev:N0} )" +
-                        $"\n\t\tSeekForPrev: {seekForPrevValidMes} / {seekForPrevInvalidMes}");
-
-                    _txProcessedPrev = txProcessed;
-                    _logsProcessedPrev = logsProcessed;
-                }
-            };
+            timer.Elapsed += LogStats;
 
             try
             {
@@ -243,9 +237,10 @@ namespace Nethermind.Init.Steps.Migrations
                         new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = parallelism },
                         (batch, _) =>
                         {
-                            Interlocked.Add(ref _logsProcessed, _logIndexStorage.SetReceipts(batch, isBackwardSync: false, token));
-                            Interlocked.Add(ref _blocksProcessed, batch.Length);
-                            Interlocked.Add(ref _txProcessed, batch.Sum(b => b.receipts.Length));
+                            SetReceiptsStats runStats = _logIndexStorage.SetReceipts(batch, isBackwardSync: false, token);
+                            _lastStats.Add(runStats);
+                            _totalStats.Add(runStats);
+
                             return ValueTask.CompletedTask;
                         }
                     );
@@ -257,9 +252,9 @@ namespace Nethermind.Init.Steps.Migrations
                         if (token.IsCancellationRequested)
                             return;
 
-                        _logsProcessed += _logIndexStorage.SetReceipts(batch, isBackwardSync: false, token);
-                        _blocksProcessed += batch.Length;
-                        _txProcessed += batch.Sum(b => b.receipts.Length);
+                        SetReceiptsStats runStats = _logIndexStorage.SetReceipts(batch, isBackwardSync: false, token);
+                        _lastStats.Add(runStats);
+                        _totalStats.Add(runStats);
                     }
                 }
             }

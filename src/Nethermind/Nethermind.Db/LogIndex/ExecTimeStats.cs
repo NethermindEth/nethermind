@@ -11,7 +11,7 @@ public class ExecTimeStats
     private double _totalMs;
     private int _count;
 
-    public void Add(TimeSpan elapsed)
+    public void Include(TimeSpan elapsed)
     {
         _totalMs += elapsed.TotalMilliseconds;
         _count++;
@@ -20,4 +20,10 @@ public class ExecTimeStats
     public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(_totalMs / _count);
 
     public override string ToString() => $"{Average:g} ({_count})";
+
+    public void Add(ExecTimeStats stats)
+    {
+        _totalMs += stats._totalMs;
+        _count += stats._count;
+    }
 }

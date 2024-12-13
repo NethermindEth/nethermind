@@ -36,13 +36,6 @@ namespace Nethermind.Db
         private readonly ILogger _logger;
         private const int FixedLength = 4096;
 
-        public ExecTimeStats SeekForPrevHitStats { get; set; } = new();
-        public ExecTimeStats SeekForPrevMissStats { get; set; } = new();
-
-        public long NewPageCount { get; set; }
-        public long FreePageCount { get; set; }
-        public long TakePageCount { get; set; }
-
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath)
         {
@@ -160,13 +153,14 @@ namespace Nethermind.Db
             }
         }
 
-        public int SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken)
+        public SetReceiptsStats SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken)
         {
             return SetReceipts([(blockNumber, receipts)], isBackwardSync, cancellationToken);
         }
 
-        public int SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken)
+        public SetReceiptsStats SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken)
         {
+            var stats = new SetReceiptsStats { BlocksAdded = batch.Length };
             var addressIndexes = new Dictionary<byte[], IndexInfo>(Bytes.EqualityComparer);
             var topicIndexes = new Dictionary<byte[], IndexInfo>(Bytes.EqualityComparer);
 
@@ -186,16 +180,20 @@ namespace Nethermind.Db
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
+                        stats.TxAdded++;
+
                         if (receipt.Logs == null)
                             continue;
 
                         foreach (LogEntry log in receipt.Logs)
                         {
+                            stats.LogsAdded++;
+
                             // Handle address logs
                             byte[] addressKey = log.Address.Bytes;
                             if (!addressIndexes.TryGetValue(addressKey, out IndexInfo addressIndexInfo))
                             {
-                                addressIndexInfo = GetOrCreateTempIndex(_addressDb, addressKey, blockNumber);
+                                addressIndexInfo = GetOrCreateTempIndex(_addressDb, addressKey, blockNumber, stats);
                                 addressIndexInfo.Lock();
                                 addressIndexes[addressKey] = addressIndexInfo;
                             }
@@ -206,11 +204,13 @@ namespace Nethermind.Db
                             // Handle topic logs
                             foreach (Hash256 topic in log.Topics)
                             {
+                                stats.TopicsAdded++;
+
                                 Span<byte> topicKey = topic.Bytes;
                                 var topicKeyArray = topicKey.ToArray();
                                 if (!topicIndexes.TryGetValue(topicKeyArray, out IndexInfo topicIndexInfo))
                                 {
-                                    topicIndexInfo = GetOrCreateTempIndex(_topicsDb, topicKey.ToArray(), blockNumber);
+                                    topicIndexInfo = GetOrCreateTempIndex(_topicsDb, topicKey.ToArray(), blockNumber, stats);
                                     topicIndexInfo.Lock();
                                     topicIndexes[topicKeyArray] = topicIndexInfo;
                                 }
@@ -233,7 +233,7 @@ namespace Nethermind.Db
                 ArrayPool<byte>.Shared.Return(indexBuffer);
             }
 
-            return logsProcessed;
+            return stats;
         }
 
         private void ProcessLog(int blockNumber, IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db,
@@ -270,7 +270,8 @@ namespace Nethermind.Db
 
         private void FinalizeIndexes(IDb db, Dictionary<byte[], IndexInfo> indexes, Span<byte> blockNumberBytes)
         {
-            if (indexes.Count == 0) return;
+            if (indexes.Count == 0)
+                return;
 
             Span<byte> dbKey = stackalloc byte[indexes.First().Key.Length + sizeof(int)];
 
@@ -287,7 +288,7 @@ namespace Nethermind.Db
         /// Either finds existing temporary index for the given key and block number
         /// or
         /// </summary>
-        private IndexInfo GetOrCreateTempIndex(IDb db, byte[] key, int blockNumber)
+        private IndexInfo GetOrCreateTempIndex(IDb db, byte[] key, int blockNumber, SetReceiptsStats stats)
         {
             using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
             Span<byte> dbKey = stackalloc byte[key.Length + sizeof(int)];
@@ -300,7 +301,7 @@ namespace Nethermind.Db
             if (iterator.Valid() && // Found key is less than or equal to the requested one
                 iterator.Key().AsSpan()[..key.Length].SequenceEqual(key))
             {
-                SeekForPrevHitStats.Add(watch.Elapsed);
+                stats.SeekForPrevHit.Include(watch.Elapsed);
 
                 IndexInfo latestIndex = new(key, iterator.Value());
 
@@ -309,7 +310,7 @@ namespace Nethermind.Db
             }
             else
             {
-                SeekForPrevMissStats.Add(watch.Elapsed);
+                stats.SeekForPrevMiss.Include(watch.Elapsed);
             }
 
             long freePage = GetFreePage() ?? GrowFile(_tempFileStream, FixedLength);

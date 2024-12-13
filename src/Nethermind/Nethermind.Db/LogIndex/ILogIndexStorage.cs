@@ -15,9 +15,6 @@ public interface ILogIndexStorage : IDisposable
     IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to);
 
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
-    int SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
-    int SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken);
-
-    ExecTimeStats SeekForPrevHitStats { get; set; }
-    ExecTimeStats SeekForPrevMissStats { get; set; }
+    SetReceiptsStats SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
+    SetReceiptsStats SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken);
 }
