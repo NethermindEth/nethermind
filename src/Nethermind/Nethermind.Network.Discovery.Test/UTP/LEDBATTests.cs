@@ -23,7 +23,7 @@ public class LEDBATTests
 
         ledbat.OnAck(500, 0, 150_000, 200_00);
 
-        Assert.IsFalse(ledbat.getIsSlowStart());
+        Assert.That(ledbat.getIsSlowStart(), Is.False);
         Assert.That(ledbat.getSsThres(), Is.EqualTo((1000 * 500) / 2));
     }
 
@@ -33,7 +33,7 @@ public class LEDBATTests
         LEDBAT ledbat = new LEDBAT(LimboLogs.Instance);
         uint initialWindowSize = ledbat.WindowSize;
         ledbat.OnAck(5000, 250000, 0, 0);
-        Assert.Greater(ledbat.WindowSize, initialWindowSize);
+        Assert.That(ledbat.WindowSize, Is.GreaterThan(initialWindowSize));
     }
 
     [Test]
@@ -43,8 +43,8 @@ public class LEDBATTests
         ledbat.OnAck(500, 500_000, 0, 0);
 
         uint maxAllowedCwnd = (uint)(500_000 + ledbat.getALLOWED_INCREASE() * ledbat.getMSS());
-        Assert.LessOrEqual(ledbat.WindowSize, maxAllowedCwnd);
-        Assert.GreaterOrEqual(ledbat.WindowSize, ledbat.getMIN_CWND() * ledbat.getMSS());
+        Assert.That(ledbat.WindowSize, Is.LessThanOrEqualTo(maxAllowedCwnd));
+        Assert.That(ledbat.WindowSize, Is.GreaterThanOrEqualTo(ledbat.getMIN_CWND() * ledbat.getMSS()));
     }
 
     [Test]
@@ -55,6 +55,6 @@ public class LEDBATTests
 
         uint expectedWindowSize = Math.Max(ledbat.WindowSize / 2, ledbat.getMIN_CWND() * ledbat.getMSS());
         Assert.That(ledbat.WindowSize, Is.EqualTo(expectedWindowSize));
-        Assert.IsFalse(ledbat.getIsSlowStart());
+        Assert.That(ledbat.getIsSlowStart(), Is.False);
     }
 }

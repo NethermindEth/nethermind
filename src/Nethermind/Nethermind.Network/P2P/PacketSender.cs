@@ -27,20 +27,12 @@ namespace Nethermind.Network.P2P
 
         public int Enqueue<T>(T message) where T : P2PMessage
         {
-            IByteBuffer buffer;
-            try
+            if (!_context.Channel.IsWritable || !_context.Channel.Active)
             {
-                if (!_context.Channel.IsWritable || !_context.Channel.Active)
-                {
-                    return 0;
-                }
+                return 0;
+            }
 
-                buffer = _messageSerializationService.ZeroSerialize(message);
-            }
-            finally
-            {
-                message.Dispose();
-            }
+            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
             int length = buffer.ReadableBytes;
 
             // Running in background

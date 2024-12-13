@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test.Builders
                 TestObjectInternal.Set(key.Bytes, value);
             }
 
-            TestObjectInternal.Commit(0);
+            TestObjectInternal.Commit();
             TestObjectInternal.UpdateRootHash();
 
             return this;

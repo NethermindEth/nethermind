@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -141,7 +140,7 @@ public class McsLock
             {
                 SignalUnlock(next);
             }
-            // Remove the reference to the next node 
+            // Remove the reference to the next node
             node.Next = null;
         }
 

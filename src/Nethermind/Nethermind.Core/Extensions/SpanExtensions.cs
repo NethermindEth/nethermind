@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        private unsafe static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        private static unsafe string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             if (withEip55Checksum)
             {
@@ -68,7 +68,7 @@ namespace Nethermind.Core.Extensions
 
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                return withZeroX ? "0x0" : "0";
+                return withZeroX ? Bytes.ZeroHexValue : Bytes.ZeroValue;
             }
 
             fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        unsafe readonly struct StringParams(byte* input, int inputLength, int leadingZeros, bool withZeroX)
+        readonly unsafe struct StringParams(byte* input, int inputLength, int leadingZeros, bool withZeroX)
         {
             private readonly byte* _input = input;
             public readonly int InputLength = inputLength;

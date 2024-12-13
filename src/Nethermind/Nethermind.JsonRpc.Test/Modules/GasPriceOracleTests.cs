@@ -309,7 +309,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void AddValidTxAndReturnCount_IfNoTxsInABlock_DefaultPriceAddedToListInstead()
         {
-            Transaction[] transactions = Array.Empty<Transaction>();
+            Transaction[] transactions = [];
             Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);

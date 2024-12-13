@@ -45,16 +45,20 @@ namespace Nethermind.TxPool.Collections
 
         protected virtual IComparer<TValue> GetReplacementComparer(IComparer<TValue> comparer) => comparer;
 
-        protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey)
+        protected override bool InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
                 TryRemoveNonLocked(oldKvp.Key, evicted: false, out _, out _);
             }
 
-            base.InsertCore(key, value, groupKey);
+            if (base.InsertCore(key, value, groupKey))
+            {
+                _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
+                return true;
+            }
 
-            _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
+            return false;
         }
 
         protected override bool Remove(TKey key, out TValue? value)

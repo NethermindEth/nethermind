@@ -54,6 +54,23 @@ namespace Nethermind.Serialization.Rlp
             _data = data;
         }
 
+        public void EncodeArray<T>(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (items is null)
+            {
+                WriteByte(Rlp.NullObjectByte);
+                return;
+            }
+            IRlpStreamDecoder<T> decoder = Rlp.GetStreamDecoder<T>();
+            int contentLength = decoder.GetContentLength(items);
+
+            StartSequence(contentLength);
+
+            foreach (var item in items)
+            {
+                decoder.Encode(this, item, rlpBehaviors);
+            }
+        }
         public void Encode(Block value)
         {
             _blockDecoder.Encode(this, value);
@@ -1447,7 +1464,7 @@ namespace Nethermind.Serialization.Rlp
             int length = ReadSequenceLength();
             if (length is 0)
             {
-                return Array.Empty<byte[]>();
+                return [];
             }
 
             int itemsCount = PeekNumberOfItemsRemaining(Position + length);

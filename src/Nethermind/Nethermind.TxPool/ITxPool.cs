@@ -16,6 +16,8 @@ namespace Nethermind.TxPool
         int GetPendingBlobTransactionsCount();
         Transaction[] GetPendingTransactions();
 
+        public event EventHandler<Block>? TxPoolHeadChanged;
+
         /// <summary>
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
@@ -51,5 +53,6 @@ namespace Nethermind.TxPool
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;
+        public bool AcceptTxWhenNotSynced { get; set; }
     }
 }

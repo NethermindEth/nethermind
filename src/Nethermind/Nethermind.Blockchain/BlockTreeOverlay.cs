@@ -30,12 +30,10 @@ public class BlockTreeOverlay : IBlockTree
     public BlockHeader? BestSuggestedHeader => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
     public Block? BestSuggestedBody => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
     public BlockHeader? BestSuggestedBeaconHeader => _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
-    public BlockHeader? LowestInsertedHeader => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
-
-    public long? LowestInsertedBodyNumber
+    public BlockHeader? LowestInsertedHeader
     {
-        get => _overlayTree.LowestInsertedBodyNumber ?? _baseTree.LowestInsertedBodyNumber;
-        set => _overlayTree.LowestInsertedBodyNumber = value;
+        get => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
+        set => _overlayTree.LowestInsertedHeader = value;
     }
 
     public BlockHeader? LowestInsertedBeaconHeader
@@ -230,6 +228,9 @@ public class BlockTreeOverlay : IBlockTree
 
     public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
         _overlayTree.FindBlock(blockNumber, options) ?? _baseTree.FindBlock(blockNumber, options);
+
+    public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+        _overlayTree.HasBlock(blockNumber, blockHash) || _baseTree.HasBlock(blockNumber, blockHash);
 
     public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         _overlayTree.FindHeader(blockHash, options, blockNumber) ?? _baseTree.FindHeader(blockHash, options, blockNumber);

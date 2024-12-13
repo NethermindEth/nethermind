@@ -127,13 +127,13 @@ public class P2PProtocolHandler(
                     ReportIn(disconnectMessage, size);
 
                     EthDisconnectReason disconnectReason =
-                        FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                        FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
                             ? (EthDisconnectReason)disconnectMessage.Reason
                             : EthDisconnectReason.Other;
 
                     if (Logger.IsTrace)
                     {
-                        Logger.Trace(!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                        Logger.Trace(!FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
                             ? $"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}"
                             : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
                     }
@@ -271,7 +271,7 @@ public class P2PProtocolHandler(
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
         Send(PingMessage.Instance);
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
 
         CancellationTokenSource delayCancellation = new();
         try
@@ -286,7 +286,7 @@ public class P2PProtocolHandler(
                 return false;
             }
 
-            long latency = stopwatch.ElapsedMilliseconds;
+            long latency = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
             _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
             return true;
         }
@@ -305,7 +305,7 @@ public class P2PProtocolHandler(
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
         Send(message);
-
+        Dispose();
     }
 
     private void SendHello()
@@ -337,6 +337,7 @@ public class P2PProtocolHandler(
 
     private void Close(EthDisconnectReason ethDisconnectReason)
     {
+        Dispose();
         if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
             ethDisconnectReason != EthDisconnectReason.Other &&
             ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
@@ -363,5 +364,8 @@ public class P2PProtocolHandler(
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
+        SubprotocolRequested = null;
     }
 }

@@ -9,7 +9,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp))]
     public class InitCrypto : IStep
     {
         private readonly IBasicApi _api;

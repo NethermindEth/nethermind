@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Db
 {
     public class DbSettings
@@ -15,11 +13,6 @@ namespace Nethermind.Db
 
         public string DbName { get; private set; }
         public string DbPath { get; private set; }
-
-        public ulong? WriteBufferSize { get; init; }
-        public uint? WriteBufferNumber { get; init; }
-        public ulong? BlockCacheSize { get; init; }
-        public bool? CacheIndexAndFilterBlocks { get; init; }
 
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;

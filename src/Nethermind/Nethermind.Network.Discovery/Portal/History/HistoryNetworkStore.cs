@@ -3,13 +3,10 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Portal.Messages;
 using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal.History;
@@ -17,12 +14,12 @@ namespace Nethermind.Network.Discovery.Portal.History;
 public class HistoryNetworkStore(
     IBlockTree blockTree,
     ILogManager logManager
-): IPortalContentNetworkStore
+) : IPortalContentNetworkStore
 {
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly ILogger _logger = logManager.GetClassLogger<HistoryNetworkStore>();
 
-    private readonly SpanConcurrentDictionary<byte, byte[]> _testStore = new(Bytes.SpanEqualityComparer);
+    private readonly ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _testStore = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer).GetAlternateLookup<ReadOnlySpan<byte>>();
 
     public byte[]? GetContent(ReadOnlySpan<byte> contentKey)
     {

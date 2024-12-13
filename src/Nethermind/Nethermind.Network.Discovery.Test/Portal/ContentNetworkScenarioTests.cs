@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -14,7 +13,6 @@ using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
 using Lantern.Discv5.WireProtocol.Session;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -22,9 +20,10 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Discovery.Portal.History;
 using Nethermind.Network.Test;
-using NonBlocking;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
+using System.Collections.Concurrent;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 
@@ -282,11 +281,11 @@ public class ContentNetworkScenarioTests
 
         internal class TestStore() : IPortalContentNetworkStore
         {
-            private SpanConcurrentDictionary<byte, byte[]> _contents = new(Bytes.SpanEqualityComparer);
+            private ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _contents = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer).GetAlternateLookup<ReadOnlySpan<byte>>();
 
             public byte[]? GetContent(ReadOnlySpan<byte> contentKey)
             {
-                return _contents.GetValueOrDefault(contentKey.ToArray());
+                return _contents.TryGetValue(contentKey, out byte[]? result) ? result : default;
             }
 
             public bool ShouldAcceptOffer(ReadOnlySpan<byte> offerContentKey)

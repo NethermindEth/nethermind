@@ -24,7 +24,6 @@ namespace Ethereum.Trie.Test
         [SetUp]
         public void Setup()
         {
-            TrieNode.AllowBranchValues = true;
             _db = new MemDb();
         }
 
@@ -59,7 +58,9 @@ namespace Ethereum.Trie.Test
         {
             return TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
                 "trietest.json",
-                dwj => dwj.Select(Convert));
+                dwj => dwj.Select(Convert))
+                // Remove branch value tests
+                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
         }
 
         private static IEnumerable<TrieTest> LoadSecureTests()
@@ -73,7 +74,9 @@ namespace Ethereum.Trie.Test
         {
             IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
                 "trieanyorder.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
+                    // Remove branch value tests
+                    .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
             return GetTestPermutations(tests);
         }
 
@@ -81,7 +84,9 @@ namespace Ethereum.Trie.Test
         {
             IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
                 "hex_encoded_securetrie_test.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
+                    // Remove branch value tests
+                    .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
             return GetTestPermutations(tests);
         }
 
@@ -134,7 +139,7 @@ namespace Ethereum.Trie.Test
             string permutationDescription =
                 string.Join(Environment.NewLine, test.Input.Select(p => $"{p.Key} -> {p.Value}"));
 
-            TestContext.WriteLine(Surrounded(permutationDescription));
+            TestContext.Out.WriteLine(Surrounded(permutationDescription));
 
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             foreach (KeyValuePair<string, string> keyValuePair in test.Input)
@@ -150,8 +155,8 @@ namespace Ethereum.Trie.Test
                     ? Bytes.FromHexString(valueString)
                     : Encoding.ASCII.GetBytes(valueString);
 
-                TestContext.WriteLine();
-                TestContext.WriteLine($"Setting {keyString} -> {valueString}");
+                TestContext.Out.WriteLine();
+                TestContext.Out.WriteLine($"Setting {keyString} -> {valueString}");
                 patriciaTree.Set(key.ToPackedByteArray(), value);
             }
 
@@ -307,7 +312,7 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
-            patriciaTree.Commit(0);
+            patriciaTree.Commit();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
 

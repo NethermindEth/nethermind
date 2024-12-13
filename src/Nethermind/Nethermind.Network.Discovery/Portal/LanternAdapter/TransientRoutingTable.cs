@@ -6,7 +6,6 @@ using Lantern.Discv5.WireProtocol.Identity;
 using Lantern.Discv5.WireProtocol.Table;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Portal.LanternAdapter;
 
@@ -24,11 +23,10 @@ public class TransientRoutingTable(
 {
 
     private IRoutingTable _base = new Lantern.Discv5.WireProtocol.Table.RoutingTable(identityManager, enrFactory, loggerFactory, options);
-    private SpanLruCache<byte, NodeTableEntry?> _tableEntryLru = new SpanLruCache<byte, NodeTableEntry?>(
+    private LruCache<byte[], NodeTableEntry?> _tableEntryLru = new LruCache<byte[], NodeTableEntry?>(
         16000,
         16,
-        "node table entry cache",
-        Bytes.SpanEqualityComparer
+        "node table entry cache"
     );
 
     public NodeTableEntry? GetNodeEntryForNodeId(byte[] nodeId)

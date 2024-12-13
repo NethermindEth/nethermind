@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -14,32 +15,50 @@ namespace Nethermind.Merge.Plugin.Data;
 public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
+    byte[][]? ExecutionRequests { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadV3Params : IExecutionPayloadParams
+public class ExecutionPayloadParams<TVersionedExecutionPayload>(
+    TVersionedExecutionPayload executionPayload,
+    byte[]?[] blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot,
+    byte[][]? executionRequests = null)
+    : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
-    private readonly ExecutionPayloadV3 _executionPayload;
-    private readonly byte[]?[] _blobVersionedHashes;
-    private readonly Hash256? _parentBeaconBlockRoot;
+    public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 
-    public ExecutionPayloadV3Params(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
-    {
-        _executionPayload = executionPayload;
-        _blobVersionedHashes = blobVersionedHashes;
-        _parentBeaconBlockRoot = parentBeaconBlockRoot;
-    }
+    /// <summary>
+    /// Gets or sets <see cref="ExecutionRequets"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
+    /// </summary>
+    public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
-    public ExecutionPayload ExecutionPayload => _executionPayload;
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        Transaction[]? transactions = null;
+        if (spec.RequestsEnabled)
+        {
+            if (ExecutionRequests is null)
+            {
+                error = "Execution requests must be set";
+                return ValidationResult.Fail;
+            }
+
+            if (ExecutionRequests.Length != ExecutionRequestExtensions.RequestPartsCount)
+            {
+                error = "Execution requests must have exactly three items";
+                return ValidationResult.Invalid;
+            }
+
+        }
+        Transaction[]? transactions;
         try
         {
-            transactions = _executionPayload.GetTransactions();
+            transactions = executionPayload.GetTransactions();
         }
         catch (RlpException rlpException)
         {
@@ -52,19 +71,19 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
                 .Where(t => t.BlobVersionedHashes is not null)
                 .SelectMany(t => t.BlobVersionedHashes!);
 
-        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(_blobVersionedHashes, Bytes.NullableEqualityComparer))
+        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;
         }
 
-        if (_parentBeaconBlockRoot is null)
+        if (parentBeaconBlockRoot is null)
         {
             error = "Parent beacon block root must be set";
             return ValidationResult.Fail;
         }
 
-        _executionPayload.ParentBeaconBlockRoot = new Hash256(_parentBeaconBlockRoot);
+        executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
 
         error = null;
         return ValidationResult.Success;

@@ -61,10 +61,10 @@ public class UTPConnectionTests
 
         public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            Assert.NotNull(packetHeader);
-            Assert.NotNull(packetHeader.SeqNumber);
-            Assert.NotNull(packetHeader.ConnectionId);
-            Assert.NotNull(packetHeader.PacketType);
+            Assert.That(packetHeader, Is.Not.Null);
+            Assert.That(packetHeader.SeqNumber, Is.Not.Default);
+            Assert.That(packetHeader.ConnectionId, Is.Not.Default);
+            Assert.That(packetHeader.PacketType, Is.Not.Default);
             Assert.That(packetHeader.Version, Is.EqualTo(1));
             Assert.That(packetHeader.SeqNumber, Is.EqualTo(1));
             Assert.That(packetHeader.PacketType, Is.EqualTo(UTPPacketType.StSyn));
@@ -77,11 +77,11 @@ public class UTPConnectionTests
 
         public Task ReceiveMessage(UTPPacketHeader packetHeader, ReadOnlySpan<byte> data, CancellationToken token)
         {
-            Assert.NotNull(packetHeader);
-            Assert.NotNull(packetHeader.SeqNumber);
-            Assert.NotNull(packetHeader.AckNumber);
-            Assert.NotNull(packetHeader.ConnectionId);
-            Assert.NotNull(packetHeader.PacketType);
+            Assert.That(packetHeader, Is.Not.Null);
+            Assert.That(packetHeader.SeqNumber, Is.Not.Default);
+            Assert.That(packetHeader.AckNumber, Is.Not.Default);
+            Assert.That(packetHeader.ConnectionId, Is.Not.Default);
+            Assert.That(packetHeader.PacketType, Is.Not.Default);
             Assert.That(packetHeader.Version, Is.EqualTo(1));
             Assert.That(packetHeader.PacketType, Is.EqualTo(UTPPacketType.StState));
             Assert.That(packetHeader.ConnectionId, Is.EqualTo(connectionId));

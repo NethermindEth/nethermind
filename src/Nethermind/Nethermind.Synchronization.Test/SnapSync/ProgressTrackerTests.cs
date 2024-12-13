@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 
@@ -23,8 +24,7 @@ public class ProgressTrackerTests
     [Repeat(3)]
     public async Task Did_not_have_race_issue()
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 1);
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
             Accounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -56,8 +56,7 @@ public class ProgressTrackerTests
     [Test]
     public void Will_create_multiple_get_address_range_request()
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance, 4);
+        using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 4);
 
         bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
@@ -95,8 +94,7 @@ public class ProgressTrackerTests
     [Test]
     public void Will_deque_code_request_if_high_even_if_storage_queue_is_not_empty()
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        using ProgressTracker progressTracker = CreateProgressTracker();
 
         for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE - 1; i++)
         {
@@ -120,8 +118,7 @@ public class ProgressTrackerTests
     [Test]
     public void Will_deque_storage_request_if_high()
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        using ProgressTracker progressTracker = CreateProgressTracker();
 
         for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE; i++)
         {
@@ -149,7 +146,8 @@ public class ProgressTrackerTests
             .WithStateRoot(Keccak.EmptyTreeHash)
             .TestObject).TestObject;
         TestMemDb memDb = new();
-        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
@@ -161,5 +159,12 @@ public class ProgressTrackerTests
 
         memDb.WasFlushed.Should().BeTrue();
         memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
+    }
+
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
+        return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

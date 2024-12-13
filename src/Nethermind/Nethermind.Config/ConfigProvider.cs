@@ -15,10 +15,10 @@ public class ConfigProvider : IConfigProvider
 {
     private readonly ConcurrentDictionary<Type, object> _instances = new();
 
-    private readonly List<IConfigSource> _configSource = new();
+    private readonly List<IConfigSource> _configSource = [];
     private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
 
-    private readonly Dictionary<Type, Type> _implementations = new();
+    private readonly Dictionary<Type, Type> _implementations = [];
 
     public T GetConfig<T>() where T : IConfig
     {
@@ -53,7 +53,7 @@ public class ConfigProvider : IConfigProvider
 
         return Categories.TryGetValue(category, out object value) ? value.GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
+            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
     }
 
@@ -114,23 +114,24 @@ public class ConfigProvider : IConfigProvider
             Initialize();
         }
 
-        HashSet<string> propertySet = _instances.Values
+        var propertySet = _instances.Values
             .SelectMany(i => i.GetType()
                 .GetProperties()
                 .Select(p => GetKey(i.GetType().Name, p.Name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
+        List<(IConfigSource Source, string Category, string Name)> incorrectSettings = [];
 
-        foreach (var source in _configSource)
+        // Skip the validation for ArgsConfigSource items as they are already validated by the CLI parser
+        foreach (IConfigSource source in _configSource.Where(s => s is not ArgsConfigSource))
         {
             var configs = source.GetConfigKeys();
 
-            foreach (var conf in configs)
+            foreach ((string category, string name) in configs)
             {
-                if (!propertySet.Contains(GetKey(conf.Category, conf.Name)))
+                if (!propertySet.Contains(GetKey(category, name)))
                 {
-                    incorrectSettings.Add((source, conf.Category, conf.Name));
+                    incorrectSettings.Add((source, category, name));
                 }
             }
         }
@@ -155,10 +156,10 @@ public class ConfigProvider : IConfigProvider
             }
             else if (!category.EndsWith("config", StringComparison.OrdinalIgnoreCase))
             {
-                category += "Config";
+                category = $"{category}Config";
             }
 
-            return category + '.' + name;
+            return $"{category}.{name}";
         }
     }
 }

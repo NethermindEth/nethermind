@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.IO.Pipelines;
 using Lantern.Discv5.Enr;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
 
@@ -31,12 +27,14 @@ public class ContentDistributor(
 
         // Get list of nodes within the radius
         int nodeToDistributeTo = 8;
-        SpanDictionary<byte, IEnr> nearestNodes = new(Bytes.SpanEqualityComparer);
+        Dictionary<byte[], IEnr> nearestNodes = new(Bytes.EqualityComparer);
+        Dictionary<byte[], IEnr>.AlternateLookup<ReadOnlySpan<byte>> nearestNodesSpan = nearestNodes.GetAlternateLookup<ReadOnlySpan<byte>>();
+
         foreach (IEnr enr in kad.GetKNeighbour(contentHash, null))
         {
             if (radiusTracker.IsInRadius(enr, contentHash))
             {
-                nearestNodes[enr.NodeId] = enr;
+                nearestNodesSpan[enr.NodeId] = enr;
                 if (nearestNodes.Count >= nodeToDistributeTo)
                     break;
             }
@@ -50,9 +48,9 @@ public class ContentDistributor(
             foreach (IEnr enr in enrs)
             {
                 bool inRadius = radiusTracker.IsInRadius(enr, contentHash);
-                if (!nearestNodes.ContainsKey(enr.NodeId) && inRadius)
+                if (!nearestNodesSpan.ContainsKey(enr.NodeId) && inRadius)
                 {
-                    nearestNodes[enr.NodeId] = enr;
+                    nearestNodesSpan[enr.NodeId] = enr;
                 }
             }
         }

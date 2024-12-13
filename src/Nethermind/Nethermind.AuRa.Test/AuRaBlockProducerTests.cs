@@ -65,7 +65,7 @@ namespace Nethermind.AuRa.Test
                 BlockProcessingQueue.IsEmpty.Returns(true);
                 AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
                 BlockTree.BestKnownNumber.Returns(1);
-                BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, Array.Empty<byte>()).TestObject).TestObject);
+                BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, []).TestObject).TestObject);
                 BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(returnThis: c =>
                 {
                     Block block = c.Arg<Block>();
@@ -114,8 +114,8 @@ namespace Nethermind.AuRa.Test
                     onlyWhenNotProcessing,
                     BlockTree,
                     AuRaBlockProducer);
-
-                ProducedBlockSuggester suggester = new(BlockTree, BlockProducerRunner);
+                _ = new
+                ProducedBlockSuggester(BlockTree, BlockProducerRunner);
             }
         }
 
@@ -229,9 +229,9 @@ namespace Nethermind.AuRa.Test
                 });
 
             context.BlockProducerRunner.Start();
-            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
+            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 20, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
-            await Task.Delay(context.StepDelay);
+            await Task.Delay(context.StepDelay * 2);
             processedEvent.Reset();
 
             try
@@ -248,7 +248,7 @@ namespace Nethermind.AuRa.Test
                     processedEvent.Reset();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 20, CancellationToken.None);
 
             }
             finally

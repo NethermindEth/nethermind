@@ -12,6 +12,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Facade.Eth;
 
@@ -77,11 +78,15 @@ public class BlockForRpc
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
         TotalDifficulty = block.TotalDifficulty ?? 0;
-        Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t, block.BaseFeePerGas)).ToArray() : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
+        Transactions = (includeFullTransactionData
+                ? block.Transactions.Select((t, idx) => TransactionForRpc.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas, specProvider.ChainId))
+                : block.Transactions.Select(t => t.Hash).OfType<object>())
+            .ToArray();
         TransactionsRoot = block.TxRoot;
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
+        RequestsHash = block.Header.RequestsHash;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -140,4 +145,7 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? RequestsHash { get; set; }
 }

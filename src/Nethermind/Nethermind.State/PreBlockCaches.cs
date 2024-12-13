@@ -3,10 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
@@ -20,7 +17,7 @@ public class PreBlockCaches
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
-    private readonly Func<bool>[] _clearCaches;
+    private readonly Func<CacheType>[] _clearCaches;
 
     private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
@@ -31,10 +28,10 @@ public class PreBlockCaches
     {
         _clearCaches =
         [
-            _storageCache.NoResizeClear,
-            _stateCache.NoResizeClear,
-            _rlpCache.NoResizeClear,
-            _precompileCache.NoResizeClear
+            () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
+            () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
+            () => _rlpCache.NoResizeClear() ? CacheType.Rlp : CacheType.None,
+            () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
         ];
     }
 
@@ -43,10 +40,10 @@ public class PreBlockCaches
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache => _precompileCache;
 
-    public bool ClearCaches()
+    public CacheType ClearCaches()
     {
-        bool isDirty = false;
-        foreach (Func<bool> clearCache in _clearCaches)
+        CacheType isDirty = CacheType.None;
+        foreach (Func<CacheType> clearCache in _clearCaches)
         {
             isDirty |= clearCache();
         }
@@ -62,4 +59,14 @@ public class PreBlockCaches
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
+}
+
+[Flags]
+public enum CacheType
+{
+    None = 0,
+    Storage = 0b1,
+    State = 0b10,
+    Rlp = 0b100,
+    Precompile = 0b1000
 }

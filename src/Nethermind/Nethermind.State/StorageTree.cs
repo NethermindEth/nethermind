@@ -6,7 +6,6 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -124,7 +123,7 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                Set(rawKey, Array.Empty<byte>());
+                Set(rawKey, []);
             }
             else
             {

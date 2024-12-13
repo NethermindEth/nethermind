@@ -1,36 +1,44 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Portal;
 
 /// <summary>
 /// Translate whatever is in Lantern into an ITalkReqTransport.
 /// </summary>
-/// <param name="logManager"></param>
-public class TalkReqTransport(
-    IRawTalkReqSender rawTalkReqSender,
-    ILogManager logManager
-) : ITalkReqTransport
+public class TalkReqTransport : ITalkReqTransport
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<TalkReqTransport>();
+    private readonly ILogger _logger;
 
     /// <summary>
     /// Hard timeout for each call and wait for response.
     /// </summary>
     private readonly TimeSpan _hardCallTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly SpanConcurrentDictionary<byte, TaskCompletionSource<TalkRespMessage>> _requestResp = new(Bytes.SpanEqualityComparer);
-    private readonly SpanDictionary<byte, ITalkReqProtocolHandler> _protocolHandlers = new(Bytes.SpanEqualityComparer);
+    private readonly ConcurrentDictionary<byte[], TaskCompletionSource<TalkRespMessage>>.AlternateLookup<ReadOnlySpan<byte>> _requestResp;
+    private readonly Dictionary<byte[], ITalkReqProtocolHandler>.AlternateLookup<ReadOnlySpan<byte>> _protocolHandlers;
+    private readonly IRawTalkReqSender rawTalkReqSender;
+
+    /// <param name="logManager"></param>
+    public TalkReqTransport(
+        IRawTalkReqSender _rawTalkReqSender,
+        ILogManager logManager
+)
+    {
+        rawTalkReqSender = _rawTalkReqSender;
+        _logger = logManager.GetClassLogger<TalkReqTransport>();
+
+        _requestResp = new ConcurrentDictionary<byte[], TaskCompletionSource<TalkRespMessage>>(Bytes.EqualityComparer).GetAlternateLookup<ReadOnlySpan<byte>>();
+        _protocolHandlers = new Dictionary<byte[], ITalkReqProtocolHandler>(Bytes.EqualityComparer).GetAlternateLookup<ReadOnlySpan<byte>>();
+    }
 
     public async Task<byte[]?> OnTalkReq(IEnr sender, TalkReqMessage message)
     {

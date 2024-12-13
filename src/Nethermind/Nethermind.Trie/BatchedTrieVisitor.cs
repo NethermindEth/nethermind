@@ -142,11 +142,11 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
-            Task[]? tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
-                .Select((_) => Task.Run(BatchedThread))
-                .ToArray();
+            using ArrayPoolList<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+                .Select(_ => Task.Run(BatchedThread))
+                .ToPooledList(trieVisitContext.MaxDegreeOfParallelism);
 
-            Task.WhenAll(tasks).Wait();
+            Task.WaitAll(tasks.AsSpan());
         }
         catch (Exception)
         {

@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -194,15 +193,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             using var message = msg;
             bool isTrace = Logger.IsTrace;
-            Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
+            long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
             _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
 
-            stopwatch?.Stop();
             if (isTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)
