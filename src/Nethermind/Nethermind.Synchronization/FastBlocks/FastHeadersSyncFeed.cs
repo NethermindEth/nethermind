@@ -385,7 +385,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
-                        .OrderByDescending(kvp => kvp.Key))
+                                 .OrderByDescending(kvp => kvp.Key))
                     {
                         builder.AppendLine(keyValuePair.Value);
                     }
@@ -476,9 +476,9 @@ namespace Nethermind.Synchronization.FastBlocks
             return dependentBatch;
         }
 
-        private void EnqueueBatch(HeadersSyncBatch batch)
+        private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
         {
-            HeadersSyncBatch? left = ProcessPersistedPortion(batch);
+            HeadersSyncBatch? left = skipPersisted ? batch : ProcessPersistedPortion(batch);
             if (left is not null)
             {
                 _pending.Enqueue(batch);
@@ -638,7 +638,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     batch.Response?.Dispose();
                     batch.Response = null;
-                    EnqueueBatch(batch);
+                    EnqueueBatch(batch, true);
                 }
                 else
                 {
@@ -733,7 +733,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     if (_dependencies.ContainsKey(header.Number))
                     {
-                        EnqueueBatch(batch);
+                        EnqueueBatch(batch, true);
                         throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                     }
                     long lastNumber = -1;
