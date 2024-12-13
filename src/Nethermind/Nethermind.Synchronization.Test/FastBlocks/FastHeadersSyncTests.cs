@@ -28,7 +28,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
 public class FastHeadersSyncTests
 {
     [Test]
@@ -408,7 +408,8 @@ public class FastHeadersSyncTests
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
         var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" };
+        var pivotHeader = peerChain.FindHeader(998)!;
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         const int lowestInserted = 999;
@@ -419,7 +420,7 @@ public class FastHeadersSyncTests
         report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
         feed.InitializeFeed();
         using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
         using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
@@ -459,6 +460,60 @@ public class FastHeadersSyncTests
 
         Assert.That(localBlockTree.LowestInsertedHeader!.Number, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
         syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Does_not_download_persisted_header()
+    {
+        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        var pivotHeader = peerChain.FindHeader(999)!;
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
+
+        // Insert some chain
+        for (int i = 0; i < 600; i++)
+        {
+            localBlockTree.SuggestHeader(peerChain.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+        }
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        ISyncReport report = Substitute.For<ISyncReport>();
+        report.HeadersInQueue.Returns(new MeasuredProgress());
+        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
+        feed.InitializeFeed();
+
+        void FillBatch(HeadersSyncBatch batch)
+        {
+            batch.Response = Enumerable.Range((int)batch.StartNumber!, batch.RequestSize)
+                .Select(i => peerChain.FindBlock(i, BlockTreeLookupOptions.None)!.Header)
+                .ToPooledList<BlockHeader?>(batch.RequestSize);
+        }
+
+        using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+        batch1.StartNumber.Should().Be(808);
+
+        using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+        batch2.StartNumber.Should().Be(616);
+
+        using HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
+        batch3.StartNumber.Should().Be(424);
+
+        (await feed.PrepareRequest()).Should().Be(null);
+
+        FillBatch(batch1);
+        FillBatch(batch2);
+        FillBatch(batch3);
+
+        feed.HandleResponse(batch1);
+        feed.HandleResponse(batch2);
+        feed.HandleResponse(batch3);
+
+        // The dependency batch is processed during prepare request.
+        (await feed.PrepareRequest()).Should().Be(null);
+
+        localBlockTree.LowestInsertedHeader?.Number.Should().Be(0);
     }
 
     [Test]
