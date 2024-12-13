@@ -99,9 +99,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
 
+                if (result.AccessList is not null)
+                {
+                    tx.AccessList = result.AccessList;
+                    result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
+                }
+
                 var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result));
+                    gasUsed: (UInt256)result.GasSpent);
 
                 return result switch
                 {
@@ -109,21 +115,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     { InputError: true } => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput),
                     _ => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError),
                 };
-            }
-
-            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
-            {
-                long gas = result.GasSpent;
-                if (result.AccessList is not null)
-                {
-                    // TODO: this looks wrong after EIP7623 - have to revisit this
-                    // if we generated access list, we need to fix actual gas cost, as all storage was considered warm
-                    gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance).Standard;
-                    transaction.AccessList = result.AccessList;
-                    gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance).Standard;
-                }
-
-                return (UInt256)gas;
             }
         }
     }
