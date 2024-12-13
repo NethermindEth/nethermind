@@ -420,17 +420,7 @@ namespace Nethermind.Network
         {
             if (_capabilities.Remove(capability))
             {
-                Console.Error.WriteLine($"|NetworkTrace| {capability} is removed from the discovery");
                 if (_logger.IsDebug) _logger.Debug($"Removed supported capability: {capability}");
-            }
-            else
-            {
-                Console.Error.WriteLine($"|NetworkTrace| {capability} is not removed from the discovery");
-
-                foreach (Capability capability1 in _capabilities)
-                {
-                    Console.Error.WriteLine($"Its {capability1}");
-                }
             }
         }
 
