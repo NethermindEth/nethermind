@@ -38,7 +38,6 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
         /// </summary>
         public const int FastSyncLag = 32;
-        public const int FastChainLag = 6;
 
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
@@ -400,7 +399,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // and we need to sync away from it.
             // Note: its ok if target block height is not accurate as long as long full sync downloader does not stop
             //  earlier than this condition below which would cause a hang.
-            bool notReachedFullSyncTransition = best.Header < best.TargetBlock - FastSyncLag - FastChainLag;
+            bool notReachedFullSyncTransition = best.Header < best.TargetBlock - FastSyncLag - _syncConfig.HeaderStateDistance;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
@@ -590,8 +589,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
-            bool stateNotDownloadedYet = (best.TargetBlock - best.State > (FastSyncLag + FastChainLag) ||
-                                          best.Header > (best.State + FastChainLag) && best.Header > best.Block);
+            bool stateNotDownloadedYet = (best.TargetBlock - best.State > (FastSyncLag + _syncConfig.HeaderStateDistance) ||
+                                          best.Header > (best.State + _syncConfig.HeaderStateDistance) && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
@@ -645,7 +644,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInSnapRangesPhase(Snapshot best)
         {
             bool isInStateSync = best.IsInStateSync;
-            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= FastSyncLag + FastChainLag;
+            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= FastSyncLag + _syncConfig.HeaderStateDistance;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
 
             if (_logger.IsTrace)

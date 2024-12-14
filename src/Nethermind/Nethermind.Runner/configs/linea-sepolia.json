@@ -18,7 +18,8 @@
     "SnapSync": true,
     "PivotNumber": 6830000,
     "PivotHash": "0x75e380ff226a8b160cdef9c479327c98df28576a4388c90373d2b2931e3e852a",
-    "PivotTotalDifficulty": "13660001"
+    "PivotTotalDifficulty": "13660001",
+    "HeaderStateDistance": 6
   },
   "JsonRpc": {
     "Enabled": true,
