@@ -166,15 +166,7 @@ namespace Nethermind.Trie
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
         private static Action<TrieNode, Hash256?, TreePath> _markPersisted => (tn, _, _) => tn.IsPersisted = true;
-        private RlpFactory? _rlp;
 
-        private INodeData? _nodeData;
-
-        /// <summary>
-        /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
-        /// </summary>
-        public bool IsSealed => !IsDirty;
-        
         private const long _dirtyMask = 0b001;
         private const long _persistedMask = 0b010;
         private const long _boundaryProof = 0b100;
@@ -183,6 +175,13 @@ namespace Nethermind.Trie
         private const int _blockShift = 3;
 
         private long _blockAndFlags = -1L & _blockMask;
+        private RlpFactory? _rlp;
+        private INodeData? _nodeData;
+
+        /// <summary>
+        /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
+        /// </summary>
+        public bool IsSealed => !IsDirty;
 
         public long LastSeen
         {
@@ -470,7 +469,7 @@ namespace Nethermind.Trie
         }
 
         private INodeData CreateNodeData(NodeType nodeType)
-            => nodeType switch 
+            => nodeType switch
             {
                 NodeType.Branch => new BranchData(),
                 NodeType.Extension => new ExtensionData(),
@@ -920,21 +919,11 @@ namespace Nethermind.Trie
 
         public long GetMemorySize(bool recursive)
         {
-            int keccakSize =
-                Keccak is null
-                    ? MemorySizes.RefSize
-                    : MemorySizes.RefSize + Hash256.MemorySize;
-            long fullRlpSize =
-                MemorySizes.RefSize +
-                (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
-            long rlpStreamSize =
-                MemorySizes.RefSize + (_rlp?.MemorySize ?? 0)
-                - (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
+            int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
+            long rlpSize = MemorySizes.RefSize + (_rlp is null ? 0 : _rlp.MemorySize);
             long dataSize = MemorySizes.RefSize + (_nodeData?.Size ?? 0);
-            int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
-            int isDirtySize = 1;
-            int nodeTypeSize = 1;
-            /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
+            int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
+            int blockAndFlagsSize = sizeof(long);
 
             if (_nodeData is BranchData data)
             {
@@ -964,11 +953,9 @@ namespace Nethermind.Trie
             }
 
             long unaligned = keccakSize +
-                             fullRlpSize +
-                             rlpStreamSize +
+                             rlpSize +
                              dataSize +
-                             isDirtySize +
-                             nodeTypeSize +
+                             blockAndFlagsSize +
                              objectOverhead;
 
             return MemorySizes.Align(unaligned);
