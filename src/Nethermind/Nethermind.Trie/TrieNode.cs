@@ -792,7 +792,7 @@ namespace Nethermind.Trie
         {
             int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
             long rlpSize = MemorySizes.RefSize + (_rlp is null ? 0 : _rlp.MemorySize);
-            long dataSize = MemorySizes.RefSize + (_nodeData?.Size ?? 0);
+            long dataSize = MemorySizes.RefSize + (_nodeData?.MemorySize ?? 0);
             int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
             int blockAndFlagsSize = sizeof(long);
 

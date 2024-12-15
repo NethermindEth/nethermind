@@ -5,6 +5,8 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 
 namespace Nethermind.Trie;
 
@@ -14,7 +16,7 @@ public interface INodeData
     public INodeData Clone();
     public int Length { get; }
     public ref object this[int index] { get; }
-    public int Size { get; }
+    public int MemorySize { get; }
 }
 
 interface INodeWithKey : INodeData
@@ -26,7 +28,7 @@ public class BranchData : INodeData
 {
     public NodeType NodeType => NodeType.Branch;
     public int Length => TrieNode.BranchesCount;
-    public int Size => MemorySizes.RefSize * TrieNode.BranchesCount;
+    public int MemorySize => MemorySizes.RefSize * TrieNode.BranchesCount;
 
     private BranchArray _branches;
 
@@ -35,13 +37,7 @@ public class BranchData : INodeData
     private BranchData(in BranchArray branches) => _branches = branches;
 
     public ref readonly BranchArray Branches => ref _branches;
-    public ref object this[int index]
-    {
-        get
-        {
-            return ref _branches[index];
-        }
-    }
+    public ref object this[int index] => ref _branches[index];
 
     INodeData INodeData.Clone() => new BranchData(in _branches);
 
@@ -56,7 +52,7 @@ public class BranchData : INodeData
 public class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
-    public int Size => MemorySizes.RefSize + MemorySizes.RefSize +
+    public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize +
         (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
     public int Length => 2;
 
@@ -68,10 +64,19 @@ public class ExtensionData : INodeWithKey
     {
         get
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(index);
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Length);
+            if ((uint)index >= (uint)Length)
+            {
+                ThrowArgumentOutOfRangeException(index);
+            }
 
             return ref _value;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowArgumentOutOfRangeException(int index)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");
+            }
         }
     }
 
@@ -101,9 +106,10 @@ public class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
-    public int Size => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
+    public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
          (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
          (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
+
     private readonly CappedArray<byte> _value;
 
     public byte[] Key { get; set; }
@@ -124,13 +130,7 @@ public class LeafData : INodeWithKey
         _value = value;
         StorageRoot = storageRoot;
     }
-    public ref object this[int index]
-    {
-        get
-        {
-            throw new IndexOutOfRangeException();
-        }
-    }
+    public ref object this[int index] => throw new IndexOutOfRangeException();
 
     INodeData INodeData.Clone() => new LeafData(Key, in _value);
     public LeafData CloneWithNewValue(in CappedArray<byte> value) => new LeafData(Key, in value, StorageRoot);
