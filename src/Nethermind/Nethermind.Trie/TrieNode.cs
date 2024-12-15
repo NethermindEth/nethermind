@@ -532,7 +532,7 @@ namespace Nethermind.Trie
                     TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool, canBeParallel: isRoot && canBeParallel) :
                     RlpEncode(tree, ref path, bufferPool);
 
-                if (fullRlp.IsNotNullOrEmpty)
+                if (oldRlp.IsNotNullOrEmpty)
                 {
                     bufferPool.SafeReturnBuffer(oldRlp);
                 }

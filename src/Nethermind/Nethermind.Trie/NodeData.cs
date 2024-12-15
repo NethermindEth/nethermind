@@ -104,7 +104,7 @@ public class LeafData : INodeWithKey
     public int Size => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
          (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
          (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
-    private CappedArray<byte> _value;
+    private readonly CappedArray<byte> _value;
 
     public byte[] Key { get; set; }
     public ref readonly CappedArray<byte> Value => ref _value;
