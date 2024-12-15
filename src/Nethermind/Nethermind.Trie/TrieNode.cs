@@ -25,7 +25,7 @@ using static Nethermind.Trie.Pruning.TrieStoreDirtyNodesCache;
 
 namespace Nethermind.Trie
 {
-    interface INodeData
+    public interface INodeData
     {
         public NodeType NodeType { get; }
         public INodeData Clone();
@@ -97,6 +97,12 @@ namespace Nethermind.Trie
         internal ExtensionData(byte[] key)
         {
             Key = key;
+        }
+
+        internal ExtensionData(byte[] key, TrieNode value)
+        {
+            Key = key;
+            Value = value;
         }
 
         private ExtensionData(byte[] key, object? value)
@@ -336,8 +342,14 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType)
         {
-            _nodeData = CreateNodeData(nodeType);
             _isDirty = true;
+            _nodeData = CreateNodeData(nodeType);
+        }
+
+        public TrieNode(INodeData nodeData)
+        {
+            _isDirty = true;
+            _nodeData = nodeData;
         }
 
         public TrieNode(NodeType nodeType, Hash256 keccak)
@@ -352,8 +364,8 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, in CappedArray<byte> rlp, bool isDirty = false)
         {
-            _nodeData = CreateNodeData(nodeType);
             _isDirty = isDirty;
+            _nodeData = CreateNodeData(nodeType);
 
             _rlp = rlp.AsRlpFactory();
         }
@@ -571,7 +583,7 @@ namespace Nethermind.Trie
         {
             if (Keccak is not null)
             {
-                // please not it is totally fine to leave the RLP null here
+                // please note it is totally fine to leave the RLP null here
                 // this node will simply act as a ref only node (a ref to some node with unresolved data in the DB)
                 return;
             }
