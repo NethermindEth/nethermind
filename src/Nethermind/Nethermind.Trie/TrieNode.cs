@@ -161,23 +161,104 @@ namespace Nethermind.Trie
 
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
-        public bool IsBoundaryProofNode { get; set; }
 
         private static readonly object _nullNode = new();
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
         private static Action<TrieNode, Hash256?, TreePath> _markPersisted => (tn, _, _) => tn.IsPersisted = true;
         private RlpFactory? _rlp;
-        private bool _isDirty;
 
         private INodeData? _nodeData;
 
         /// <summary>
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
         /// </summary>
-        public bool IsSealed => !_isDirty;
+        public bool IsSealed => !IsDirty;
+        
+        private const long _dirtyMask = 0b001;
+        private const long _persistedMask = 0b010;
+        private const long _boundaryProof = 0b100;
+        private const long _flagsMask = 0b111;
+        private const long _blockMask = ~_flagsMask;
+        private const int _blockShift = 3;
 
-        public bool IsPersisted { get; set; }
+        private long _blockAndFlags = -1L & _blockMask;
+
+        public long LastSeen
+        {
+            get => (Volatile.Read(ref _blockAndFlags) >> _blockShift);
+            set
+            {
+                long previousValue = Volatile.Read(ref _blockAndFlags);
+                long currentValue;
+                do
+                {
+                    currentValue = previousValue;
+                    long newValue = (currentValue & _flagsMask) | (value << _blockShift);
+                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+                } while (previousValue != currentValue);
+            }
+        }
+
+        public bool IsPersisted
+        {
+            get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
+            set
+            {
+                long previousValue = Volatile.Read(ref _blockAndFlags);
+                long currentValue;
+                do
+                {
+                    currentValue = previousValue;
+                    long newValue = value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask);
+                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+                } while (previousValue != currentValue);
+            }
+        }
+
+        public bool IsBoundaryProofNode
+        {
+            get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
+            set
+            {
+                long previousValue = Volatile.Read(ref _blockAndFlags);
+                long currentValue;
+                do
+                {
+                    currentValue = previousValue;
+                    long newValue = value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof);
+                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+                } while (previousValue != currentValue);
+            }
+        }
+
+        public bool IsDirty => (Volatile.Read(ref _blockAndFlags) & _dirtyMask) != 0;
+
+        /// <summary>
+        /// Node will no longer be mutable
+        /// </summary>
+        public void Seal()
+        {
+            long previousValue = Volatile.Read(ref _blockAndFlags);
+            long currentValue;
+            do
+            {
+                if ((previousValue & _dirtyMask) == 0)
+                {
+                    ThrowAlreadySealed();
+                }
+                currentValue = previousValue;
+                long newValue = currentValue & ~_dirtyMask;
+                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+            } while (previousValue != currentValue);
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowAlreadySealed()
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
+            }
+        }
 
         public Hash256? Keccak { get; internal set; }
 
@@ -207,13 +288,9 @@ namespace Nethermind.Trie
 
         public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
 
-        public bool IsDirty => _isDirty;
-
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
-
-        public long LastSeen { get; set; } = -1;
 
         public byte[]? Key
         {
@@ -336,19 +413,19 @@ namespace Nethermind.Trie
 
         private TrieNode(TrieNode node)
         {
-            _isDirty = true;
+            _blockAndFlags |= _dirtyMask;
             _nodeData = node._nodeData?.Clone();
         }
 
         public TrieNode(NodeType nodeType)
         {
-            _isDirty = true;
+            _blockAndFlags |= _dirtyMask;
             _nodeData = CreateNodeData(nodeType);
         }
 
         public TrieNode(INodeData nodeData)
         {
-            _isDirty = true;
+            _blockAndFlags |= _dirtyMask;
             _nodeData = nodeData;
         }
 
@@ -364,7 +441,10 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, in CappedArray<byte> rlp, bool isDirty = false)
         {
-            _isDirty = isDirty;
+            if (isDirty)
+            {
+                _blockAndFlags |= _dirtyMask;
+            }
             _nodeData = CreateNodeData(nodeType);
 
             _rlp = rlp.AsRlpFactory();
@@ -407,25 +487,6 @@ namespace Nethermind.Trie
 #else
             return $"[{NodeType}({FullRlp.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
-        }
-
-        /// <summary>
-        /// Node will no longer be mutable
-        /// </summary>
-        public void Seal()
-        {
-
-            if (Interlocked.Exchange(ref _isDirty, false) == false)
-            {
-                ThrowAlreadySealed();
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            void ThrowAlreadySealed()
-            {
-                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
-            }
         }
 
         public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
