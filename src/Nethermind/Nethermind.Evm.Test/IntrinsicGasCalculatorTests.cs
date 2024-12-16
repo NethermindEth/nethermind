@@ -134,12 +134,12 @@ namespace Nethermind.Evm.Test
             Test(Constantinople.Instance, GasOptions.None);
             Test(ConstantinopleFix.Instance, GasOptions.None);
             Test(Istanbul.Instance, GasOptions.AfterRepricing);
-            Test(MuirGlacier.Instance,  GasOptions.AfterRepricing);
-            Test(Berlin.Instance,  GasOptions.AfterRepricing);
-            Test(GrayGlacier.Instance,  GasOptions.AfterRepricing);
-            Test(Shanghai.Instance,  GasOptions.AfterRepricing);
-            Test(Cancun.Instance,  GasOptions.AfterRepricing);
-            Test(Prague.Instance,  GasOptions.AfterRepricing | GasOptions.FloorCostEnabled);
+            Test(MuirGlacier.Instance, GasOptions.AfterRepricing);
+            Test(Berlin.Instance, GasOptions.AfterRepricing);
+            Test(GrayGlacier.Instance, GasOptions.AfterRepricing);
+            Test(Shanghai.Instance, GasOptions.AfterRepricing);
+            Test(Cancun.Instance, GasOptions.AfterRepricing);
+            Test(Prague.Instance, GasOptions.AfterRepricing | GasOptions.FloorCostEnabled);
         }
 
         public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
