@@ -1435,13 +1435,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
         // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
         // but no io, only cpu.
-        // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
+        // bufferSize*maxBufferNumber = 16MB*Core count, which is the max memory used, which tend to be the case as its now
         // stalled by compaction instead of flush.
         // The buffer is not compressed unlike l0File, so to account for it, its size need to be slightly larger.
         ulong targetFileSize = (ulong)16.MiB();
         ulong bufferSize = (ulong)(targetFileSize / _perTableDbConfig.CompressibilityHint);
         ulong l0FileSize = targetFileSize * (ulong)_minWriteBufferToMerge;
-        ulong maxBufferNumber = 8;
+        ulong maxBufferNumber = (ulong)Environment.ProcessorCount;
 
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to

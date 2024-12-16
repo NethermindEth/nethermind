@@ -223,6 +223,11 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.block_size=32000;" +
 
         "block_based_table_factory.filter_policy=bloomfilter:15;" +
+
+        // Note: This causes write batch to not be atomic. A concurrent read may read item on start of batch, but not end of batch.
+        // With state, this is fine as writes are done in parallel batch and therefore, not atomic, and the read goes
+        // through triestore first anyway.
+        "unordered_write=true;" +
         "";
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 }
