@@ -36,6 +36,8 @@ public interface IState : IReadOnlyState
 public interface IStorage
 {
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
+
+    ValueHash256 Keccak { get; }
 }
 
 public interface IReadOnlyState : IDisposable

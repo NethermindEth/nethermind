@@ -36,6 +36,8 @@ namespace Nethermind.State
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
+        private readonly Dictionary<Address, IStorage> _storages = new();
+
         /// <summary>
         /// Manages persistent storage allowing for snapshotting and restoring
         /// Persists data to ITrieStore
@@ -59,10 +61,12 @@ namespace Nethermind.State
         /// </summary>
         public override void Reset(bool resizeCollections = true)
         {
-            base.Reset();
+            base.Reset(resizeCollections);
+
             _blockCache.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
+            _storages.Clear();
         }
 
         /// <summary>
@@ -122,7 +126,6 @@ namespace Nethermind.State
 
 
             IState state = _owner.State;
-            var storages = new Dictionary<Address, IStorage>();
 
             bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
@@ -179,7 +182,7 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        SaveToTree(state, storages, change);
+                        SaveToTree(state, change);
 
                         if (isTracing)
                         {
@@ -202,7 +205,7 @@ namespace Nethermind.State
             }
         }
 
-        private void SaveToTree(IState state, Dictionary<Address, IStorage> storages, Change change)
+        private void SaveToTree(IState state, Change change)
         {
             if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
                 initialValue.AsSpan().SequenceEqual(change.Value))
@@ -213,7 +216,7 @@ namespace Nethermind.State
 
             // Ensure the setter exists and set storage
             ref IStorage? storage =
-                ref CollectionsMarshal.GetValueRefOrAddDefault(storages, change.StorageCell.Address,
+                ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, change.StorageCell.Address,
                     out var storageExists);
 
             if (!storageExists)
@@ -390,6 +393,11 @@ namespace Nethermind.State
                 public int GetHashCode([DisallowNull] UInt256 obj)
                     => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
             }
+        }
+
+        public void CommitTrees()
+        {
+            _storages.Clear();
         }
     }
 }

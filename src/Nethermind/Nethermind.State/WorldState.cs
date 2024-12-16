@@ -192,6 +192,7 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
+            _persistentStorageProvider.CommitTrees();
             _state.Commit(blockNumber);
             ResetState(_state.StateRoot);
         }

@@ -275,10 +275,13 @@ public class PaprikaStateFactory : IStateFactory
             _wrapped.SetStorage(converted, Convert(cell.Hash), value);
         }
 
-        public IStorage GetStorageSetter(in Address address) =>
-            new StorageSetter(address, _wrapped.GetStorageSetter(Convert(address)));
+        public IStorage GetStorageSetter(in Address address)
+        {
+            ValueHash256 keccak = KeccakCache.Compute(address.Bytes);
+            return new StorageSetter(address, keccak, _wrapped.GetStorageSetter(Convert(keccak)));
+        }
 
-        private sealed class StorageSetter(Address address, IStorageSetter setter) : IStorage
+        private sealed class StorageSetter(Address address, ValueHash256 keccak, IStorageSetter setter) : IStorage
         {
             public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
             {
@@ -290,8 +293,9 @@ public class PaprikaStateFactory : IStateFactory
 
                 setter.SetStorage(Convert(cell.Hash), value);
             }
-        }
 
+            public ValueHash256 Keccak => keccak;
+        }
 
         [SkipLocalsInit]
         public void StorageMightBeSet(in StorageCell cell)
