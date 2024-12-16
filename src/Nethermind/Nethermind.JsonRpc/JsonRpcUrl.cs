@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase);
+            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase);
 
             // Check if authentication disabled for this url
             if (parts.Length == 4)

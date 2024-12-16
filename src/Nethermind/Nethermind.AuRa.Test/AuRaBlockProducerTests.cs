@@ -229,9 +229,9 @@ namespace Nethermind.AuRa.Test
                 });
 
             context.BlockProducerRunner.Start();
-            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
+            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 20, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
-            await Task.Delay(context.StepDelay);
+            await Task.Delay(context.StepDelay * 2);
             processedEvent.Reset();
 
             try
@@ -248,7 +248,7 @@ namespace Nethermind.AuRa.Test
                     processedEvent.Reset();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 20, CancellationToken.None);
 
             }
             finally

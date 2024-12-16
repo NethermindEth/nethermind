@@ -18,6 +18,12 @@ on:
           - op-sepolia
           - base-mainnet
           - base-sepolia
+          - joc-mainnet
+          - joc-testnet
+          - linea-mainnet
+          - linea-sepolia
+          - taiko-mainnet
+          - taiko-hekla
           - energyweb
           - volta
       cl_client:
@@ -62,9 +68,9 @@ on:
       additional_options:
         description: "A Json property which allows to customize node even more"
         default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
-      additional_optimism_options:
-        description: "Extra options to configure optimism node"
-        default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+      additional_l2_options:
+        description: "Extra options to configure L2 node"
+        default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
       convert_to_paprika:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
         default: false
@@ -125,10 +131,10 @@ on:
         description: "A Json property which allows to customize node even more"
         default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
         required: false
-      additional_optimism_options:
+      additional_l2_options:
         type: string
-        description: "Extra options to configure optimism node"
-        default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        description: "Extra options to configure L2 node"
+        default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
         required: false
       convert_to_paprika:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
@@ -278,18 +284,12 @@ jobs:
           echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
           echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
           echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
-          echo "l1_nethermind_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .l1_nethermind_image)" >> $GITHUB_OUTPUT
-          echo "op_node_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_node_image)" >> $GITHUB_OUTPUT
-          echo "op_el_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_el_extra_flags)" >> $GITHUB_OUTPUT
-          echo "op_cl_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_cl_extra_flags)" >> $GITHUB_OUTPUT
-          echo "layer1_el_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
-          echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
-          if [[ ${{ inputs.network }} == base-* ]] || [[ ${{ inputs.network }} == op-* ]]; then
-            echo "Forcing NON_VALIDATOR_MODE=false for OP chains"
-            echo "NON_VALIDATOR_MODE=false" >> $GITHUB_OUTPUT
-          else
-            echo "NON_VALIDATOR_MODE=${{ inputs.non_validator_mode }}" >> $GITHUB_OUTPUT
-          fi
+          echo "l1_nethermind_image=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l1_nethermind_image)" >> $GITHUB_OUTPUT
+          echo "l2_node_image=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_node_image)" >> $GITHUB_OUTPUT
+          echo "l2_el_extra_flags=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_el_extra_flags)" >> $GITHUB_OUTPUT
+          echo "l2_cl_extra_flags=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_cl_extra_flags)" >> $GITHUB_OUTPUT
+          echo "layer1_el_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
+          echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
 
       - name: Trigger Node creation Repo Action
         uses: benc-uk/workflow-dispatch@v1
@@ -306,7 +306,7 @@ jobs:
             "network": "${{ inputs.network }}",
             "cl_client": "${{ inputs.cl_client }}",
             "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\", \"convert_to_paprika\": \"${{ inputs.convert_to_paprika }}\"}",
-            "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op_node_image\":\"${{ steps.extract_variables.outputs.op_node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
+            "additional_l2_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"l2_node_image\":\"${{ steps.extract_variables.outputs.l2_node_image}}\", \"l2_el_extra_flags\":\"${{ steps.extract_variables.outputs.l2_el_extra_flags}}\", \"l2_cl_extra_flags\":\"${{ steps.extract_variables.outputs.l2_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
             }'
 
       - name: Wait for creation of node
