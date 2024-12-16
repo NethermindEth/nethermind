@@ -28,14 +28,19 @@ namespace Nethermind.Optimism.Test;
 [Parallelizable(ParallelScope.All)]
 public class OptimismPayloadPreparationServiceTests
 {
-    private static IEnumerable<(byte[], EIP1559Parameters)> EncodedEIP1559Params()
+    private static IEnumerable<(OptimismPayloadAttributes, EIP1559Parameters?)> TestCases()
     {
-        yield return ([0, 0, 0, 8, 0, 0, 0, 2], new EIP1559Parameters(0, 8, 2));
-        yield return ([0, 0, 0, 2, 0, 0, 0, 2], new EIP1559Parameters(0, 2, 2));
-        yield return ([0, 0, 0, 2, 0, 0, 0, 10], new EIP1559Parameters(0, 2, 10));
+        bool[] trueFalse = [true, false];
+        foreach (var noTxPool in trueFalse)
+        {
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 2));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
+            // yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = true }, new EIP1559Parameters(0, 250, 6));
+        }
     }
-    [TestCaseSource(nameof(EncodedEIP1559Params))]
-    public async Task Writes_EIP1559Params_Into_HeaderExtraData((byte[] EncodedParameters, EIP1559Parameters ExpectedParameters) testCase)
+    [TestCaseSource(nameof(TestCases))]
+    public async Task Writes_EIP1559Params_Into_HeaderExtraData((OptimismPayloadAttributes Attributes, EIP1559Parameters? ExpectedEIP1559Parameters) testCase)
     {
         var parent = Build.A.BlockHeader.TestObject;
 
@@ -73,19 +78,15 @@ public class OptimismPayloadPreparationServiceTests
             logManager: TestLogManager.Instance
         );
 
-        var attributes = new OptimismPayloadAttributes()
-        {
-            PrevRandao = Hash256.Zero,
-            SuggestedFeeRecipient = TestItem.AddressA,
-            EIP1559Params = testCase.EncodedParameters,
-        };
+        testCase.Attributes.PrevRandao = Hash256.Zero;
+        testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        var payloadId = service.StartPreparingPayload(parent, attributes);
+        var payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
         var context = await service.GetPayload(payloadId);
         var currentBestBlock = context?.CurrentBestBlock!;
 
         currentBestBlock.Should().Be(block);
         currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
-        parameters.Should().BeEquivalentTo(testCase.ExpectedParameters);
+        parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
     }
 }

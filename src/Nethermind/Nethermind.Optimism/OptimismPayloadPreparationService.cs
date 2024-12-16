@@ -45,6 +45,21 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
         PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
     {
+        if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
+        {
+            var spec = _specProvider.GetSpec(currentBestBlock.Header);
+            if (spec.IsOpHoloceneEnabled)
+            {
+                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
+                {
+                    throw new InvalidOperationException($"{nameof(OptimismPayloadAttributes)} was not properly validated: invalid {nameof(OptimismPayloadAttributes.EIP1559Params)}");
+                }
+
+                currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
+                eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
+            }
+        }
+
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
             if (_logger.IsDebug)
@@ -56,21 +71,6 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         }
         else
         {
-            if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
-            {
-                var spec = _specProvider.GetSpec(currentBestBlock.Header);
-                if (spec.IsOpHoloceneEnabled)
-                {
-                    if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
-                    {
-                        throw new InvalidOperationException($"{nameof(OptimismPayloadAttributes)} was not properly validated: invalid {nameof(OptimismPayloadAttributes.EIP1559Params)}");
-                    }
-
-                    currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
-                    eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
-                }
-            }
-
             base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
         }
     }
