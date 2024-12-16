@@ -1045,7 +1045,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         /// we writes the batch in smaller batches. This removes atomicity so its only turned on when NoWAL flag is on.
         /// It does not work as well as just turning on unordered_write, but Snapshot and Iterator can still works.
         /// </summary>
-        private const int MaxWritesOnNoWal = 128;
+        private const int MaxWritesOnNoWal = 256;
         private int _writeCount;
 
         public RocksDbWriteBatch(DbOnTheRocks dbOnTheRocks)
