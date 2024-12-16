@@ -143,6 +143,11 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
                         $"Block number out of order {givenNumber} is < than given base number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
+                // if the no. of filler blocks are greater than maximum simulate blocks cap
+                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                        $"too many blocks",
+                        ErrorCodes.ClientLimitExceededError);
 
                 for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
