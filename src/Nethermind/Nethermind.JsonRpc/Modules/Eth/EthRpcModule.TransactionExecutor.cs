@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -99,15 +100,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
 
-                if (result.AccessList is not null)
-                {
-                    tx.AccessList = result.AccessList;
-                    result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
-                }
-
                 var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: (UInt256)result.GasSpent);
+                    gasUsed: GetResultGas(tx, result));
 
                 return result switch
                 {
@@ -115,6 +110,27 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     { InputError: true } => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput),
                     _ => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError),
                 };
+            }
+
+            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
+            {
+                long gas = result.GasSpent;
+                long operationGas = result.OperationGas;
+                if (result.AccessList is not null)
+                {
+                    transaction.AccessList = result.AccessList;
+                    var accessListCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    if (gas > operationGas)
+                    {
+                        if (gas - operationGas < accessListCost) gas = operationGas + accessListCost;
+                    }
+                    else
+                    {
+                        gas += accessListCost;
+                    }
+                }
+
+                return (UInt256)gas;
             }
         }
     }
