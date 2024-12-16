@@ -194,7 +194,7 @@ namespace Nethermind.Db
                             if (!addressIndexes.TryGetValue(addressKey, out IndexInfo addressIndexInfo))
                             {
                                 addressIndexInfo = GetOrCreateTempIndex(_addressDb, addressKey, blockNumber, stats);
-                                addressIndexInfo.Lock();
+                                //addressIndexInfo.Lock();
                                 addressIndexes[addressKey] = addressIndexInfo;
                             }
 
@@ -211,7 +211,7 @@ namespace Nethermind.Db
                                 if (!topicIndexes.TryGetValue(topicKeyArray, out IndexInfo topicIndexInfo))
                                 {
                                     topicIndexInfo = GetOrCreateTempIndex(_topicsDb, topicKey.ToArray(), blockNumber, stats);
-                                    topicIndexInfo.Lock();
+                                    //topicIndexInfo.Lock();
                                     topicIndexes[topicKeyArray] = topicIndexInfo;
                                 }
 
@@ -236,6 +236,22 @@ namespace Nethermind.Db
             return stats;
         }
 
+        private void FinalizeIndex(IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db, Dictionary<byte[], IndexInfo> indexDictionary)
+        {
+            ReadOnlySpan<byte> data = LoadData(_tempFileHandle, indexInfo, indexBuffer);
+            ReadOnlySpan<byte> compressed = Compress(data, indexBuffer);
+            long offset = Append(_finalFileStream, compressed);
+
+            Span<byte> dbKey = stackalloc byte[key.Length + sizeof(int)];
+
+            CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(_tempFileHandle, blockNumberBytes), dbKey);
+            db.PutSpan(dbKey, CreateIndexValue(offset, compressed.Length, false, indexInfo.LastBlockNumber));
+
+            indexDictionary.Remove(key);
+
+            AddFreePage(indexInfo);
+        }
+
         private void ProcessLog(int blockNumber, IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db,
             Dictionary<byte[], IndexInfo> indexDictionary)
         {
@@ -250,22 +266,8 @@ namespace Nethermind.Db
             indexInfo.Length++;
             indexInfo.LastBlockNumber = blockNumber;
 
-            if (!indexInfo.IsReadyToFinalize())
-                return;
-
-            ReadOnlySpan<byte> data = LoadData(_tempFileHandle, indexInfo, indexBuffer);
-            ReadOnlySpan<byte> compressed = Compress(data, indexBuffer);
-            long offset = Append(_finalFileStream, compressed);
-            // TODO: decrease temp file
-
-            Span<byte> dbKey = stackalloc byte[key.Length + sizeof(int)];
-
-            CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(_tempFileHandle, blockNumberBytes), dbKey);
-            db.PutSpan(dbKey, CreateIndexValue(offset, compressed.Length, false, indexInfo.LastBlockNumber));
-
-            indexDictionary.Remove(key);
-
-            AddFreePage(indexInfo);
+            if (indexInfo.IsReadyToFinalize())
+                FinalizeIndex(indexInfo, blockNumberBytes, indexBuffer, key, db, indexDictionary);
         }
 
         private void FinalizeIndexes(IDb db, Dictionary<byte[], IndexInfo> indexes, Span<byte> blockNumberBytes)
@@ -280,7 +282,7 @@ namespace Nethermind.Db
                 CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(_tempFileHandle, blockNumberBytes), dbKey);
                 db.PutSpan(dbKey, CreateIndexValue(indexInfo.Offset, indexInfo.Length, indexInfo.IsTemp, indexInfo.LastBlockNumber));
 
-                indexInfo.Unlock();
+                //indexInfo.Unlock();
             }
         }
 
@@ -288,22 +290,22 @@ namespace Nethermind.Db
         /// Either finds existing temporary index for the given key and block number
         /// or
         /// </summary>
-        private IndexInfo GetOrCreateTempIndex(IDb db, byte[] key, int blockNumber, SetReceiptsStats stats)
+        private IndexInfo GetOrCreateTempIndex(IDb db, byte[] keyPrefix, int blockNumber, SetReceiptsStats stats)
         {
             using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
-            Span<byte> dbKey = stackalloc byte[key.Length + sizeof(int)];
+            Span<byte> dbKey = stackalloc byte[keyPrefix.Length + sizeof(int)];
 
-            CreateDbKey(key, blockNumber, dbKey);
+            CreateDbKey(keyPrefix, blockNumber, dbKey);
 
             var watch = Stopwatch.StartNew();
-            iterator.SeekForPrev(dbKey);
+            iterator.SeekForPrev(dbKey); // TODO: test with lower bound set
 
             if (iterator.Valid() && // Found key is less than or equal to the requested one
-                iterator.Key().AsSpan()[..key.Length].SequenceEqual(key))
+                iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             {
                 stats.SeekForPrevHit.Include(watch.Elapsed);
 
-                IndexInfo latestIndex = new(key, iterator.Value());
+                IndexInfo latestIndex = new(keyPrefix, iterator.Value());
 
                 if (latestIndex.IsTemp)
                     return latestIndex;
@@ -314,7 +316,7 @@ namespace Nethermind.Db
             }
 
             long freePage = GetFreePage() ?? GrowFile(_tempFileStream, FixedLength);
-            return new(key, freePage, 0, true, 0);
+            return new(keyPrefix, freePage, 0, true, 0);
         }
 
         private void AddFreePage(IndexInfo indexInfo)
@@ -404,7 +406,7 @@ namespace Nethermind.Db
             {
                 TurboPFor.p4ndenc128v32(blockNumbersPtr, blockNumbers.Length, compressedPtr);
             }
-            return buffer.Slice(0, blockNumbers.Length * sizeof(int)); // Adjust le ngth if necessary
+            return buffer.Slice(0, blockNumbers.Length * sizeof(int)); // Adjust length if necessary
         }
 
         private long Append(FileStream fileStream, ReadOnlySpan<byte> data)
@@ -436,11 +438,10 @@ namespace Nethermind.Db
         private class IndexInfo
         {
             public byte[] Key { get; }
-            public long Offset { get; set; }
-            public bool IsTemp { get; set; }
+            public long Offset { get; }
+            public bool IsTemp { get; }
             public int Length { get; set; }
             public int LastBlockNumber { get; set; }
-            private readonly Lock _lock = new();
 
             public IndexInfo(byte[] key, long offset, int length, bool isTemp, int lastBlockNumber)
             {
@@ -462,9 +463,9 @@ namespace Nethermind.Db
 
             public bool IsReadyToFinalize() => Length >= FixedLength / 4;
 
-            public void Lock() => _lock.Enter();
-
-            public void Unlock() => _lock.Exit();
+            // private readonly Lock _lock = new();
+            // public void Lock() => _lock.Enter();
+            // public void Unlock() => _lock.Exit();
 
             private int _lowestBlockNumber = -1;
 

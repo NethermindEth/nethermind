@@ -15,6 +15,7 @@ public class SetReceiptsStats
 
     public void Add(SetReceiptsStats other)
     {
+        BlocksAdded += other.BlocksAdded;
         TxAdded += other.TxAdded;
         LogsAdded += other.LogsAdded;
         TopicsAdded += other.TopicsAdded;
