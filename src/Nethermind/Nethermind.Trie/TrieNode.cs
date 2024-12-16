@@ -157,6 +157,7 @@ namespace Nethermind.Trie
         }
 
         public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
+        public INodeData? NodeData => _nodeData;
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
@@ -567,16 +568,6 @@ namespace Nethermind.Trie
             {
                 throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
             }
-        }
-
-        public object GetData(int index)
-        {
-            if (index > _nodeData.Length - 1)
-            {
-                return null;
-            }
-
-            return _nodeData[index];
         }
 
         public Hash256? GetChildHash(int i)
