@@ -4,7 +4,6 @@
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
-using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Network.Discovery;
 using System;
@@ -21,6 +20,8 @@ using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using System.Net;
 using Microsoft.Extensions.Logging;
+using Nethermind.Libp2p;
+using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
 
 namespace Nethermind.Shutter;
 
@@ -28,11 +29,12 @@ public class ShutterP2P : IShutterP2P
 {
     private readonly ILogger _logger;
     private readonly IShutterConfig _cfg;
-    private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
+    private readonly Channel<byte[]> _msgQueue = System.Threading.Channels.Channel.CreateBounded<byte[]>(1000);
     private readonly PubsubRouter _router;
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
-    private readonly ILocalPeer _peer;
+    private readonly IPeer _peer;
+    private readonly string _address;
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
     private readonly TimeSpan DisconnectionLogInterval;
@@ -45,18 +47,19 @@ public class ShutterP2P : IShutterP2P
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
+        _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
         IServiceCollection serviceCollection = new ServiceCollection()
-            .AddLibp2p(builder => builder)
+            .AddLibp2p(builder => builder.WithPubsub())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = _cfg.P2PProtocolVersion,
                 AgentVersion = _cfg.P2PAgentVersion
             })
             // pubsub settings
-            .AddSingleton(new Settings()
+            .AddSingleton(new PubsubSettings()
             {
                 ReconnectionAttempts = int.MaxValue,
                 Degree = 3,
@@ -86,7 +89,7 @@ public class ShutterP2P : IShutterP2P
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
 
         Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
-        _peer = peerFactory.Create(identity, $"/ip4/{ip}/tcp/{_cfg.P2PPort}");
+        _peer = peerFactory.Create(identity);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");
@@ -101,11 +104,13 @@ public class ShutterP2P : IShutterP2P
     public async Task Start(Multiaddress[] bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
     {
         _cts = cts ?? new();
-        _ = _router!.RunAsync(_peer, token: _cts.Token);
-        _ = _disc.DiscoverAsync(_peer.Address, _cts.Token);
+
+        await _peer.StartListenAsync([_address], _cts.Token);
+        await _router.StartAsync(_peer, _cts.Token);
+        _ = _disc.DiscoverAsync([Multiaddress.Decode(_address)], _cts.Token);
         _peerStore.Discover(bootnodeP2PAddresses);
 
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_address}");
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         bool hasTimedOut = false;
