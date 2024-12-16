@@ -31,8 +31,8 @@ public sealed class OptimismBaseFeeCalculator(
             spec = eip1559Params.IsZero()
                 ? new OverridableEip1559Spec(specFor1559)
                 {
-                    ElasticityMultiplier = Eip1559Constants.DefaultElasticityMultiplier,
-                    BaseFeeMaxChangeDenominator = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator
+                    ElasticityMultiplier = spec.ElasticityMultiplier,
+                    BaseFeeMaxChangeDenominator = spec.BaseFeeMaxChangeDenominator
                 }
                 : new OverridableEip1559Spec(specFor1559)
                 {

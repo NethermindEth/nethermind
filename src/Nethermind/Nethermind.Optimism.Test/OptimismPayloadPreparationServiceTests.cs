@@ -1,27 +1,28 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
-using FluentAssertions;
-using System;
-using NSubstitute;
-using Nethermind.Core.Specs;
-using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Core.Timers;
-using Nethermind.Logging;
-using Nethermind.Optimism.Rpc;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Processing;
-using Nethermind.Blockchain;
-using Nethermind.State;
-using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System;
+using NUnit.Framework;
+using NSubstitute;
+using Nethermind.State;
+using Nethermind.Optimism.Rpc;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Logging;
+using Nethermind.Int256;
+using Nethermind.Evm.Tracing;
+using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus;
+using Nethermind.Config;
+using Nethermind.Blockchain;
+using FluentAssertions;
 
 namespace Nethermind.Optimism.Test;
 
@@ -36,7 +37,7 @@ public class OptimismPayloadPreparationServiceTests
             yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));
             yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 2));
             yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
-            // yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = true }, new EIP1559Parameters(0, 250, 6));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
         }
     }
     [TestCaseSource(nameof(TestCases))]
@@ -46,6 +47,8 @@ public class OptimismPayloadPreparationServiceTests
 
         var releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
+        releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
+        releaseSpec.ElasticityMultiplier.Returns(6);
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 

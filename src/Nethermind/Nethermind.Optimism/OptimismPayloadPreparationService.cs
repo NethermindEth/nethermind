@@ -55,6 +55,11 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
                     throw new InvalidOperationException($"{nameof(OptimismPayloadAttributes)} was not properly validated: invalid {nameof(OptimismPayloadAttributes.EIP1559Params)}");
                 }
 
+                if (eip1559Parameters.IsZero())
+                {
+                    eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
+                }
+
                 currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
                 eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
             }
