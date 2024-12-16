@@ -10,26 +10,17 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class AccessTxTracer : TxTracer
+    public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
     {
-        private readonly Address[] _addressesToOptimize;
-
         public override bool IsTracingReceipt => true;
         public override bool IsTracingAccess => true;
 
-        public AccessTxTracer(params Address[] addressesToOptimize)
-        {
-            _addressesToOptimize = addressesToOptimize;
-        }
-
-        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-            Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             GasSpent += gasSpent.SpentGas;
         }
 
-        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-            Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             GasSpent += gasSpent.SpentGas;
         }
@@ -52,9 +43,9 @@ namespace Nethermind.Evm.Tracing
                 set.Add(storageCell.Index);
             }
 
-            for (int i = 0; i < _addressesToOptimize.Length; i++)
+            for (int i = 0; i < addressesToOptimize.Length; i++)
             {
-                Address address = _addressesToOptimize[i];
+                Address address = addressesToOptimize[i];
                 if (dictionary.TryGetValue(address, out ISet<UInt256> set) && set.Count == 0)
                 {
                     dictionary.Remove(address);

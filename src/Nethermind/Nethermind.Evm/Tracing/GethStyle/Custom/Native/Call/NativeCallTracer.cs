@@ -161,8 +161,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
@@ -170,8 +169,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];

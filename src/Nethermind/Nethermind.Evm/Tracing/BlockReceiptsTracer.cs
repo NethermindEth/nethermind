@@ -31,8 +31,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
     public bool IsTracingLogs => _currentTxTracer.IsTracingLogs;
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         _txReceipts.Add(BuildReceipt(recipient, gasSpent.SpentGas, StatusCode.Success, logs, stateRoot));
 
@@ -45,12 +44,11 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         if (_currentTxTracer.IsTracingReceipt)
         {
             // TODO: is no stateRoot a bug?
-            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, null);
+            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent.SpentGas, error, stateRoot));
 

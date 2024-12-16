@@ -205,7 +205,7 @@ namespace Nethermind.AuRa.Test.Reward
                     Address? recipient = args.Arg<Transaction>().To;
                     args.Arg<ITxTracer>().MarkAsSuccess(
                         recipient,
-                        new GasConsumed(0,0),
+                        0,
                         SetupAbiAddresses(rewards[recipient]),
                         []);
                 });

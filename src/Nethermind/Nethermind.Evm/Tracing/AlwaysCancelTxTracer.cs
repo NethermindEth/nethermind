@@ -44,11 +44,9 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingFees => true;
     public bool IsTracingLogs => true;
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 

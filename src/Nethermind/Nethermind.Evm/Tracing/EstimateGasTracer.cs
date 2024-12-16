@@ -36,16 +36,14 @@ namespace Nethermind.Evm.Tracing
 
         public byte StatusCode { get; set; }
 
-        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-            Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             GasSpent = gasSpent.SpentGas;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-            Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             GasSpent = gasSpent.SpentGas;
             Error = error;

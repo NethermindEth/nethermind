@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsSuccess(TestItem.AddressA, new GasConsumed(100, 100), [], [], TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], [], TestItem.KeccakF);
 
             Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsSuccess(TestItem.AddressA, new GasConsumed(100, 100), [], []);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], []);
 
             tracer.TxReceipts[0].TxType.Should().Be(TxType.AccessList);
         }
@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, new GasConsumed(100, 100), [], "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
 
             Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
@@ -66,9 +66,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, new GasConsumed(100, 100), [], "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
 
-            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, new GasConsumed(100, 100), [], "error", TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
         }
 
         [Test]
@@ -82,9 +82,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
             LogEntry[] logEntries = [];
-            tracer.MarkAsSuccess(TestItem.AddressA, new GasConsumed(100, 100), [], logEntries, TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], logEntries, TestItem.KeccakF);
 
-            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, new GasConsumed(100, 100), [], logEntries, TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, [], logEntries, TestItem.KeccakF);
         }
     }
 }

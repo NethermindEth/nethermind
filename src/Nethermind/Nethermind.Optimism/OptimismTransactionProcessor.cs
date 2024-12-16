@@ -56,7 +56,7 @@ public sealed class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             blCtx.Header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, new GasConsumed(tx.GasLimit, tx.GasLimit), [], $"failed deposit: {result.Error}");
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
             result = TransactionResult.Ok;
         }
 
@@ -161,7 +161,7 @@ public sealed class OptimismTransactionProcessor(
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
             var gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
-            return new GasConsumed(gas, gas);
+            return gas;
         }
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);

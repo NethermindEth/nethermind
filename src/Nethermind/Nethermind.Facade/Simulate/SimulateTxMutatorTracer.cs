@@ -56,8 +56,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         TraceResult = new SimulateCallResult
         {
@@ -78,8 +77,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         };
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         TraceResult = new SimulateCallResult
         {

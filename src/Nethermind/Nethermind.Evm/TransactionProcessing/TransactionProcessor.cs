@@ -23,9 +23,6 @@ using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-
-    public readonly record struct GasConsumed(long SpentGas, long OperationGas);
-
     public sealed class TransactionProcessor(
         ISpecProvider? specProvider,
         IWorldState? worldState,
@@ -610,7 +607,7 @@ namespace Nethermind.Evm.TransactionProcessing
             _ = ShouldValidate(opts);
 
             substate = null;
-            gasConsumed = new (tx.GasLimit, tx.GasLimit);
+            gasConsumed = tx.GasLimit;
             statusCode = StatusCode.Failure;
 
             long unspentGas = gasAvailable;
