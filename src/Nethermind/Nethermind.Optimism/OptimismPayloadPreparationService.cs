@@ -6,6 +6,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -62,6 +63,9 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 
                 currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
                 eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
+
+                // NOTE: Since we updated the `Header` we need to recalculate the hash.
+                currentBestBlock.Header.Hash = currentBestBlock.Header.CalculateHash();
             }
         }
 

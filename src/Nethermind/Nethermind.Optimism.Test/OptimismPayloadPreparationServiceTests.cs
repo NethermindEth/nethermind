@@ -23,6 +23,7 @@ using Nethermind.Consensus;
 using Nethermind.Config;
 using Nethermind.Blockchain;
 using FluentAssertions;
+using Nethermind.Crypto;
 
 namespace Nethermind.Optimism.Test;
 
@@ -91,5 +92,6 @@ public class OptimismPayloadPreparationServiceTests
         currentBestBlock.Should().Be(block);
         currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
         parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
+        currentBestBlock.Header.Hash.Should().BeEquivalentTo(currentBestBlock.Header.CalculateHash());
     }
 }
