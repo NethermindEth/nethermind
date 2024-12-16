@@ -20,18 +20,22 @@ using Nethermind.Core;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
-using System.Buffers.Binary;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace Nethermind.Optimism.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class OptimismPayloadPreparationServiceTests
 {
-    [TestCase(8u, 2u)]
-    [TestCase(2u, 2u)]
-    [TestCase(2u, 10u)]
-    public async Task Writes_EIP1559Params_Into_HeaderExtraData(UInt32 denominator, UInt32 elasticity)
+    private static IEnumerable<(byte[], EIP1559Parameters)> EncodedEIP1559Params()
+    {
+        yield return ([0, 0, 0, 8, 0, 0, 0, 2], new EIP1559Parameters(0, 8, 2));
+        yield return ([0, 0, 0, 2, 0, 0, 0, 2], new EIP1559Parameters(0, 2, 2));
+        yield return ([0, 0, 0, 2, 0, 0, 0, 10], new EIP1559Parameters(0, 2, 10));
+    }
+    [TestCaseSource(nameof(EncodedEIP1559Params))]
+    public async Task Writes_EIP1559Params_Into_HeaderExtraData((byte[] EncodedParameters, EIP1559Parameters ExpectedParameters) testCase)
     {
         var parent = Build.A.BlockHeader.TestObject;
 
@@ -69,15 +73,11 @@ public class OptimismPayloadPreparationServiceTests
             logManager: TestLogManager.Instance
         );
 
-        var eip1559Params = new byte[8];
-        BinaryPrimitives.WriteUInt32BigEndian(eip1559Params.AsSpan(0, 4), denominator);
-        BinaryPrimitives.WriteUInt32BigEndian(eip1559Params.AsSpan(4, 4), elasticity);
-
         var attributes = new OptimismPayloadAttributes()
         {
             PrevRandao = Hash256.Zero,
             SuggestedFeeRecipient = TestItem.AddressA,
-            EIP1559Params = eip1559Params,
+            EIP1559Params = testCase.EncodedParameters,
         };
 
         var payloadId = service.StartPreparingPayload(parent, attributes);
@@ -86,6 +86,6 @@ public class OptimismPayloadPreparationServiceTests
 
         currentBestBlock.Should().Be(block);
         currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
-        parameters.Should().BeEquivalentTo(new EIP1559Parameters(0, denominator, elasticity));
+        parameters.Should().BeEquivalentTo(testCase.ExpectedParameters);
     }
 }
