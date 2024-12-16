@@ -157,7 +157,8 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
-                    $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}");
+                    $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
+                    $"\n\t\tPages: {last.PagesAllocated} allocated, {last.PagesTaken} taken, {last.PagesReturned} returned");
             }
         }
 

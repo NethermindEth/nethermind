@@ -198,8 +198,7 @@ namespace Nethermind.Db
                                 addressIndexes[addressKey] = addressIndexInfo;
                             }
 
-                            ProcessLog(blockNumber, addressIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), addressKey, _addressDb,
-                                addressIndexes);
+                            ProcessLog(blockNumber, addressIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), addressKey, _addressDb, addressIndexes, stats);
 
                             // Handle topic logs
                             foreach (Hash256 topic in log.Topics)
@@ -215,8 +214,7 @@ namespace Nethermind.Db
                                     topicIndexes[topicKeyArray] = topicIndexInfo;
                                 }
 
-                                ProcessLog(blockNumber, topicIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), topicKeyArray, _topicsDb,
-                                    topicIndexes);
+                                ProcessLog(blockNumber, topicIndexInfo, blockNumberBytes, indexBuffer.AsSpan(), topicKeyArray, _topicsDb, topicIndexes, stats);
                             }
 
                             logsProcessed++;
@@ -236,7 +234,7 @@ namespace Nethermind.Db
             return stats;
         }
 
-        private void FinalizeIndex(IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db, Dictionary<byte[], IndexInfo> indexDictionary)
+        private void FinalizeIndex(IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db, Dictionary<byte[], IndexInfo> indexDictionary, SetReceiptsStats stats)
         {
             ReadOnlySpan<byte> data = LoadData(_tempFileHandle, indexInfo, indexBuffer);
             ReadOnlySpan<byte> compressed = Compress(data, indexBuffer);
@@ -249,11 +247,11 @@ namespace Nethermind.Db
 
             indexDictionary.Remove(key);
 
-            AddFreePage(indexInfo);
+            AddFreePage(indexInfo, stats);
         }
 
         private void ProcessLog(int blockNumber, IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db,
-            Dictionary<byte[], IndexInfo> indexDictionary)
+            Dictionary<byte[], IndexInfo> indexDictionary, SetReceiptsStats stats)
         {
             if (blockNumber <= indexInfo.LastBlockNumber)
             {
@@ -267,7 +265,7 @@ namespace Nethermind.Db
             indexInfo.LastBlockNumber = blockNumber;
 
             if (indexInfo.IsReadyToFinalize())
-                FinalizeIndex(indexInfo, blockNumberBytes, indexBuffer, key, db, indexDictionary);
+                FinalizeIndex(indexInfo, blockNumberBytes, indexBuffer, key, db, indexDictionary, stats);
         }
 
         private void FinalizeIndexes(IDb db, Dictionary<byte[], IndexInfo> indexes, Span<byte> blockNumberBytes)
@@ -315,11 +313,11 @@ namespace Nethermind.Db
                 stats.SeekForPrevMiss.Include(watch.Elapsed);
             }
 
-            long freePage = GetFreePage() ?? GrowFile(_tempFileStream, FixedLength);
+            long freePage = GetFreePage(stats) ?? GrowFile(_tempFileStream, FixedLength, stats);
             return new(keyPrefix, freePage, 0, true, 0);
         }
 
-        private void AddFreePage(IndexInfo indexInfo)
+        private void AddFreePage(IndexInfo indexInfo, SetReceiptsStats stats)
         {
             lock (_mainDb)
             {
@@ -341,6 +339,7 @@ namespace Nethermind.Db
 
                     // Save the updated free pages back to the database
                     _mainDb.PutSpan(FreePagesKey, newFreePages.AsSpan(0, (freePages?.Length ?? 0) + sizeof(long)));
+                    stats.PagesReturned++;
                 }
                 finally
                 {
@@ -349,7 +348,7 @@ namespace Nethermind.Db
             }
         }
 
-        private long? GetFreePage()
+        private long? GetFreePage(SetReceiptsStats stats)
         {
             byte[] freePages = _mainDb.Get(FreePagesKey);
 
@@ -361,6 +360,7 @@ namespace Nethermind.Db
                 // Update the freePages array by removing the last 8 bytes
                 _mainDb.PutSpan(FreePagesKey, freePages.AsSpan(0, freePages.Length - sizeof(long)));
 
+                stats.PagesTaken++;
                 return freePage;
             }
 
@@ -427,10 +427,11 @@ namespace Nethermind.Db
             return value.ToArray();
         }
 
-        private long GrowFile(FileStream fileStream, int length)
+        private long GrowFile(FileStream fileStream, int length, SetReceiptsStats stats)
         {
             long originalLength = fileStream.Length;
             fileStream.SetLength(originalLength + length);
+            stats.PagesAllocated++;
             return originalLength;
         }
 

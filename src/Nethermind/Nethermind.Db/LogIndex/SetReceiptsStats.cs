@@ -13,6 +13,10 @@ public class SetReceiptsStats
     public ExecTimeStats SeekForPrevHit { get; set; } = new();
     public ExecTimeStats SeekForPrevMiss { get; set; } = new();
 
+    public long PagesAllocated { get; set; }
+    public long PagesTaken { get; set; }
+    public long PagesReturned { get; set; }
+
     public void Add(SetReceiptsStats other)
     {
         BlocksAdded += other.BlocksAdded;
@@ -22,5 +26,9 @@ public class SetReceiptsStats
 
         SeekForPrevHit.Add(other.SeekForPrevHit);
         SeekForPrevMiss.Add(other.SeekForPrevMiss);
+
+        PagesAllocated += other.PagesAllocated;
+        PagesTaken += other.PagesTaken;
+        PagesReturned += other.PagesReturned;
     }
 }
