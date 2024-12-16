@@ -84,6 +84,8 @@ namespace Nethermind.Specs
         public bool IsEip4844Enabled { get; set; }
         public bool IsRip7212Enabled { get; set; }
         public bool IsEip7742Enabled { get; set; }
+        public ulong TargetBlobCount { get; set; }
+        public ulong MaxBlobCount { get; set; }
         public bool IsOpGraniteEnabled { get; set; }
         public bool IsOpHoloceneEnabled { get; set; }
         public bool IsEip5656Enabled { get; set; }

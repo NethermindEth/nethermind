@@ -199,6 +199,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
 
+            releaseSpec.IsEip7742Enabled = (chainSpec.Parameters.Eip7742TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            GetMaxAndTargetBlobCount(chainSpec, releaseSpec, releaseStartTimestamp);
+
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
@@ -243,6 +246,71 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             return releaseSpec;
+        }
+
+        private void GetMaxAndTargetBlobCount(ChainSpec chainSpec, ReleaseSpec spec, ulong? releaseStartTimestamp = null)
+        {
+            if (!spec.IsEip7742Enabled) return;
+            if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+            {
+                if (chainSpec.BlobSchedule.ContainsKey("prague"))
+                {
+                    spec.TargetBlobCount = chainSpec.BlobSchedule["prague"].TargetBlobCount;
+                    spec.MaxBlobCount = chainSpec.BlobSchedule["prague"].MaxBlobCount;
+                }
+                else if
+                    (chainSpec.BlobSchedule.ContainsKey("cancun")) // check previous fork if current is not specified
+                {
+                    spec.TargetBlobCount = chainSpec.BlobSchedule["cancun"].TargetBlobCount;
+                    spec.MaxBlobCount = chainSpec.BlobSchedule["cancun"].MaxBlobCount;
+                }
+                else // if previous fork is not specified then equals zero
+                {
+                    spec.TargetBlobCount = 0;
+                    spec.MaxBlobCount = 0;
+                }
+            }
+
+            if ((chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+            {
+                if (chainSpec.BlobSchedule.ContainsKey("cancun"))
+                {
+                    spec.TargetBlobCount = chainSpec.BlobSchedule["cancun"].TargetBlobCount;
+                    spec.MaxBlobCount = chainSpec.BlobSchedule["cancun"].MaxBlobCount;
+                }
+                else if
+                    (chainSpec.BlobSchedule.ContainsKey("cancun")) // check previous fork if current is not specified
+                {
+                    spec.TargetBlobCount = chainSpec.BlobSchedule["shanghai"].TargetBlobCount;
+                    spec.MaxBlobCount = chainSpec.BlobSchedule["shanghai"].MaxBlobCount;
+                }
+                else // if previous fork is not specified then equals zero
+                {
+                    spec.TargetBlobCount = 0;
+                    spec.MaxBlobCount = 0;
+                }
+            }
+
+            if ((chainSpec.ShanghaiTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+            {
+                if (chainSpec.BlobSchedule.ContainsKey("shanghai"))
+                {
+                    spec.TargetBlobCount = chainSpec.BlobSchedule["shanghai"].TargetBlobCount;
+                    spec.MaxBlobCount = chainSpec.BlobSchedule["shanghai"].MaxBlobCount;
+                }
+                else if
+                    (chainSpec.BlobSchedule.ContainsKey("paris")) // check previous fork if current is not specified
+                {
+                    spec.TargetBlobCount = chainSpec.BlobSchedule["paris"].TargetBlobCount;
+                    spec.MaxBlobCount = chainSpec.BlobSchedule["paris"].MaxBlobCount;
+                }
+                else // if previous fork is not specified then equals zero
+                {
+                    spec.TargetBlobCount = 0;
+                    spec.MaxBlobCount = 0;
+                }
+            }
+
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
