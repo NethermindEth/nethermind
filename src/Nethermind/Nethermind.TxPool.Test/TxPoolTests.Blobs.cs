@@ -43,7 +43,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_not_reject_blob_tx_even_if_max_size_is_exceeded([Values(true, false)] bool isBlob)
+        public void should_accept_blob_tx_even_if_max_size_is_exceeded([Values(true, false)] bool isBlob)
         {
             Transaction tx = Build.A.Transaction
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength() - 1};
+            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength() - 1 };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
