@@ -5,12 +5,11 @@ using Lantern.Discv5.Enr;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Portal.Messages;
 using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class PortalHistoryNetwork: IPortalHistoryNetwork
+public class PortalHistoryNetwork : IPortalHistoryNetwork
 {
     private readonly IPortalContentNetwork _contentNetwork;
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
@@ -33,6 +32,19 @@ public class PortalHistoryNetwork: IPortalHistoryNetwork
         {
             Selector = HistoryContentType.HeaderByHash,
             HeaderByHash = hash.ToByteArray()
+        }), token);
+
+        return asBytes == null ? null : _encoderDecoder.DecodeHeader(asBytes!);
+    }
+
+    public async Task<BlockHeader?> LookupBlockHeader(ulong blockNumber, CancellationToken token)
+    {
+        _logger.Info($"Looking up header {blockNumber}");
+
+        byte[]? asBytes = await _contentNetwork.LookupContent(SszEncoding.Encode(new HistoryContentKey()
+        {
+            Selector = HistoryContentType.HeaderByBlockNumber,
+            HeaderByBlockNumber = blockNumber
         }), token);
 
         return asBytes == null ? null : _encoderDecoder.DecodeHeader(asBytes!);

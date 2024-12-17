@@ -230,6 +230,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.SszGenerator.Test", "Nethermind.Serialization.SszGenerator.Test\Nethermind.Serialization.SszGenerator.Test.csproj", "{56274E7F-567F-4C79-9746-F5C802A992A9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.WireProtocol", "L:\Lantern.Discv5\src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj", "{542E2982-09D8-436B-9ED2-4D381F86F128}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Rlp", "L:\Lantern.Discv5\src\Lantern.Discv5.Rlp\Lantern.Discv5.Rlp.csproj", "{8DF4203A-607D-428C-8C88-A742C70F1E9D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Enr", "L:\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj", "{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -636,6 +642,18 @@ Global
 		{56274E7F-567F-4C79-9746-F5C802A992A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{56274E7F-567F-4C79-9746-F5C802A992A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{56274E7F-567F-4C79-9746-F5C802A992A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{542E2982-09D8-436B-9ED2-4D381F86F128}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{542E2982-09D8-436B-9ED2-4D381F86F128}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{542E2982-09D8-436B-9ED2-4D381F86F128}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{542E2982-09D8-436B-9ED2-4D381F86F128}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8DF4203A-607D-428C-8C88-A742C70F1E9D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8DF4203A-607D-428C-8C88-A742C70F1E9D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8DF4203A-607D-428C-8C88-A742C70F1E9D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8DF4203A-607D-428C-8C88-A742C70F1E9D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

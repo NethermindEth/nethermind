@@ -12,7 +12,7 @@ using Nethermind.Serialization;
 namespace Nethermind.Network.Discovery.Portal.History;
 
 public class HistoryNetworkStore(
-    IBlockTree blockTree,
+    IBlockTree blockFinder,
     ILogManager logManager
 ) : IPortalContentNetworkStore
 {
@@ -34,7 +34,7 @@ public class HistoryNetworkStore(
 
         if (key.Selector == HistoryContentType.HeaderByHash)
         {
-            BlockHeader? header = blockTree.FindHeader(new Hash256(key.HeaderByHash));
+            BlockHeader? header = blockFinder.FindHeader(new Hash256(key.HeaderByHash));
             if (header == null) return null;
 
             return _encoderDecoder.EncodeHeader(header);
@@ -42,7 +42,7 @@ public class HistoryNetworkStore(
 
         if (key.Selector == HistoryContentType.HeaderByBlockNumber)
         {
-            BlockHeader? header = blockTree.FindHeader((long)key.HeaderByBlockNumber, BlockTreeLookupOptions.None);
+            BlockHeader? header = blockFinder.FindHeader((long)key.HeaderByBlockNumber, BlockTreeLookupOptions.None);
             if (header == null) return null;
 
             return _encoderDecoder.EncodeHeader(header);
@@ -50,7 +50,7 @@ public class HistoryNetworkStore(
 
         if (key.Selector == HistoryContentType.BodyByHash)
         {
-            Block? block = blockTree.FindBlock(new Hash256(key.BodyByHash));
+            Block? block = blockFinder.FindBlock(new Hash256(key.BodyByHash));
             if (block == null) return null;
 
             return _encoderDecoder.EncodeBlockBody(block.Body);

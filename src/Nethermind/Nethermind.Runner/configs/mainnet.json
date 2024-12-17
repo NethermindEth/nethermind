@@ -34,5 +34,8 @@
   },
   "Merge": {
     "Enabled": true
+  },
+  "Discovery": {
+    "DiscoveryVersion":  "V5"
   }
 }

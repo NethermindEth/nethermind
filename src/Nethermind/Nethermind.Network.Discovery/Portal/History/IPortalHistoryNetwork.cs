@@ -10,6 +10,7 @@ namespace Nethermind.Network.Discovery.Portal.History;
 public interface IPortalHistoryNetwork
 {
     Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token);
+    Task<BlockHeader?> LookupBlockHeader(ulong blockNumber, CancellationToken token);
     Task<BlockBody?> LookupBlockBody(ValueHash256 hash, CancellationToken token);
     Task<BlockBody?> LookupBlockBodyFrom(IEnr enr, ValueHash256 hash, CancellationToken token);
     Task Run(CancellationToken token);
