@@ -42,10 +42,10 @@ namespace Nethermind.Network.P2P.Messages
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
+            RlpValueStream rlpStream = msg.AsRlpValueContext();
             if (!rlpStream.IsSequenceNext())
             {
-                rlpStream = new Rlp.ValueDecoderContext(rlpStream.DecodeByteArraySpan());
+                rlpStream = new RlpValueStream(rlpStream.DecodeByteArraySpan());
             }
 
             rlpStream.ReadSequenceLength();

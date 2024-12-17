@@ -247,7 +247,7 @@ namespace Nethermind.Facade.Find
                                 logList ??= new List<FilterLog>();
                                 Hash256[] topics = log.Topics;
 
-                                topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
+                                topics ??= iterator.DecodeTopics(new RlpValueStream(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,

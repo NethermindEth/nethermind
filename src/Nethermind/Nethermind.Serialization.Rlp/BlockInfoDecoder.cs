@@ -94,30 +94,30 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? Rlp.OfEmptySequence.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
-        public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            Hash256? blockHash = decoderContext.DecodeKeccak();
-            bool wasProcessed = decoderContext.DecodeBool();
-            UInt256 totalDifficulty = decoderContext.DecodeUInt256();
+            Hash256? blockHash = rlpStream.DecodeKeccak();
+            bool wasProcessed = rlpStream.DecodeBool();
+            UInt256 totalDifficulty = rlpStream.DecodeUInt256();
 
             BlockMetadata metadata = BlockMetadata.None;
             // if we hadn't reached the end of the stream, assume we have metadata to decode
-            if (decoderContext.Position != lastCheck)
+            if (rlpStream.Position != lastCheck)
             {
-                metadata = (BlockMetadata)decoderContext.DecodeInt();
+                metadata = (BlockMetadata)rlpStream.DecodeInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                rlpStream.Check(lastCheck);
             }
 
             if (blockHash is null)

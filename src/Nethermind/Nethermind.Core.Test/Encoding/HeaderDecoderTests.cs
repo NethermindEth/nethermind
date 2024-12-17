@@ -27,8 +27,8 @@ public class HeaderDecoderTests
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-        BlockHeader? decoded = decoder.Decode(ref decoderContext);
+        RlpValueStream rlpStream = new(rlp.Bytes);
+        BlockHeader? decoded = decoder.Decode(ref rlpStream);
         decoded!.Hash = decoded.CalculateHash();
 
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
@@ -45,8 +45,8 @@ public class HeaderDecoderTests
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-        BlockHeader? decoded = decoder.Decode(ref decoderContext);
+        RlpValueStream rlpStream = new(rlp.Bytes);
+        BlockHeader? decoded = decoder.Decode(ref rlpStream);
         decoded!.Hash = decoded.CalculateHash();
 
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");

@@ -17,11 +17,11 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.AuthorizationList = rlpStream.DecodeArray<AuthorizationTuple>((s) => _authTupleDecoder.Decode(s, rlpBehaviors));
     }
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpValueStream rlpStream,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder);
+        base.DecodePayload(transaction, ref rlpStream, rlpBehaviors);
+        transaction.AuthorizationList = rlpStream.DecodeArray(_authTupleDecoder);
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

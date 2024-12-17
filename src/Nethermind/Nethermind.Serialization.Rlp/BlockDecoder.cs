@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<byte> contentSpan = rlpStream.PeekNextItem();
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(contentSpan);
+            RlpValueStream ctx = new RlpValueStream(contentSpan);
             Block? decoded = Decode(ref ctx, rlpBehaviors);
             rlpStream.Position += contentSpan.Length;
             return decoded;
@@ -56,19 +56,19 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        public Block? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return null;
             }
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int blockCheck = decoderContext.Position + sequenceLength;
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            int blockCheck = rlpStream.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            BlockHeader header = Rlp.Decode<BlockHeader>(ref rlpStream);
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref rlpStream, blockCheck);
             return new(header, body);
         }
 
@@ -120,33 +120,33 @@ namespace Nethermind.Serialization.Rlp
 
         public static ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
+            RlpValueStream rlpStream = new RlpValueStream(memory, true);
 
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return null;
             }
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int blockCheck = decoderContext.Position + sequenceLength;
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            int blockCheck = rlpStream.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+            BlockHeader header = Rlp.Decode<BlockHeader>(ref rlpStream);
 
-            int contentLength = decoderContext.ReadSequenceLength();
-            int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);
+            int contentLength = rlpStream.ReadSequenceLength();
+            int transactionCount = rlpStream.PeekNumberOfItemsRemaining(rlpStream.Position + contentLength);
 
-            Memory<byte> transactionMemory = decoderContext.ReadMemory(contentLength);
+            Memory<byte> transactionMemory = rlpStream.ReadMemory(contentLength);
 
-            decoderContext.SkipItem(); // Skip uncles
+            rlpStream.SkipItem(); // Skip uncles
 
-            if (decoderContext.Position != blockCheck)
+            if (rlpStream.Position != blockCheck)
             {
-                decoderContext.SkipItem(); // Skip withdrawals
+                rlpStream.SkipItem(); // Skip withdrawals
             }
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(blockCheck);
+                rlpStream.Check(blockCheck);
             }
 
             return new ReceiptRecoveryBlock(memoryManager, header, transactionMemory, transactionCount);

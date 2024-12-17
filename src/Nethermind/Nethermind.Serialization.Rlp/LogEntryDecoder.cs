@@ -32,24 +32,24 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics);
         }
 
-        public LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public LogEntry? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return null;
             }
 
-            decoderContext.ReadSequenceLength();
-            Address? address = decoderContext.DecodeAddress();
-            long sequenceLength = decoderContext.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
+            Address? address = rlpStream.DecodeAddress();
+            long sequenceLength = rlpStream.ReadSequenceLength();
             Hash256[] topics = new Hash256[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
-                topics[i] = decoderContext.DecodeKeccak();
+                topics[i] = rlpStream.DecodeKeccak();
             }
 
-            byte[] data = decoderContext.DecodeByteArray();
+            byte[] data = rlpStream.DecodeByteArray();
 
             return new LogEntry(address, data, topics);
         }
@@ -131,22 +131,22 @@ namespace Nethermind.Serialization.Rlp
             return topicsLength;
         }
 
-        public static void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        public static void DecodeStructRef(scoped ref RlpValueStream rlpStream, RlpBehaviors storage, out LogEntryStructRef item)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 item = new LogEntryStructRef();
                 return;
             }
 
-            decoderContext.ReadSequenceLength();
-            decoderContext.DecodeAddressStructRef(out var address);
-            var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
+            rlpStream.ReadSequenceLength();
+            rlpStream.DecodeAddressStructRef(out var address);
+            var (PrefixLength, ContentLength) = rlpStream.PeekPrefixAndContentLength();
             var sequenceLength = PrefixLength + ContentLength;
-            var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
-            decoderContext.SkipItem();
-            var data = decoderContext.DecodeByteArraySpan();
+            var topics = rlpStream.Data.Slice(rlpStream.Position, sequenceLength);
+            rlpStream.SkipItem();
+            var data = rlpStream.DecodeByteArraySpan();
 
             item = new LogEntryStructRef(address, data, topics);
         }

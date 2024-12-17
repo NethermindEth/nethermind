@@ -64,7 +64,7 @@ namespace Nethermind.Trie
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            Rlp.ValueDecoderContext valueDecoderContext = new(value);
+            RlpValueStream valueDecoderContext = new(value);
             if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(ref valueDecoderContext);

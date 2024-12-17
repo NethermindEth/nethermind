@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
 
             while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Decode(ref rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -67,19 +67,19 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public TxReceipt? Decode(ref Rlp.ValueDecoderContext decoderContext,
+        public TxReceipt? Decode(ref RlpValueStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return null;
             }
 
             TxReceipt txReceipt = new();
-            decoderContext.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
 
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            byte[] firstItem = rlpStream.DecodeByteArray();
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -89,17 +89,17 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = decoderContext.DecodeAddress();
-            txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            txReceipt.Sender = rlpStream.DecodeAddress();
+            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int lastCheck = sequenceLength + decoderContext.Position;
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            int lastCheck = sequenceLength + rlpStream.Position;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
-            while (decoderContext.Position < lastCheck)
+            while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Decode(ref rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -107,7 +107,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                rlpStream.Check(lastCheck);
             }
 
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
@@ -115,21 +115,21 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors,
+        public void DecodeStructRef(scoped ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
             // Note: This method runs at 2.5 million times/sec on my machine
             item = new TxReceiptStructRef();
 
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return;
             }
 
-            decoderContext.SkipLength();
+            rlpStream.SkipLength();
 
-            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
+            ReadOnlySpan<byte> firstItem = rlpStream.DecodeByteArraySpan();
             if (firstItem.Length == 1)
             {
                 item.StatusCode = firstItem[0];
@@ -140,23 +140,23 @@ namespace Nethermind.Serialization.Rlp
                     firstItem.Length == 0 ? new Hash256StructRef() : new Hash256StructRef(firstItem);
             }
 
-            decoderContext.DecodeAddressStructRef(out item.Sender);
-            item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            rlpStream.DecodeAddressStructRef(out item.Sender);
+            item.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
 
             (int PrefixLength, int ContentLength) =
-                decoderContext.PeekPrefixAndContentLength();
+                rlpStream.PeekPrefixAndContentLength();
             int logsBytes = ContentLength + PrefixLength;
-            item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
-            decoderContext.SkipItem();
+            item.LogsRlp = rlpStream.Data.Slice(rlpStream.Position, logsBytes);
+            rlpStream.SkipItem();
         }
 
-        public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,
+        public void DecodeLogEntryStructRef(scoped ref RlpValueStream rlpStream, RlpBehaviors none,
             out LogEntryStructRef current)
         {
-            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref rlpStream, none, out current);
         }
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public Hash256[] DecodeTopics(RlpValueStream valueDecoderContext)
         {
             return CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
         }

@@ -43,8 +43,8 @@ public class AuthorizationTupleDecoderTests
         AuthorizationTupleDecoder sut = new();
         Assert.That(() =>
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data);
-            sut.Decode(ref decoderContext, RlpBehaviors.None);
+            RlpValueStream rlpStream = new RlpValueStream(stream.Data);
+            sut.Decode(ref rlpStream, RlpBehaviors.None);
         }
         , Throws.TypeOf<RlpException>());
     }

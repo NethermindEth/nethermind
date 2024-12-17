@@ -56,8 +56,8 @@ public class WithdrawalDecoderTests
 
         codec.Encode(stream, withdrawal);
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        Withdrawal? decoded = codec.Decode(ref decoderContext);
+        RlpValueStream rlpStream = new(stream.Data.AsSpan());
+        Withdrawal? decoded = codec.Decode(ref rlpStream);
 
         decoded.Should().BeEquivalentTo(withdrawal);
     }

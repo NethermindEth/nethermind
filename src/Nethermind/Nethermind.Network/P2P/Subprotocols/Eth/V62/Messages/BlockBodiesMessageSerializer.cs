@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
 
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpValueStream ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
             BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false);
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));

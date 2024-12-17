@@ -1299,7 +1299,7 @@ namespace Nethermind.Trie
                 Hash256 DecodeStorageRoot(Hash256 root, Hash256 address)
                 {
                     ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
-                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
+                    RlpValueStream valueContext = bytes.AsRlpValueContext();
                     return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
                 }
 

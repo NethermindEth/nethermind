@@ -107,9 +107,9 @@ namespace Nethermind.Core.Test.Encoding
             _txDecoder.Encode(rlpStream, testCase.Tx);
 
             Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
-            Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
+            RlpValueStream rlpValueStream = new(spanIncomingTxRlp);
             rlpStream.Position = 0;
-            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+            Transaction? decoded = _txDecoder.Decode(ref rlpValueStream);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
@@ -122,9 +122,9 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
 
-            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data.ToArray(), true);
+            RlpValueStream rlpValueStream = new(rlpStream.Data.ToArray(), true);
             rlpStream.Position = 0;
-            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+            Transaction? decoded = _txDecoder.Decode(ref rlpValueStream);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
@@ -139,9 +139,9 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
 
-            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data.ToArray(), true);
+            RlpValueStream rlpValueStream = new(rlpStream.Data.ToArray(), true);
             rlpStream.Position = 0;
-            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+            Transaction? decoded = _txDecoder.Decode(ref rlpValueStream);
 
             byte[] data1 = decoded!.Data!.Value.ToArray();
             data1.AsSpan().Fill(1);
@@ -219,8 +219,8 @@ namespace Nethermind.Core.Test.Encoding
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Span<byte> spanIncomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsSpan();
-            Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
-            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
+            RlpValueStream rlpStream = new(spanIncomingTxRlp);
+            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref rlpStream, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
             Transaction decoded = _txDecoder.Decode(incomingTxRlp, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
             Rlp encoded = _txDecoder.Encode(decoded);
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext);

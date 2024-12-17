@@ -27,23 +27,23 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         };
     }
 
-    public Withdrawal? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Withdrawal? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (rlpStream.IsNextItemNull())
         {
-            decoderContext.ReadByte();
+            rlpStream.ReadByte();
 
             return null;
         }
 
-        decoderContext.ReadSequenceLength();
+        rlpStream.ReadSequenceLength();
 
         return new()
         {
-            Index = decoderContext.DecodeULong(),
-            ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddress(),
-            AmountInGwei = decoderContext.DecodeULong()
+            Index = rlpStream.DecodeULong(),
+            ValidatorIndex = rlpStream.DecodeULong(),
+            Address = rlpStream.DecodeAddress(),
+            AmountInGwei = rlpStream.DecodeULong()
         };
     }
 

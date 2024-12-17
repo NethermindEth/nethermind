@@ -49,29 +49,29 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-        ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int networkWrapperCheck = 0;
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
-            int networkWrapperLength = decoderContext.ReadSequenceLength();
-            networkWrapperCheck = decoderContext.Position + networkWrapperLength;
-            int rlpRength = decoderContext.PeekNextRlpLength();
-            txSequenceStart = decoderContext.Position;
-            transactionSequence = decoderContext.Peek(rlpRength);
+            int networkWrapperLength = rlpStream.ReadSequenceLength();
+            networkWrapperCheck = rlpStream.Position + networkWrapperLength;
+            int rlpRength = rlpStream.PeekNextRlpLength();
+            txSequenceStart = rlpStream.Position;
+            transactionSequence = rlpStream.Peek(rlpRength);
         }
 
-        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors | RlpBehaviors.ExcludeHashes);
+        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref rlpStream, rlpBehaviors | RlpBehaviors.ExcludeHashes);
 
         if (transaction is not null)
         {
             if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
-                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext);
+                DecodeShardBlobNetworkWrapper(transaction, ref rlpStream);
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
-                    decoderContext.Check(networkWrapperCheck);
+                    rlpStream.Check(networkWrapperCheck);
                 }
 
                 if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
@@ -81,7 +81,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
             else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
+                CalculateHash(transaction, txSequenceStart, transactionSequence, ref rlpStream);
             }
         }
     }
@@ -121,12 +121,12 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
     }
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpValueStream rlpStream,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
-        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
+        base.DecodePayload(transaction, ref rlpStream, rlpBehaviors);
+        transaction.MaxFeePerBlobGas = rlpStream.DecodeUInt256();
+        transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -144,11 +144,11 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpValueStream rlpStream)
     {
-        byte[][] blobs = decoderContext.DecodeByteArrays();
-        byte[][] commitments = decoderContext.DecodeByteArrays();
-        byte[][] proofs = decoderContext.DecodeByteArrays();
+        byte[][] blobs = rlpStream.DecodeByteArrays();
+        byte[][] commitments = rlpStream.DecodeByteArrays();
+        byte[][] proofs = rlpStream.DecodeByteArrays();
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
     }
 

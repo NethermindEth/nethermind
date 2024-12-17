@@ -46,7 +46,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
 
     private int GetWithdrawalsLength(Withdrawal[] withdrawals) => withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
 
-    public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public BlockBody? Decode(ref RlpValueStream ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -58,7 +58,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref RlpValueStream ctx, int lastPosition)
     {
 
         // quite significant allocations (>0.5%) here based on a sample 3M blocks sync

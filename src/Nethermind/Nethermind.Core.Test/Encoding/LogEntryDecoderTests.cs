@@ -31,7 +31,7 @@ public class LogEntryDecoderTests
     {
         LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
         Rlp rlp = Rlp.Encode(logEntry);
-        Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
+        RlpValueStream valueDecoderContext = new(rlp.Bytes);
         LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
 
         Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");

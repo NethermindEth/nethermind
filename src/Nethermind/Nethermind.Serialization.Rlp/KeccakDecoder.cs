@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly KeccakDecoder Instance = new();
 
-        public Hash256? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
+        public Hash256? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => rlpStream.DecodeKeccak();
 
         public static Rlp Encode(Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 

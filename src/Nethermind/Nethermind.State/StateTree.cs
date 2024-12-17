@@ -50,7 +50,7 @@ namespace Nethermind.State
         public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
+            RlpValueStream valueDecoderContext = new RlpValueStream(bytes);
             if (bytes.IsEmpty)
             {
                 account = AccountStruct.TotallyEmpty;

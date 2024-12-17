@@ -30,17 +30,17 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.Data = rlpStream.DecodeByteArray();
     }
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpValueStream rlpStream,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.SourceHash = decoderContext.DecodeKeccak();
-        transaction.SenderAddress = decoderContext.DecodeAddress();
-        transaction.To = decoderContext.DecodeAddress();
-        transaction.Mint = decoderContext.DecodeUInt256();
-        transaction.Value = decoderContext.DecodeUInt256();
-        transaction.GasLimit = decoderContext.DecodeLong();
-        transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
-        transaction.Data = decoderContext.DecodeByteArray();
+        transaction.SourceHash = rlpStream.DecodeKeccak();
+        transaction.SenderAddress = rlpStream.DecodeAddress();
+        transaction.To = rlpStream.DecodeAddress();
+        transaction.Mint = rlpStream.DecodeUInt256();
+        transaction.Value = rlpStream.DecodeUInt256();
+        transaction.GasLimit = rlpStream.DecodeLong();
+        transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
+        transaction.Data = rlpStream.DecodeByteArray();
     }
 
     protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
