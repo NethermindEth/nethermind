@@ -28,17 +28,11 @@ public sealed class OptimismBaseFeeCalculator(
                 throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: missing {nameof(EIP1559Parameters)}");
             }
 
-            spec = eip1559Params.IsZero()
-                ? new OverridableEip1559Spec(specFor1559)
-                {
-                    ElasticityMultiplier = spec.ElasticityMultiplier,
-                    BaseFeeMaxChangeDenominator = spec.BaseFeeMaxChangeDenominator
-                }
-                : new OverridableEip1559Spec(specFor1559)
-                {
-                    ElasticityMultiplier = eip1559Params.Elasticity,
-                    BaseFeeMaxChangeDenominator = eip1559Params.Denominator
-                };
+            spec = new OverridableEip1559Spec(specFor1559)
+            {
+                ElasticityMultiplier = eip1559Params.Elasticity,
+                BaseFeeMaxChangeDenominator = eip1559Params.Denominator
+            };
         }
 
         return baseFeeCalculator.Calculate(parent, spec);
