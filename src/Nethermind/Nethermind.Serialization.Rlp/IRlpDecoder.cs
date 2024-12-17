@@ -27,14 +27,14 @@ namespace Nethermind.Serialization.Rlp
 
     public interface IRlpValueDecoder<T> : IRlpDecoder<T>
     {
-        T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+        T Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
     public static class RlpValueDecoderExtensions
     {
         public static T Decode<T>(this IRlpValueDecoder<T> decoder, ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpValueStream context = new(bytes);
             return decoder.Decode(ref context, rlpBehaviors);
         }
     }

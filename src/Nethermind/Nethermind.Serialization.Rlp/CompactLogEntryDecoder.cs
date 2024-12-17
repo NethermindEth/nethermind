@@ -41,57 +41,57 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics.ToArray());
         }
 
-        public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static LogEntry? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 return null;
             }
 
-            decoderContext.ReadSequenceLength();
-            Address? address = decoderContext.DecodeAddress();
-            long sequenceLength = decoderContext.ReadSequenceLength();
-            long untilPosition = decoderContext.Position + sequenceLength;
+            rlpStream.ReadSequenceLength();
+            Address? address = rlpStream.DecodeAddress();
+            long sequenceLength = rlpStream.ReadSequenceLength();
+            long untilPosition = rlpStream.Position + sequenceLength;
             using ArrayPoolList<Hash256> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
-            while (decoderContext.Position < untilPosition)
+            while (rlpStream.Position < untilPosition)
             {
-                topics.Add(decoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(rlpStream.DecodeZeroPrefixKeccak());
             }
 
-            int zeroPrefix = decoderContext.DecodeInt();
-            ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
+            int zeroPrefix = rlpStream.DecodeInt();
+            ReadOnlySpan<byte> rlpData = rlpStream.DecodeByteArraySpan();
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
 
             return new LogEntry(address, data, topics.ToArray());
         }
 
-        public static void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
+        public static void DecodeLogEntryStructRef(scoped ref RlpValueStream rlpStream, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
-                decoderContext.ReadByte();
+                rlpStream.ReadByte();
                 item = new LogEntryStructRef();
                 return;
             }
 
-            decoderContext.ReadSequenceLength();
-            decoderContext.DecodeAddressStructRef(out var address);
-            var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
+            rlpStream.ReadSequenceLength();
+            rlpStream.DecodeAddressStructRef(out var address);
+            var (PrefixLength, ContentLength) = rlpStream.PeekPrefixAndContentLength();
             var sequenceLength = PrefixLength + ContentLength;
-            var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
-            decoderContext.SkipItem();
+            var topics = rlpStream.Data.Slice(rlpStream.Position, sequenceLength);
+            rlpStream.SkipItem();
 
-            int zeroPrefix = decoderContext.DecodeInt();
-            ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
+            int zeroPrefix = rlpStream.DecodeInt();
+            ReadOnlySpan<byte> rlpData = rlpStream.DecodeByteArraySpan();
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
 
             item = new LogEntryStructRef(address, data, topics);
         }
 
-        public static Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public static Hash256[] DecodeTopics(RlpValueStream valueDecoderContext)
         {
             long sequenceLength = valueDecoderContext.ReadSequenceLength();
             long untilPosition = valueDecoderContext.Position + sequenceLength;

@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt? deserialized;
             if (valueDecoder)
             {
-                Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
+                RlpValueStream valueContext = rlp.Bytes.AsRlpValueContext();
                 deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
             }
             else

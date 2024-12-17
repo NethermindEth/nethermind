@@ -88,47 +88,47 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
-    public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public T? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T transaction = null;
-        Decode(ref decoderContext, ref transaction, rlpBehaviors);
+        Decode(ref rlpStream, ref transaction, rlpBehaviors);
         return transaction;
     }
 
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Decode(ref RlpValueStream rlpStream, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (rlpStream.IsNextItemNull())
         {
-            decoderContext.ReadByte();
+            rlpStream.ReadByte();
             transaction = null;
             return;
         }
 
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
+        int txSequenceStart = rlpStream.Position;
+        ReadOnlySpan<byte> transactionSequence = rlpStream.PeekNextItem();
 
         TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            if (decoderContext.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
+            if (rlpStream.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
             {
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
+                txSequenceStart = rlpStream.Position;
+                transactionSequence = rlpStream.Peek(rlpStream.Length);
+                txType = (TxType)rlpStream.ReadByte();
             }
         }
         else
         {
-            if (!decoderContext.IsSequenceNext())
+            if (!rlpStream.IsSequenceNext())
             {
-                (_, int contentLength) = decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(contentLength);
-                txType = (TxType)decoderContext.ReadByte();
+                (_, int contentLength) = rlpStream.ReadPrefixAndContentLength();
+                txSequenceStart = rlpStream.Position;
+                transactionSequence = rlpStream.Peek(contentLength);
+                txType = (TxType)rlpStream.ReadByte();
             }
         }
 
-        GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref rlpStream, rlpBehaviors);
     }
 
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

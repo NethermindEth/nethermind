@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
+        public Hash256 DecodeStorageRootOnly(ref RlpValueStream context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -189,7 +189,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private Hash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
+        private Hash256 DecodeStorageRoot(RlpValueStream context)
         {
             Hash256 storageRoot;
             if (_slimFormat && context.IsNextItemEmptyArray())
@@ -222,18 +222,18 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public Account? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Account? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int length = decoderContext.ReadSequenceLength();
+            int length = rlpStream.ReadSequenceLength();
             if (length == 1)
             {
                 return null;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
-            UInt256 balance = decoderContext.DecodeUInt256();
-            Hash256 storageRoot = DecodeStorageRoot(ref decoderContext);
-            Hash256 codeHash = DecodeCodeHash(ref decoderContext);
+            UInt256 nonce = rlpStream.DecodeUInt256();
+            UInt256 balance = rlpStream.DecodeUInt256();
+            Hash256 storageRoot = DecodeStorageRoot(ref rlpStream);
+            Hash256 codeHash = DecodeCodeHash(ref rlpStream);
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
                 return new(nonce, balance);
@@ -242,7 +242,7 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
+        private Hash256 DecodeStorageRoot(ref RlpValueStream rlpStream)
         {
             Hash256 storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
@@ -258,7 +258,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private Hash256 DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream)
+        private Hash256 DecodeCodeHash(ref RlpValueStream rlpStream)
         {
             Hash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
@@ -274,7 +274,7 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        private ValueHash256 DecodeStorageRootStruct(ref Rlp.ValueDecoderContext rlpStream)
+        private ValueHash256 DecodeStorageRootStruct(ref RlpValueStream rlpStream)
         {
             ValueHash256 storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
@@ -290,7 +290,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private ValueHash256 DecodeCodeHashStruct(ref Rlp.ValueDecoderContext rlpStream)
+        private ValueHash256 DecodeCodeHashStruct(ref RlpValueStream rlpStream)
         {
             ValueHash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
@@ -306,19 +306,19 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public bool TryDecodeStruct(ref Rlp.ValueDecoderContext decoderContext, out AccountStruct account)
+        public bool TryDecodeStruct(ref RlpValueStream rlpStream, out AccountStruct account)
         {
-            int length = decoderContext.ReadSequenceLength();
+            int length = rlpStream.ReadSequenceLength();
             if (length == 1)
             {
                 account = AccountStruct.TotallyEmpty;
                 return false;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
-            UInt256 balance = decoderContext.DecodeUInt256();
-            ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
-            ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);
+            UInt256 nonce = rlpStream.DecodeUInt256();
+            UInt256 balance = rlpStream.DecodeUInt256();
+            ValueHash256 storageRoot = DecodeStorageRootStruct(ref rlpStream);
+            ValueHash256 codeHash = DecodeCodeHashStruct(ref rlpStream);
             account = new AccountStruct(nonce, balance, storageRoot, codeHash);
             return true;
         }

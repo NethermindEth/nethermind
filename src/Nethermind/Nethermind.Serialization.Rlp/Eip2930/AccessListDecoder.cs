@@ -21,7 +21,21 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         /// RLP serializable item and keep it as a compiled call available at runtime.
         /// It would be slightly slower but still much faster than what we would get from using dynamic serializers.
         /// </summary>
-        public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            Decode(ref rlpStream, rlpBehaviors);
+
+        /// <summary>
+        /// We pay a big copy-paste tax to maintain ValueDecoders but we believe that the amount of allocations saved
+        /// make it worth it. To be reviewed periodically.
+        /// Question to Lukasz here -> would it be fine to always use ValueDecoderContext only?
+        /// I believe it cannot be done for the network items decoding and is only relevant for the DB loads.
+        /// </summary>
+        public AccessList? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            Decode<RlpValueStream>(ref rlpStream, rlpBehaviors);
+
+        private AccessList? Decode<T>(
+            ref T rlpStream,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None) where T : IRlpStream, allows ref struct
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -68,66 +82,6 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(check);
-            }
-
-            return accessListBuilder.Build();
-        }
-
-        /// <summary>
-        /// We pay a big copy-paste tax to maintain ValueDecoders but we believe that the amount of allocations saved
-        /// make it worth it. To be reviewed periodically.
-        /// Question to Lukasz here -> would it be fine to always use ValueDecoderContext only?
-        /// I believe it cannot be done for the network items decoding and is only relevant for the DB loads.
-        /// </summary>
-        public AccessList? Decode(
-            ref Rlp.ValueDecoderContext decoderContext,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (decoderContext.IsNextItemNull())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
-
-            int length = decoderContext.ReadSequenceLength();
-            int check = decoderContext.Position + length;
-
-            AccessList.Builder accessListBuilder = new();
-            while (decoderContext.Position < check)
-            {
-                int accessListItemLength = decoderContext.ReadSequenceLength();
-                int accessListItemCheck = decoderContext.Position + accessListItemLength;
-                Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
-                accessListBuilder.AddAddress(address);
-
-                if (decoderContext.Position < check)
-                {
-                    int storagesLength = decoderContext.ReadSequenceLength();
-                    int storagesCheck = decoderContext.Position + storagesLength;
-                    while (decoderContext.Position < storagesCheck)
-                    {
-                        int storageItemCheck = decoderContext.Position + IndexLength + 1;
-                        UInt256 index = decoderContext.DecodeUInt256(IndexLength);
-                        accessListBuilder.AddStorage(index);
-                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                        {
-                            decoderContext.Check(storageItemCheck);
-                        }
-                    }
-                    if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                    {
-                        decoderContext.Check(storagesCheck);
-                    }
-                }
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                {
-                    decoderContext.Check(accessListItemCheck);
-                }
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                decoderContext.Check(check);
             }
 
             return accessListBuilder.Build();
@@ -197,11 +151,9 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             public int SequenceLength { get; }
         }
 
-        private static int GetContentLength(AccessList accessList)
-        {
-            return accessList
+        private static int GetContentLength(AccessList accessList) =>
+            accessList
                 .Select(entry => new AccessItemLengths(entry.StorageKeys.Count()))
                 .Sum(lengths => lengths.SequenceLength);
-        }
     }
 }

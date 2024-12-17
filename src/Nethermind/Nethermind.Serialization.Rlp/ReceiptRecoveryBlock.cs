@@ -51,13 +51,13 @@ public struct ReceiptRecoveryBlock
             return _transactions[_currentTransactionIndex++];
         }
 
-        Rlp.ValueDecoderContext decoderContext = new(_transactionData, true)
+        RlpValueStream rlpStream = new(_transactionData, true)
         {
             Position = _currentTransactionPosition
         };
-        TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned);
+        TxDecoder.Instance.Decode(ref rlpStream, ref _txBuffer, RlpBehaviors.AllowUnsigned);
         Hash256 _ = _txBuffer.Hash; // Force Hash evaluation
-        _currentTransactionPosition = decoderContext.Position;
+        _currentTransactionPosition = rlpStream.Position;
 
         return _txBuffer;
     }

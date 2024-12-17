@@ -87,7 +87,7 @@ namespace Nethermind.State
                 return EmptyBytes;
             }
 
-            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            RlpValueStream rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
 

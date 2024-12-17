@@ -50,9 +50,9 @@ public partial class ShardBlobTxDecoderTests
         _txDecoder.Encode(rlpStream, testCase.Tx);
 
         Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
-        Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
+        RlpValueStream rlpValueStream = new(spanIncomingTxRlp);
         rlpStream.Position = 0;
-        Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+        Transaction? decoded = _txDecoder.Decode(ref rlpValueStream);
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
@@ -64,10 +64,10 @@ public partial class ShardBlobTxDecoderTests
     {
         RlpStream incomingTxRlp = Bytes.FromHexString(rlp).AsRlpStream();
         byte[] spanIncomingTxRlp = Bytes.FromHexString(rlp);
-        Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp.AsSpan());
+        RlpValueStream rlpStream = new(spanIncomingTxRlp.AsSpan());
 
         Transaction? decoded = _txDecoder.Decode(incomingTxRlp, rlpBehaviors);
-        Transaction? decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+        Transaction? decodedByValueDecoderContext = _txDecoder.Decode(ref rlpStream, rlpBehaviors);
 
         Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
         Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));

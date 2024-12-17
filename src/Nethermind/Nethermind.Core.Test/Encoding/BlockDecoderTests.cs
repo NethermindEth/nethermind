@@ -114,7 +114,7 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
 
         byte[] bytes = Bytes.FromHexString(regression5644);
-        Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
+        RlpValueStream valueDecoderContext = new(bytes);
         Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
         Rlp encoded = decoder.Encode(decoded);
         Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
@@ -127,7 +127,7 @@ public class BlockDecoderTests
         foreach (Block block in _scenarios)
         {
             Rlp encoded = decoder.Encode(block);
-            Rlp.ValueDecoderContext valueDecoderContext = new(encoded.Bytes);
+            RlpValueStream valueDecoderContext = new(encoded.Bytes);
             Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
             Rlp encoded2 = decoder.Encode(decoded);
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));

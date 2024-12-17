@@ -28,19 +28,19 @@ namespace Nethermind.Serialization.Rlp
             return new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
         }
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[]? bytes)
+        public static RlpValueStream AsRlpValueContext(this byte[]? bytes)
         {
             return new(bytes ?? []);
         }
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span)
+        public static RlpValueStream AsRlpValueContext(this Span<byte> span)
         {
             return ((ReadOnlySpan<byte>)span).AsRlpValueContext();
         }
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this ReadOnlySpan<byte> span)
+        public static RlpValueStream AsRlpValueContext(this ReadOnlySpan<byte> span)
         {
-            return span.IsEmpty ? new Rlp.ValueDecoderContext([]) : new Rlp.ValueDecoderContext(span);
+            return span.IsEmpty ? new RlpValueStream([]) : new RlpValueStream(span);
         }
     }
 }

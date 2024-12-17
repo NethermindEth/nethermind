@@ -23,13 +23,13 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            T[] result = new T[decoderContext.PeekNumberOfItemsRemaining(checkPosition)];
+            int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
+            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
             for (int i = 0; i < result.Length; i++)
             {
-                result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
+                result[i] = decoder.Decode(ref rlpStream, rlpBehaviors);
             }
 
             return result;

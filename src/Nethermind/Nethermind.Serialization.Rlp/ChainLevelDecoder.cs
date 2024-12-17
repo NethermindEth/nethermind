@@ -72,23 +72,23 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public ChainLevelInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ChainLevelInfo? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            bool hasMainChainBlock = decoderContext.DecodeBool();
+            int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
+            bool hasMainChainBlock = rlpStream.DecodeBool();
 
             List<BlockInfo> blockInfos = new();
 
-            decoderContext.ReadSequenceLength();
-            while (decoderContext.Position < lastCheck)
+            rlpStream.ReadSequenceLength();
+            while (rlpStream.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
-                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(ref decoderContext, RlpBehaviors.AllowExtraBytes);
+                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(ref rlpStream, RlpBehaviors.AllowExtraBytes);
                 if (blockInfo is not null)
                 {
                     blockInfos.Add(blockInfo);
@@ -97,7 +97,7 @@ namespace Nethermind.Serialization.Rlp
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                rlpStream.Check(lastCheck);
             }
 
             ChainLevelInfo info = new(hasMainChainBlock, blockInfos.ToArray());

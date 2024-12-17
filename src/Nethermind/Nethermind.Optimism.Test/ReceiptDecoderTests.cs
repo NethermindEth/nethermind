@@ -47,7 +47,7 @@ public class ReceiptDecoderTests
                 Assert.That(decodedStorageReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
             });
 
-            Rlp.ValueDecoderContext valueDecoderCtx = new(encodedRlp.Data);
+            RlpValueStream valueDecoderCtx = new(encodedRlp.Data);
             decodedStorageReceipt = decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>

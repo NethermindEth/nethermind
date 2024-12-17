@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt? deserialized;
             if (valueDecoder)
             {
-                Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
+                RlpValueStream valueContext = rlp.Bytes.AsRlpValueContext();
                 deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
             }
             else
@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Encoding
             CompactReceiptStorageDecoder decoder = new();
 
             byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
+            RlpValueStream ctx = new(rlpStreamResult);
             decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out var deserialized);
 
             Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");

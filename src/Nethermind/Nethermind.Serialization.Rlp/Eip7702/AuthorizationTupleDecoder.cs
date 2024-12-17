@@ -39,20 +39,20 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public AuthorizationTuple Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public AuthorizationTuple Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int length = decoderContext.ReadSequenceLength();
-        int check = length + decoderContext.Position;
-        ulong chainId = decoderContext.DecodeULong();
-        Address? codeAddress = decoderContext.DecodeAddress();
-        ulong nonce = decoderContext.DecodeULong();
-        byte yParity = decoderContext.DecodeByte();
-        UInt256 r = decoderContext.DecodeUInt256();
-        UInt256 s = decoderContext.DecodeUInt256();
+        int length = rlpStream.ReadSequenceLength();
+        int check = length + rlpStream.Position;
+        ulong chainId = rlpStream.DecodeULong();
+        Address? codeAddress = rlpStream.DecodeAddress();
+        ulong nonce = rlpStream.DecodeULong();
+        byte yParity = rlpStream.DecodeByte();
+        UInt256 r = rlpStream.DecodeUInt256();
+        UInt256 s = rlpStream.DecodeUInt256();
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
-            decoderContext.Check(check);
+            rlpStream.Check(check);
         }
 
         if (codeAddress is null)
