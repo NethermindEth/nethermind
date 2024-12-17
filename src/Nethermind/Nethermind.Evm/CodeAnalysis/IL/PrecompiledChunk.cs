@@ -32,7 +32,6 @@ internal class PrecompiledChunk : InstructionChunk
         ITxTracer trace,
         ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
-        ref Word headRef = ref Unsafe.As<byte, Word>(ref stack.HeadRef);
         PrecompiledSegment.Invoke(
             chainId,
             ref vmState,
