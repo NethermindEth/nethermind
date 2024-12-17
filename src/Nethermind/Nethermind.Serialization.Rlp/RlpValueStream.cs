@@ -61,30 +61,30 @@ public ref struct RlpValueStream : IRlpStream
                 case <= 128:
                     break;
                 case <= 183:
-                {
-                    int length = prefix - 128;
-                    Position += length;
-                    break;
-                }
-                case < 192:
-                {
-                    int lengthOfLength = prefix - 183;
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
                     {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                        int length = prefix - 128;
+                        Position += length;
+                        break;
                     }
+                case < 192:
+                    {
+                        int lengthOfLength = prefix - 183;
+                        int length = DeserializeLength(lengthOfLength);
+                        if (length < 56)
+                        {
+                            throw new RlpException("Expected length greater or equal 56 and was {length}");
+                        }
 
-                    Position += length;
-                    break;
-                }
+                        Position += length;
+                        break;
+                    }
                 default:
-                {
-                    Position--;
-                    int sequenceLength = ReadSequenceLength();
-                    Position += sequenceLength;
-                    break;
-                }
+                    {
+                        Position--;
+                        int sequenceLength = ReadSequenceLength();
+                        Position += sequenceLength;
+                        break;
+                    }
             }
 
             numberOfItems++;
@@ -126,36 +126,36 @@ public ref struct RlpValueStream : IRlpStream
             case <= 183:
                 return (1, prefix - 128);
             case < 192:
-            {
-                int lengthOfLength = prefix - 183;
-                if (lengthOfLength > 4)
                 {
-                    // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    throw new RlpException("Expected length of length less or equal 4");
-                }
+                    int lengthOfLength = prefix - 183;
+                    if (lengthOfLength > 4)
+                    {
+                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+                        throw new RlpException("Expected length of length less or equal 4");
+                    }
 
-                int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
-                {
-                    throw new RlpException("Expected length greater or equal 56 and was {length}");
-                }
+                    int length = DeserializeLength(lengthOfLength);
+                    if (length < 56)
+                    {
+                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    }
 
-                return (lengthOfLength + 1, length);
-            }
+                    return (lengthOfLength + 1, length);
+                }
             case <= 247:
                 return (1, prefix - 192);
             default:
-            {
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
                 {
-                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                    int lengthOfContentLength = prefix - 247;
+                    int contentLength = DeserializeLength(lengthOfContentLength);
+                    if (contentLength < 56)
+                    {
+                        throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                    }
+
+
+                    return (lengthOfContentLength + 1, contentLength);
                 }
-
-
-                return (lengthOfContentLength + 1, contentLength);
-            }
         }
     }
 
@@ -675,34 +675,34 @@ public ref struct RlpValueStream : IRlpStream
             case 128:
                 return Array.Empty<byte>();
             case <= 183:
-            {
-                int length = prefix - 128;
-                Memory<byte> buffer = ReadSlicedMemory(length);
-                Span<byte> asSpan = buffer.Span;
-                if (length == 1 && asSpan[0] < 128)
                 {
-                    ThrowUnexpectedValue(asSpan[0]);
-                }
+                    int length = prefix - 128;
+                    Memory<byte> buffer = ReadSlicedMemory(length);
+                    Span<byte> asSpan = buffer.Span;
+                    if (length == 1 && asSpan[0] < 128)
+                    {
+                        ThrowUnexpectedValue(asSpan[0]);
+                    }
 
-                return buffer;
-            }
+                    return buffer;
+                }
             case < 192:
-            {
-                int lengthOfLength = prefix - 183;
-                if (lengthOfLength > 4)
                 {
-                    // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    ThrowUnexpectedLengthOfLength();
-                }
+                    int lengthOfLength = prefix - 183;
+                    if (lengthOfLength > 4)
+                    {
+                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+                        ThrowUnexpectedLengthOfLength();
+                    }
 
-                int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
-                {
-                    ThrowUnexpectedLength(length);
-                }
+                    int length = DeserializeLength(lengthOfLength);
+                    if (length < 56)
+                    {
+                        ThrowUnexpectedLength(length);
+                    }
 
-                return ReadSlicedMemory(length);
-            }
+                    return ReadSlicedMemory(length);
+                }
         }
 
         ThrowUnexpectedPrefix(prefix);
