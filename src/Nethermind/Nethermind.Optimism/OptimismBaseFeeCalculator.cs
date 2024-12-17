@@ -23,9 +23,9 @@ public sealed class OptimismBaseFeeCalculator(
         if (parent.Timestamp >= holoceneTimestamp)
         {
             // NOTE: This operation should never fail since headers should be valid at this point.
-            if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out _))
+            if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out var error))
             {
-                throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: missing {nameof(EIP1559Parameters)}");
+                throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
             }
 
             spec = new OverridableEip1559Spec(specFor1559)

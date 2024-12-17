@@ -36,6 +36,7 @@ public class OptimismHeaderValidatorTests
         yield return ("0xff0000000100000001", false);
         yield return ("0x000000000000000000", false);
         yield return ("0x000000000000000001", false);
+        yield return ("0x00ffffffff000001bc00", false);
     }
 
     [TestCaseSource(nameof(EIP1559ParametersExtraData))]
