@@ -17,6 +17,8 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
+        private const int ExtensionRlpChildIndex = 1;
+
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
@@ -202,7 +204,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
-                    if (node.GetChildHashAsValueKeccak(0, out ValueHash256 childKeccak))
+                    if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
                     {
                         if (dict.TryGetValue(childKeccak, out TrieNode child))
                         {
@@ -312,7 +314,7 @@ namespace Nethermind.Synchronization.SnapSync
                     INodeData nodeData = node.NodeData;
                     if (nodeData is ExtensionData extensionData)
                     {
-                        if (IsChildPersisted(node, ref path, extensionData._value, 1, store))
+                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, store))
                         {
                             node.IsBoundaryProofNode = false;
                         }
