@@ -11,7 +11,7 @@ namespace Nethermind.TxPool.Filters;
 /// </summary>
 internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
-    private readonly int _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? int.MaxValue;
+    private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {

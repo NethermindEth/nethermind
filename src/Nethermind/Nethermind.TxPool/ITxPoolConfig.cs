@@ -43,9 +43,9 @@ public interface ITxPoolConfig : IConfig
 
     long? GasLimit { get; set; }
 
-    [ConfigItem(DefaultValue = "null",
+    [ConfigItem(DefaultValue = "131072",
         Description = "The max transaction size allowed (in bytes).")]
-    int? MaxTxSize { get; set; }
+    long? MaxTxSize { get; set; }
 
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]

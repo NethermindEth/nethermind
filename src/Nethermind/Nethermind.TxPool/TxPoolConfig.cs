@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.TxPool
 {
     public class TxPoolConfig : ITxPoolConfig
@@ -18,7 +20,7 @@ namespace Nethermind.TxPool
         public int MaxPendingBlobTxsPerSender { get; set; } = 16;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
-        public int? MaxTxSize { get; set; } = null;
+        public long? MaxTxSize { get; set; } = 128.KiB();
         public int? ReportMinutes { get; set; } = null;
     }
 }
