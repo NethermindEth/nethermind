@@ -17,4 +17,7 @@ public interface ILogIndexStorage : IDisposable
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     SetReceiptsStats SetReceipts(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
     SetReceiptsStats SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken);
+
+    public long PagesAllocatedCount { get; }
+    public long PagesFreeCount { get; }
 }

@@ -158,7 +158,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
                     $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
-                    $"\n\t\tPages: {last.PagesAllocated} allocated, {last.PagesTaken} taken, {last.PagesReturned} returned");
+                    $"\n\t\tPages: {_logIndexStorage.PagesAllocatedCount} allocated total, {last.PagesTaken} taken, {_logIndexStorage.PagesFreeCount} pending, {last.PagesReturned} returned");
             }
         }
 
@@ -200,9 +200,9 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                //foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000))
+                foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000))
                 //foreach (Block block in GetBlocksForMigration(token, startFrom: 750_000)) // Where slowdown starts
-                foreach (Block block in GetBlocksForMigration(token, startFrom: 0))
+                //foreach (Block block in GetBlocksForMigration(token, startFrom: 0))
                 {
                     TxReceipt[] receipts = _receiptStorage.Get(block, false);
 

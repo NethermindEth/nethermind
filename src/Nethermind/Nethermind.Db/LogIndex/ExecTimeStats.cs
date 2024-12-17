@@ -19,7 +19,7 @@ public class ExecTimeStats
 
     public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(_totalMs / _count);
 
-    public override string ToString() => $"{Average:g} ({_count})";
+    public override string ToString() => $"{Average.TotalMicroseconds:F1}ms ({_count})";
 
     public void Add(ExecTimeStats stats)
     {

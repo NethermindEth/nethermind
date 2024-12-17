@@ -7,6 +7,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,6 +37,42 @@ namespace Nethermind.Db
         private readonly IDb _mainDb;
         private readonly ILogger _logger;
         private const int FixedLength = 4096;
+
+        private readonly PagesStats _pagesStats = new();
+        private readonly Channel<long> _freePages = Channel.CreateBounded<long>(1024);
+        private readonly Channel<long> _returnedPages = Channel.CreateBounded<long>(1024); // TODO: make bounded
+
+        private Task? _allocatePagesTask;
+
+        public long PagesAllocatedCount => _pagesStats.PagesAllocated;
+        public long PagesFreeCount => _freePages.Reader.Count + _returnedPages.Reader.Count; // not atomic, more of an estimation
+
+        // TODO: move to a separate PageManager class
+        private async Task AllocatePages(CancellationToken cancellationToken)
+        {
+            byte[] freePages = _mainDb.Get(FreePagesKey);
+
+            if (freePages != null)
+            {
+                for (var i = freePages.Length; i > 0; i++)
+                {
+                    var freePage = BinaryPrimitives.ReadInt64BigEndian(freePages.AsSpan(i - sizeof(long)));
+                    await _freePages.Writer.WriteAsync(freePage, cancellationToken);
+                }
+            }
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (_returnedPages.Reader.TryRead(out long freePage))
+                {
+                    await _freePages.Writer.WriteAsync(freePage, cancellationToken);
+                }
+                else
+                {
+                    await _freePages.Writer.WriteAsync(AllocatePage(_tempFileStream, FixedLength, _pagesStats), cancellationToken);
+                }
+            }
+        }
 
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath)
@@ -160,6 +198,8 @@ namespace Nethermind.Db
 
         public SetReceiptsStats SetReceipts(ReadOnlySpan<(int blockNumber, TxReceipt[] receipts)> batch, bool isBackwardSync, CancellationToken cancellationToken)
         {
+            _allocatePagesTask ??= Task.Run(() => AllocatePages(cancellationToken), cancellationToken);
+
             var stats = new SetReceiptsStats { BlocksAdded = batch.Length };
             var addressIndexes = new Dictionary<byte[], IndexInfo>(Bytes.EqualityComparer);
             var topicIndexes = new Dictionary<byte[], IndexInfo>(Bytes.EqualityComparer);
@@ -247,7 +287,7 @@ namespace Nethermind.Db
 
             indexDictionary.Remove(key);
 
-            AddFreePage(indexInfo, stats);
+            ReturnPage(indexInfo, stats);
         }
 
         private void ProcessLog(int blockNumber, IndexInfo indexInfo, Span<byte> blockNumberBytes, Span<byte> indexBuffer, byte[] key, IDb db,
@@ -284,10 +324,60 @@ namespace Nethermind.Db
             }
         }
 
-        /// <summary>
-        /// Either finds existing temporary index for the given key and block number
-        /// or
-        /// </summary>
+        private void ReturnPage(IndexInfo indexInfo, SetReceiptsStats stats)
+        {
+            long newFreePage = indexInfo.Offset;
+
+            if (!_returnedPages.Writer.TryWrite(newFreePage))
+            {
+                GC.KeepAlive(newFreePage); // TODO: handle
+            }
+
+            // TODO: save in background
+            // Prepare new array with the old free pages plus the new one
+            // byte[] newFreePages = ArrayPool<byte>.Shared.Rent((freePages?.Length ?? 0) + sizeof(long));
+            //
+            // try
+            // {
+            //     if (freePages != null)
+            //     {
+            //         freePages.CopyTo(newFreePages, 0);
+            //     }
+            //
+            //     // Append the new free page
+            //     BinaryPrimitives.WriteInt64BigEndian(newFreePages.AsSpan(freePages?.Length ?? 0), newFreePage);
+            //
+            //     // Save the updated free pages back to the database
+            //     _mainDb.PutSpan(FreePagesKey, newFreePages.AsSpan(0, (freePages?.Length ?? 0) + sizeof(long)));
+            // }
+            // finally
+            // {
+            //     ArrayPool<byte>.Shared.Return(newFreePages);
+            // }
+            // }
+
+            stats.PagesReturned++;
+        }
+
+        // private long AllocatePage()
+        // {
+        //     byte[] freePages = _mainDb.Get(FreePagesKey);
+        //
+        //     if (freePages is { Length: >= sizeof(long) })
+        //     {
+        //         // Extract the last 8 bytes as the free page
+        //         long freePage = BinaryPrimitives.ReadInt64BigEndian(freePages.AsSpan(freePages.Length - sizeof(long)));
+        //
+        //         // Update the freePages array by removing the last 8 bytes
+        //         _mainDb.PutSpan(FreePagesKey, freePages.AsSpan(0, freePages.Length - sizeof(long)));
+        //
+        //         PagesStats.PagesAllocated++;
+        //         return freePage;
+        //     }
+        //
+        //     return null;
+        // }
+
         private IndexInfo GetOrCreateTempIndex(IDb db, byte[] keyPrefix, int blockNumber, SetReceiptsStats stats)
         {
             using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
@@ -313,58 +403,22 @@ namespace Nethermind.Db
                 stats.SeekForPrevMiss.Include(watch.Elapsed);
             }
 
-            long freePage = GetFreePage(stats) ?? GrowFile(_tempFileStream, FixedLength, stats);
+            long freePage = GetFreePage(stats);
             return new(keyPrefix, freePage, 0, true, 0);
         }
 
-        private void AddFreePage(IndexInfo indexInfo, SetReceiptsStats stats)
+        private long GetFreePage(SetReceiptsStats stats)
         {
-            lock (_mainDb)
-            {
-                byte[] freePages = _mainDb.Get(FreePagesKey);
-                long newFreePage = indexInfo.Offset;
+            // TODO: make async
+            ValueTask<long> freePageTask = _freePages.Reader.ReadAsync();
+            long freePage;
+            if (freePageTask.IsCompleted)
+                freePage = freePageTask.Result;
+            else
+                freePage = freePageTask.AsTask().GetAwaiter().GetResult();
 
-                // Prepare new array with the old free pages plus the new one
-                byte[] newFreePages = ArrayPool<byte>.Shared.Rent((freePages?.Length ?? 0) + sizeof(long));
-
-                try
-                {
-                    if (freePages != null)
-                    {
-                        freePages.CopyTo(newFreePages, 0);
-                    }
-
-                    // Append the new free page
-                    BinaryPrimitives.WriteInt64BigEndian(newFreePages.AsSpan(freePages?.Length ?? 0), newFreePage);
-
-                    // Save the updated free pages back to the database
-                    _mainDb.PutSpan(FreePagesKey, newFreePages.AsSpan(0, (freePages?.Length ?? 0) + sizeof(long)));
-                    stats.PagesReturned++;
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(newFreePages);
-                }
-            }
-        }
-
-        private long? GetFreePage(SetReceiptsStats stats)
-        {
-            byte[] freePages = _mainDb.Get(FreePagesKey);
-
-            if (freePages is { Length: >= sizeof(long) })
-            {
-                // Extract the last 8 bytes as the free page
-                long freePage = BinaryPrimitives.ReadInt64BigEndian(freePages.AsSpan(freePages.Length - sizeof(long)));
-
-                // Update the freePages array by removing the last 8 bytes
-                _mainDb.PutSpan(FreePagesKey, freePages.AsSpan(0, freePages.Length - sizeof(long)));
-
-                stats.PagesTaken++;
-                return freePage;
-            }
-
-            return null;
+            stats.PagesTaken++;
+            return freePage;
         }
 
         /// <summary>
@@ -427,7 +481,7 @@ namespace Nethermind.Db
             return value.ToArray();
         }
 
-        private long GrowFile(FileStream fileStream, int length, SetReceiptsStats stats)
+        private long AllocatePage(FileStream fileStream, int length, PagesStats stats)
         {
             long originalLength = fileStream.Length;
             fileStream.SetLength(originalLength + length);
