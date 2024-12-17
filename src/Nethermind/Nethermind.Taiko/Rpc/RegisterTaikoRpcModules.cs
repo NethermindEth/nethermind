@@ -18,13 +18,11 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
 {
     private readonly TaikoNethermindApi _api;
     private readonly ILogger _logger;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
 
     public RegisterTaikoRpcModules(INethermindApi api) : base(api)
     {
         _api = (TaikoNethermindApi)api;
         _logger = api.LogManager.GetClassLogger();
-        _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)

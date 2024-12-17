@@ -27,15 +27,15 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyTrieStore _trieStore;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculatorSource _rewardCalculatorSource;
-    private readonly IReceiptStorage _receiptStorage;
+    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
+    protected readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly IConfigProvider _configProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogManager _logManager;
-    private readonly IBlockPreprocessorStep _recoveryStep;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly ILogManager _logManager;
+    protected readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IReadOnlyDbProvider _dbProvider;
-    private readonly IReadOnlyBlockTree _blockTree;
+    protected readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
@@ -83,17 +83,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
         BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);
-        ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-            scope,
-            _blockValidator,
-            _recoveryStep,
-            _rewardCalculatorSource.Get(scope.TransactionProcessor),
-            _receiptStorage,
-            _specProvider,
-            _blockTree,
-            worldStateManager.GlobalStateReader,
-            _logManager,
-            transactionsExecutor);
+        ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
@@ -118,5 +108,21 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _badBlockStore);
 
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
+    }
+
+    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
+        OverridableWorldStateManager worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+    {
+        return new ReadOnlyChainProcessingEnv(
+            scope,
+            _blockValidator,
+            _recoveryStep,
+            _rewardCalculatorSource.Get(scope.TransactionProcessor),
+            _receiptStorage,
+            _specProvider,
+            _blockTree,
+            worldStateManager.GlobalStateReader,
+            _logManager,
+            transactionsExecutor);
     }
 }
