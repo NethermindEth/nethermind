@@ -11,6 +11,7 @@ public class JsonRpcConfig : IJsonRpcConfig
 {
     public static readonly JsonRpcConfig Default = new();
     private int? _webSocketsPort;
+    private string[] _enabledModules = ModuleType.DefaultModules.ToArray();
     public bool Enabled { get; set; }
     public string Host { get; set; } = "127.0.0.1";
     public int Timeout { get; set; } = 20000;
@@ -29,7 +30,15 @@ public class JsonRpcConfig : IJsonRpcConfig
 
     public string? IpcUnixDomainSocketPath { get; set; } = null;
 
-    public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
+    public string[] EnabledModules
+    {
+        get => _enabledModules;
+        set
+        {
+            _enabledModules = value.Where(m => !string.IsNullOrWhiteSpace(m)).ToArray();
+        }
+    }
+
     public string[] AdditionalRpcUrls { get; set; } = [];
     public long? GasCap { get; set; } = 100000000;
     public int ReportIntervalSeconds { get; set; } = 300;
@@ -38,7 +47,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
     public int? EthModuleConcurrentInstances { get; set; } = null;
-    public string JwtSecretFile { get; set; } = "keystore/jwt-secret";
+    public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
     public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
     public string[]? MethodsLoggingFiltering { get; set; } =
@@ -58,4 +67,3 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int EstimateErrorMargin { get; set; } = 150;
     public string[] CorsOrigins { get; set; } = ["*"];
 };
-

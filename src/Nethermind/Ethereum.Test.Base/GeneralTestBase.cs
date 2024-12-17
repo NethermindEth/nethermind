@@ -133,10 +133,10 @@ namespace Ethereum.Test.Base
             }
 
             ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
-
+            TransactionResult? txResult = null;
             if (txIsValid)
             {
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
             }
             else
             {
@@ -144,19 +144,25 @@ namespace Ethereum.Test.Base
             }
 
             stopwatch.Stop();
-
-            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-            stateProvider.CommitTree(1);
-
-            // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
-            if (!stateProvider.AccountExists(test.CurrentCoinbase))
+            if (txResult is not null && txResult.Value == TransactionResult.Ok)
             {
-                stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+                stateProvider.CommitTree(1);
+
+                // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
+                if (!stateProvider.AccountExists(test.CurrentCoinbase))
+                {
+                    stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+                }
+
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+
+                stateProvider.RecalculateStateRoot();
             }
-
-            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-
-            stateProvider.RecalculateStateRoot();
+            else
+            {
+                stateProvider.Reset();
+            }
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
