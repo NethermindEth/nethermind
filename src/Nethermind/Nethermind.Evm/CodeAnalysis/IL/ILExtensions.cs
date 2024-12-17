@@ -16,8 +16,93 @@ using System.Numerics;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using static Nethermind.Evm.IL.EmitExtensions;
 
 namespace Nethermind.Evm.IL;
+
+public static class StackEmit
+{
+    /// <summary>
+    /// Moves the stack <paramref name="count"/> words down.
+    /// </summary>
+    public static void StackPop<T>(this Emit<T> il, Local idx, int count)
+    {
+        il.LoadLocal(idx);
+        il.LoadConstant(count);
+        il.Subtract();
+        il.StoreLocal(idx);
+    }
+
+    /// <summary>
+    /// Moves the stack <paramref name="count"/> words down.
+    /// </summary>
+    public static void StackPop<T>(this Emit<T> il, Local local, Local count)
+    {
+        il.LoadLocal(local);
+        il.LoadLocal(count);
+        il.Subtract();
+        il.StoreLocal(local);
+    }
+    /// <summary>
+    /// Loads the previous EVM stack value on top of .NET stack.
+    /// </summary>
+    public static void StackLoadPrevious<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
+    {
+        il.LoadLocal(stackHeadRef);
+
+        int offsetFromHead = offset - count;
+
+        if (offsetFromHead == 0) return;
+
+        il.LoadConstant(offsetFromHead * Word.Size);
+        il.Convert<nint>();
+        il.Call(UnsafeEmit.GetAddBytesOffsetRef<Word>());
+    }
+
+    public static void StackSetHead<T>(this Emit<T> il, Local stackHeadRef, int offset)
+    {
+        if (offset == 0) return;
+
+        il.LoadLocal(stackHeadRef);
+        il.LoadConstant(offset * Word.Size);
+        il.Convert<nint>();
+        il.Call(UnsafeEmit.GetAddBytesOffsetRef<Word>());
+        il.StoreLocal(stackHeadRef);
+    }
+
+    public static void LoadItemFromSpan<T, U>(this Emit<T> il, Local local, Local idx)
+    {
+        il.LoadLocalAddress(local);
+        il.LoadLocal(idx);
+        il.Call(typeof(Span<U>).GetMethod("get_Item"));
+    }
+
+    public static void CleanWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
+    {
+        il.StackLoadPrevious(stackHeadRef, offset, count);
+        il.InitializeObject(typeof(Word));
+    }
+
+
+    public static void CleanAndLoadWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
+    {
+        il.StackLoadPrevious(stackHeadRef, offset, count);
+        il.Duplicate();
+
+        il.InitializeObject(typeof(Word));
+    }
+
+    /// <summary>
+    /// Advances the stack one word up.
+    /// </summary>
+    public static void StackPush<T>(this Emit<T> il, Local idx, int count)
+    {
+        il.LoadLocal(idx);
+        il.LoadConstant(count);
+        il.Add();
+        il.StoreLocal(idx);
+    }
+}
 
 public static class WordEmit
 {
@@ -38,6 +123,84 @@ public static class WordEmit
         }
         il.Call(setterInfo);
     }
+
+    public static void EmitIsOneCheck<T>(this Emit<T> il, Local? word = null)
+    {
+        if (word is not null)
+        {
+            il.LoadLocalAddress(word);
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneLittleEndian)).GetMethod;
+            il.Call(methodInfo);
+        } else
+        {
+            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneBigEndian)).GetMethod;
+            il.Call(methodInfo);
+        }
+    }
+
+    public static void EmitIsZeroCheck<T>(this Emit<T> il, Local? word = null)
+    {
+        if (word is not null)
+        {
+            il.LoadLocalAddress(word);
+        }
+
+        MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsZero)).GetMethod;
+        il.Call(methodInfo);
+    }
+
+    public static void EmitIsMinusOneCheck<T>(this Emit<T> il, Local? word = null)
+    {
+        if (word is not null)
+        {
+            il.LoadLocalAddress(word);
+        }
+
+        MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsMinusOne)).GetMethod;
+        il.Call(methodInfo);
+    }
+
+    public static void EmitIsZeroOrOneCheck<T>(this Emit<T> il, Local? word = null)
+    {
+        if(word is not null)
+        {
+            il.LoadLocalAddress(word);
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneOrZeroLittleEndian)).GetMethod;
+            il.Call(methodInfo);
+        }
+        else
+        {
+            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneOrZeroBigEndian)).GetMethod;
+            il.Call(methodInfo);
+        }
+    }
+
+    public static void EmitIsP255Check<T>(this Emit<T> il, Local? word = null)
+    {
+        if (word is not null)
+        {
+            il.LoadLocalAddress(word);
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsP255LittleEndian)).GetMethod;
+            il.Call(methodInfo);
+        }
+        else
+        {
+            MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsP255BigEndian)).GetMethod;
+            il.Call(methodInfo);
+        }
+    }
 }
 /// <summary>
 /// Extensions for <see cref="ILGenerator"/>.
@@ -45,6 +208,31 @@ public static class WordEmit
 static class EmitExtensions
 {
     public static class UnsafeEmit {
+
+        public static MethodInfo GetAddOffsetRef<TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Add) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+            return method.MakeGenericMethod(typeof(TResult));
+        }
+
+        public static MethodInfo GetSubtractOffsetRef<TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Subtract) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+            return method.MakeGenericMethod(typeof(TResult));
+        }
+
+        public static MethodInfo GetAddBytesOffsetRef<TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.AddByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+            return method.MakeGenericMethod(typeof(TResult));
+        }
+
+        public static MethodInfo GetSubtractBytesOffsetRef<TResult>()
+        {
+            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.SubtractByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+            return method.MakeGenericMethod(typeof(TResult));
+        }
+
         public static MethodInfo GetReadUnalignedMethodInfo<TResult>()
         {
             MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.ReadUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
@@ -129,10 +317,8 @@ static class EmitExtensions
             il.LoadLocal(local);
             il.CallVirtual(local.LocalType.GetMethod("ToString", []));
         }
-        il.Call(typeof(Debug).GetMethod(nameof(Debug.WriteLine), [typeof(string)]));
+        il.Call(typeof(Debug).GetMethod(nameof(Debug.Write), [typeof(string)]));
     }
-
-
     public static void PrintString<T>(this Emit<T> il, string msg)
     {
         using Local local = il.DeclareLocal<string>();
@@ -141,58 +327,7 @@ static class EmitExtensions
         il.StoreLocal(local);
         il.Print(local);
     }
-
-    public static void LoadWord<T, U>(this Emit<T> il, Local local, Local idx)
-    {
-        il.LoadLocalAddress(local);
-        il.LoadLocal(idx);
-        il.Call(typeof(Span<U>).GetMethod("get_Item"));
-    }
-
-    public static void LoadWord<T>(this Emit<T> il, Local local, Local idx, FieldInfo wordField)
-    {
-        il.LoadLocalAddress(local);
-        il.LoadLocal(idx);
-        il.Call(typeof(Span<Word>).GetMethod("get_Item"));
-        il.LoadField(wordField);
-    }
-    public static void CleanAndSet<T>(this Emit<T> il, Local local, Local idx, Action<Emit<T>> SetAction)
-    {
-        il.Duplicate();
-        il.InitializeObject(typeof(Word));
-        SetAction(il);
-    }
-
-    public static void CleanWord<T>(this Emit<T> il, Local local, Local idx)
-    {
-        il.LoadLocalAddress(local);
-        il.LoadLocal(idx);
-        il.Call(typeof(Span<Word>).GetMethod("get_Item"));
-
-        il.InitializeObject(typeof(Word));
-    }
-
-
-    public static void CleanAndLoadWord<T>(this Emit<T> il, Local local, Local idx)
-    {
-        il.LoadLocalAddress(local);
-        il.LoadLocal(idx);
-        il.Call(typeof(Span<Word>).GetMethod("get_Item"));
-        il.Duplicate();
-
-        il.InitializeObject(typeof(Word));
-    }
-
-    /// <summary>
-    /// Advances the stack one word up.
-    /// </summary>
-    public static void StackPush<T>(this Emit<T> il, Local idx, int count = 1)
-    {
-        il.LoadLocal(idx);
-        il.LoadConstant(count);
-        il.Add();
-        il.StoreLocal(idx);
-    }
+    
 
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
@@ -267,17 +402,6 @@ static class EmitExtensions
         }
     }
 
-    /// <summary>
-    /// Moves the stack <paramref name="count"/> words down.
-    /// </summary>
-    public static void StackPop<T>(this Emit<T> il, Local idx, int count = 1)
-    {
-        il.LoadLocal(idx);
-        il.LoadConstant(count);
-        il.Subtract();
-        il.StoreLocal(idx);
-    }
-
     public static void EmitAsSpan<T>(this Emit<T> il)
     {
         MethodInfo method = typeof(System.MemoryExtensions).GetMethods()
@@ -288,16 +412,6 @@ static class EmitExtensions
         il.Call(method.MakeGenericMethod(typeof(byte)));
     }
 
-    /// <summary>
-    /// Moves the stack <paramref name="count"/> words down.
-    /// </summary>
-    public static void StackPop<T>(this Emit<T> il, Local local, Local count)
-    {
-        il.LoadLocal(local);
-        il.LoadLocal(count);
-        il.Subtract();
-        il.StoreLocal(local);
-    }
 
     public static void WhileBranch<T>(this Emit<T> il, Local cond, Action<Emit<T>, Local> action)
     {
@@ -355,19 +469,6 @@ static class EmitExtensions
 
         // end of the loop
         il.MarkLabel(end);
-    }
-
-    /// <summary>
-    /// Loads the previous EVM stack value on top of .NET stack.
-    /// </summary>
-    public static void StackLoadPrevious<T>(this Emit<T> il, Local src, Local idx, int count = 1)
-    {
-        il.LoadLocalAddress(src);
-        il.LoadLocal(idx);
-        il.LoadConstant(count);
-        il.Convert<int>();
-        il.Subtract();
-        il.Call(typeof(Span<Word>).GetMethod("get_Item"));
     }
 
     public static void LoadArray<T>(this Emit<T> il, ReadOnlySpan<byte> value)

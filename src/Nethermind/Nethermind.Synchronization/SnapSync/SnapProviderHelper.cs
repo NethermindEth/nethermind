@@ -17,6 +17,8 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
+        private const int ExtensionRlpChildIndex = 1;
+
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
@@ -202,7 +204,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
-                    if (node.GetChildHashAsValueKeccak(0, out ValueHash256 childKeccak))
+                    if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
                     {
                         if (dict.TryGetValue(childKeccak, out TrieNode child))
                         {
@@ -215,8 +217,7 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                     }
                 }
-
-                if (node.IsBranch)
+                else if (node.IsBranch)
                 {
                     int left = leftBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? leftBoundaryPath[path.Length] : 0;
                     int right = rightBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? rightBoundaryPath[path.Length] : 15;
@@ -312,13 +313,12 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     if (node.IsExtension)
                     {
-                        if (IsChildPersisted(node, ref path, 1, store))
+                        if (IsChildPersisted(node, ref path, ExtensionRlpChildIndex, store))
                         {
                             node.IsBoundaryProofNode = false;
                         }
                     }
-
-                    if (node.IsBranch)
+                    else if (node.IsBranch)
                     {
                         bool isBoundaryProofNode = false;
                         for (int ci = 0; ci <= 15; ci++)
