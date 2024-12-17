@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Processing
         public static bool IsByNethermindNode(this BlockHeader block) =>
             Ascii.IsValid(block.ExtraData)
             && Encoding.ASCII.GetString(block.ExtraData ?? [])
-                .Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
+                .Contains(BlocksConfig.DefaultExtraData, StringComparison.OrdinalIgnoreCase);
 
         public static string ParsedExtraData(this Block block)
         {

@@ -300,15 +300,15 @@ namespace Nethermind.JsonRpc.Data
             {
                 case null:
                 case { } empty when string.IsNullOrWhiteSpace(empty):
-                case { } latest when latest.Equals("latest", StringComparison.InvariantCultureIgnoreCase):
+                case { } latest when latest.Equals("latest", StringComparison.OrdinalIgnoreCase):
                     return BlockParameter.Latest;
-                case { } earliest when earliest.Equals("earliest", StringComparison.InvariantCultureIgnoreCase):
+                case { } earliest when earliest.Equals("earliest", StringComparison.OrdinalIgnoreCase):
                     return BlockParameter.Earliest;
-                case { } pending when pending.Equals("pending", StringComparison.InvariantCultureIgnoreCase):
+                case { } pending when pending.Equals("pending", StringComparison.OrdinalIgnoreCase):
                     return BlockParameter.Pending;
-                case { } finalized when finalized.Equals("finalized", StringComparison.InvariantCultureIgnoreCase):
+                case { } finalized when finalized.Equals("finalized", StringComparison.OrdinalIgnoreCase):
                     return BlockParameter.Finalized;
-                case { } safe when safe.Equals("safe", StringComparison.InvariantCultureIgnoreCase):
+                case { } safe when safe.Equals("safe", StringComparison.OrdinalIgnoreCase):
                     return BlockParameter.Safe;
                 case { Length: 66 } hash when hash.StartsWith("0x"):
                     return new BlockParameter(new Hash256(hash));
