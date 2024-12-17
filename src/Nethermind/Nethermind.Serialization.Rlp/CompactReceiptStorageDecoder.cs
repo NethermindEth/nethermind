@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
 
             while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Decode(ref rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();

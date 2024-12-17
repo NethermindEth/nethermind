@@ -33,9 +33,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         public AccessList? Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             Decode<RlpValueStream>(ref rlpStream, rlpBehaviors);
 
-        private AccessList? Decode<T>(
-            ref T rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None) where T : IRlpStream, allows ref struct
+        private AccessList? Decode<T>(ref T rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            where T : IRlpStream, allows ref struct
         {
             if (rlpStream.IsNextItemNull())
             {

@@ -15,31 +15,14 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
 
-    public AuthorizationTuple Decode(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int length = stream.ReadSequenceLength();
-        int check = length + stream.Position;
-        ulong chainId = stream.DecodeULong();
-        Address? codeAddress = stream.DecodeAddress();
-        ulong nonce = stream.DecodeULong();
-        byte yParity = stream.DecodeByte();
-        UInt256 r = stream.DecodeUInt256();
-        UInt256 s = stream.DecodeUInt256();
+    public AuthorizationTuple Decode(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Decode(ref stream, rlpBehaviors);
 
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            stream.Check(check);
-        }
+    public AuthorizationTuple Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Decode<RlpValueStream>(ref rlpStream, rlpBehaviors);
 
-        if (codeAddress is null)
-        {
-            ThrowMissingCodeAddressException();
-        }
-
-        return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
-    }
-
-    public AuthorizationTuple Decode(ref RlpValueStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public AuthorizationTuple Decode<T>(ref T rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where T : IRlpStream, allows ref struct
     {
         int length = rlpStream.ReadSequenceLength();
         int check = length + rlpStream.Position;
