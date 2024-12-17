@@ -28,6 +28,8 @@ public ref struct EvmStack<TTracing>
     public const int WordSize = EvmStack.WordSize;
     public const int AddressSize = EvmStack.AddressSize;
 
+    public ref byte HeadRef => ref _bytes[Head * EvmStack.WordSize];
+
     public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes)
     {
         Head = head;
@@ -39,7 +41,6 @@ public ref struct EvmStack<TTracing>
     private readonly Span<byte> _bytes;
     public int Head;
 
-    internal readonly Span<byte> Bytes;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
     {
@@ -278,7 +279,7 @@ public ref struct EvmStack<TTracing>
             return false;
         }
 
-        ref byte bytes = ref Bytes[head * WordSize];
+        ref byte bytes = ref _bytes[head * WordSize];
         return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
     }
 
@@ -290,10 +291,10 @@ public ref struct EvmStack<TTracing>
             EvmStack.ThrowEvmStackUnderflowException();
         }
 
-        return Bytes.Slice(head * WordSize, WordSize);
+        return _bytes.Slice(head * WordSize, WordSize);
     }
 
-    public Address? PopAddress() => Head-- == 0 ? null : new Address(Bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+    public Address? PopAddress() => Head-- == 0 ? null : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PopBytesByRef()
@@ -328,7 +329,7 @@ public ref struct EvmStack<TTracing>
     {
         if (!EnsureDepth(depth)) return false;
 
-        ref byte bytes = ref MemoryMarshal.GetReference(Bytes);
+        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
         ref byte from = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
         ref byte to = ref Unsafe.Add(ref bytes, Head * WordSize);
@@ -355,7 +356,7 @@ public ref struct EvmStack<TTracing>
     {
         if (!EnsureDepth(depth)) return false;
 
-        ref byte bytes = ref MemoryMarshal.GetReference(Bytes);
+        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
         ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
         ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * WordSize);
@@ -376,7 +377,7 @@ public ref struct EvmStack<TTracing>
     {
         for (int i = depth; i > 0; i--)
         {
-            _tracer.ReportStackPush(Bytes.Slice(Head * WordSize - i * WordSize, WordSize));
+            _tracer.ReportStackPush(_bytes.Slice(Head * WordSize - i * WordSize, WordSize));
         }
     }
 }

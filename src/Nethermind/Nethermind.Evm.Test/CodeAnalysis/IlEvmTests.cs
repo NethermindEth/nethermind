@@ -29,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.Trie.Pruning;
 using System.Diagnostics;
 using Nethermind.Abi;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -338,7 +339,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done);
         }
 
-        public static IEnumerable<(Instruction[], byte[], EvmExceptionType, (bool, bool), string)> GetJitBytecodesSamples()
+        public static IEnumerable<(string, Instruction[], byte[], EvmExceptionType, (bool, bool))> GetJitBytecodesSamples()
         {
             IEnumerable<(Instruction[], byte[], EvmExceptionType, (bool, bool))> GetJitBytecodesSamplesGenerator(bool turnOnAmortization, bool turnOnAggressiveMode)
             {
@@ -1651,7 +1652,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 foreach (var sample in GetJitBytecodesSamplesGenerator(combination.Item1, combination.Item2))
                 {
-                    yield return new(sample.Item1, sample.Item2, sample.Item3, sample.Item4, $"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]");
+                    yield return new($"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]", sample.Item1, sample.Item2, sample.Item3, sample.Item4);
                 }
             }
         }
@@ -1662,7 +1663,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             List<Instruction> instructions = System.Enum.GetValues<Instruction>().ToList();
 
             var tests = GetJitBytecodesSamples()
-                .SelectMany(test => test.Item1)
+                .SelectMany(test => test.Item2)
                 .ToHashSet();
 
             List<Instruction> notCovered = new List<Instruction>();
@@ -1841,7 +1842,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void ILVM_JIT_Execution_Equivalence_Tests((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
+        public void ILVM_JIT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
             var address = standardChain.InsertCode(testcase.bytecode);
@@ -1849,8 +1850,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
-                BakeInTracingInPartialAotMode = !testcase.Item4.enableAmortization,
-                AggressivePartialAotMode = testcase.Item4.enableAggressiveMode,
+                BakeInTracingInPartialAotMode = !testcase.Item5.enableAmortization,
+                AggressivePartialAotMode = testcase.Item5.enableAggressiveMode,
                 PartialAotThreshold = 1,
                 AnalysisQueueMaxSize = 1,
                 IsPartialAotEnabled = true
@@ -2102,7 +2103,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 AnalysisQueueMaxSize = 1,
                 IsPartialAotEnabled = true,
                 AggressivePartialAotMode = true,
-                BakeInTracingInPartialAotMode = true
             });
 
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
@@ -2332,7 +2332,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Ensure_Evm_ILvm_Compatibility((Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
+        public void Ensure_Evm_ILvm_Compatibility((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
             var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -2375,7 +2375,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 in blkExCtx,
 
                 ref memory,
-                ref stack,
+                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
                 ref stackhead,
 
                 _blockhashProvider,
@@ -2390,13 +2390,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
-            state.Dispose();
+           state.Dispose();
             Assert.That(iLChunkExecutionResult.ExceptionType == testcase.exceptionType);
         }
 
         private ReadOnlyMemory<byte> _returnBuffer;
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Test_ILVM_Trace_Mode((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
+        public void Test_ILVM_Trace_Mode((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
             var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -2448,7 +2448,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 in blkExCtx,
 
                 ref memory,
-                ref stack,
+                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
                 ref stackhead,
 
                 _blockhashProvider,
@@ -2470,7 +2470,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Test_ILVM_Trace_Mode_Has_0_Traces_When_TraceInstructions_Is_Off((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
+        public void Test_ILVM_Trace_Mode_Has_0_Traces_When_TraceInstructions_Is_Off((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
             var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -2522,7 +2522,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 in blkExCtx,
 
                 ref memory,
-                ref stack,
+                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
                 ref stackhead,
 
                 _blockhashProvider,

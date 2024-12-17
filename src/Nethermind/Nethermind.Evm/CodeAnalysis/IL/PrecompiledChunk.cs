@@ -5,6 +5,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using System;
+using System.Runtime.CompilerServices;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 
@@ -31,8 +32,7 @@ internal class PrecompiledChunk : InstructionChunk
         ITxTracer trace,
         ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
-        Span<byte> stackBytes = stack.Bytes;
-
+        ref Word headRef = ref Unsafe.As<byte, Word>(ref stack.HeadRef);
         PrecompiledSegment.Invoke(
             chainId,
             ref vmState,
@@ -41,7 +41,7 @@ internal class PrecompiledChunk : InstructionChunk
             in blkCtx,
             ref vmState.Memory,
 
-            ref stackBytes,
+            ref Unsafe.As<byte, Word>(ref stack.HeadRef),
             ref stack.Head,
 
             blockhashProvider,

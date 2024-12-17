@@ -59,10 +59,13 @@ internal struct Word
     public bool CheckIfEqual(ref Word other) => _ulong0 == other._ulong0 && _ulong1 == other._ulong1 && _ulong2 == other._ulong2 && _ulong3 == other._ulong3;
 
     public bool IsZero => (_ulong0 | _ulong1 | _ulong2 | _ulong3) == 0;
-    public bool IsOne => (_ulong1 | _ulong2 | _ulong3) == 0 && _ulong0 == 1;
+    public bool IsOneLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && _ulong0 == 1;
+    public bool IsOneBigEndian => (_ulong1 | _ulong2 | _ulong0 ) == 0 && _ulong3 == (1ul << 63);
     public bool IsMinusOne => _ulong1 == ulong.MaxValue || _ulong2 == ulong.MaxValue || _ulong3 == ulong.MaxValue && _ulong0 == ulong.MaxValue;
-    public bool IsP255 => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong0 == (1ul << 63));
-    public bool IsOneOrZero => (_ulong1 | _ulong2 | _ulong3) == 0 && (_ulong0 == 1 || _ulong0 == 0);
+    public bool IsP255LittleEndian => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong3 == (1ul << 63));
+    public bool IsP255BigEndian => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong0 == 1);
+    public bool IsOneOrZeroLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && (_ulong0 == 1 || _ulong0 == 0);
+    public bool IsOneOrZeroBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && ((_ulong3 == 1ul << 63) || _ulong0 == 0);
     public void ToZero()
     {
         _ulong0 = 0; _ulong1 = 0;
@@ -324,11 +327,6 @@ internal struct Word
     public static readonly MethodInfo GetULong0 = typeof(Word).GetProperty(nameof(ULong0))!.GetMethod;
     public static readonly MethodInfo SetULong0 = typeof(Word).GetProperty(nameof(ULong0))!.SetMethod;
 
-    public static readonly MethodInfo GetIsZero = typeof(Word).GetProperty(nameof(IsZero))!.GetMethod;
-    public static readonly MethodInfo GetIsOneOrZero = typeof(Word).GetProperty(nameof(IsOneOrZero))!.GetMethod;
-    public static readonly MethodInfo GetIsOne  = typeof(Word).GetProperty(nameof(IsOne))!.GetMethod;
-    public static readonly MethodInfo GetIsMinusOne = typeof(Word).GetProperty(nameof(IsMinusOne))!.GetMethod;
-    public static readonly MethodInfo GetIsP255 = typeof(Word).GetProperty(nameof(IsP255))!.GetMethod;
     public static readonly MethodInfo SetToZero = typeof(Word).GetMethod(nameof(ToZero))!;
 
     public static readonly MethodInfo ToNegative = typeof(Word).GetMethod(nameof(Negate))!;
@@ -364,6 +362,11 @@ internal struct Word
             result.ReadOnlySpan = span;
             return result;
         }
+    }
+
+    public override string ToString()
+    {
+        return UInt256.ToString();
     }
 
 }
