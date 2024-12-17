@@ -43,6 +43,26 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_not_reject_blob_tx_even_if_max_size_is_exceeded([Values(true, false)] bool isBlob)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei())
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength() - 1};
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(isBlob ? AcceptTxResult.Accepted : AcceptTxResult.MaxTxSizeExceeded);
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(isBlob ? 1 : 0);
+        }
+
+        [Test]
         public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
         {
             const int poolSize = 10;
