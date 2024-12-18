@@ -338,14 +338,15 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void EnqueueStorageRange(PathWithAccount account, ValueHash256? startingHash, ValueHash256 lastProcessedHash, ValueHash256? limitHash)
+        public void EnqueueStorageRange(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash)
         {
-            limitHash ??= Keccak.MaxValue;
+            var startingHash = parentRequest.StartingHash;
+            var limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
 
             if (lastProcessedHash > limitHash)
                 return;
 
-            UInt256 limit = new UInt256(limitHash.Value.Bytes, true);
+            UInt256 limit = new UInt256(limitHash.Bytes, true);
             UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
             UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
 
@@ -358,32 +359,32 @@ namespace Nethermind.Synchronization.SnapSync
 
                 NextSlotRange.Enqueue(new StorageRange()
                 {
-                    Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { parentRequest.Accounts[accountIndex] },
                     StartingHash = lastProcessedHash,
                     LimitHash = halfOfLeftHash
                 });
 
                 NextSlotRange.Enqueue(new StorageRange()
                 {
-                    Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { parentRequest.Accounts[accountIndex] },
                     StartingHash = halfOfLeftHash,
                     LimitHash = limitHash
                 });
 
                 if (_logger.IsTrace)
-                    _logger.Trace($"EnqueueStorageRange account {account.Path} start hash: {startingHash} | last processed: {lastProcessedHash} | limit: {limitHash} | split {halfOfLeftHash}");
-
-                return;
+                    _logger.Trace($"EnqueueStorageRange account {parentRequest.Accounts[accountIndex].Path} start hash: {startingHash} | last processed: {lastProcessedHash} | limit: {limitHash} | split {halfOfLeftHash}");
             }
-
-            //default - no split
-            var storageRange = new StorageRange()
+            else
             {
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                StartingHash = lastProcessedHash,
-                LimitHash = limitHash
-            };
-            NextSlotRange.Enqueue(storageRange);
+                //default - no split
+                var storageRange = new StorageRange()
+                {
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { parentRequest.Accounts[accountIndex] },
+                    StartingHash = lastProcessedHash,
+                    LimitHash = limitHash
+                };
+                NextSlotRange.Enqueue(storageRange);
+            }
         }
 
         public void ReportStorageRangeRequestFinished(StorageRange storageRange = null)
