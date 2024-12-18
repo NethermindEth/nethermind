@@ -195,9 +195,9 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this);
+            return _size ??= sizeCalculator.GetLength(this, shouldCountBlobs);
         }
 
         public string ToShortString()
@@ -334,7 +334,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx);
+        int GetLength(Transaction tx, bool doNotCountBlobs = false);
     }
 
     /// <summary>
