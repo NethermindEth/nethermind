@@ -908,16 +908,17 @@ namespace Nethermind.Trie
             if (_nodeData is BranchData branchData)
             {
                 ref readonly var data = ref branchData.Branches;
+                int previousLength = AppendChildPath(ref currentPath, 0);
                 for (int i = 0; i < BranchArray.Length; i++)
                 {
                     if (data[i] is TrieNode child)
                     {
                         if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                        int previousLength = AppendChildPath(ref currentPath, i);
+                        currentPath.SetLast(i);
                         child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger, maxPathLength, resolveStorageRoot);
-                        currentPath.TruncateMut(previousLength);
                     }
                 }
+                currentPath.TruncateMut(previousLength);
             }
             else if (_nodeData is ExtensionData extensionData)
             {
