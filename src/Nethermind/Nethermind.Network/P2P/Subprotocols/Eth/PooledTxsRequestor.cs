@@ -18,6 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private const int MaxNumberOfTxsInOneMsg = 256;
         private readonly ITxPool _txPool;
         private readonly bool _blobSupportEnabled;
+        private readonly long _configuredMaxTxSize;
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
@@ -25,6 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             _txPool = txPool;
             _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+            _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
         }
 
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Hash256> hashes)
@@ -68,6 +70,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 int txSize = discoveredTxHashesAndSizes[i].Size;
                 TxType txType = (TxType)discoveredTxHashesAndSizes[i].Type;
+
+                if (txType != TxType.Blob && txSize > _configuredMaxTxSize
+                    || txType == TxType.Blob && txSize > _configuredMaxTxSize * 8 + (long)Eip4844Constants.MaxBlobGasPerBlock)
+                {
+                    continue;
+                }
 
                 if (txSize > packetSizeLeft && hashesToRequest.Count > 0)
                 {
