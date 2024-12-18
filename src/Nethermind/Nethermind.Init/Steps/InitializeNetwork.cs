@@ -405,6 +405,10 @@ public class InitializeNetwork : IStep
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
+        if (!_api.WorldStateManager!.SupportHashLookup)
+        {
+            _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
+        }
 
         _api.ProtocolValidator = protocolValidator;
 
