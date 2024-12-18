@@ -13,31 +13,16 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncPivot
+    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager)
     {
-        private readonly IBlockTree _blockTree;
-        private BlockHeader _bestHeader;
-        private readonly ILogger _logger;
-        private readonly ISyncConfig _syncConfig;
+        private BlockHeader? _bestHeader;
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public long Diff
-        {
-            get
-            {
-                return (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
-            }
-        }
+        public long Diff => (blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
 
-        public StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public BlockHeader? GetPivotHeader()
         {
-            _blockTree = blockTree;
-            _syncConfig = syncConfig;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public BlockHeader GetPivotHeader()
-        {
-            if (_bestHeader is null || (_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
+            if (_bestHeader is null || (blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) - _bestHeader.Number >= syncConfig.StateMaxDistanceFromHead)
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
@@ -46,10 +31,10 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_bestHeader is not null)
                 {
-                    var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
-                    if (currentHeader.StateRoot != _bestHeader.StateRoot)
+                    BlockHeader? currentHeader = blockTree.FindHeader(_bestHeader.Number);
+                    if (currentHeader?.StateRoot != _bestHeader.StateRoot)
                     {
-                        _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
+                        _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader?.StateRoot}");
                     }
                 }
             }
@@ -59,7 +44,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void UpdateHeaderForcefully()
         {
-            if ((_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader.Number)
+            if ((blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader?.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }
@@ -67,9 +52,9 @@ namespace Nethermind.Synchronization.FastSync
 
         private void TrySetNewBestHeader(string msg)
         {
-            BlockHeader bestSuggestedHeader = _blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number + MultiSyncModeSelector.FastSyncLag - _syncConfig.StateMinDistanceFromHead, 0);
-            BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
+            BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader;
+            long targetBlockNumber = Math.Max(bestSuggestedHeader?.Number ?? 0 + MultiSyncModeSelector.FastSyncLag - syncConfig.StateMinDistanceFromHead, 0);
+            BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
@@ -77,6 +62,6 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new ConcurrentHashSet<Hash256>();
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
     }
 }
