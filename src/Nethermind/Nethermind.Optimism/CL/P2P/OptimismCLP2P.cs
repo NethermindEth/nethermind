@@ -43,6 +43,8 @@ public class OptimismCLP2P : IDisposable
 
     private ITopic? _blocksV2Topic;
 
+    private const int MaxGossipSize = 10485760;
+
     public OptimismCLP2P(ulong chainId, string[] staticPeerList, ICLConfig config, Address sequencerP2PAddress, ITimestamper timestamper, ILogManager logManager, IOptimismEngineRpcModule engineRpcModule)
     {
         _logger = logManager.GetClassLogger();
@@ -97,7 +99,7 @@ public class OptimismCLP2P : IDisposable
     private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out ExecutionPayloadV3 payload)
     {
         int length = Snappy.GetUncompressedLength(msg);
-        if (length < 65)
+        if (length < 65 || length > MaxGossipSize)
         {
             payload = null;
             return false;
