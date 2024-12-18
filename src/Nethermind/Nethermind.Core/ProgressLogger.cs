@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Threading;
 using Nethermind.Logging;
 
@@ -183,7 +184,7 @@ namespace Nethermind.Core
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
             string receiptsReport =
                 $"{prefix,PrefixAlignment}" +
-                $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) " +
+                $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage.ToString("P2", CultureInfo.InvariantCulture),8}) " +
                 Progress.GetMeter(percentage, 1) +
                 queuedStr +
                 skippedStr +

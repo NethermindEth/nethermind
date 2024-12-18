@@ -164,11 +164,11 @@ public class ProgressLoggerTests
         measuredProgress.IncrementSkipped(10);
         measuredProgress.CurrentQueued = 99;
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
-        measuredProgress.Update(20L);
+        measuredProgress.Update(1L);
 
         measuredProgress.LogProgress();
 
-        iLogger.Received(1).Info("Progress             20 /        100 (  19.80%) [⣿⣿⣿⣿⣿⣿⣿⡄                             ] queue       99 | skipped      90 Blk/s | current     200 Blk/s");
+        iLogger.Received(1).Info("Progress              1 /        100 (  0.99 %) [⡆                                    ] queue       99 | skipped      90 Blk/s | current      10 Blk/s");
     }
 
     private ProgressLogger CreateProgress()
