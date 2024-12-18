@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             var txPoolConfig = new TxPoolConfig()
-                { MaxTxSize = tx.GetLength(shouldCountBlobs: false) / 8 - (sizeExceeded ? -1 : 1) };
+                { MaxTxSize = tx.GetLength(shouldCountBlobs: false) / 8 + (sizeExceeded ? -1 : 1) };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
