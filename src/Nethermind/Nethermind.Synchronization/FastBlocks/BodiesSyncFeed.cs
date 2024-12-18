@@ -133,7 +133,12 @@ namespace Nethermind.Synchronization.FastBlocks
             if (ShouldBuildANewBatch())
             {
                 BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockTree.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) =>
+                       {
+                           bool hasBlock = _blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                           if (hasBlock) _syncReport.FastBlocksBodies.IncrementSkipped();
+                           return hasBlock;
+                       }, out infos))
                 {
                     token.ThrowIfCancellationRequested();
 

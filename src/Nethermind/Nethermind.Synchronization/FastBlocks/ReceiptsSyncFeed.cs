@@ -133,7 +133,12 @@ namespace Nethermind.Synchronization.FastBlocks
             if (ShouldBuildANewBatch())
             {
                 BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _receiptStorage.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) =>
+                       {
+                           bool hasReceipt = _receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
+                           if (hasReceipt) _syncReport.FastBlocksReceipts.IncrementSkipped();
+                           return hasReceipt;
+                       }, out infos))
                 {
                     token.ThrowIfCancellationRequested();
                     _syncPointers.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;

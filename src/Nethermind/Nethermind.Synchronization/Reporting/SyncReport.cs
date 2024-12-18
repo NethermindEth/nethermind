@@ -48,15 +48,15 @@ namespace Nethermind.Synchronization.Reporting
             BeaconHeaders.SetFormat((progress) =>
             {
                 long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+                string skipSectionStr = progress.SkippedPerSecond != -1
+                    ? $"skipped {progress.SkippedPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s | "
+                    : "";
                 return $"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                       + $"{progress.CurrentValue, MeasuredProgress.BlockPaddingLength:N0} / {numHeadersToDownload,MeasuredProgress.BlockPaddingLength:N0} | queue {progress.CurrentQueued,MeasuredProgress.QueuePaddingLength:N0} | current {progress.CurrentPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s | total {progress.TotalPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s";
-                /*
-                long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
-                _logger.Info($"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                             + $"{BeaconHeaders.CurrentValue,BlockPaddingLength:N0} / {numHeadersToDownload,BlockPaddingLength:N0} | queue {BeaconHeadersInQueue.CurrentValue,QueuePaddingLength:N0} | current {BeaconHeaders.CurrentPerSecond,SpeedPaddingLength:N0} Blk/s | total {BeaconHeaders.TotalPerSecond,SpeedPaddingLength:N0} Blk/s");
-                BeaconHeaders.SetMeasuringPoint();
-                */
-
+                       + $"{progress.CurrentValue, MeasuredProgress.BlockPaddingLength:N0} / {numHeadersToDownload,MeasuredProgress.BlockPaddingLength:N0} | " +
+                       $"queue {progress.CurrentQueued,MeasuredProgress.QueuePaddingLength:N0} | " +
+                       $"current {progress.CurrentPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s  | " +
+                       skipSectionStr +
+                       $"total {progress.TotalPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s";
             });
 
             StartTime = DateTime.UtcNow;

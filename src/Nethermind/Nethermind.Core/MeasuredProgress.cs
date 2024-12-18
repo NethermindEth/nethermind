@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Core
@@ -38,6 +39,11 @@ namespace Nethermind.Core
             CurrentValue = value;
         }
 
+        public void IncrementSkipped(int skipped = 1)
+        {
+            Interlocked.Add(ref _skipped, skipped);
+        }
+
         public void SetMeasuringPoint()
         {
             UtcEndTime = null;
@@ -47,6 +53,8 @@ namespace Nethermind.Core
                 LastMeasurement = _timestamper.UtcNow;
                 LastValue = CurrentValue;
             }
+
+            if (_skipped != -1) _skipped = 0;
         }
 
         public bool HasStarted => UtcStartTime.HasValue;
@@ -68,8 +76,11 @@ namespace Nethermind.Core
             UtcStartTime = _timestamper.UtcNow;
             StartValue = CurrentValue = startValue;
             if (CurrentQueued != -1) CurrentQueued = 0;
+            if (_skipped != -1) _skipped = 0;
             TargetValue = total;
         }
+
+        private long _skipped = -1;
 
         private long StartValue { get; set; }
 
@@ -98,6 +109,26 @@ namespace Nethermind.Core
                 }
 
                 return (CurrentValue - StartValue) / timePassed;
+            }
+        }
+
+        public decimal SkippedPerSecond
+        {
+            get
+            {
+                if (_skipped == -1) return -1;
+                if (UtcEndTime is not null)
+                {
+                    return 0;
+                }
+
+                decimal timePassed = (decimal)(_timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue)).TotalSeconds;
+                if (timePassed == 0M)
+                {
+                    return 0M;
+                }
+
+                return _skipped / timePassed;
             }
         }
 
@@ -138,13 +169,22 @@ namespace Nethermind.Core
 
         private string DefaultFormatter()
         {
-            return GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond);
+            return GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
         }
 
-        private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed)
+        private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
         {
             float percentage = Math.Clamp(current / (float)(total + 1), 0, 1);
-            string receiptsReport = $"{prefix} {current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) {Progress.GetMeter(percentage, 1)}{(queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} " : "                ")}| current {speed,SpeedPaddingLength:N0} Blk/s";
+            string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : "                | ");
+            string skippedStr = (skippedPerSecond >= 0 ? $" skipped {skippedPerSecond,QueuePaddingLength:N0} | " : "");
+            string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
+            string receiptsReport =
+                $"{prefix} " +
+                $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) " +
+                Progress.GetMeter(percentage, 1) +
+                queuedStr +
+                skippedStr +
+                speedStr;
             return receiptsReport;
         }
 

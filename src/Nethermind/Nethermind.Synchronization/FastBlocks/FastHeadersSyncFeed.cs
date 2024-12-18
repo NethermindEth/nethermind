@@ -480,6 +480,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch? left = skipPersisted ? batch : ProcessPersistedPortion(batch);
             if (left is not null)
             {
+                // _logger.Warn($"ENQUEUE {reason} {batch.StartNumber} -> {batch.EndNumber} , {batch.RequestSize}");
                 _pending.Enqueue(batch);
             }
         }
@@ -511,15 +512,18 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             headers.AsSpan().Reverse();
-
-            using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
-            newBatchToProcess.StartNumber = lastHeader.Number;
-            newBatchToProcess.RequestSize = headers.Count;
-            newBatchToProcess.Response = headers;
-            if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
-            InsertHeaders(newBatchToProcess);
-
             int newRequestSize = batch.RequestSize - headers.Count;
+
+            if (headers.Count > 0)
+            {
+                using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
+                newBatchToProcess.StartNumber = lastHeader.Number;
+                newBatchToProcess.RequestSize = headers.Count;
+                newBatchToProcess.Response = headers;
+                if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
+                InsertHeaders(newBatchToProcess);
+                HeadersSyncProgressReport.IncrementSkipped(newBatchToProcess.RequestSize);
+            }
 
             if (newRequestSize == 0) return null;
 
@@ -550,6 +554,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 0;
             }
 
+            bool requireDependencies = false;
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
             BlockHeader? lowestInsertedHeader = null;
@@ -633,7 +638,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (added < batch.RequestSize)
             {
-                if (added <= 0)
+                if (added <= 0 && !requireDependencies)
                 {
                     batch.Response?.Dispose();
                     batch.Response = null;
@@ -733,6 +738,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (_dependencies.ContainsKey(header.Number))
                     {
                         EnqueueBatch(batch, true);
+                        _logger.Error($"DEPENDENCY FAIL {header.Number} {batch.StartNumber} -> {batch.EndNumber} , {batch.RequestSize}");
                         throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                     }
                     long lastNumber = -1;
@@ -756,7 +762,9 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                     }
                     HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
+                    // _logger.Warn($"DEPENDENCY SET {header.Number} {batch.StartNumber} -> {batch.EndNumber} , {batch.RequestSize}");
                     _dependencies[header.Number] = dependentBatch;
+                    // requireDependencies = true;
                     MarkDirty();
                     if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
                     // but we cannot do anything with it yet
