@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
         public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
-        public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+        public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3500);
         private static readonly TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
 
         private readonly LatencyBasedRequestSizer _requestSizer = new(
