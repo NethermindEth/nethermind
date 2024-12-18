@@ -85,9 +85,7 @@ public class FastHeadersSyncTests
             blockTree.Insert(forkedBlockTree.FindHeader(i)!).Should().Be(AddBlockResult.Added);
         }
 
-        ISyncReport syncReport = Substitute.For<ISyncReport>();
-        syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
-        syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+        ISyncReport syncReport = new NullSyncReport();
         HeadersSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
@@ -119,9 +117,7 @@ public class FastHeadersSyncTests
         BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
-        ISyncReport syncReport = Substitute.For<ISyncReport>();
-        syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
-        syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+        ISyncReport syncReport = new NullSyncReport();
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
         PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
@@ -183,9 +179,7 @@ public class FastHeadersSyncTests
         BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(501).TestObject;
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
-        ISyncReport syncReport = Substitute.For<ISyncReport>();
-        syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
-        syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+        ISyncReport syncReport = new NullSyncReport();
 
         BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
         using ResettableHeaderSyncFeed feed = new(
@@ -230,9 +224,7 @@ public class FastHeadersSyncTests
         BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(2001).TestObject;
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
-        ISyncReport syncReport = Substitute.For<ISyncReport>();
-        syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
-        syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+        ISyncReport syncReport = new NullSyncReport();
 
         BlockHeader pivot = remoteBlockTree.FindHeader(2000, BlockTreeLookupOptions.None)!;
         using HeadersSyncFeed feed = new(
@@ -299,9 +291,7 @@ public class FastHeadersSyncTests
 
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
-        ISyncReport syncReport = Substitute.For<ISyncReport>();
-        syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
-        syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+        ISyncReport syncReport = new NullSyncReport();
 
         ManualResetEventSlim hangLatch = new(false);
 
@@ -387,10 +377,7 @@ public class FastHeadersSyncTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
-        ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
-        MeasuredProgress measuredProgress = new();
-        report.FastBlocksHeaders.Returns(measuredProgress);
+        ISyncReport report = new NullSyncReport();
         HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
         await feed.PrepareRequest();
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
@@ -398,7 +385,7 @@ public class FastHeadersSyncTests
 
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Finished);
-        measuredProgress.HasEnded.Should().BeTrue();
+        report.FastBlocksHeaders.HasEnded.Should().BeTrue();
     }
 
     [Test]
@@ -410,9 +397,7 @@ public class FastHeadersSyncTests
             .WithTotalDifficulty(10_000_000)
             .TestObject);
 
-        ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
-        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        ISyncReport report = new NullSyncReport();
 
         HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new TestSyncConfig { FastSync = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
         feed.InitializeFeed();
@@ -456,10 +441,7 @@ public class FastHeadersSyncTests
         const int lowestInserted = 999;
         localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
 
-        ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
-        report.FastBlocksHeaders.Returns(new MeasuredProgress());
-
+        ISyncReport report = new NullSyncReport();
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
         using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
         feed.InitializeFeed();
@@ -519,9 +501,7 @@ public class FastHeadersSyncTests
         }
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
-        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        ISyncReport report = new NullSyncReport();
         using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
         feed.InitializeFeed();
 
@@ -562,10 +542,7 @@ public class FastHeadersSyncTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
-        ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
-        MeasuredProgress measuredProgress = new();
-        report.FastBlocksHeaders.Returns(measuredProgress);
+        ISyncReport report = new NullSyncReport();
         HeadersSyncFeed feed = new(
             blockTree,
             Substitute.For<ISyncPeerPool>(),
