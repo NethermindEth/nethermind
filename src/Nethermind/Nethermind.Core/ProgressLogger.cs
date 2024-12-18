@@ -72,9 +72,9 @@ namespace Nethermind.Core
 
         public void Reset(long startValue, long total)
         {
-            LastMeasurement = UtcEndTime = null;
+            LastMeasurement = UtcEndTime = _timestamper.UtcNow;
             UtcStartTime = _timestamper.UtcNow;
-            StartValue = CurrentValue = startValue;
+            StartValue = CurrentValue = LastValue = startValue;
             if (CurrentQueued != -1) CurrentQueued = 0;
             if (_skipped != -1) _skipped = 0;
             TargetValue = total;
@@ -97,6 +97,7 @@ namespace Nethermind.Core
         public long CurrentQueued { get; set; } = -1;
 
         private TimeSpan Elapsed => (UtcEndTime ?? _timestamper.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
+        private TimeSpan ElapsedSinceLastMeasurement => _timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue);
 
         public decimal TotalPerSecond
         {
@@ -122,7 +123,7 @@ namespace Nethermind.Core
                     return 0;
                 }
 
-                decimal timePassed = (decimal)(_timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue)).TotalSeconds;
+                decimal timePassed = (decimal)ElapsedSinceLastMeasurement.TotalSeconds;
                 if (timePassed == 0M)
                 {
                     return 0M;
@@ -141,7 +142,7 @@ namespace Nethermind.Core
                     return 0;
                 }
 
-                decimal timePassed = (decimal)(_timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue)).TotalSeconds;
+                decimal timePassed = (decimal)ElapsedSinceLastMeasurement.TotalSeconds;
                 if (timePassed == 0M)
                 {
                     return 0M;
