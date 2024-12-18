@@ -9,6 +9,8 @@ namespace Nethermind.Optimism.CL;
 
 public class PayloadDecoder : IPayloadDecoder
 {
+    public static readonly PayloadDecoder Instance = new();
+
     private const int PrefixDataSize = 560;
 
     public ExecutionPayloadV3 DecodePayload(byte[] data)
