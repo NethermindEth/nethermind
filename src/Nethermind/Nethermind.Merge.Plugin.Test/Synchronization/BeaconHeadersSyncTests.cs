@@ -110,9 +110,8 @@ public class BeaconHeadersSyncTests
                 if (_report is null)
                 {
                     _report = Substitute.For<ISyncReport>();
-                    MeasuredProgress measuredProgress = new MeasuredProgress();
+                    MeasuredProgress measuredProgress = new("", LimboLogs.Instance);
                     Report.BeaconHeaders.Returns(measuredProgress);
-                    Report.BeaconHeadersInQueue.Returns(measuredProgress);
                 }
 
                 return _report;
@@ -174,8 +173,7 @@ public class BeaconHeadersSyncTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
         ISyncReport report = Substitute.For<ISyncReport>();
-        report.BeaconHeadersInQueue.Returns(new MeasuredProgress());
-        MeasuredProgress measuredProgress = new();
+        MeasuredProgress measuredProgress = new("", LimboLogs.Instance);
         report.BeaconHeaders.Returns(measuredProgress);
         ISyncConfig syncConfig = new SyncConfig
         {

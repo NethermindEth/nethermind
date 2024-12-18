@@ -95,9 +95,9 @@ namespace Nethermind.Synchronization.Test
             }
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
-            syncReport.FastBlocksHeaders.Reset(0);
-            syncReport.FastBlocksBodies.Reset(0);
-            syncReport.FastBlocksReceipts.Reset(0);
+            syncReport.FastBlocksHeaders.Reset(0, 0);
+            syncReport.FastBlocksBodies.Reset(0, 0);
+            syncReport.FastBlocksReceipts.Reset(0, 0);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 

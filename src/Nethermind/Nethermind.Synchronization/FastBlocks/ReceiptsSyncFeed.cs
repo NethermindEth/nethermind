@@ -90,8 +90,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksReceipts.Reset(0);
-            _syncReport.ReceiptsInQueue.Reset(0);
+            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncConfig.AncientReceiptsBarrier);
         }
 
         private void ResetSyncStatusList()
@@ -126,8 +125,6 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksReceipts.Update(_pivotNumber);
             _syncReport.FastBlocksReceipts.MarkEnd();
-            _syncReport.ReceiptsInQueue.Update(0);
-            _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
         public override Task<ReceiptsSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -303,7 +300,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void UpdateSyncReport()
         {
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
-            _syncReport.ReceiptsInQueue.Update(_syncStatusList.QueueSize);
+            _syncReport.FastBlocksReceipts.CurrentQueued = _syncStatusList.QueueSize;
         }
 
         private void AdjustRequestSize(ReceiptsSyncBatch batch, int validResponsesCount)

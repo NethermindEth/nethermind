@@ -36,7 +36,7 @@ namespace Nethermind.Init.Steps.Migrations
         private Stopwatch? _stopwatch;
         private long _toBlock;
 
-        private readonly MeasuredProgress _progress = new MeasuredProgress();
+        private readonly MeasuredProgress _progress;
         [NotNull]
         private readonly IReceiptStorage? _receiptStorage;
         [NotNull]
@@ -86,6 +86,7 @@ namespace Nethermind.Init.Steps.Migrations
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
+            _progress = new MeasuredProgress("Receipts migration", logManager);
         }
 
         public async Task<bool> Run(long blockNumber)
@@ -163,7 +164,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             long synced = 1;
 
-            _progress.Reset(synced);
+            _progress.Reset(synced, _toBlock);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 

@@ -29,7 +29,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
-        private readonly MeasuredProgress _progress = new MeasuredProgress();
+        private readonly MeasuredProgress _progress;
         private long _migrateCount;
         private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
@@ -39,6 +39,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger<BloomMigration>();
+            _progress = new MeasuredProgress("Bloom migration ", api.LogManager);
             _bloomConfig = api.Config<IBloomConfig>();
         }
 

@@ -13,14 +13,6 @@ namespace Nethermind.Synchronization.Reporting
 
         MeasuredProgress FullSyncBlocksDownloaded { get; }
 
-        long FullSyncBlocksKnown { get; set; }
-
-        MeasuredProgress HeadersInQueue { get; }
-
-        MeasuredProgress BodiesInQueue { get; }
-
-        MeasuredProgress ReceiptsInQueue { get; }
-
         MeasuredProgress FastBlocksHeaders { get; }
 
         MeasuredProgress FastBlocksBodies { get; }
@@ -29,6 +21,5 @@ namespace Nethermind.Synchronization.Reporting
 
         MeasuredProgress BeaconHeaders { get; }
 
-        MeasuredProgress BeaconHeadersInQueue { get; }
     }
 }

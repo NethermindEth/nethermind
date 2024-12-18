@@ -109,10 +109,8 @@ public class ReceiptsSyncFeedTests
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
 
-        _measuredProgress = new MeasuredProgress();
-        _measuredProgressQueue = new MeasuredProgress();
+        _measuredProgress = new MeasuredProgress("Receipts", LimboLogs.Instance);
         _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
-        _syncReport.ReceiptsInQueue.Returns(_measuredProgressQueue);
 
         _feed = CreateFeed();
     }
