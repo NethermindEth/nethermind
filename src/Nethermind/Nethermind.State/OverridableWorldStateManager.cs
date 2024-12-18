@@ -31,6 +31,7 @@ public class OverridableWorldStateManager : IWorldStateManager
     public IWorldState GlobalWorldState => _state;
     public IStateReader GlobalStateReader => _reader;
     public IReadOnlyTrieStore TrieStore => _overlayTrieStore.AsReadOnly();
+    public bool SupportHashLookup => _overlayTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {

@@ -26,6 +26,7 @@ public class OverlayWorldStateManager(
     public IStateReader GlobalStateReader => _reader;
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
+    public bool SupportHashLookup => overlayTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
