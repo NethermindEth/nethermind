@@ -120,7 +120,7 @@ public class InitializeNetwork : IStep
             IContainer container = builder.Build();
 
             _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Append(container);
+            _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
         if (_api.TrieStore is HealingTrieStore healingTrieStore)
@@ -403,6 +403,10 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
+        if (!_api.WorldStateManager!.SupportHashLookup)
+        {
+            _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }
 
         _api.ProtocolValidator = protocolValidator;

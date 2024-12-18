@@ -9,8 +9,8 @@
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
-  "Sync": {
-    "NetworkingEnabled": false
+  "Discovery": {
+    "DiscoveryVersion": "V5"
   },
   "Pruning": {
     "Mode": "None"

@@ -18,8 +18,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -51,7 +51,7 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider) ?? throw new ArgumentNullException(nameof(stateProvider));
     private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
     private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
@@ -124,17 +124,17 @@ public partial class BlockProcessor(
                 if (!skipPrewarming)
                 {
                     using CancellationTokenSource cancellationTokenSource = new();
-                    (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
+                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     cancellationTokenSource.Cancel();
                 }
                 else
                 {
-                    if (preWarmer?.ClearCaches() ?? false)
+                    CacheType result = preWarmer?.ClearCaches() ?? default;
+                    if (result != default)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Low txs, caches are not empty. Clearing them.");
+                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
@@ -144,10 +144,11 @@ public partial class BlockProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
-                QueueClearCaches(preWarmer, preWarmTask);
+                QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
                 {
+                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -180,7 +181,7 @@ public partial class BlockProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
-            QueueClearCaches(preWarmer, preWarmTask);
+            QueueClearCaches(preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
@@ -189,7 +190,7 @@ public partial class BlockProcessor(
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
-    private void QueueClearCaches(IBlockCachePreWarmer preWarmer, Task? preWarmTask)
+    private void QueueClearCaches(Task? preWarmTask)
     {
         if (preWarmTask is not null)
         {
@@ -198,7 +199,7 @@ public partial class BlockProcessor(
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(() => preWarmer.ClearCaches());
+            _clearTask = Task.Run(preWarmer.ClearCaches);
         }
     }
 
@@ -334,11 +335,15 @@ public partial class BlockProcessor(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
-        int index = 0;
-        Parallel.For(0, receipts.Length, _ =>
+        ParallelUnbalancedWork.For(
+            0,
+            receipts.Length,
+            ParallelUnbalancedWork.DefaultOptions,
+            receipts,
+            static (i, receipts) =>
         {
-            int i = Interlocked.Increment(ref index) - 1;
             receipts[i].CalculateBloom();
+            return receipts;
         });
     }
 
@@ -436,14 +441,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        if (!_stateProvider.AccountExists(reward.Address))
-        {
-            _stateProvider.CreateAccount(reward.Address, reward.Value);
-        }
-        else
-        {
-            _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
-        }
+        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
 
     // TODO: block processor pipeline

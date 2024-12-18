@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
         /// </summary>
-        public static readonly AcceptTxResult GasLimitExceeded = new(5, nameof(GasLimitExceeded));
+        public static readonly AcceptTxResult GasLimitExceeded = new(5, "gas limit reached");
 
         /// <summary>
         /// Sender account has not enough balance to execute this transaction.
@@ -58,12 +58,12 @@ namespace Nethermind.TxPool
         /// <summary>
         /// The nonce is not the next nonce after the last nonce of this sender present in TxPool.
         /// </summary>
-        public static readonly AcceptTxResult NonceGap = new(9, nameof(NonceGap));
+        public static readonly AcceptTxResult NonceGap = new(9, "nonce too high");
 
         /// <summary>
         /// The EOA (externally owned account) that signed this transaction (sender) has already signed and executed a transaction with the same nonce.
         /// </summary>
-        public static readonly AcceptTxResult OldNonce = new(10, nameof(OldNonce));
+        public static readonly AcceptTxResult OldNonce = new(10, "nonce too low");
 
         /// <summary>
         /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
@@ -73,7 +73,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction sender has code hash that is not null.
         /// </summary>
-        public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
+        public static readonly AcceptTxResult SenderIsContract = new(12, "sender not an eoa");
 
         /// <summary>
         /// The nonce is too far in the future.
@@ -99,6 +99,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult PendingDelegation = new(17, nameof(PendingDelegation));
 
 
+        /// <summary>
+        /// The node is syncing and cannot accept transactions at this time.
+        /// </summary>
+        public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
+
         private int Id { get; }
         private string Code { get; }
         private string? Message { get; }
@@ -117,6 +122,6 @@ namespace Nethermind.TxPool
         public override bool Equals(object? obj) => obj is AcceptTxResult result && Equals(result);
         public bool Equals(AcceptTxResult result) => Id == result.Id;
         public override int GetHashCode() => Id.GetHashCode();
-        public override string ToString() => Message is null ? $"{Code}" : $"{Code}, {Message}";
+        public override string ToString() => Message is null ? Code : $"{Code}, {Message}";
     }
 }

@@ -574,16 +574,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long baseGasCost = precompile.BaseGasCost(spec);
         long blobGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = false;
-        if (!_state.AccountExists(state.Env.ExecutingAccount))
-        {
-            wasCreated = true;
-            _state.CreateAccount(state.Env.ExecutingAccount, transferValue);
-        }
-        else
-        {
-            _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
-        }
+        bool wasCreated = _state.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -639,14 +630,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         if (!vmState.IsContinuation)
         {
-            if (!_state.AccountExists(env.ExecutingAccount))
-            {
-                _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
-            }
-            else
-            {
-                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
-            }
+            _state.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
 
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
@@ -664,7 +648,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         vmState.InitStacks();
-        EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
+        EvmStack<TTracingInstructions> stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
         long gasAvailable = vmState.GasAvailable;
 
         if (previousCallResult is not null)
@@ -1363,7 +1347,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ReadOnlyMemory<byte> externalCode = txCtx.CodeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
+                            Address delegation;
+                            ReadOnlyMemory<byte> externalCode = txCtx.CodeInfoRepository.GetCachedCodeInfo(_state, address, spec, out delegation).MachineCode;
+                            if (delegation is not null)
+                            {
+                                externalCode = Eip7702Constants.FirstTwoBytesOfHeader;
+                            }
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1921,18 +1910,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
-
+                        Address delegatedAddress = null;
                         if (_state.AccountExists(address)
                             && !_state.IsDeadAccount(address)
-                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegatedAddress)
-                            || (_state.AccountExists(delegatedAddress)
-                            && !_state.IsDeadAccount(delegatedAddress))))
+                            && (!env.TxExecutionContext.CodeInfoRepository
+                            .TryGetDelegation(_state, address, out delegatedAddress)))
                         {
                             stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
                         }
                         else
                         {
-                            stack.PushZero();
+                            if (delegatedAddress is null)
+                                stack.PushZero();
+                            else
+                                stack.PushBytes(Eip7702Constants.HashOfDelegationCode.Bytes);
                         }
 
                         break;
@@ -2079,8 +2070,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
+        Address delegation;
+        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_state, address, spec, out delegation).MachineCode;
         UInt256 result = (UInt256)accountCode.Span.Length;
+        if (delegation is not null)
+        {
+            //If the account has been delegated only the first two bytes of the delegation header counts as size 
+            result = (UInt256)Eip7702Constants.FirstTwoBytesOfHeader.Length;
+        }
         stack.PushUInt256(in result);
     }
 
@@ -2177,7 +2174,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
@@ -2247,14 +2244,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         EvmExceptionType FastCall(IReleaseSpec spec, out object returnData, in UInt256 transferValue, Address target)
         {
-            if (!_state.AccountExists(target))
-            {
-                _state.CreateAccount(target, transferValue);
-            }
-            else
-            {
-                _state.AddToBalance(target, transferValue, spec);
-            }
+            _state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
             returnData = CallResult.BoxedEmpty;
@@ -2315,7 +2305,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private EvmExceptionType InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracing : struct, IIsTracing
     {
-        Metrics.SelfDestructs++;
+        Metrics.IncrementSelfDestructs();
 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;

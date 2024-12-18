@@ -3,15 +3,16 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -32,7 +33,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private readonly Task[] _dirtyNodesTasks = [];
     private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
     private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorder;
-    private readonly Task[] _disposeTasks = new Task[Environment.ProcessorCount];
+    private readonly Task[] _disposeTasks = new Task[RuntimeInformation.PhysicalCoreCount];
 
     // This seems to attempt prevent multiple block processing at the same time and along with pruning at the same time.
     private readonly object _dirtyNodesLock = new object();
@@ -771,11 +772,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
         if (_pruningStrategy.PruningEnabled)
         {
-            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak?.ToShortString()} in block {commitSet.BlockNumber}");
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root?.Keccak?.ToShortString()} in block {commitSet.BlockNumber}");
         }
 
         long start = Stopwatch.GetTimestamp();
@@ -784,33 +785,39 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         TreePath path = TreePath.Empty;
         commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
-        // The amount of change in the subtrees are not balanced at all. So their writes ares buffered here
+        // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
         // This unfortunately is not atomic
         // However, anything that we are trying to persist here should still be in dirty cache.
         // So parallel read should go there first instead of to the database for these dataset,
         // so it should be fine for these to be non atomic.
-        using BlockingCollection<INodeStorage.WriteBatch> disposeQueue = new BlockingCollection<INodeStorage.WriteBatch>(4);
-
-        for (int index = 0; index < _disposeTasks.Length; index++)
+        Task[] disposeTasks = _disposeTasks;
+        Channel<INodeStorage.WriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.WriteBatch>(disposeTasks.Length * 2);
+        try
         {
-            _disposeTasks[index] = Task.Run(() =>
+            for (int index = 0; index < disposeTasks.Length; index++)
             {
-                while (disposeQueue.TryTake(out INodeStorage.WriteBatch disposable, Timeout.Infinite))
+                disposeTasks[index] = Task.Run(async () =>
                 {
-                    disposable.Dispose();
-                }
-            });
+                    await foreach (IDisposable disposable in disposeQueue.Reader.ReadAllAsync())
+                    {
+                        disposable.Dispose();
+                    }
+                });
+            }
+
+            using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+                entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+                .ToPooledList(parallelStartNodes.Count);
+
+            Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
+        }
+        finally
+        {
+            disposeQueue.Writer.Complete();
         }
 
-        using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
-            entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
-            .ToPooledList(parallelStartNodes.Count);
-
-        Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
-
-        disposeQueue.CompleteAdding();
-        Task.WaitAll(_disposeTasks);
+        Task.WaitAll(disposeTasks);
 
         // Dispose top level last in case something goes wrong, at least the root won't be stored
         topLevelWriteBatch.Dispose();
@@ -824,14 +831,14 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         LastPersistedBlockNumber = commitSet.BlockNumber;
     }
 
-    private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
+    private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
         Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
-        WriteFlags writeFlags, BlockingCollection<INodeStorage.WriteBatch> disposeQueue)
+        WriteFlags writeFlags, Channel<INodeStorage.WriteBatch> disposeQueue)
     {
         long persistedNodeCount = 0;
         INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
-        void DoPersist(TrieNode node, Hash256? address3, TreePath path2)
+        async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
         {
             persistedNodeRecorder?.Invoke(path2, address3, node);
             PersistNode(address3, path2, node, writeBatch, writeFlags);
@@ -839,13 +846,13 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             persistedNodeCount++;
             if (persistedNodeCount % 512 == 0)
             {
-                disposeQueue.Add(writeBatch);
+                await disposeQueue.Writer.WriteAsync(writeBatch);
                 writeBatch = _nodeStorage.StartWriteBatch();
             }
         }
 
-        tn.CallRecursively(DoPersist, address2, ref path, GetTrieStore(address2), true, _logger);
-        disposeQueue.Add(writeBatch);
+        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStore(address2), _logger);
+        await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
     private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
@@ -972,6 +979,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 ParallelPersistBlockCommitSet(blockCommitSet);
             }
             writeBatch.Dispose();
+            _nodeStorage.Flush(onlyWal: false);
 
             if (candidateSets.Count == 0)
             {
@@ -996,13 +1004,13 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
             void ClearCommitSetQueue()
             {
-                while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+                while (CommitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
                 {
-                    if (!_commitSetQueue.TryDequeue(out commitSet)) break;
+                    if (!CommitSetQueue.TryDequeue(out commitSet)) break;
                     if (!commitSet.IsSealed)
                     {
                         // Oops
-                        _commitSetQueue.Enqueue(commitSet);
+                        CommitSetQueue.Enqueue(commitSet);
                         break;
                     }
 
@@ -1011,7 +1019,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            if (!(_commitSetQueue?.IsEmpty ?? true))
+            if (!CommitSetQueue.IsEmpty)
             {
                 // We persist outside of lock first.
                 ClearCommitSetQueue();

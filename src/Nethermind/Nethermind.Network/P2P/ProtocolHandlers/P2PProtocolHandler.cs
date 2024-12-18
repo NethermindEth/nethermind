@@ -49,17 +49,9 @@ public class P2PProtocolHandler(
 
     protected override TimeSpan InitTimeout => Timeouts.P2PHello;
 
-    public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
-    {
-        new(Protocol.Eth, 66),
-        new(Protocol.Eth, 67),
-        new(Protocol.Eth, 68),
-        new(Protocol.NodeData, 1)
-    };
-
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = DefaultCapabilities.ToList();
+    private readonly List<Capability> _supportedCapabilities = new List<Capability>();
 
     public int ListenPort { get; } = session.LocalPort;
     public PublicKey LocalNodeId { get; } = localNodeId;
@@ -305,7 +297,7 @@ public class P2PProtocolHandler(
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
         Send(message);
-
+        Dispose();
     }
 
     private void SendHello()
@@ -337,6 +329,7 @@ public class P2PProtocolHandler(
 
     private void Close(EthDisconnectReason ethDisconnectReason)
     {
+        Dispose();
         if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
             ethDisconnectReason != EthDisconnectReason.Other &&
             ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
@@ -363,5 +356,8 @@ public class P2PProtocolHandler(
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
+        SubprotocolRequested = null;
     }
 }

@@ -34,7 +34,6 @@ namespace Nethermind.Blockchain
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
-        public static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
         private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
@@ -62,7 +61,18 @@ namespace Nethermind.Blockchain
         public BlockHeader? BestSuggestedHeader { get; private set; }
 
         public Block? BestSuggestedBody { get; private set; }
-        public BlockHeader? LowestInsertedHeader { get; private set; }
+        public BlockHeader? LowestInsertedHeader
+        {
+            get => _lowestInsertedHeader;
+            set
+            {
+                _lowestInsertedHeader = value;
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+            }
+        }
+
+        private BlockHeader? _lowestInsertedHeader;
+
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
         public Block? BestSuggestedBeaconBody { get; private set; }
@@ -79,21 +89,7 @@ namespace Nethermind.Blockchain
 
         private BlockHeader? _lowestInsertedBeaconHeader;
 
-        private long? _lowestInsertedReceiptBlock;
         private long? _highestPersistedState;
-
-        public long? LowestInsertedBodyNumber
-        {
-            get => _lowestInsertedReceiptBlock;
-            set
-            {
-                _lowestInsertedReceiptBlock = value;
-                if (value.HasValue)
-                {
-                    _blockStore.SetMetadata(LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(value.Value).Bytes);
-                }
-            }
-        }
 
         public long BestKnownNumber { get; private set; }
 
@@ -138,6 +134,9 @@ namespace Nethermind.Blockchain
                 DeleteBlocks(new Hash256(deletePointer));
             }
 
+            // Need to be here because it still need to run even if there are no genesis to store the null entry.
+            LoadLowestInsertedHeader();
+
             ChainLevelInfo? genesisLevel = LoadLevel(0);
             if (genesisLevel is not null)
             {
@@ -169,7 +168,6 @@ namespace Nethermind.Blockchain
                              $"best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, " +
                              $"best known is {BestKnownNumber}, " +
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
-                             $"body {LowestInsertedBodyNumber}, " +
                              $"lowest sync inserted block number {LowestInsertedBeaconHeader?.Number}");
             ProductInfo.Network = $"{(ChainId == NetworkId ? BlockchainIds.GetBlockchainName(NetworkId) : ChainId)}";
             ThisNodeInfo.AddInfo("Chain ID     :", ProductInfo.Network);
@@ -214,11 +212,6 @@ namespace Nethermind.Blockchain
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-
-            if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
-            {
-                LowestInsertedHeader = header;
-            }
 
             bool beaconInsert = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
             if (!beaconInsert)
@@ -1129,7 +1122,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
+                if (_logger.IsDebug) _logger.Debug($"Deleting an invalid block or its descendant {hash}");
                 _blockInfoDb.Set(DeletePointerAddressInDb, hash.Bytes);
             }
         }
@@ -1242,8 +1235,6 @@ namespace Nethermind.Blockchain
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
 
-        private readonly McsLock _allocatorLock = new();
-
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1255,31 +1246,11 @@ namespace Nethermind.Blockchain
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
             {
-                if (OperatingSystem.IsWindows())
-                {
-                    // Although thread-safe, because the blocks are so large it
-                    // causes a lot of contention on the allocator used inside RocksDb
-                    // on Windows; which then impacts block processing heavily. We
-                    // take the lock here instead to reduce contention on the allocator
-                    // in the db; so the contention is in this method rather than
-                    // across the whole database.
-                    // A better solution would be to change the allocator https://github.com/NethermindEth/nethermind/issues/6107
-                    using var handle = _allocatorLock.Acquire();
-
-                    block = _blockStore.Get(
-                        blockNumber.Value,
-                        blockHash,
-                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
-                        shouldCache: false);
-                }
-                else
-                {
-                    block = _blockStore.Get(
-                        blockNumber.Value,
-                        blockHash,
-                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
-                        shouldCache: false);
-                }
+                block = _blockStore.Get(
+                    blockNumber.Value,
+                    blockHash,
+                    (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                    shouldCache: false);
             }
 
             if (block is null)

@@ -56,7 +56,7 @@ namespace Nethermind.TxPool.Test
             var codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
-            Block block = Build.A.Block.WithNumber(0).TestObject;
+            Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
             _blockTree.Head.Returns(block);
             _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
@@ -224,11 +224,8 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactionsCount().Should().Be(0);
         }
 
-        [TestCase(false, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(false, true, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(true, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
-        [TestCase(true, true, ExpectedResult = nameof(AcceptTxResult.SenderIsContract))]
-        public string should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
+        [TestCaseSource(nameof(Eip3607RejectionsTestCases))]
+        public AcceptTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { IsEip3607Enabled = eip3607Enabled });
             TxPool txPool = CreatePool(null, specProvider);
@@ -237,7 +234,15 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             _stateProvider.InsertCode(TestItem.AddressA, hasCode ? "H"u8.ToArray() : System.Text.Encoding.UTF8.GetBytes(""), London.Instance);
 
-            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).ToString();
+            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        }
+
+        public static IEnumerable<TestCaseData> Eip3607RejectionsTestCases()
+        {
+            yield return new TestCaseData(false, false).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(false, true).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(true, false).Returns(AcceptTxResult.Accepted);
+            yield return new TestCaseData(true, true).Returns(AcceptTxResult.SenderIsContract);
         }
 
         [Test]
@@ -1116,6 +1121,8 @@ namespace Nethermind.TxPool.Test
             if (!eip2930Enabled)
             {
                 _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
+                Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 2).TestObject;
+                _blockTree.Head.Returns(block);
             }
 
             _txPool = CreatePool(null, new TestSpecProvider(eip2930Enabled ? Berlin.Instance : Istanbul.Instance));
@@ -1127,6 +1134,26 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactionsCount().Should().Be(eip2930Enabled ? 1 : 0);
             result.Should().Be(eip2930Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+        }
+
+        [Test]
+        public void should_accept_only_when_synced([Values(false, true)] bool isSynced)
+        {
+            if (!isSynced)
+            {
+                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
+                Block block = Build.A.Block.WithNumber(1).TestObject;
+                _blockTree.Head.Returns(block);
+            }
+
+            _txPool = CreatePool(null, new TestSpecProvider(Berlin.Instance));
+            Transaction tx = Build.A.Transaction
+                .WithChainId(TestBlockchainIds.ChainId)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactionsCount().Should().Be(isSynced ? 1 : 0);
+            result.Should().Be(isSynced ? AcceptTxResult.Accepted : AcceptTxResult.Syncing);
         }
 
         [Test]

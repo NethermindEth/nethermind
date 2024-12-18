@@ -51,8 +51,10 @@ public interface IAdminRpcModule : IRpcModule
     ResultWrapper<NodeInfo> admin_nodeInfo();
 
 
-    [JsonRpcMethod(Description = "Base data directory path",
-        IsImplemented = false)]
+    [JsonRpcMethod(Description = "Returns the absolute path to the node's data directory.",
+        ResponseDescription = "The data directory path as a string.",
+        ExampleResponse = "\"/path/to/datadir\"",
+        IsImplemented = true)]
     ResultWrapper<string> admin_dataDir();
 
 

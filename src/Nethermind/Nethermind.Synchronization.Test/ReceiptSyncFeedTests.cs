@@ -56,7 +56,7 @@ public class ReceiptSyncFeedTests
 
         _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
 
-        _syncConfig = new SyncConfig()
+        _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
@@ -69,6 +69,7 @@ public class ReceiptSyncFeedTests
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
             _receiptStorage,
+            new MemorySyncPointers(),
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),

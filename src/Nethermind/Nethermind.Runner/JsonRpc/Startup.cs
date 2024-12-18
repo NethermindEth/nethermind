@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Net;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,7 +83,6 @@ public class Startup
 
         app.UseRouting();
         app.UseCors();
-        app.UseResponseCompression();
 
         IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
         IRpcAuthentication? rpcAuthentication = app.ApplicationServices.GetService<IRpcAuthentication>();
@@ -98,6 +98,12 @@ public class Startup
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
         IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
+
+        // If request is local, don't use response compression,
+        // as it allocates a lot, but doesn't improve much for loopback
+        app.UseWhen(ctx =>
+            !IsLocalhost(ctx.Connection.RemoteIpAddress),
+            builder => builder.UseResponseCompression());
 
         if (initConfig.WebSocketsEnabled)
         {
@@ -140,6 +146,12 @@ public class Startup
                 return;
             }
 
+            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
+            {
+                ctx.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
+                return;
+            }
+
             if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
                 !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
             {
@@ -174,7 +186,7 @@ public class Startup
                         using (result)
                         {
                             await using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
-                            ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
+                            CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
                             try
                             {
                                 ctx.Response.ContentType = "application/json";
@@ -198,7 +210,7 @@ public class Startup
                                                 }
 
                                                 first = false;
-                                                jsonSerializer.Serialize(resultWriter, entry.Response);
+                                                await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
@@ -221,7 +233,7 @@ public class Startup
                                 }
                                 else
                                 {
-                                    jsonSerializer.Serialize(resultWriter, result.Response);
+                                    await jsonSerializer.SerializeAsync(resultWriter, result.Response);
                                 }
                                 await resultWriter.CompleteAsync();
                                 if (stream is not null)
@@ -233,11 +245,11 @@ public class Startup
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
                             {
-                                SerializeTimeoutException(resultWriter);
+                                await SerializeTimeoutException(resultWriter);
                             }
                             catch (OperationCanceledException)
                             {
-                                SerializeTimeoutException(resultWriter);
+                                await SerializeTimeoutException(resultWriter);
                             }
                             finally
                             {
@@ -269,21 +281,28 @@ public class Startup
                     Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                 }
             }
-            void SerializeTimeoutException(IBufferWriter<byte> resultStream)
+            Task SerializeTimeoutException(CountingWriter resultStream)
             {
                 JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                jsonSerializer.Serialize(resultStream, error);
+                return jsonSerializer.SerializeAsync(resultStream, error);
             }
             async Task PushErrorResponse(int statusCode, int errorCode, string message)
             {
                 JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(errorCode, message);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = statusCode;
-                jsonSerializer.Serialize(ctx.Response.BodyWriter, response);
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
         });
     }
+
+    /// <summary>
+    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1) 
+    /// </summary>
+    /// <param name="remoteIp">Request source</param>
+    private static bool IsLocalhost(IPAddress remoteIp)
+        => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
     private static int GetStatusCode(JsonRpcResult result)
     {
