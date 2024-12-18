@@ -10,6 +10,7 @@ namespace Nethermind.Core
     public class ProgressLogger
     {
         public const int QueuePaddingLength = 8;
+        public const int SkippedPaddingLength = 7;
         public const int SpeedPaddingLength = 7;
         public const int BlockPaddingLength = 10;
 
@@ -177,7 +178,7 @@ namespace Nethermind.Core
         {
             float percentage = Math.Clamp(current / (float)(total + 1), 0, 1);
             string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : "                | ");
-            string skippedStr = (skippedPerSecond >= 0 ? $" skipped {skippedPerSecond,QueuePaddingLength:N0} | " : "");
+            string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
             string receiptsReport =
                 $"{prefix}  " +

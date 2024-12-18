@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -146,6 +147,30 @@ public class ProgressLoggerTests
         Assert.That(progressLogger.HasEnded, Is.False);
     }
 
+    [Test]
+    public void Print_Progress()
+    {
+        ManualTimestamper manualTimestamper = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+        iLogger.IsInfo.Returns(true);
+        ILogger logger = new(iLogger);
+        logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+
+        ProgressLogger measuredProgress = new("Progress", logManager, manualTimestamper);
+
+        measuredProgress.Reset(0L, 100);
+        measuredProgress.SetMeasuringPoint();
+        measuredProgress.IncrementSkipped(10);
+        measuredProgress.CurrentQueued = 99;
+        manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
+        measuredProgress.Update(20L);
+
+        measuredProgress.LogProgress();
+
+        iLogger.Received(1).Info("Progress          20 /        100 (  19.80%) [⣿⣿⣿⣿⣿⣿⣿⡄                             ] queue       99 | skipped      90 Blk/s | current     200 Blk/s");
+    }
+
     private ProgressLogger CreateProgress()
     {
         return new("", LimboLogs.Instance);
@@ -157,4 +182,5 @@ public class ProgressLoggerTests
         ProgressLogger progressLogger = new("", LimboLogs.Instance, manualTimestamper);
         return (progressLogger, manualTimestamper);
     }
+
 }
