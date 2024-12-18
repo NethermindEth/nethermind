@@ -334,7 +334,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx, bool doNotCountBlobs = false);
+        int GetLength(Transaction tx, bool shouldCountBlobs = true);
     }
 
     /// <summary>
