@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P
         public static int GetHighestVersionOfEthProtocol()
         {
             int highestVersion = 0;
-            foreach (Capability ethProtocol in P2PProtocolHandler.DefaultCapabilities)
+            foreach (Capability ethProtocol in ProtocolsManager.DefaultCapabilities)
             {
                 if (ethProtocol.ProtocolCode == Protocol.Eth && highestVersion < ethProtocol.Version)
                     highestVersion = ethProtocol.Version;
@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P
 
         public static string DefaultCapabilitiesToString()
         {
-            IEnumerable<string> capabilities = P2PProtocolHandler.DefaultCapabilities
+            IEnumerable<string> capabilities = ProtocolsManager.DefaultCapabilities
                 .OrderBy(x => x.ProtocolCode).ThenByDescending(x => x.Version)
                 .Select(x => $"{x.ProtocolCode}/{x.Version}");
             return string.Join(",", capabilities);
