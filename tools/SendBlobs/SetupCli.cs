@@ -143,7 +143,7 @@ internal static class SetupCli
         return returnRemainder ? line[(i + 1)..] : line[..i];
     }
 
-    public static void SetupDistributeCommand(CliCommand root)
+    public static void DitributeFunds(CliCommand root)
     {
         CliCommand command = new("distribute")
         {
