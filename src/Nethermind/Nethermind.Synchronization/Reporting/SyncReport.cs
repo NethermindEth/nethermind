@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Reporting
                     ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";
                 return $"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                       + $"{progress.CurrentValue, ProgressLogger.BlockPaddingLength:N0} / {numHeadersToDownload,ProgressLogger.BlockPaddingLength:N0} | " +
+                       + $"{progress.CurrentValue,ProgressLogger.BlockPaddingLength:N0} / {numHeadersToDownload,ProgressLogger.BlockPaddingLength:N0} | " +
                        $"queue {progress.CurrentQueued,ProgressLogger.QueuePaddingLength:N0} | " +
                        $"current {progress.CurrentPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s  | " +
                        skipSectionStr +
