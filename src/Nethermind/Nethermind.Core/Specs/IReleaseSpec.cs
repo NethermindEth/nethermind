@@ -333,6 +333,11 @@ namespace Nethermind.Core.Specs
         bool IsOntakeEnabled { get; }
 
         /// <summary>
+        ///  Increase call data cost
+        /// </summary>
+        bool IsEip7623Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
