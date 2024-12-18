@@ -48,7 +48,7 @@ public static class IntrinsicGasCalculator
         return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
     }
 
-    private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
+    public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         AccessList? accessList = transaction.AccessList;
         if (accessList is not null)

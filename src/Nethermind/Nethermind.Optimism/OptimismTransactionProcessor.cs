@@ -151,7 +151,7 @@ public sealed class OptimismTransactionProcessor(
         }
     }
 
-    protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+    protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
     {
         // if deposit: skip refunds, skip tipping coinbase
@@ -160,7 +160,8 @@ public sealed class OptimismTransactionProcessor(
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
-            return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            var gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            return gas;
         }
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
