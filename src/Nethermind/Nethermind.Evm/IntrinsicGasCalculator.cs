@@ -33,39 +33,17 @@ public static class IntrinsicGasCalculator
         return new IntrinsicGas(intrinsicGas, floorGas);
     }
 
-    public static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        if (!releaseSpec.IsEip7623Enabled) return 0;
-
-        long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
-            ? GasCostOf.TxDataNonZeroMultiplierEip2028
-            : GasCostOf.TxDataNonZeroMultiplier;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-
-        int totalZeros = data.CountZeros();
-
-        var tokensInCallData = totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
-
-        return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
-    }
-
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
-            ? GasCostOf.TxDataNonZeroMultiplierEip2028
-            : GasCostOf.TxDataNonZeroMultiplier;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-
-        int totalZeros = data.CountZeros();
-
         long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
+            ? EvmPooledMemory.Div32Ceiling((UInt256)transaction.Data.GetValueOrDefault().Length) *
+              GasCostOf.InitCodeWord
             : 0;
 
-        var tokensInCallData = totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
+        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
 
         return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
     }
@@ -116,5 +94,25 @@ public static class IntrinsicGasCalculator
         {
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
         }
+    }
+
+    private static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
+            ? GasCostOf.TxDataNonZeroMultiplierEip2028
+            : GasCostOf.TxDataNonZeroMultiplier;
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+
+        int totalZeros = data.CountZeros();
+
+        return totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
+    }
+
+    private static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!releaseSpec.IsEip7623Enabled) return 0;
+        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
+
+        return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
     }
 }
