@@ -152,6 +152,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
+            tracer.ReportTransaction(tx);
+
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
             if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;

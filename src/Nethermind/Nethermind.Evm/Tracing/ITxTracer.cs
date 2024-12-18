@@ -437,4 +437,11 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="burntFees">EIP-1559 burnt fees</param>
     /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
     void ReportFees(UInt256 fees, UInt256 burntFees);
+
+    /// <summary>
+    /// Reports the transaction itself.
+    /// </summary>
+    /// <param name="transaction">transaction</param>
+    /// <remarks> For use by the tracer </remarks>
+    void ReportTransaction(Transaction transaction); // do this here rather than do it at onStart or tracer constructor (or StartNewTxTrace which is just a recursive helper)
 }

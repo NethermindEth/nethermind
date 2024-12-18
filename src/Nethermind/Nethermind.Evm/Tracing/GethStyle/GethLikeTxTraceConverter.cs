@@ -19,7 +19,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         GethLikeTxTrace value,
         JsonSerializerOptions options)
     {
-        if (value is null)
+        if (value is null) // remove, value isn't nullable?
         {
             writer.WriteNullValue();
         }
@@ -47,6 +47,8 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         }
     }
 }
+
+// remove this?
 /*
 public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
 {
