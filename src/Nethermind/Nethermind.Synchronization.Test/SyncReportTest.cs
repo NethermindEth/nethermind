@@ -61,9 +61,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Ancient_bodies_and_receipts_are_reported_correctly(
-            [Values(false, true)]
-            bool setBarriers)
+        public void Ancient_bodies_and_receipts_are_reported_correctly()
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
@@ -88,31 +86,20 @@ namespace Nethermind.Synchronization.Test
                 FastSync = true,
                 PivotNumber = "100",
             };
-            if (setBarriers)
-            {
-                syncConfig.AncientBodiesBarrier = 30;
-                syncConfig.AncientReceiptsBarrier = 35;
-            }
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
-            syncReport.FastBlocksHeaders.Reset(0, 0);
-            syncReport.FastBlocksBodies.Reset(0, 0);
-            syncReport.FastBlocksReceipts.Reset(0, 0);
+            syncReport.FastBlocksHeaders.Reset(0, 100);
+            syncReport.FastBlocksHeaders.CurrentQueued = 0;
+            syncReport.FastBlocksBodies.Reset(0, 70);
+            syncReport.FastBlocksBodies.CurrentQueued = 0;
+            syncReport.FastBlocksReceipts.Reset(0, 65);
+            syncReport.FastBlocksReceipts.CurrentQueued = 0;
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 
-            if (setBarriers)
-            {
-                iLogger.Received(1).Info("Old Headers           0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Bodies            0 /         70 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Receipts          0 /         65 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-            }
-            else
-            {
-                iLogger.Received(1).Info("Old Headers           0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Bodies            0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-                iLogger.Received(1).Info("Old Receipts          0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
-            }
+            iLogger.Received(1).Info("Old Headers           0 /        100 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
+            iLogger.Received(1).Info("Old Bodies            0 /         70 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
+            iLogger.Received(1).Info("Old Receipts          0 /         65 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
         }
 
         [TestCase(false)]

@@ -21,7 +21,7 @@ namespace Nethermind.Core
 
         public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
         {
-            _logger = logManager.GetClassLogger<ProgressLogger>();
+            _logger = logManager.GetClassLogger(nameof(ProgressLogger));
             _prefix = prefix;
             _timestamper = timestamper ?? Timestamper.Default;
         }
@@ -180,7 +180,7 @@ namespace Nethermind.Core
             string skippedStr = (skippedPerSecond >= 0 ? $" skipped {skippedPerSecond,QueuePaddingLength:N0} | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
             string receiptsReport =
-                $"{prefix} " +
+                $"{prefix}  " +
                 $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) " +
                 Progress.GetMeter(percentage, 1) +
                 queuedStr +

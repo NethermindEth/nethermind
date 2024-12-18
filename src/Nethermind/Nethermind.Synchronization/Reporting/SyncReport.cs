@@ -39,11 +39,11 @@ namespace Nethermind.Synchronization.Reporting
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
 
-            FastBlocksHeaders = new("Old headers", logManager);
-            FastBlocksBodies = new("Old blocks", logManager);
-            FastBlocksReceipts = new("Old receipts", logManager);
+            FastBlocksHeaders = new("Old Headers", logManager);
+            FastBlocksBodies = new("Old Bodies", logManager);
+            FastBlocksReceipts = new("Old Receipts", logManager);
             FullSyncBlocksDownloaded = new("Downloaded", logManager);
-            BeaconHeaders = new("Beacon headers", logManager);
+            BeaconHeaders = new("Beacon Headers", logManager);
 
             BeaconHeaders.SetFormat((progress) =>
             {
