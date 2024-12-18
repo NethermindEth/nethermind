@@ -34,5 +34,6 @@ RUN apt-get update && apt-get install -y libjemalloc-dev && rm -rf /var/lib/apt/
 RUN ln -sr /lib/x86_64-linux-gnu/libjemalloc.so.2 /lib/x86_64-linux-gnu/libjemalloc.so.1
 
 ENV LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so
+#ENV MALLOC_CONF=stats_print:true
 
 ENTRYPOINT ["./nethermind"]
