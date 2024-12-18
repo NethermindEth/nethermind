@@ -12,8 +12,8 @@ ARG TARGETARCH
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
+  -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
 RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
@@ -29,5 +29,10 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
+
+RUN apt-get update && apt-get install -y libjemalloc-dev && rm -rf /var/lib/apt/lists/*
+RUN ln -sr /lib/x86_64-linux-gnu/libjemalloc.so.2 /lib/x86_64-linux-gnu/libjemalloc.so.1
+
+ENV LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so
 
 ENTRYPOINT ["./nethermind"]
