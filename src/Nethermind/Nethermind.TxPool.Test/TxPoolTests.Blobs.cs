@@ -43,23 +43,22 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_accept_blob_tx_even_if_max_size_is_exceeded([Values(true, false)] bool isBlob)
+        public void should_reject_blob_tx_if_max_size_is_exceeded([Values(true, false)] bool sizeExceeded, [Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
         {
             Transaction tx = Build.A.Transaction
-                .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                .WithShardBlobTxTypeAndFields(numberOfBlobs)
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithMaxFeePerGas(1.GWei())
-                .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength() - 1 };
+            var txPoolConfig = new TxPoolConfig()
+                { MaxTxSize = tx.GetLength(shouldCountBlobs: false) / 8 - (sizeExceeded ? -1 : 1) };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(isBlob ? AcceptTxResult.Accepted : AcceptTxResult.MaxTxSizeExceeded);
-            _txPool.GetPendingTransactionsCount().Should().Be(0);
-            _txPool.GetPendingBlobTransactionsCount().Should().Be(isBlob ? 1 : 0);
+            result.Should().Be(sizeExceeded ? AcceptTxResult.MaxTxSizeExceeded : AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(sizeExceeded ? 0 : 1);
         }
 
         [Test]
