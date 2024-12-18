@@ -13,6 +13,7 @@ namespace Nethermind.Core
         public const int SkippedPaddingLength = 7;
         public const int SpeedPaddingLength = 7;
         public const int BlockPaddingLength = 10;
+        public const int PrefixAlignment = -13;
 
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
@@ -181,7 +182,7 @@ namespace Nethermind.Core
             string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
             string receiptsReport =
-                $"{prefix}  " +
+                $"{prefix,PrefixAlignment}" +
                 $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) " +
                 Progress.GetMeter(percentage, 1) +
                 queuedStr +
