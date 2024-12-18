@@ -7,7 +7,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
-    public class MeasuredProgress
+    public class ProgressLogger
     {
         public const int QueuePaddingLength = 8;
         public const int SpeedPaddingLength = 7;
@@ -17,11 +17,11 @@ namespace Nethermind.Core
         private readonly ILogger _logger;
         private string _prefix;
         private string _lastReport = "";
-        private Func<MeasuredProgress, string>? _formatter;
+        private Func<ProgressLogger, string>? _formatter;
 
-        public MeasuredProgress(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
+        public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
         {
-            _logger = logManager.GetClassLogger<MeasuredProgress>();
+            _logger = logManager.GetClassLogger<ProgressLogger>();
             _prefix = prefix;
             _timestamper = timestamper ?? Timestamper.Default;
         }
@@ -151,7 +151,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void SetFormat(Func<MeasuredProgress, string> formatter)
+        public void SetFormat(Func<ProgressLogger, string> formatter)
         {
             _formatter = formatter;
         }

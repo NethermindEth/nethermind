@@ -49,14 +49,14 @@ namespace Nethermind.Synchronization.Reporting
             {
                 long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
                 string skipSectionStr = progress.SkippedPerSecond != -1
-                    ? $"skipped {progress.SkippedPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s | "
+                    ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";
                 return $"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                       + $"{progress.CurrentValue, MeasuredProgress.BlockPaddingLength:N0} / {numHeadersToDownload,MeasuredProgress.BlockPaddingLength:N0} | " +
-                       $"queue {progress.CurrentQueued,MeasuredProgress.QueuePaddingLength:N0} | " +
-                       $"current {progress.CurrentPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s  | " +
+                       + $"{progress.CurrentValue, ProgressLogger.BlockPaddingLength:N0} / {numHeadersToDownload,ProgressLogger.BlockPaddingLength:N0} | " +
+                       $"queue {progress.CurrentQueued,ProgressLogger.QueuePaddingLength:N0} | " +
+                       $"current {progress.CurrentPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s  | " +
                        skipSectionStr +
-                       $"total {progress.TotalPerSecond,MeasuredProgress.SpeedPaddingLength:N0} Blk/s";
+                       $"total {progress.TotalPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s";
             });
 
             StartTime = DateTime.UtcNow;
@@ -111,15 +111,15 @@ namespace Nethermind.Synchronization.Reporting
 
         private readonly ITimer _timer;
 
-        public MeasuredProgress FastBlocksHeaders { get; init; }
+        public ProgressLogger FastBlocksHeaders { get; init; }
 
-        public MeasuredProgress FastBlocksBodies { get; init; }
+        public ProgressLogger FastBlocksBodies { get; init; }
 
-        public MeasuredProgress FastBlocksReceipts { get; init; }
+        public ProgressLogger FastBlocksReceipts { get; init; }
 
-        public MeasuredProgress FullSyncBlocksDownloaded { get; init; }
+        public ProgressLogger FullSyncBlocksDownloaded { get; init; }
 
-        public MeasuredProgress BeaconHeaders { get; init; }
+        public ProgressLogger BeaconHeaders { get; init; }
 
         private bool _reportedFastBlocksSummary;
         private uint _nodeInfoType;

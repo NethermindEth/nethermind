@@ -36,7 +36,7 @@ namespace Nethermind.Init.Steps.Migrations
         private Stopwatch? _stopwatch;
         private long _toBlock;
 
-        private readonly MeasuredProgress _progress;
+        private readonly ProgressLogger _progressLogger;
         [NotNull]
         private readonly IReceiptStorage? _receiptStorage;
         [NotNull]
@@ -86,7 +86,7 @@ namespace Nethermind.Init.Steps.Migrations
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
-            _progress = new MeasuredProgress("Receipts migration", logManager);
+            _progressLogger = new ProgressLogger("Receipts migration", logManager);
         }
 
         public async Task<bool> Run(long blockNumber)
@@ -164,7 +164,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             long synced = 1;
 
-            _progress.Reset(synced, _toBlock);
+            _progressLogger.Reset(synced, _toBlock);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
@@ -193,7 +193,7 @@ namespace Nethermind.Init.Steps.Migrations
                         block = GetMissingBlock(blockNum, blockHash);
                     }
 
-                    _progress.Update(Interlocked.Increment(ref synced));
+                    _progressLogger.Update(Interlocked.Increment(ref synced));
                     MigrateBlock(block!);
 
                     if (usingEmptyBlock)
@@ -214,7 +214,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
             finally
             {
-                _progress.MarkEnd();
+                _progressLogger.MarkEnd();
                 _stopwatch?.Stop();
                 timer.Stop();
             }
@@ -384,8 +384,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private string GetLogMessage(string status, string? suffix = null)
         {
-            string message = $"ReceiptsDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_toBlock.ToString().Length)} / {_toBlock} blocks migrated. | current {_progress.CurrentPerSecond:F2} Blk/s | total {_progress.TotalPerSecond:F2} Blk/s. {suffix}";
-            _progress.SetMeasuringPoint();
+            string message = $"ReceiptsDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progressLogger.CurrentValue.ToString().PadLeft(_toBlock.ToString().Length)} / {_toBlock} blocks migrated. | current {_progressLogger.CurrentPerSecond:F2} Blk/s | total {_progressLogger.TotalPerSecond:F2} Blk/s. {suffix}";
+            _progressLogger.SetMeasuringPoint();
             return message;
         }
 

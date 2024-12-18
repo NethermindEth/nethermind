@@ -19,11 +19,11 @@ namespace Nethermind.Synchronization.Reporting
         {
         }
 
-        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new("", LimboLogs.Instance);
+        public ProgressLogger FullSyncBlocksDownloaded { get; } = new("", LimboLogs.Instance);
         public long FullSyncBlocksKnown { get; set; }
-        public MeasuredProgress FastBlocksHeaders { get; } = new("", LimboLogs.Instance);
-        public MeasuredProgress FastBlocksBodies { get; } = new("", LimboLogs.Instance);
-        public MeasuredProgress FastBlocksReceipts { get; } = new("", LimboLogs.Instance);
-        public MeasuredProgress BeaconHeaders { get; } = new("", LimboLogs.Instance);
+        public ProgressLogger FastBlocksHeaders { get; } = new("", LimboLogs.Instance);
+        public ProgressLogger FastBlocksBodies { get; } = new("", LimboLogs.Instance);
+        public ProgressLogger FastBlocksReceipts { get; } = new("", LimboLogs.Instance);
+        public ProgressLogger BeaconHeaders { get; } = new("", LimboLogs.Instance);
     }
 }

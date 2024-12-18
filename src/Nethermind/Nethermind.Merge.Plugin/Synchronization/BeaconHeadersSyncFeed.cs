@@ -48,7 +48,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override long TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
 
-    protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
+    protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
 
     public BeaconHeadersSyncFeed(
         IPoSSwitcher poSSwitcher,
@@ -117,8 +117,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void PostFinishCleanUp()
     {
-        HeadersSyncProgressReport.Update(TotalBlocks);
-        HeadersSyncProgressReport.MarkEnd();
+        HeadersSyncProgressLoggerReport.Update(TotalBlocks);
+        HeadersSyncProgressLoggerReport.MarkEnd();
         ClearDependencies(); // there may be some dependencies from wrong branches
         _pending.Clear(); // there may be pending wrong branches
         _sent.Clear(); // we my still be waiting for some bad branches

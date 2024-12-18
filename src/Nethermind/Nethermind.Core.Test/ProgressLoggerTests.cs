@@ -7,58 +7,58 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-public class MeasuredProgressTests
+public class ProgressLoggerTests
 {
     [Test]
     public void Current_per_second_uninitialized()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(decimal.Zero));
+        ProgressLogger progressLogger = CreateProgress();
+        Assert.That(progressLogger.CurrentPerSecond, Is.EqualTo(decimal.Zero));
     }
 
     [Test]
     public void Total_per_second_uninitialized()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(decimal.Zero));
+        ProgressLogger progressLogger = CreateProgress();
+        Assert.That(progressLogger.TotalPerSecond, Is.EqualTo(decimal.Zero));
     }
 
     [Test]
     public void Current_value_uninitialized()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        Assert.That(measuredProgress.CurrentValue, Is.EqualTo(0L));
+        ProgressLogger progressLogger = CreateProgress();
+        Assert.That(progressLogger.CurrentValue, Is.EqualTo(0L));
     }
 
     [Test]
     public void Update_0L()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        measuredProgress.Update(0L);
-        Assert.That(measuredProgress.CurrentValue, Is.EqualTo(0L));
+        ProgressLogger progressLogger = CreateProgress();
+        progressLogger.Update(0L);
+        Assert.That(progressLogger.CurrentValue, Is.EqualTo(0L));
     }
 
     [Test]
     public void Update_0L_total_per_second()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        measuredProgress.Update(0L);
-        Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(0L));
+        ProgressLogger progressLogger = CreateProgress();
+        progressLogger.Update(0L);
+        Assert.That(progressLogger.TotalPerSecond, Is.EqualTo(0L));
     }
 
     [Test]
     public void Update_0L_current_per_second()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        measuredProgress.Update(0L);
-        Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0L));
+        ProgressLogger progressLogger = CreateProgress();
+        progressLogger.Update(0L);
+        Assert.That(progressLogger.CurrentPerSecond, Is.EqualTo(0L));
     }
 
     [Test]
     [Retry(3)]
     public void Update_twice_total_per_second()
     {
-        (MeasuredProgress measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
+        (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
         measuredProgress.Update(0L);
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
@@ -71,7 +71,7 @@ public class MeasuredProgressTests
     [Retry(3)]
     public void Update_twice_current_per_second()
     {
-        (MeasuredProgress measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
+        (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
         measuredProgress.Update(0L);
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
@@ -83,7 +83,7 @@ public class MeasuredProgressTests
     [Test]
     public void Current_starting_from_non_zero()
     {
-        (MeasuredProgress measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
+        (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
         measuredProgress.Update(10L);
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
@@ -94,7 +94,7 @@ public class MeasuredProgressTests
     [Test]
     public void Update_thrice_result_per_second()
     {
-        (MeasuredProgress measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
+        (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
         measuredProgress.Update(0L);
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
@@ -111,7 +111,7 @@ public class MeasuredProgressTests
     [Test]
     public void After_ending_does_not_update_total_or_current()
     {
-        (MeasuredProgress measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
+        (ProgressLogger measuredProgress, ManualTimestamper manualTimestamper) = CreateProgressWithManualTimestamper();
         measuredProgress.Update(0L);
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
@@ -134,27 +134,27 @@ public class MeasuredProgressTests
     [Test]
     public void Has_ended_returns_true_when_ended()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        measuredProgress.MarkEnd();
-        Assert.That(measuredProgress.HasEnded, Is.True);
+        ProgressLogger progressLogger = CreateProgress();
+        progressLogger.MarkEnd();
+        Assert.That(progressLogger.HasEnded, Is.True);
     }
 
     [Test]
     public void Has_ended_returns_false_when_ended()
     {
-        MeasuredProgress measuredProgress = CreateProgress();
-        Assert.That(measuredProgress.HasEnded, Is.False);
+        ProgressLogger progressLogger = CreateProgress();
+        Assert.That(progressLogger.HasEnded, Is.False);
     }
 
-    private MeasuredProgress CreateProgress()
+    private ProgressLogger CreateProgress()
     {
         return new("", LimboLogs.Instance);
     }
 
-    private (MeasuredProgress, ManualTimestamper) CreateProgressWithManualTimestamper()
+    private (ProgressLogger, ManualTimestamper) CreateProgressWithManualTimestamper()
     {
         ManualTimestamper manualTimestamper = new();
-        MeasuredProgress progress = new("", LimboLogs.Instance, manualTimestamper);
-        return (progress, manualTimestamper);
+        ProgressLogger progressLogger = new("", LimboLogs.Instance, manualTimestamper);
+        return (progressLogger, manualTimestamper);
     }
 }

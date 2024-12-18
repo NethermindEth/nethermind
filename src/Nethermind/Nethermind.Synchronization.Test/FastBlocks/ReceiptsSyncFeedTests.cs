@@ -82,8 +82,8 @@ public class ReceiptsSyncFeedTests
     private static readonly Scenario _64BodiesWithOneTxEach;
     private static readonly Scenario _64BodiesWithOneTxEachFollowedByEmpty;
 
-    private MeasuredProgress _measuredProgress = null!;
-    private MeasuredProgress _measuredProgressQueue = null!;
+    private ProgressLogger _progressLogger = null!;
+    private ProgressLogger _progressLoggerQueue = null!;
 
     static ReceiptsSyncFeedTests()
     {
@@ -109,8 +109,8 @@ public class ReceiptsSyncFeedTests
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
 
-        _measuredProgress = new MeasuredProgress("Receipts", LimboLogs.Instance);
-        _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
+        _progressLogger = new ProgressLogger("Receipts", LimboLogs.Instance);
+        _syncReport.FastBlocksReceipts.Returns(_progressLogger);
 
         _feed = CreateFeed();
     }
@@ -239,8 +239,8 @@ public class ReceiptsSyncFeedTests
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
         request.Should().BeNull();
         _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-        _measuredProgress.HasEnded.Should().BeTrue();
-        _measuredProgressQueue.HasEnded.Should().BeTrue();
+        _progressLogger.HasEnded.Should().BeTrue();
+        _progressLoggerQueue.HasEnded.Should().BeTrue();
     }
 
     [TestCase(1, 1024, false, null, false)]
