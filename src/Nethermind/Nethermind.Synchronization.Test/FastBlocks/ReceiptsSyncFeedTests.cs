@@ -83,7 +83,6 @@ public class ReceiptsSyncFeedTests
     private static readonly Scenario _64BodiesWithOneTxEachFollowedByEmpty;
 
     private ProgressLogger _progressLogger = null!;
-    private ProgressLogger _progressLoggerQueue = null!;
 
     static ReceiptsSyncFeedTests()
     {
@@ -240,7 +239,6 @@ public class ReceiptsSyncFeedTests
         request.Should().BeNull();
         _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         _progressLogger.HasEnded.Should().BeTrue();
-        _progressLoggerQueue.HasEnded.Should().BeTrue();
     }
 
     [TestCase(1, 1024, false, null, false)]
