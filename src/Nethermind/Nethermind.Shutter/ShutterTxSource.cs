@@ -122,5 +122,5 @@ public class ShutterTxSource(
     }
 
     public void Dispose()
-        => _keyWaitTasks.ForEach(x => x.Value.ForEach(waitTask => waitTask.Value.Item2.Dispose()));
+        => _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
 }

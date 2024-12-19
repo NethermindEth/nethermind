@@ -264,7 +264,7 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
-        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
+        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
     }
 
     public void SetOperationMemorySize(ulong newSize)

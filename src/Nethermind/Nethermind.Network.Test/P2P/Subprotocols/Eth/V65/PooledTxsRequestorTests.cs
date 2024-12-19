@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     public class PooledTxsRequestorTests
     {
         private readonly ITxPool _txPool = Substitute.For<ITxPool>();
-        private readonly Action<GetPooledTransactionsMessage> _doNothing = msg => msg.Dispose();
+        private readonly Action<GetPooledTransactionsMessage> _doNothing = static msg => msg.Dispose();
         private IPooledTxsRequestor _requestor;
         private IReadOnlyList<Hash256> _request;
         private IList<Hash256> _expected;

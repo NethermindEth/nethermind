@@ -372,7 +372,7 @@ namespace Nethermind.Blockchain.Receipts
             HashSet<Hash256AsKey> newTxs = null;
             if (exceptBlock is not null)
             {
-                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select((tx) => new Hash256AsKey(tx.Hash)));
+                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select(static (tx) => new Hash256AsKey(tx.Hash)));
             }
 
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();

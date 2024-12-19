@@ -625,7 +625,7 @@ public class CliqueBlockProducerTests
             .AssertInTurn(TestItem.PrivateKeyA, 1)
             .AssertOutOfTurn(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyA)
-            .ContinueWith(t => t.Result.StopNode(TestItem.PrivateKeyB));
+            .ContinueWith(static t => t.Result.StopNode(TestItem.PrivateKeyB));
     }
 
     [Test]
@@ -888,7 +888,7 @@ public class CliqueBlockProducerTests
     [Test, Retry(3)]
     public async Task Many_validators_can_process_blocks()
     {
-        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
+        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, AddressComparer.Instance).ToArray();
 
         On goerli = On.FastGoerli;
         for (int i = 0; i < keys.Length; i++)

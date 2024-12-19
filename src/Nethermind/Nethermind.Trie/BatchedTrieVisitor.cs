@@ -224,7 +224,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // Sort by level
             if (_activeJobs > _targetCurrentItems)
             {
-                preSort.AsSpan().Sort((item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
+                preSort.AsSpan().Sort(static (item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
             }
 
             int endIdx = Math.Min(_maxBatchSize, preSort.Count);

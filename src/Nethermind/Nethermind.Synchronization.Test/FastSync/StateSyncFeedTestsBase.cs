@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         private const int TimeoutLength = 20000;
 
         private static IBlockTree? _blockTree;
-        protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
+        protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
         protected ILogger _logger;
         protected ILogManager _logManager = null!;
