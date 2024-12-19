@@ -73,6 +73,12 @@ namespace Nethermind.Blockchain.Synchronization
         public int StateMaxDistanceFromHead { get; set; } = 128;
         public int StateMinDistanceFromHead { get; set; } = 32;
         public bool GCOnFeedFinished { get; set; } = true;
+        /// <summary>
+        /// Additional delay in blocks between best suggested header and synced state to allow faster state switching for PoW chains
+        /// with higher block processing frequency. Effectively this is the max allowed difference between best header (used as sync
+        /// pivot) and synced state block, to assume that state is synced and node can start processing blocks
+        /// </summary>
+        public int HeaderStateDistance { get; set; } = 0;
 
         public override string ToString()
         {
