@@ -471,13 +471,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private Hash256 RecalculateRootHash(Address address)
-    {
-        StorageTree storageTree = GetOrCreateStorage(address);
-        storageTree.UpdateRootHash();
-        return storageTree.RootHash;
-    }
-
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>

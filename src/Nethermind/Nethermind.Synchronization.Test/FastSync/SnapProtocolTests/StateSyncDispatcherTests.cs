@@ -58,6 +58,7 @@ public class StateSyncDispatcherTests
     public async Task TearDown()
     {
         await _pool.DisposeAsync();
+        await _dispatcher.DisposeAsync();
     }
 
     [Test]
