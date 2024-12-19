@@ -128,7 +128,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.TxSender);
         ArgumentNullException.ThrowIfNull(_api.Wallet);
         ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
-        ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
