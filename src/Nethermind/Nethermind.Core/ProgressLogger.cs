@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Threading;
 using Nethermind.Logging;
 
@@ -13,6 +14,7 @@ namespace Nethermind.Core
         public const int SkippedPaddingLength = 7;
         public const int SpeedPaddingLength = 7;
         public const int BlockPaddingLength = 10;
+        public const int PrefixAlignment = -13;
 
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
@@ -181,8 +183,8 @@ namespace Nethermind.Core
             string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
             string receiptsReport =
-                $"{prefix}  " +
-                $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage,8:P2}) " +
+                $"{prefix,PrefixAlignment}" +
+                $"{current,BlockPaddingLength:N0} / {total,BlockPaddingLength:N0} ({percentage.ToString("P2", CultureInfo.InvariantCulture),8}) " +
                 Progress.GetMeter(percentage, 1) +
                 queuedStr +
                 skippedStr +

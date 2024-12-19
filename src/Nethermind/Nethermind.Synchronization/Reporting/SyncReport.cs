@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Reporting
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
 
             FastBlocksHeaders = new("Old Headers", logManager);
-            FastBlocksBodies = new("Old Bodies", logManager);
+            FastBlocksBodies = new("Old Bodies ", logManager);
             FastBlocksReceipts = new("Old Receipts", logManager);
             FullSyncBlocksDownloaded = new("Downloaded", logManager);
             BeaconHeaders = new("Beacon Headers", logManager);
@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Reporting
                     ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";
                 return $"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                       + $"{progress.CurrentValue, ProgressLogger.BlockPaddingLength:N0} / {numHeadersToDownload,ProgressLogger.BlockPaddingLength:N0} | " +
+                       + $"{progress.CurrentValue,ProgressLogger.BlockPaddingLength:N0} / {numHeadersToDownload,ProgressLogger.BlockPaddingLength:N0} | " +
                        $"queue {progress.CurrentQueued,ProgressLogger.QueuePaddingLength:N0} | " +
                        $"current {progress.CurrentPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s  | " +
                        skipSectionStr +
