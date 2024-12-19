@@ -19,7 +19,7 @@ namespace Nethermind.Core
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private string _prefix;
-        private (long, long, long) _lastReportState = (0, 0, 0);
+        private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
         private Func<ProgressLogger, string>? _formatter;
 
         public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
@@ -162,7 +162,7 @@ namespace Nethermind.Core
 
         public void LogProgress()
         {
-            (long, long, long) reportState = (CurrentValue, CurrentQueued, TargetValue);
+            (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
             if (reportState != _lastReportState)
             {
                 string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
