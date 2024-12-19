@@ -7,6 +7,8 @@ public delegate TResult RefRlpReaderFunc<out TResult>(ref RlpReader arg);
 
 public delegate void RefRlpReaderAction(ref RlpReader arg);
 
+public class RlpReaderException(string message) : Exception(message);
+
 // TODO: We might want to add `IDisposable` to ensure that there are no trailing bytes.
 public ref struct RlpReader
 {
@@ -44,8 +46,7 @@ public ref struct RlpReader
         }
         else
         {
-            // Not an Object
-            throw new Exception();
+            throw new RlpReaderException("RLP does not correspond to an object");
         }
 
         return result;
@@ -57,8 +58,7 @@ public ref struct RlpReader
         var header = _buffer[_position];
         if (header < 0xC0)
         {
-            // Not a List
-            throw new Exception();
+            throw new RlpReaderException("RLP does not correspond to a list");
         }
 
         if (header < 0xF8)
