@@ -7,6 +7,12 @@ namespace Nethermind.Serialization.Rlp.Test.Instances;
 
 public abstract class IntRlpConverter : IRlpConverter<int>
 {
+    public static int Read(ref RlpReader reader)
+    {
+        ReadOnlySpan<byte> obj = reader.ReadObject();
+        return Int32Primitive.Read(obj);
+    }
+
     public static void Write(IRlpWriter writer, int value)
     {
         if (value < 0x80)
@@ -25,5 +31,6 @@ public abstract class IntRlpConverter : IRlpConverter<int>
 
 public static class IntRlpConverterExt
 {
+    public static Int32 ReadInt32(this ref RlpReader reader) => IntRlpConverter.Read(ref reader);
     public static void Write(this IRlpWriter writer, int value) => IntRlpConverter.Write(writer, value);
 }
