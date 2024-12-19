@@ -44,6 +44,91 @@ public class RlpReadWriteTest
         decoded.Should().Be((42, ("dog", "cat")));
     }
 
+    [Test]
+    public void LongList()
+    {
+        var rlp = Rlp.Write(static w =>
+        {
+            w.WriteList(static w =>
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    w.Write("dog");
+                }
+            });
+        });
+
+        List<string> decoded = Rlp.Read(rlp, (ref RlpReader r) =>
+        {
+            return r.ReadList((ref RlpReader r) =>
+            {
+                List<string> result = [];
+                for (int i = 0; i < 100; i++)
+                {
+                    result.Add(r.ReadString());
+                }
+
+                return result;
+            });
+        });
+
+        decoded.Count.Should().Be(100);
+        decoded.Should().AllBeEquivalentTo("dog");
+    }
+
+    [Test]
+    public void MutlipleLongList()
+    {
+        var rlp = Rlp.Write(static w =>
+        {
+            w.WriteList(static w =>
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    w.Write("dog");
+                }
+            });
+            w.WriteList(static w =>
+            {
+                for (int i = 0; i < 50; i++)
+                {
+                    w.Write("cat");
+                }
+            });
+        });
+
+        var (dogs, cats) = Rlp.Read(rlp, (ref RlpReader r) =>
+        {
+            var dogs = r.ReadList((ref RlpReader r) =>
+            {
+                List<string> result = [];
+                while (r.HasNext)
+                {
+                    result.Add(r.ReadString());
+                }
+
+                return result;
+            });
+            var cats = r.ReadList((ref RlpReader r) =>
+            {
+                List<string> result = [];
+                while (r.HasNext)
+                {
+                    result.Add(r.ReadString());
+                }
+
+                return result;
+            });
+
+            return (dogs, cats);
+        });
+
+        dogs.Count.Should().Be(100);
+        dogs.Should().AllBeEquivalentTo("dog");
+
+        cats.Count.Should().Be(50);
+        cats.Should().AllBeEquivalentTo("cat");
+    }
 
     [TestCase(2)]
     public void UnknownLengthList([Values(1, 3, 5, 10, 20)] int length)
@@ -58,17 +143,19 @@ public class RlpReadWriteTest
                 }
             });
         });
+
         List<int> decoded = Rlp.Read(rlp, (ref RlpReader r) =>
         {
-            List<int> result = [];
-            r.ReadList((ref RlpReader r) =>
+            return r.ReadList((ref RlpReader r) =>
             {
+                List<int> result = [];
                 while (r.HasNext)
                 {
                     result.Add(r.ReadInt32());
                 }
+
+                return result;
             });
-            return result;
         });
 
         decoded.Count.Should().Be(length);
@@ -78,10 +165,7 @@ public class RlpReadWriteTest
     public void InvalidObjectReading()
     {
         var rlp = Rlp.Write(static w => { w.Write(42); });
-        Action tryRead = () => Rlp.Read(rlp, (ref RlpReader r) =>
-        {
-            r.ReadList((ref RlpReader _) => { });
-        });
+        Action tryRead = () => Rlp.Read(rlp, (ref RlpReader r) => { r.ReadList((ref RlpReader _) => { }); });
 
         tryRead.Should().Throw<RlpReaderException>();
     }
