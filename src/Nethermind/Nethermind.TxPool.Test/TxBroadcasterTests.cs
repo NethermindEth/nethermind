@@ -196,7 +196,7 @@ public class TxBroadcasterTests
         _broadcaster.AddPeer(peer);
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength() == size), false);
+        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength(true) == size), false);
     }
 
     [Test]
