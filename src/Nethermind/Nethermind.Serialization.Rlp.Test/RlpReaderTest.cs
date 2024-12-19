@@ -78,7 +78,7 @@ public class RlpReaderTest
         byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
 
         var reader = new RlpReader(source);
-        var actual = reader.ReadList(r =>
+        var actual = reader.ReadList(static (ref RlpReader r) =>
         {
             var cat = r.ReadString();
             var dog = r.ReadString();
@@ -90,12 +90,49 @@ public class RlpReaderTest
     }
 
     [Test]
+    public void ReadSetTheoreticalRepresentation()
+    {
+        byte[] source = [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0];
+
+        var reader = new RlpReader(source);
+        object[] actual = reader.ReadList(static (ref RlpReader r) =>
+        {
+            var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
+            var _2 = r.ReadList(static (ref RlpReader r) =>
+            {
+                var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
+                return new object[] { _1 };
+            });
+            var _3 = r.ReadList(static (ref RlpReader r) =>
+            {
+                var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
+                var _2 = r.ReadList(static (ref RlpReader r) =>
+                {
+                    var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
+                    return new object[] { _1 };
+                });
+
+                return new object[] { _1, _2 };
+            });
+
+            return new object[] { _1, _2, _3 };
+        });
+
+        actual.Should().BeEquivalentTo(new object[]
+        {
+            new object[] { },
+            new object[] { new object[] { } },
+            new object[] { new object[] { }, new object[] { new object[] { } } },
+        });
+    }
+
+    [Test]
     public void ReadEmptyList()
     {
         byte[] source = [0xc0];
 
         var reader = new RlpReader(source);
-        object[] actual = reader.ReadList(_ => Array.Empty<object>());
+        object[] actual = reader.ReadList((ref RlpReader _) => Array.Empty<object>());
 
         actual.Should().BeEmpty();
     }
@@ -144,7 +181,9 @@ public ref struct RlpReader
         return result;
     }
 
-    public T ReadList<T>(Func<RlpReader, T> func)
+    public delegate TResult ReadListFunc<out TResult>(ref RlpReader arg);
+
+    public T ReadList<T>(ReadListFunc<T> func)
     {
         T result;
         var header = _buffer[_position];
@@ -159,7 +198,7 @@ public ref struct RlpReader
             _position += 1;
             var length = header - 0xC0;
             var reader = new RlpReader(_buffer.Slice(_position, length));
-            result = func(reader);
+            result = func(ref reader);
             _position += length;
         }
         else
