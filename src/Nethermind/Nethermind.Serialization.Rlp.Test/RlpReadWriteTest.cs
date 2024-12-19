@@ -43,4 +43,34 @@ public class RlpReadWriteTest
 
         decoded.Should().Be((42, ("dog", "cat")));
     }
+
+
+    [TestCase(2)]
+    public void UnknownLengthList([Values(1, 3, 5, 10, 20)] int length)
+    {
+        var rlp = Rlp.Write(root =>
+        {
+            root.WriteList(w =>
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    w.Write(42);
+                }
+            });
+        });
+        List<int> decoded = Rlp.Read(rlp, (ref RlpReader r) =>
+        {
+            List<int> result = [];
+            r.ReadList((ref RlpReader r) =>
+            {
+                while (r.HasNext)
+                {
+                    result.Add(r.ReadInt32());
+                }
+            });
+            return result;
+        });
+
+        decoded.Count.Should().Be(length);
+    }
 }

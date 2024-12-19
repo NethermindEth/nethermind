@@ -85,4 +85,6 @@ public ref struct RlpReader
             return null;
         });
     }
+
+    public bool HasNext => _position < _buffer.Length;
 }
