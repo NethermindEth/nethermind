@@ -168,11 +168,16 @@ public class ProgressTrackerTests
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
-        var startHash = new ValueHash256(start);
         var lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
-        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
+        StorageRange storageRange = new StorageRange()
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { TestItem.Tree.AccountsWithPaths[0] },
+            StartingHash = new ValueHash256(start),
+            LimitHash = limitHash
+        };
+        progressTracker.EnqueueStorageRange(storageRange, 0, lastProcessedHash);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -200,11 +205,16 @@ public class ProgressTrackerTests
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
-        var startHash = new ValueHash256(start);
         var lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
-        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
+        StorageRange storageRange = new StorageRange()
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { TestItem.Tree.AccountsWithPaths[0] },
+            StartingHash = new ValueHash256(start),
+            LimitHash = limitHash
+        };
+        progressTracker.EnqueueStorageRange(storageRange, 0, lastProcessedHash);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);

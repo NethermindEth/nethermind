@@ -10,6 +10,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -272,8 +274,12 @@ public class SnapServerTest
 
         try
         {
-            AddRangeResult result = snapProvider.AddStorageRange(TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, Keccak.Zero,
-                storageSlots[0], proofs);
+            var storageRangeRequest = new StorageRange()
+            {
+                StartingHash = Keccak.Zero,
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+            };
+            AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
             result.Should().Be(AddRangeResult.OK);
         }
@@ -311,8 +317,12 @@ public class SnapServerTest
 
             try
             {
-                AddRangeResult result = snapProvider.AddStorageRange(TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, startRange,
-                    storageSlots[0], proofs);
+                var storageRangeRequest = new StorageRange()
+                {
+                    StartingHash = startRange,
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(inputStorageTree.RootHash)) }
+                };
+                AddRangeResult result = snapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
                 result.Should().Be(AddRangeResult.OK);
                 if (startRange == storageSlots[0][^1].Path.ToCommitment())
