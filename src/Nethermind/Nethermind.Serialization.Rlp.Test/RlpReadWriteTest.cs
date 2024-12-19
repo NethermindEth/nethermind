@@ -73,4 +73,25 @@ public class RlpReadWriteTest
 
         decoded.Count.Should().Be(length);
     }
+
+    [Test]
+    public void InvalidObjectReading()
+    {
+        var rlp = Rlp.Write(static w => { w.Write(42); });
+        Action tryRead = () => Rlp.Read(rlp, (ref RlpReader r) =>
+        {
+            r.ReadList((ref RlpReader _) => { });
+        });
+
+        tryRead.Should().Throw<RlpReaderException>();
+    }
+
+    [Test]
+    public void InvalidListReading()
+    {
+        var rlp = Rlp.Write(static w => { w.WriteList(static _ => { }); });
+        Func<int> tryRead = () => Rlp.Read(rlp, (ref RlpReader r) => r.ReadInt32());
+
+        tryRead.Should().Throw<RlpReaderException>();
+    }
 }
