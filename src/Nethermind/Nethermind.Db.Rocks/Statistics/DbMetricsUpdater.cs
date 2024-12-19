@@ -154,7 +154,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             }
             else
             {
-                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compation stats dump:{Environment.NewLine}{compactionStatsDump}");
+                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
             }
         }
     }
