@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 namespace Nethermind.Serialization.Rlp.Test.Instances;
 
 // Spiritually implements `IRlpConverter` but due to restrictions on `ReadOnlySpan` we cannot make it explicit
-public abstract class ReadOnlySpanConverter /* : IRlpConverter<ReadOnlySpan<byte>> */
+public abstract class ReadOnlySpanRlpConverter /* : IRlpConverter<ReadOnlySpan<byte>> */
 {
     public static void Write(IRlpWriter writer, ReadOnlySpan<byte> value)
     {
@@ -40,5 +40,5 @@ public abstract class ReadOnlySpanConverter /* : IRlpConverter<ReadOnlySpan<byte
 
 public static class ReadOnlySpanConverterExt
 {
-    public static void Write(this IRlpWriter writer, ReadOnlySpan<byte> value) => ReadOnlySpanConverter.Write(writer, value);
+    public static void Write(this IRlpWriter writer, ReadOnlySpan<byte> value) => ReadOnlySpanRlpConverter.Write(writer, value);
 }
