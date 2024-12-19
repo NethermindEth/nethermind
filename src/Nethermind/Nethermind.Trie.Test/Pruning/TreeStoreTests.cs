@@ -198,7 +198,7 @@ namespace Nethermind.Trie.Test.Pruning
             long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-            long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize;
+            long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize - MemorySizes.SmallObjectOverhead;
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
@@ -253,7 +253,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 591672L : 661820L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 540560L : 610708L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -883,8 +883,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             readOnlyNode.Should().NotBe(originalNode);
             readOnlyNode.Should().BeEquivalentTo(originalNode,
-                eq => eq.Including(t => t.Keccak)
-                    .Including(t => t.NodeType));
+                static eq => eq.Including(static t => t.Keccak)
+                    .Including(static t => t.NodeType));
 
             var origRlp = originalNode.FullRlp;
             var readOnlyRlp = readOnlyNode.FullRlp;
@@ -1017,7 +1017,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 504 : 660);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 552 : 708);
         }
 
         [Test]

@@ -88,10 +88,10 @@ namespace Nethermind.Network.Discovery.Test
             await Task.Delay(500);
 
             // expecting to send pong
-            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
 
             // send pings to  new node
-            await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManager.OnIncomingMsg(msg);
 
             //expecting to respond with sending Neighbors
-            _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Retry(3)]
