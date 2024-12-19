@@ -22,12 +22,12 @@ namespace Nethermind.TxPool.Filters
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
-            Transaction[] currentTx;
-            if (standardPool.TryGetBucket(tx.SenderAddress!, out currentTx) || blobPool.TryGetBucket(tx.SenderAddress!, out currentTx))
+            Transaction[] currentTxs;
+            if (standardPool.TryGetBucket(tx.SenderAddress!, out currentTxs) || blobPool.TryGetBucket(tx.SenderAddress!, out currentTxs))
             {
-                foreach (Transaction t in currentTx)
+                foreach (Transaction existingTx in currentTxs)
                 {
-                    if (t.Nonce == tx.Nonce)
+                    if (existingTx.Nonce == tx.Nonce)
                     {
                         //This is a replacement tx so accept it, and let the comparers check for correct replacement rules
                         return AcceptTxResult.Accepted;

@@ -52,7 +52,7 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
-        private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
+        private readonly ConcurrentDictionary<UInt256, int> _pendingDelegations = new();
 
 
         private readonly ILogger _logger;
@@ -460,7 +460,7 @@ namespace Nethermind.TxPool
                     {
                         foreach (var auth in tx.AuthorizationList)
                         {
-                            IncrementDelegationCount(auth.Authority!, true);
+                            IncrementDelegationCount(auth.Authority!, auth.Nonce, true);
                         }
                     }
                     // Clear proper snapshot
@@ -703,7 +703,7 @@ namespace Nethermind.TxPool
                 {
                     foreach (var auth in transaction.AuthorizationList)
                     {
-                        IncrementDelegationCount(auth.Authority!, false);
+                        IncrementDelegationCount(auth.Authority!, auth.Nonce, false);
                     }
                 }
             }
@@ -826,10 +826,13 @@ namespace Nethermind.TxPool
             _accountCache.RemoveAccounts(arrayPoolList);
         }
 
-        private void IncrementDelegationCount(AddressAsKey key, bool increment)
+        private void IncrementDelegationCount(AddressAsKey key, UInt256 nonce, bool increment)
         {
+            UInt256 addressPlusNonce = new (key.Value.Bytes);
+            addressPlusNonce += nonce;
+            
             int value = increment ? 1 : -1;
-            var lastCount = _pendingDelegations.AddOrUpdate(key,
+            var lastCount = _pendingDelegations.AddOrUpdate(addressPlusNonce,
                 (k) => 1,
                 (k, c) => c + value);
 
