@@ -3,17 +3,4 @@
 
 namespace Nethermind.Era1;
 [Serializable]
-internal class EraFormatException : EraException
-{
-    public EraFormatException()
-    {
-    }
-
-    public EraFormatException(string message) : base(message)
-    {
-    }
-
-    public EraFormatException(string message, Exception innerException) : base(message, innerException)
-    {
-    }
-}
+internal class EraFormatException(string message) : EraException(message);

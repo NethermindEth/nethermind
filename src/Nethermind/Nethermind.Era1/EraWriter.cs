@@ -52,9 +52,9 @@ public class EraWriter : IDisposable
         if (_finalized)
             throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
 
-        if (block.Header == null)
+        if (block.Header is null)
             throw new ArgumentException("The block must have a header.", nameof(block));
-        if (block.Hash == null)
+        if (block.Hash is null)
             throw new ArgumentException("The block must have a hash.", nameof(block));
 
         if (_entryIndexes.Count >= MaxEra1Size)
@@ -139,15 +139,6 @@ public class EraWriter : IDisposable
         return _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
     }
 
-    private class EntryIndexInfo
-    {
-        public long Index { get; }
-        public EntryIndexInfo(long index)
-        {
-            Index = index;
-        }
-    }
-
     protected virtual void Dispose(bool disposing)
     {
         if (!_disposedValue)
@@ -167,14 +158,5 @@ public class EraWriter : IDisposable
         // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
-    }
-
-    public static string Filename(string network, long epoch, Hash256 root)
-    {
-        if (string.IsNullOrEmpty(network)) throw new ArgumentException($"'{nameof(network)}' cannot be null or empty.", nameof(network));
-        if (root is null) throw new ArgumentNullException(nameof(root));
-        if (epoch < 0) throw new ArgumentOutOfRangeException(nameof(epoch), "Cannot be a negative number.");
-
-        return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
     }
 }

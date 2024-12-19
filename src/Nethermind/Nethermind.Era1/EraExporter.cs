@@ -96,7 +96,7 @@ public class EraExporter(
 
             string filePath = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, epoch, Keccak.Zero));
+                EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
             using EraWriter eraWriter = new EraWriter(fileSystem.File.Create(filePath), specProvider);
 
@@ -135,7 +135,7 @@ public class EraExporter(
 
             string rename = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, epoch, new Hash256(accumulator)));
+                EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
             fileSystem.File.Move(
                 filePath,
                 rename, true);

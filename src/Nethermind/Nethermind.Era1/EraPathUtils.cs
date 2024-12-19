@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Era1;
 
@@ -37,5 +38,14 @@ public static class EraPathUtils
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
     {
         return GetAllEraFiles(directoryPath, network, new FileSystem());
+    }
+
+    public static string Filename(string network, long epoch, Hash256 root)
+    {
+        if (string.IsNullOrEmpty(network)) throw new ArgumentException($"'{nameof(network)}' cannot be null or empty.", nameof(network));
+        if (root is null) throw new ArgumentNullException(nameof(root));
+        if (epoch < 0) throw new ArgumentOutOfRangeException(nameof(epoch), "Cannot be a negative number.");
+
+        return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
     }
 }
