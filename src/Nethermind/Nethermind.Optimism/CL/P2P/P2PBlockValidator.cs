@@ -145,7 +145,7 @@ public class P2PBlockValidator : IP2PBlockValidator
 
         // Array.Copy(_chainId, 0, new byte[10], 32, 32);
         _chainId.CopyTo(sequencerSignedData.Slice(32, 32));
-        KeccakHash.ComputeHashBytes(payloadData).CopyTo(sequencerSignedData.Slice(64,32));
+        KeccakHash.ComputeHashBytes(payloadData).CopyTo(sequencerSignedData.Slice(64, 32));
         byte[] signedHash = KeccakHash.ComputeHashBytes(sequencerSignedData);
 
         Span<byte> publicKey = stackalloc byte[65];
