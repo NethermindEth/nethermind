@@ -42,6 +42,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
         chainSpec.Name = chainSpecJson.Name;
         chainSpec.DataDir = chainSpecJson.DataDir;
+        chainSpec.BlobSchedule = chainSpecJson.BlobSchedule;
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);

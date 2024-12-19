@@ -98,6 +98,8 @@ internal class ChainSpecParamsJson
 
     public long? Eip3541Transition { get; set; }
 
+    public ulong? Eip7742TransitionTimestamp { get; set; }
+
     // We explicitly want this to be enabled by default on all the networks
     // we can disable it if needed, but its expected not to cause issues
     public long? Eip3607Transition { get; set; } = 0;
