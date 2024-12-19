@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max(bestSuggestedHeader?.Number ?? 0 + MultiSyncModeSelector.FastSyncLag - syncConfig.StateMinDistanceFromHead, 0);
+            long targetBlockNumber = Math.Max((bestSuggestedHeader?.Number ?? 0) + MultiSyncModeSelector.FastSyncLag - syncConfig.StateMinDistanceFromHead, 0);
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {

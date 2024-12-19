@@ -140,8 +140,8 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Increment(ref _reqCount);
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
-            Hash256? rootHash = pivotHeader?.StateRoot ?? Hash256.Zero;
-            long blockNumber = pivotHeader?.Number ?? 0;
+            Hash256 rootHash = pivotHeader!.StateRoot!;
+            long blockNumber = pivotHeader.Number;
 
             if (!AccountsToRefresh.IsEmpty)
             {
