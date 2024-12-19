@@ -15,4 +15,11 @@ public static class Rlp
 
         return serialized;
     }
+
+    public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func)
+    {
+        var reader = new RlpReader(source);
+        // TODO: We might want to add an option to check for no trailing bytes.
+        return func(ref reader);
+    }
 }
