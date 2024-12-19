@@ -13,6 +13,8 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Era1;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -44,7 +46,7 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
         dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
         peerPool.ActivePeers.Returns(dict);
-
+        IAdminEraService eraService = Substitute.For<IAdminEraService>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         Enode enode = new(_enodeString);
         ChainSpec chainSpec = new()
@@ -58,6 +60,7 @@ public class AdminModuleTests
             peerPool,
             staticNodesManager,
             enode,
+            eraService,
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters);
