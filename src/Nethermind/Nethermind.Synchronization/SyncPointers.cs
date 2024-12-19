@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization;
@@ -47,17 +46,15 @@ public class SyncPointers : ISyncPointers
     }
 
 
-    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb, IReceiptConfig receiptConfig, ILogManager logManager)
+    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb, IReceiptConfig receiptConfig)
     {
         _blocksDb = blocksDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
 
-        ILogger logger = logManager.GetClassLogger<SyncPointers>();
         LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeLong();
-        if (logger.IsDebug) logger.Debug($"Lowest inserted body number loaded to {LowestInsertedBodyNumber?.ToString() ?? "null"}");
 
-        LowestInsertedReceiptBlockNumber = _defaultReceiptDbColumn[Keccak.Zero.Bytes]?.AsRlpValueContext().DecodeLong();
-        if (logger.IsDebug) logger.Debug($"Lowest inserted receipt number loaded to {LowestInsertedReceiptBlockNumber?.ToString() ?? "null"}");
+        byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
+        _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
 
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)
