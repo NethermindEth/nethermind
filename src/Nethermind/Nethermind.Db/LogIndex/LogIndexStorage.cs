@@ -380,10 +380,15 @@ namespace Nethermind.Db
 
         private IndexInfo GetOrCreateTempIndex(IDb db, byte[] keyPrefix, int blockNumber, SetReceiptsStats stats)
         {
-            using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
             Span<byte> dbKey = stackalloc byte[keyPrefix.Length + sizeof(int)];
 
+            byte[] dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (size is not guaranteed)
+            Array.Copy(keyPrefix, dbPrefix, keyPrefix.Length);
+
             CreateDbKey(keyPrefix, blockNumber, dbKey);
+
+            var options = new IteratorOptions { IsOrdered = true, LowerBound = dbPrefix };
+            using IIterator<byte[], byte[]> iterator = db.GetIterator(ref options);
 
             var watch = Stopwatch.StartNew();
             iterator.SeekForPrev(dbKey); // TODO: test with lower bound set

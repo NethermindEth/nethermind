@@ -174,6 +174,11 @@ namespace Nethermind.Db
             {
                 return _wrapped.GetIterator(isOrdered);
             }
+
+            public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+            {
+                return _wrapped.GetIterator(ref options);
+            }
         }
     }
 }

@@ -15,7 +15,15 @@ namespace Nethermind.Db
         IEnumerable<byte[]> GetAllKeys(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
         IIterator<byte[], byte[]> GetIterator(bool isOrdered = false);
+        IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options);
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
+    }
+
+    public ref struct IteratorOptions
+    {
+        public byte[]? LowerBound { get; init; }
+        public byte[]? UpperBound { get; init; }
+        public bool IsOrdered { get; init; }
     }
 
     // Some metadata options

@@ -324,5 +324,10 @@ namespace Nethermind.Db.FullPruning
         {
             return _currentDb.GetIterator(isOrdered);
         }
+
+        public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+        {
+            return _currentDb.GetIterator(ref options);
+        }
     }
 }

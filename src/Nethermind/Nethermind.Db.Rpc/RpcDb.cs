@@ -124,5 +124,10 @@ namespace Nethermind.Db.Rpc
         {
             throw new InvalidOperationException("RPC DB does not support iteration");
         }
+
+        public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+        {
+            throw new InvalidOperationException("RPC DB does not support iteration");
+        }
     }
 }

@@ -92,5 +92,10 @@ namespace Nethermind.Db
         {
             return _memDb.GetIterator(isOrdered);
         }
+
+        public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+        {
+            return _memDb.GetIterator(ref options);
+        }
     }
 }

@@ -65,5 +65,10 @@ namespace Nethermind.Db
         {
             throw new NotSupportedException();
         }
+
+        public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

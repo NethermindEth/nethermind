@@ -156,4 +156,9 @@ public class ColumnDb : IDb
     {
         return _mainDb.GetIterator(isOrdered, _columnFamily);
     }
+
+    public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
+    {
+        return _mainDb.GetIterator(ref options, _columnFamily);
+    }
 }
