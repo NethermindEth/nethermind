@@ -42,7 +42,7 @@ public class PerTableDbConfig
             string prefixed = string.Concat(prefix, propertyName);
             if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
             {
-                throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
+                //throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
         }
     }
