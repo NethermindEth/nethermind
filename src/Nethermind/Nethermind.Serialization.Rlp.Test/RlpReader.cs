@@ -5,6 +5,8 @@ namespace Nethermind.Serialization.Rlp.Test;
 
 public delegate TResult RefRlpReaderFunc<out TResult>(ref RlpReader arg);
 
+public delegate void RefRlpReaderAction(ref RlpReader arg);
+
 // TODO: We might want to add `IDisposable` to ensure that there are no trailing bytes.
 public ref struct RlpReader
 {
@@ -73,5 +75,14 @@ public ref struct RlpReader
         }
 
         return result;
+    }
+
+    public void ReadList(RefRlpReaderAction func)
+    {
+        ReadList<object?>((ref RlpReader r) =>
+        {
+            func(ref r);
+            return null;
+        });
     }
 }
