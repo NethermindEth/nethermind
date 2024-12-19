@@ -71,6 +71,34 @@ public class RlpReaderTest
             actual.Should().Be(integer);
         }
     }
+
+    [Test]
+    public void ReadStringList()
+    {
+        byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
+
+        var reader = new RlpReader(source);
+        var actual = reader.ReadList(r =>
+        {
+            var cat = r.ReadString();
+            var dog = r.ReadString();
+
+            return (cat, dog);
+        });
+
+        actual.Should().Be(("cat", "dog"));
+    }
+
+    [Test]
+    public void ReadEmptyList()
+    {
+        byte[] source = [0xc0];
+
+        var reader = new RlpReader(source);
+        object[] actual = reader.ReadList(_ => Array.Empty<object>());
+
+        actual.Should().BeEmpty();
+    }
 }
 
 public ref struct RlpReader
@@ -109,8 +137,34 @@ public ref struct RlpReader
         }
         else
         {
-            // Not an object
+            // Not an Object
             throw new Exception();
+        }
+
+        return result;
+    }
+
+    public T ReadList<T>(Func<RlpReader, T> func)
+    {
+        T result;
+        var header = _buffer[_position];
+        if (header < 0xC0)
+        {
+            // Not a List
+            throw new Exception();
+        }
+
+        if (header < 0xF8)
+        {
+            _position += 1;
+            var length = header - 0xC0;
+            var reader = new RlpReader(_buffer.Slice(_position, length));
+            result = func(reader);
+            _position += length;
+        }
+        else
+        {
+            throw new NotImplementedException();
         }
 
         return result;
@@ -119,7 +173,7 @@ public ref struct RlpReader
 
 public static class IntRlpReader
 {
-    public static Int32 ReadInt32(this RlpReader reader)
+    public static Int32 ReadInt32(this ref RlpReader reader)
     {
         ReadOnlySpan<byte> obj = reader.ReadObject();
         return Int32Primitive.Read(obj);
@@ -128,7 +182,7 @@ public static class IntRlpReader
 
 public static class StringRlpReader
 {
-    public static string ReadString(this RlpReader reader)
+    public static string ReadString(this ref RlpReader reader)
     {
         ReadOnlySpan<byte> obj = reader.ReadObject();
         return Encoding.UTF8.GetString(obj);
