@@ -74,7 +74,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.partition_filters=true;" +
         "block_based_table_factory.metadata_block_size=4096;" +
 
-        "block_based_table_factory.filter_policy=bloom_filter:10;" +
+        "block_based_table_factory.filter_policy=bloomfilter:10;" +
         "";
     public string? AdditionalRocksDbOptions { get; set; }
 
@@ -124,6 +124,7 @@ public class DbConfig : IDbConfig
         "write_buffer_size=8000000;" +
         "block_based_table_factory.block_cache=32000000;" +
         "compaction_pri=kOldestLargestSeqFirst;" +
+        "optimize_filters_for_hits=false;" +
         "block_based_table_factory.block_size=32000;" +
         "max_bytes_for_level_base=128000000;" +
         "";
@@ -132,9 +133,10 @@ public class DbConfig : IDbConfig
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public string BlockNumbersDbRocksDbOptions { get; set; } =
         "write_buffer_size=8000000;" +
+        "max_bytes_for_level_base=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "block_based_table_factory.block_size=4096;" +
-        "max_bytes_for_level_base=16000000;" +
+        "optimize_filters_for_hits=false;" +
         "memtable=prefix_hash:1000000;" +
         "allow_concurrent_memtable_write=false;" +
         "";
@@ -142,7 +144,10 @@ public class DbConfig : IDbConfig
 
     public string BlockInfosDbRocksDbOptions { get; set; } =
         "write_buffer_size=4000000;" +
+        "max_bytes_for_level_base=32000000;" +
+        "optimize_filters_for_hits=false;" +
         "block_based_table_factory.block_cache=16000000;" +
+        "block_based_table_factory.block_size=32000;" +
         "compaction_pri=kOldestLargestSeqFirst;";
     public string? BlockInfosDbAdditionalRocksDbOptions { get; set; } = "";
 
@@ -154,10 +159,13 @@ public class DbConfig : IDbConfig
     public string CodeDbRocksDbOptions { get; set; } =
         "write_buffer_size=4000000;" +
         "block_based_table_factory.block_cache=16000000;" +
-        "prefix_extractor=capped:16;" +
+        "optimize_filters_for_hits=false;" +
+        "prefix_extractor=capped:8;" +
         "block_based_table_factory.index_type=kHashSearch;" +
         "block_based_table_factory.block_size=4096;" +
         "memtable=prefix_hash:1000000;" +
+        // Bloom crash with kHashSearch index
+        "block_based_table_factory.filter_policy=null;" +
         "allow_concurrent_memtable_write=false;";
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
 
@@ -214,7 +222,16 @@ public class DbConfig : IDbConfig
 
         "block_based_table_factory.block_size=32000;" +
 
-        "block_based_table_factory.filter_policy=bloom_filter:15;" +
+        "block_based_table_factory.filter_policy=bloomfilter:15;" +
+
+        // Note: This causes write batch to not be atomic. A concurrent read may read item on start of batch, but not end of batch.
+        // With state, this is fine as writes are done in parallel batch and therefore, not atomic, and the read goes
+        // through triestore first anyway.
+        "unordered_write=true;" +
+
+        // Default is 1 MB.
+        "max_write_batch_group_size_bytes=4000000;" +
+
         "";
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 }

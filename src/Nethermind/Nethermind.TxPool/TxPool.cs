@@ -409,9 +409,11 @@ namespace Nethermind.TxPool
             }
         }
 
+        public bool AcceptTxWhenNotSynced { get; set; }
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (_headInfo.IsSyncing) return AcceptTxResult.Syncing;
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) return AcceptTxResult.Syncing;
 
             Metrics.PendingTransactionsReceived++;
 
