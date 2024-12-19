@@ -54,6 +54,8 @@ public class ChainParameters
     public long? Eip3541Transition { get; set; }
     public long? Eip3607Transition { get; set; }
 
+    public ulong? Eip7742TransitionTimestamp { get; set; }
+
     public UInt256? Eip1559BaseFeeInitialValue { get; set; }
 
     public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }

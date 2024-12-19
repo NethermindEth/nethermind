@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 IReleaseSpec spec = _specProvider.GetSpec(b.Header);
                 double maxBlobGasPerBlock = !spec.IsEip7742Enabled
                     ? Eip4844Constants.GetMaxBlobsPerBlock()
-                    : b.Header.TargetBlobCount * 2 ?? throw new InvalidBlockException(b, "header is missing TargetBlobCount");
+                    : spec.MaxBlobCount;
 
                 return new(
                     b.Number,

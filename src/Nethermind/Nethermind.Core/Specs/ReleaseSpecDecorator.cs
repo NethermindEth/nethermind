@@ -92,6 +92,10 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaxInitCodeSize => spec.MaxInitCodeSize;
     public virtual bool ValidateChainId => spec.ValidateChainId;
     public virtual bool ClearEmptyAccountWhenTouched => spec.ClearEmptyAccountWhenTouched;
+
+    public ulong TargetBlobCount { get; set; }
+    public ulong MaxBlobCount { get; set; }
+
     // VM
     public virtual bool LimitCodeSize => spec.LimitCodeSize;
     public virtual bool UseHotAndColdStorage => spec.UseHotAndColdStorage;
