@@ -201,4 +201,10 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.RequestsHash = requestsHash;
         return this;
     }
+
+    public BlockHeaderBuilder WithTargetBlobCount(ulong? targetBlobCount)
+    {
+        TestObjectInternal.TargetBlobCount = targetBlobCount;
+        return this;
+    }
 }

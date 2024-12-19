@@ -335,6 +335,7 @@ public class VirtualMachineTestsBase
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakG)
             .WithExcessBlobGas(excessBlobGas)
+            .WithTargetBlobCount(3)
             .TestObject;
     }
 

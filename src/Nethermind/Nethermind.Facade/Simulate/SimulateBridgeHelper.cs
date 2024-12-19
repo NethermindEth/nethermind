@@ -288,6 +288,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
+        result.TargetBlobCount = parent.TargetBlobCount;
         result.Timestamp = parent.Timestamp + 1;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value

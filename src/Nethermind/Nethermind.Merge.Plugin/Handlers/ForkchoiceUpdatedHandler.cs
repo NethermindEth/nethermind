@@ -316,7 +316,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
                 PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
                 Withdrawals = [],
-                SuggestedFeeRecipient = Address.Zero
+                SuggestedFeeRecipient = Address.Zero,
+                TargetBlobCount = newHeadBlock.TargetBlobCount,
             };
         }
 

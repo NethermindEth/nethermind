@@ -16,5 +16,5 @@ public class TestEip4844Config : IEip4844Config
 
     public ulong GasPerBlob => Eip4844Constants.GasPerBlob;
 
-    public int GetMaxBlobsPerBlock() => (int)(MaxBlobGasPerBlock / GasPerBlob);
+    public ulong GetMaxBlobsPerBlock() => MaxBlobGasPerBlock / GasPerBlob;
 }

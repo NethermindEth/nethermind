@@ -107,6 +107,7 @@ namespace Ethereum.Test.Base
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
             header.RequestsHash = test.RequestsHash;
+            header.TargetBlobCount = test.Fork is Prague ? 0 : null;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);

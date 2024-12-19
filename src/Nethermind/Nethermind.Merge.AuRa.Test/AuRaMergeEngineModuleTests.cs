@@ -64,10 +64,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
-        "0xea3bdca86662fa8b5399f2c3ff494ced747f07834740ead723ebe023852e9ea1",
+        "0x64fc59f08c4ecc90455e13ca16a78517cd4cc73d06405b03c2c6e50e2cc84c48",
+        "0xc928b3a56463263ee0f30ff57210bf3101cbf3c1d48a50145d8d3857c8e2df5e",
         "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
-        "0x7389011914b1ca84")]
+        "0x9fe739bad82688be")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 

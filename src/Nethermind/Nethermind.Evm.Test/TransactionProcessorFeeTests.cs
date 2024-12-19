@@ -108,9 +108,11 @@ public class TransactionProcessorFeeTests
         tracer.BurntFees.Should().Be(84000);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_with_blob(bool withFeeCollector)
+    [TestCase(false, true)]
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    public void Check_paid_fees_with_blob(bool withFeeCollector, bool eip7742Enabled)
     {
         UInt256 initialBalance = 0;
         if (withFeeCollector)
@@ -120,6 +122,9 @@ public class TransactionProcessorFeeTests
         }
 
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).TestObject;
+
+        _spec.IsEip7742Enabled = eip7742Enabled;
+        if (eip7742Enabled) header.TargetBlobCount = 3;
 
         Transaction tx = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.Blob)

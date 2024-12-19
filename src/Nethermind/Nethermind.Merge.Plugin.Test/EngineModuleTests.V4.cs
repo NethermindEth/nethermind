@@ -24,10 +24,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
-        "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
+        "0xb79ac644bd8fdacc11c408e2a143cd802baab81f13086fce79c471b38a8e0cd3",
+        "0xa92cb7c874e510507d218c888a84b95a889fda2ef904803dcf42629ad3a27326",
         "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x2fc07c25edadc149")]
+        "0xe7e7f64c04b395a6")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -54,7 +54,9 @@ public partial class EngineModuleTests
             prevRandao = prevRandao.ToString(),
             suggestedFeeRecipient = feeRecipient.ToString(),
             withdrawals,
-            parentBeaconBLockRoot = Keccak.Zero
+            parentBeaconBLockRoot = Keccak.Zero,
+            targetBlobCount = 0,
+            maxBlobCount = 0,
         };
         string?[] @params = new string?[]
         {
@@ -62,7 +64,7 @@ public partial class EngineModuleTests
         };
         string expectedPayloadId = payloadId;
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -104,6 +106,7 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
+                TargetBlobCount = 0,
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
@@ -273,7 +276,15 @@ public partial class EngineModuleTests
         ulong timestamp, Hash256 random, Address feeRecipient)
     {
         PayloadAttributes payloadAttributes =
-            new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient, ParentBeaconBlockRoot = Keccak.Zero, Withdrawals = [] };
+            new()
+            {
+                Timestamp = timestamp,
+                PrevRandao = random,
+                SuggestedFeeRecipient = feeRecipient,
+                ParentBeaconBlockRoot = Keccak.Zero,
+                Withdrawals = [],
+                TargetBlobCount = parentHeader.TargetBlobCount,
+            };
 
         // we're using payloadService directly, because we can't use fcU for branch
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
@@ -337,9 +348,10 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = feeRecipient,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = withdrawals,
+            TargetBlobCount = 0,
         };
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result;
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes).Result;
         string? payloadId = result.Data.PayloadId;
 
         if (waitForBlockImprovement)

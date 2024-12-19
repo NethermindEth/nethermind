@@ -120,6 +120,8 @@ public class Block
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
 
+    public ulong? TargetBlobCount => Header.TargetBlobCount; // do not add setter here
+
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
     [JsonIgnore]

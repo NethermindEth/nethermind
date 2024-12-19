@@ -105,6 +105,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="Block.TargetBlobCount"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7742">EIP-7742</see>.
+    /// </summary>
+    public virtual ulong? TargetBlobCount { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -125,6 +131,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
+            TargetBlobCount = block.TargetBlobCount,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -164,6 +171,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
                 TotalDifficulty = totalDifficulty,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+                TargetBlobCount = TargetBlobCount,
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);

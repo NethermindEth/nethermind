@@ -62,9 +62,13 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new(_eip4844Config.GetMaxBlobsPerBlock());
 
-            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
+            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(payloadAttributes?.MaxBlobCount ?? Eip4844Constants.GetMaxBlobsPerBlock()));
+
+            if (!spec.IsEip7742Enabled || payloadAttributes?.MaxBlobCount is not null)
+            {
+                SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
+            }
 
             foreach (Transaction tx in transactions)
             {
@@ -119,7 +123,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs, PayloadAttributes? payloadAttributes = null)
         {
             int checkedBlobTransactions = 0;
             int selectedBlobTransactions = 0;
@@ -128,7 +132,10 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock)
+                UInt256 maxBlobGas = spec.IsEip7742Enabled
+                    ? payloadAttributes?.MaxBlobCount * Eip4844Constants.GasPerBlob ?? UInt256.Zero
+                    : _eip4844Config.MaxBlobGasPerBlock;
+                if (blobGasCounter >= maxBlobGas)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
                     break;
@@ -137,7 +144,9 @@ namespace Nethermind.Consensus.Producers
                 checkedBlobTransactions++;
 
                 ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
-                if (txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
+
+                UInt256 blobGasLeft = maxBlobGas - blobGasCounter;
+                if (txBlobGas > blobGasLeft)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
