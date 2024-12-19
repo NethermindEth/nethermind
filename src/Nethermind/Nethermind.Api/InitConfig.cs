@@ -20,6 +20,7 @@ namespace Nethermind.Api
         public string LogFileName { get; set; } = "log.txt";
         public string? GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
+        public string TrustedNodesPath { get; set; } = "Data/trusted-nodes.json";
         public string? KzgSetupPath { get; set; } = null;
         public string LogDirectory { get; set; } = "logs";
         public string? LogRules { get; set; } = null;
