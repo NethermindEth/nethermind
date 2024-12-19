@@ -35,7 +35,6 @@ using Nethermind.Core;
 using Nethermind.State;
 using Autofac;
 using Nethermind.Synchronization;
-using System.Linq;
 
 namespace Nethermind.Taiko;
 
@@ -129,7 +128,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.TxSender);
         ArgumentNullException.ThrowIfNull(_api.Wallet);
         ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
-        ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.TransactionProcessor);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
