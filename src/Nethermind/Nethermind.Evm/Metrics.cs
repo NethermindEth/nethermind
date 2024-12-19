@@ -141,12 +141,6 @@ public class Metrics
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
-    internal static long Transactions { get; set; }
-    internal static float AveGasPrice { get; set; }
-    internal static float MinGasPrice { get; set; } = float.MaxValue;
-    internal static float MaxGasPrice { get; set; }
-    internal static float EstMedianGasPrice { get; set; }
-
     internal static long BlockTransactions { get; set; }
 
     private static float _blockAveGasPrice;
