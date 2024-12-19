@@ -176,8 +176,8 @@ namespace Nethermind.Init.Steps.Migrations
                 int parallelism = _receiptConfig.ReceiptsMigrationDegreeOfParallelism;
                 if (parallelism == 0) parallelism = Environment.ProcessorCount;
 
-                Task iterateTask = QueueBlocks(_blocksChannel.Writer, BatchSize, token);
-                Task migrateTask = MigrateBlocks(_blocksChannel.Reader, 1, token);
+                var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, BatchSize, token), token);
+                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, 1, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
             }
             finally
