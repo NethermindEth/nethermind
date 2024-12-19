@@ -22,4 +22,13 @@ public static class Rlp
         // TODO: We might want to add an option to check for no trailing bytes.
         return func(ref reader);
     }
+
+    public static void Read(ReadOnlySpan<byte> source, RefRlpReaderAction func)
+    {
+        Read<object?>(source, (ref RlpReader reader) =>
+        {
+            func(ref reader);
+            return null;
+        });
+    }
 }
