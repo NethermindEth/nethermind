@@ -12,9 +12,7 @@ public class RlpReaderTest
     public void ReadShortString()
     {
         byte[] source = [0x83, (byte)'d', (byte)'o', (byte)'g'];
-
-        var reader = new RlpReader(source);
-        string actual = reader.ReadString();
+        string actual = Rlp.Read(source, static (ref RlpReader r) => r.ReadString());
 
         actual.Should().Be("dog");
     }
@@ -23,9 +21,7 @@ public class RlpReaderTest
     public void ReadEmptyString()
     {
         byte[] source = [0x80];
-
-        var reader = new RlpReader(source);
-        string actual = reader.ReadString();
+        string actual = Rlp.Read(source, static (ref RlpReader r) => r.ReadString());
 
         actual.Should().Be("");
     }
@@ -34,9 +30,7 @@ public class RlpReaderTest
     public void ReadLongString()
     {
         byte[] source = [0xb8, 0x38, .."Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
-
-        var reader = new RlpReader(source);
-        string actual = reader.ReadString();
+        string actual = Rlp.Read(source, static (ref RlpReader r) => r.ReadString());
 
         actual.Should().Be("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
     }
@@ -48,9 +42,7 @@ public class RlpReaderTest
         {
             var integer = i;
             byte[] source = [(byte)integer];
-
-            var reader = new RlpReader(source);
-            int actual = reader.ReadInt32();
+            int actual = Rlp.Read(source, static (ref RlpReader r) => r.ReadInt32());
 
             actual.Should().Be(integer);
         }
@@ -63,9 +55,7 @@ public class RlpReaderTest
         {
             var integer = i;
             byte[] source = [0x82, (byte)((integer & 0xFF00) >> 8), (byte)((integer & 0x00FF) >> 0)];
-
-            var reader = new RlpReader(source);
-            int actual = reader.ReadInt32();
+            int actual = Rlp.Read(source, static (ref RlpReader r) => r.ReadInt32());
 
             actual.Should().Be(integer);
         }
@@ -75,14 +65,15 @@ public class RlpReaderTest
     public void ReadStringList()
     {
         byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
-
-        var reader = new RlpReader(source);
-        var actual = reader.ReadList(static (ref RlpReader r) =>
+        var actual = Rlp.Read(source, static (ref RlpReader r) =>
         {
-            var cat = r.ReadString();
-            var dog = r.ReadString();
+            return r.ReadList(static (ref RlpReader r) =>
+            {
+                var cat = r.ReadString();
+                var dog = r.ReadString();
 
-            return (cat, dog);
+                return (cat, dog);
+            });
         });
 
         actual.Should().Be(("cat", "dog"));
@@ -93,16 +84,9 @@ public class RlpReaderTest
     {
         byte[] source = [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0];
 
-        var reader = new RlpReader(source);
-        object[] actual = reader.ReadList(static (ref RlpReader r) =>
+        object[] actual = Rlp.Read(source, static (ref RlpReader r) =>
         {
-            var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
-            var _2 = r.ReadList(static (ref RlpReader r) =>
-            {
-                var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
-                return new object[] { _1 };
-            });
-            var _3 = r.ReadList(static (ref RlpReader r) =>
+            return r.ReadList(static (ref RlpReader r) =>
             {
                 var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
                 var _2 = r.ReadList(static (ref RlpReader r) =>
@@ -110,11 +94,20 @@ public class RlpReaderTest
                     var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
                     return new object[] { _1 };
                 });
+                var _3 = r.ReadList(static (ref RlpReader r) =>
+                {
+                    var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
+                    var _2 = r.ReadList(static (ref RlpReader r) =>
+                    {
+                        var _1 = r.ReadList(static (ref RlpReader _) => Array.Empty<object>());
+                        return new object[] { _1 };
+                    });
 
-                return new object[] { _1, _2 };
+                    return new object[] { _1, _2 };
+                });
+
+                return new object[] { _1, _2, _3 };
             });
-
-            return new object[] { _1, _2, _3 };
         });
 
         actual.Should().BeEquivalentTo(new object[]
@@ -130,8 +123,10 @@ public class RlpReaderTest
     {
         byte[] source = [0xc0];
 
-        var reader = new RlpReader(source);
-        object[] actual = reader.ReadList((ref RlpReader _) => Array.Empty<object>());
+        var actual = Rlp.Read(source, static (ref RlpReader r) =>
+        {
+            return r.ReadList((ref RlpReader _) => Array.Empty<object>());
+        });
 
         actual.Should().BeEmpty();
     }
