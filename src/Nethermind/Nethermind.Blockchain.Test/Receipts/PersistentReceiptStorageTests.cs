@@ -341,7 +341,7 @@ public class PersistentReceiptStorageTests
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
         Thread.Sleep(100);
         IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
-            .Where(call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
+            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
         if (WillPruneOldIndicies)
             calls.Should().NotBeEmpty();
         else
@@ -502,6 +502,6 @@ public class PersistentReceiptStorageTests
     private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts)
     {
         return opts
-            .Excluding(su => su.Error);
+            .Excluding(static su => su.Error);
     }
 }

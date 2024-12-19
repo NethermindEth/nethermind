@@ -883,8 +883,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             readOnlyNode.Should().NotBe(originalNode);
             readOnlyNode.Should().BeEquivalentTo(originalNode,
-                eq => eq.Including(t => t.Keccak)
-                    .Including(t => t.NodeType));
+                static eq => eq.Including(static t => t.Keccak)
+                    .Including(static t => t.NodeType));
 
             var origRlp = originalNode.FullRlp;
             var readOnlyRlp = readOnlyNode.FullRlp;

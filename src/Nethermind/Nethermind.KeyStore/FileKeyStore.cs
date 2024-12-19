@@ -296,7 +296,7 @@ namespace Nethermind.KeyStore
             try
             {
                 var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
-                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
+                var addresses = files.Select(Path.GetFileName).Select(static fn => fn.Split("--").LastOrDefault()).Where(static x => Address.IsValidAddress(x, false)).Select(static x => new Address(x)).ToArray();
                 return (addresses, Result.Success);
             }
             catch (Exception e)

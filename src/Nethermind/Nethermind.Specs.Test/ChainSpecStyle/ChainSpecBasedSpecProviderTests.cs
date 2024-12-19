@@ -150,7 +150,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
+            static t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -219,7 +219,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
+            static t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
     public static IEnumerable<TestCaseData> GnosisActivations
@@ -271,12 +271,12 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
+            static t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
     private static void VerifyGnosisCancunSpecifics()
     {
-        Assert.Multiple(() =>
+        Assert.Multiple(static () =>
         {
             Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
             Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
@@ -383,7 +383,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
+            static t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
     }
 
     [Flags]

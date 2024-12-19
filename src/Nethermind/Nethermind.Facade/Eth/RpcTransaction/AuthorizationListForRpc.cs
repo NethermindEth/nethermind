@@ -51,7 +51,7 @@ public class AuthorizationListForRpc
     public static AuthorizationListForRpc FromAuthorizationList(IEnumerable<AuthorizationTuple>? authorizationList) =>
         authorizationList is null
         ? new AuthorizationListForRpc([])
-        : new AuthorizationListForRpc(authorizationList.Select(tuple =>
+        : new AuthorizationListForRpc(authorizationList.Select(static tuple =>
             new Tuple(tuple.ChainId,
                     tuple.Nonce,
                     tuple.CodeAddress,
@@ -60,7 +60,7 @@ public class AuthorizationListForRpc
                     new UInt256(tuple.AuthoritySignature.R))));
 
     public AuthorizationTuple[] ToAuthorizationList() => _tuples
-        .Select(tuple => new AuthorizationTuple(
+        .Select(static tuple => new AuthorizationTuple(
             (ulong)tuple.ChainId,
             tuple.Address,
             tuple.Nonce,

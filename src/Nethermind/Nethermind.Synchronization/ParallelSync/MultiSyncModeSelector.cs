@@ -777,7 +777,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
             }
 
-            bool result = checks.All(c => c.IsSatisfied);
+            bool result = checks.All(static c => c.IsSatisfied);
             string text = $"{(result ? " * " : "   ")}{syncType,-20}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
             _logger.Trace(text);
         }

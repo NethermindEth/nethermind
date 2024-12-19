@@ -385,7 +385,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
-                        .OrderByDescending(kvp => kvp.Key))
+                        .OrderByDescending(static kvp => kvp.Key))
                     {
                         builder.AppendLine(keyValuePair.Value);
                     }

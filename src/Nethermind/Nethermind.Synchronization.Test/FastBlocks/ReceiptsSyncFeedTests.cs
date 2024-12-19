@@ -56,8 +56,8 @@ public class ReceiptsSyncFeedTests
             }
 
             BlocksByHash = Blocks
-                .Where(b => b is not null)
-                .ToDictionary(b => b!.Hash!, b => b!);
+                .Where(static b => b is not null)
+                .ToDictionary(static b => b!.Hash!, static b => b!);
         }
 
         public Dictionary<Hash256, Block> BlocksByHash { get; }
