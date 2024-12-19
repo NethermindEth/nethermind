@@ -60,6 +60,25 @@ public class ValidateSubmissionHandler
         _flashbotsConfig = flashbotsConfig;
     }
 
+    public Task<ResultWrapper<ResultHash>> ValidateSubmissionHash(BuilderBlockValidationRequestHash request)
+    {
+        ExecutionPayloadV3 payload = request.ExecutionPayload;
+        payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
+
+        if (!payload.TryGetBlock(out Block? block))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Invalid block.");
+            return Task.FromResult(ResultWrapper<ResultHash>.Success(new ResultHash(Keccak.Zero, Keccak.Zero)));
+        }
+
+        BlockHeader header = block.Header;
+        Transaction[] transactions = block.Transactions;
+
+        Hash256 txRoot = Keccak.Zero;
+
+        return Task.FromResult(ResultWrapper<ResultHash>.Success(new ResultHash(header.CalculateHash(), txRoot)));
+    }
+
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
         ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload;
@@ -90,11 +109,11 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
         }
 
-        if (block is not null && !ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
-            return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
-        }
+        // if (block is not null && !ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
+        // {
+        //     if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
+        //     return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
+        // }
 
 
         return FlashbotsResult.Valid();
@@ -241,7 +260,7 @@ public class ValidateSubmissionHandler
 
         if (ValidateProposerPayment(expectedProfit, useBalanceDiffProfit, feeRecipientBalanceAfter, amtBeforeOrWithdrawn)) return true;
 
-        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, out error))
+        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.TxReceipts.ToArray(), out error))
         {
             return false;
         }
@@ -269,11 +288,11 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!_blockTree.IsBetterThanHead(block.Header))
-        {
-            error = $"Block {block.Header.Hash} is not better than head";
-            return false;
-        }
+        // if (!_blockTree.IsBetterThanHead(block.Header))
+        // {
+        //     error = $"Block {block.Header.Hash} is not better than head";
+        //     return false;
+        // }
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit);
 
@@ -327,9 +346,9 @@ public class ValidateSubmissionHandler
         return false;
     }
 
-    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, out string? error)
+    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, TxReceipt[] receipts, out string? error)
     {
-        TxReceipt[] receipts = processedBlock.Hash != null ? _receiptStorage.Get(processedBlock.Hash) : [];
+        // TxReceipt[] receipts = processedBlock.Hash != null ? _receiptStorage.Get(processedBlock.Hash) : [];
 
         if (receipts.Length == 0)
         {

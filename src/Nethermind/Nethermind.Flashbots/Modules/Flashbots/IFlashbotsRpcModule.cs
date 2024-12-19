@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Flashbots.Data;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -16,4 +17,11 @@ public interface IFlashbotsRpcModule : IRpcModule
         IsSharable = false,
         IsImplemented = true)]
     Task<ResultWrapper<FlashbotsResult>> flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params);
+
+    // TODO: remove this method
+    [JsonRpcMethod(
+        Description = " calculate hash of the builder submissions as received by a relay",
+        IsSharable = false,
+        IsImplemented = true)]
+    Task<ResultWrapper<ResultHash>> flashbots_validateBuilderSubmissionV3Hash(BuilderBlockValidationRequestHash @params);
 }
