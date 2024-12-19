@@ -13,6 +13,10 @@ public class PayloadDecoder : IPayloadDecoder
 
     private const int PrefixDataSize = 560;
 
+    private PayloadDecoder()
+    {
+    }
+
     public ExecutionPayloadV3 DecodePayload(byte[] data)
     {
         ExecutionPayloadV3 payload = new();

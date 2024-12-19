@@ -33,7 +33,7 @@ public class P2PBlockValidator : IP2PBlockValidator
     {
         if (!IsTopicValid(topic) || !IsTimestampValid(payload) || !IsBlockHashValid(payload) ||
             !IsBlobGasUsedValid(payload, topic) || !IsExcessBlobGasValid(payload, topic) ||
-            !IsParentBeaconBlockRootValid(payload, topic) || IsBlockNumberPerHightLimitReached(payload))
+            !IsParentBeaconBlockRootValid(payload, topic) || IsBlockNumberPerHeightLimitReached(payload))
         {
             return ValidityStatus.Reject;
         }
@@ -41,7 +41,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return ValidityStatus.Valid;
     }
 
-    public ValidityStatus ValidateSignature(byte[] payloadData, byte[] signature)
+    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature)
     {
         return IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
     }
@@ -129,7 +129,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsBlockNumberPerHightLimitReached(ExecutionPayloadV3 payload)
+    private bool IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
         long currentCount = _numberOfBlocksSeen.GetOrAdd(payload.BlockNumber, _ => 0);
@@ -137,21 +137,22 @@ public class P2PBlockValidator : IP2PBlockValidator
         return currentCount > 5;
     }
 
-    private bool IsSignatureValid(byte[] payloadData, byte[] signature)
+    private bool IsSignatureValid(ReadOnlySpan<byte> payloadData, Span<byte> signature)
     {
         if (signature[64] > 3) return false;
         // domain(all zeros) + chain id + payload hash
-        byte[] SequencerSignedData = new byte[32 + 32 + 32];
+        Span<byte> sequencerSignedData = stackalloc byte[32 + 32 + 32];
 
-        Array.Copy(_chainId, 0, SequencerSignedData, 32, 32);
-        Array.Copy(KeccakHash.ComputeHashBytes(payloadData), 0, SequencerSignedData, 64, 32);
-        byte[] signedHash = KeccakHash.ComputeHashBytes(SequencerSignedData);
+        // Array.Copy(_chainId, 0, new byte[10], 32, 32);
+        _chainId.CopyTo(sequencerSignedData.Slice(32, 32));
+        KeccakHash.ComputeHashBytes(payloadData).CopyTo(sequencerSignedData.Slice(64,32));
+        byte[] signedHash = KeccakHash.ComputeHashBytes(sequencerSignedData);
 
         Span<byte> publicKey = stackalloc byte[65];
         bool success = SpanSecP256k1.RecoverKeyFromCompact(
             publicKey,
             signedHash,
-            signature[..64],
+            signature.Slice(0, 64),
             signature[64],
             false);
 

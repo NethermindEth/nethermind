@@ -12,7 +12,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Optimism.CL;
 
-public class OptimismCL
+public class OptimismCL : IDisposable
 {
     private readonly ILogger _logger;
     private readonly OptimismCLP2P _p2p;
@@ -35,5 +35,10 @@ public class OptimismCL
     public void Start()
     {
         _p2p.Start();
+    }
+
+    public void Dispose()
+    {
+        _p2p.Dispose();
     }
 }

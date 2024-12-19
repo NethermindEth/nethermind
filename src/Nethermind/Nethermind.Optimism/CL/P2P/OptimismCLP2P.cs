@@ -69,7 +69,7 @@ public class OptimismCLP2P : IDisposable
 
     private ulong _headPayloadNumber = 0;
     private readonly SemaphoreSlim _semaphore = new(1);
-    async void OnMessage(byte[] msg)
+    private async void OnMessage(byte[] msg)
     {
         await _semaphore.WaitAsync();
         try
