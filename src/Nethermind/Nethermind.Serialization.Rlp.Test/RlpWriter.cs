@@ -1,0 +1,80 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Serialization.Rlp.Test;
+
+public interface IRlpWriter
+{
+    void WriteByte(byte value);
+    void WriteBytes(scoped ReadOnlySpan<byte> value);
+    void WriteList(Action<IRlpWriter> action);
+}
+
+public sealed class RlpContentWriter : IRlpWriter
+{
+    private readonly byte[] _buffer;
+    private int _position;
+
+    public RlpContentWriter(byte[] buffer)
+    {
+        _buffer = buffer;
+        _position = 0;
+    }
+
+    public void WriteByte(byte value)
+    {
+        _buffer[_position++] = value;
+    }
+
+    public void WriteBytes(ReadOnlySpan<byte> value)
+    {
+        value.CopyTo(_buffer.AsSpan()[_position..]);
+        _position += value.Length;
+    }
+
+    public void WriteList(Action<IRlpWriter> action)
+    {
+        var lengthWriter = new RlpLengthWriter();
+        action(lengthWriter);
+        if (lengthWriter.Length < 55)
+        {
+            _buffer[_position++] = (byte)(0xC0 + lengthWriter.Length);
+        }
+        else
+        {
+            throw new NotImplementedException();
+        }
+
+        action(this);
+    }
+}
+
+public sealed class RlpLengthWriter : IRlpWriter
+{
+    public int Length { get; private set; }
+
+    public RlpLengthWriter()
+    {
+        Length = 0;
+    }
+
+    public void WriteByte(byte value)
+    {
+        Length++;
+    }
+
+    public void WriteBytes(ReadOnlySpan<byte> value)
+    {
+        Length += value.Length;
+    }
+
+    public void WriteList(Action<IRlpWriter> action)
+    {
+        var inner = new RlpLengthWriter();
+        action(inner);
+        if (inner.Length < 55)
+        {
+            Length += 1 + inner.Length;
+        }
+    }
+}
