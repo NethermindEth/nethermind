@@ -1492,12 +1492,6 @@ internal class ILCompiler
                     {
                         Label endOfOpcode = method.DefineLabel();
 
-                        method.StackLoadPrevious(stackHeadRef, offsets[i],  1);
-                        method.Call(Word.GetUInt256);
-                        method.StoreLocal(uint256A);
-                        method.StackLoadPrevious(stackHeadRef, offsets[i],  2);
-                        method.Call(Word.GetUInt256);
-                        method.StoreLocal(uint256B);
                         method.StackLoadPrevious(stackHeadRef, offsets[i],  3);
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256C);
@@ -1513,6 +1507,13 @@ internal class ILCompiler
                         method.StoreLocal(gasAvailable);
                         method.LoadConstant((long)0);
                         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+                        method.StackLoadPrevious(stackHeadRef, offsets[i], 1);
+                        method.Call(Word.GetUInt256);
+                        method.StoreLocal(uint256A);
+                        method.StackLoadPrevious(stackHeadRef, offsets[i], 2);
+                        method.Call(Word.GetUInt256);
+                        method.StoreLocal(uint256B);
 
                         method.LoadLocalAddress(uint256C);
                         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
@@ -1531,7 +1532,7 @@ internal class ILCompiler
                         method.LoadLocal(localReadOnlyMemory);
                         method.LoadLocalAddress(uint256B);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(MethodInfo<UInt256>("op_Explicit", typeof(Int32), new[] { typeof(UInt256).MakeByRefType() }));
+                        method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                         method.LoadConstant((int)PadDirection.Right);
                         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                         method.StoreLocal(localZeroPaddedSpan);
