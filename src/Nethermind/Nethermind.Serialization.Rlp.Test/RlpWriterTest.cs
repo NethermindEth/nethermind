@@ -132,24 +132,4 @@ public class RlpWriterTest
         byte[] expected = [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0];
         serialized.Should().BeEquivalentTo(expected);
     }
-
-    // [Test]
-    // public void WriteSequence()
-    // {
-    //     var serialized = Rlp.Write(writer =>
-    //     {
-    //         writer.WriteSequence(static x =>
-    //         {
-    //             x.WriteSequence(static y => { y.Write(0); });
-    //             x.WriteSequence(static y =>
-    //             {
-    //                 y.Write("Foo");
-    //                 y.Write("Bar");
-    //             });
-    //         });
-    //     });
-    //
-    //     byte[] expected = [];
-    //     serialized.Should().BeEquivalentTo(expected);
-    // }
 }
