@@ -79,7 +79,7 @@ public class RlpWriterTest
     }
 
     [Test]
-    public void WriteStringSequence()
+    public void WriteStringList()
     {
         var serialized = Rlp.Write(static writer =>
         {
@@ -95,7 +95,7 @@ public class RlpWriterTest
     }
 
     [Test]
-    public void WriteEmptySequence()
+    public void WriteEmptyList()
     {
         var serialized = Rlp.Write(static writer => { writer.WriteList(static _ => { }); });
 
