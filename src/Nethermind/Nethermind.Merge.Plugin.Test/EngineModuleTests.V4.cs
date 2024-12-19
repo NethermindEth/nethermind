@@ -111,7 +111,7 @@ public partial class EngineModuleTests
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
             withdrawals);
-        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: new byte[][] { [], [], [] });
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -124,7 +124,7 @@ public partial class EngineModuleTests
         }));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[\"0x\",\"0x\",\"0x\"]");
+            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();

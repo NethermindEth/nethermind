@@ -17,13 +17,13 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 7185000,
-    "PivotHash": "0x13fcdf643750023999d19a7ce52c338cebc591f704aaf0e6c14060c1216834f9",
+    "PivotNumber": 7279000,
+    "PivotHash": "0x8cdb73d9696a9b066a13195818f1a490b60aa19a8bdde262dc0d8bfd51cece86",
     "PivotTotalDifficulty": "17000018015853232",
     "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 30000000
+    "TargetBlockGasLimit": 36000000
   },
   "JsonRpc": {
     "Enabled": true,

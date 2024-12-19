@@ -364,6 +364,18 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_storage_at_missing_trie_node()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.StateDb.Clear();
+        BlockParameter? blockParameter = null;
+        BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
+        var expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"missing trie node {header?.StateRoot} (path ) state {header?.StateRoot} is not available\"}},\"id\":67}}";
+        Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [Test]
     public async Task Eth_get_block_number()
     {
         using Context ctx = await Context.Create();

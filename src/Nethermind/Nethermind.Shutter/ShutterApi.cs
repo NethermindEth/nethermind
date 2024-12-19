@@ -76,7 +76,7 @@ public class ShutterApi : IShutterApi
         _slotLength = slotLength;
         _fileSystem = fileSystem;
         _keyStoreConfig = keyStoreConfig;
-        _blockUpToDateCutoff = slotLength;
+        _blockUpToDateCutoff = TimeSpan.FromMilliseconds(cfg.BlockUpToDateCutoff);
         _blockWaitCutoff = _slotLength / 3;
 
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);

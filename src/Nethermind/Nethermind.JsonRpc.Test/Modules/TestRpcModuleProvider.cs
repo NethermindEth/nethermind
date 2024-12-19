@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
                 {
-                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] { rpcModuleAttribute.ModuleType }).ToArray();
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union([rpcModuleAttribute.ModuleType]).ToArray();
                 }
             }
         }

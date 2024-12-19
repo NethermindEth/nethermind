@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -19,7 +18,7 @@ public class TestExecutionRequest : ExecutionRequest.ExecutionRequest
         set
         {
             _requestDataParts = value;
-            RequestData = value is null ? null : Bytes.Concat(value.AsSpan());
+            RequestData = value is null ? null : Bytes.Concat(value);
         }
     }
 }
@@ -32,18 +31,30 @@ public static class TestExecutionRequestExtensions
         TestExecutionRequest[] consolidationRequests
     )
     {
-        return new(ExecutionRequestExtensions.RequestPartsCount)
-        {
-            FlatEncodeRequests(depositRequests, depositRequests.Length * ExecutionRequestExtensions.DepositRequestsBytesSize),
-            FlatEncodeRequests(withdrawalRequests, withdrawalRequests.Length * ExecutionRequestExtensions.WithdrawalRequestsBytesSize),
-            FlatEncodeRequests(consolidationRequests, consolidationRequests.Length * ExecutionRequestExtensions.ConsolidationRequestsBytesSize)
-        };
+        var result = new ArrayPoolList<byte[]>(ExecutionRequestExtensions.MaxRequestsCount);
 
-        static byte[] FlatEncodeRequests(TestExecutionRequest[] requests, int bufferSize)
+        if (depositRequests.Length > 0)
         {
-            using ArrayPoolList<byte> buffer = new(bufferSize);
+            result.Add(FlatEncodeRequests(depositRequests, depositRequests.Length * ExecutionRequestExtensions.DepositRequestsBytesSize, (byte)ExecutionRequestType.Deposit));
+        }
 
-            foreach (TestExecutionRequest request in requests)
+        if (withdrawalRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(withdrawalRequests, withdrawalRequests.Length * ExecutionRequestExtensions.WithdrawalRequestsBytesSize, (byte)ExecutionRequestType.WithdrawalRequest));
+        }
+
+        if (consolidationRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(consolidationRequests, consolidationRequests.Length * ExecutionRequestExtensions.ConsolidationRequestsBytesSize, (byte)ExecutionRequestType.ConsolidationRequest));
+        }
+
+        return result;
+
+        static byte[] FlatEncodeRequests(ExecutionRequest.ExecutionRequest[] requests, int bufferSize, byte type)
+        {
+            using ArrayPoolList<byte> buffer = new(bufferSize + 1) { type };
+
+            foreach (ExecutionRequest.ExecutionRequest request in requests)
             {
                 buffer.AddRange(request.RequestData!);
             }

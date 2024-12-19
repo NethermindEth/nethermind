@@ -406,7 +406,7 @@ internal class TrieStoreDirtyNodesCache
 
     public void ClearLivePruningTracking()
     {
-        _persistedLastSeen.Clear();
+        _persistedLastSeen?.Clear();
         _pastPathHash?.Clear();
     }
 
