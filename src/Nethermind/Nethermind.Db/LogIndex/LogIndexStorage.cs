@@ -17,6 +17,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
+    // TODO: try to store block numbers in RocksDB first, move to a page only when needed
+    // TODO: try to increase page size gradually (use different files for different page sizes?)
     public class LogIndexStorage : ILogIndexStorage
     {
         private const string FolderName = "log-index";
@@ -382,7 +384,8 @@ namespace Nethermind.Db
         {
             Span<byte> dbKey = stackalloc byte[keyPrefix.Length + sizeof(int)];
 
-            byte[] dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (size is not guaranteed)
+            // TODO: check if Seek and a few Next (or using reversed data order) will make use of prefix seek
+            byte[] dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (as size is not guaranteed)
             Array.Copy(keyPrefix, dbPrefix, keyPrefix.Length);
 
             CreateDbKey(keyPrefix, blockNumber, dbKey);
@@ -391,7 +394,7 @@ namespace Nethermind.Db
             using IIterator<byte[], byte[]> iterator = db.GetIterator(ref options);
 
             var watch = Stopwatch.StartNew();
-            iterator.SeekForPrev(dbKey); // TODO: test with lower bound set
+            iterator.SeekForPrev(dbKey);
 
             if (iterator.Valid() && // Found key is less than or equal to the requested one
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
