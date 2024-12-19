@@ -71,7 +71,14 @@ public ref struct RlpReader
         }
         else
         {
-            throw new NotImplementedException();
+            _position += 1;
+            var lengthOfLength = header - 0xF7;
+            ReadOnlySpan<byte> binaryLength = _buffer.Slice(_position, lengthOfLength);
+            _position += lengthOfLength;
+            int length = Int32Primitive.Read(binaryLength);
+            var reader = new RlpReader(_buffer.Slice(_position, length));
+            result = func(ref reader);
+            _position += length;
         }
 
         return result;

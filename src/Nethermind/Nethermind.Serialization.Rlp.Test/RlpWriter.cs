@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+
 namespace Nethermind.Serialization.Rlp.Test;
 
 public interface IRlpWriter
@@ -42,7 +44,12 @@ public sealed class RlpContentWriter : IRlpWriter
         }
         else
         {
-            throw new NotImplementedException();
+            Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, lengthWriter.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            _buffer[_position++] = (byte)(0xF7 + binaryLength.Length);
+            binaryLength.CopyTo(_buffer.AsSpan()[_position..]);
+            _position += binaryLength.Length;
         }
 
         action(this);
@@ -75,6 +82,13 @@ public sealed class RlpLengthWriter : IRlpWriter
         if (inner.Length < 55)
         {
             Length += 1 + inner.Length;
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, inner.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            Length += 1 + inner.Length + binaryLength.Length;
         }
     }
 }
