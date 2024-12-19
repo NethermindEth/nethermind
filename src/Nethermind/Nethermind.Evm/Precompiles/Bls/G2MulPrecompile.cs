@@ -23,7 +23,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0f);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 45000L;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 22500L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
