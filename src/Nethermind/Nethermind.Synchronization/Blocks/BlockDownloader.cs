@@ -92,8 +92,8 @@ namespace Nethermind.Synchronization.Blocks
                 return;
             }
 
+            _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, e.Block.Number);
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-            _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
         protected PeerInfo? _previousBestPeer = null;
@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (headersSynced > 0)
                 {
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
+                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                 }
                 else
                 {
@@ -389,8 +389,8 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
+                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
                 else
                 {
