@@ -19,7 +19,7 @@ namespace Nethermind.Core
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private string _prefix;
-        private string _lastReport = "";
+        private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
         private Func<ProgressLogger, string>? _formatter;
 
         public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
@@ -162,10 +162,11 @@ namespace Nethermind.Core
 
         public void LogProgress()
         {
-            string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
-            if (!EqualsIgnoringSpeed(_lastReport, reportString))
+            (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
+            if (reportState != _lastReportState)
             {
-                _lastReport = reportString;
+                string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
+                _lastReportState = reportState;
                 _logger.Info(reportString);
             }
             SetMeasuringPoint();
@@ -179,7 +180,7 @@ namespace Nethermind.Core
         private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
         {
             float percentage = Math.Clamp(current / (float)(total + 1), 0, 1);
-            string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : "                | ");
+            string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : " ");
             string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";
             string receiptsReport =
@@ -191,8 +192,5 @@ namespace Nethermind.Core
                 speedStr;
             return receiptsReport;
         }
-
-        private static bool EqualsIgnoringSpeed(string? lastReport, string report)
-            => lastReport.AsSpan().StartsWith(report.AsSpan(0, report.LastIndexOf("| current")));
     }
 }
