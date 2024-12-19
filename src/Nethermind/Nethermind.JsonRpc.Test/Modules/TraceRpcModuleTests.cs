@@ -417,7 +417,7 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction);
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
-        traces.Data.Should().BeEquivalentTo(new[] { new { TransactionHash = transaction.Hash } }, o => o.Including(o => o.TransactionHash));
+        traces.Data.Should().BeEquivalentTo(new[] { new { TransactionHash = transaction.Hash } }, static o => o.Including(static o => o.TransactionHash));
 
         long[] positions = { 0 };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);

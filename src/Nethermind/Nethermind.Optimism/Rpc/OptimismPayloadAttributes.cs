@@ -46,7 +46,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[]? GetTransactions() => _transactions ??= Transactions?
-        .Select((t, i) =>
+        .Select(static (t, i) =>
         {
             try
             {
@@ -65,7 +65,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
             .ToArray();
         _transactions = transactions;
     }

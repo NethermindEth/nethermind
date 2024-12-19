@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 LimboLogs.Instance);
 
             _timestamper = Substitute.For<ITimestamper>();
-            _timestamper.UtcNow.Returns(c => DateTime.UtcNow);
+            _timestamper.UtcNow.Returns(static c => DateTime.UtcNow);
             _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
         }
 

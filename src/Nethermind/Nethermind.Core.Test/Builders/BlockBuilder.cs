@@ -185,7 +185,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedUncles(uncles.Select(o => o.Header).ToArray()));
+                TestObjectInternal.Body.WithChangedUncles(uncles.Select(static o => o.Header).ToArray()));
             return this;
         }
 
