@@ -5,17 +5,18 @@ using System.IO.Abstractions;
 
 namespace Nethermind.Era1;
 
-public class EraPathUtils
+public static class EraPathUtils
 {
     private static readonly char[] separator = new char[] { '-' };
 
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
     {
-        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
-        if (network is null) throw new ArgumentNullException(nameof(network));
-        if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
+        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions()
+        {
+            RecurseSubdirectories = false,
+            MatchCasing = MatchCasing.PlatformDefault
+        });
 
-        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories = false, MatchCasing = MatchCasing.PlatformDefault });
         if (!entries.Any())
             yield break;
 
@@ -24,10 +25,7 @@ public class EraPathUtils
         {
             // Format: <network>-<epoch>-<hexroot>.era1
             string[] parts = Path.GetFileName(file).Split(separator);
-            if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
+            if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase)) continue;
             if (!uint.TryParse(parts[1], out uint epoch))
                 throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
 

@@ -11,7 +11,6 @@ public class EraCliRunner(
     IEraConfig eraConfig,
     IEraImporter eraImporter,
     IEraExporter eraExporter,
-    IProcessExitSource processExitSource,
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EraCliRunner>();
@@ -20,7 +19,7 @@ public class EraCliRunner(
     {
         if (!string.IsNullOrEmpty(eraConfig.ImportDirectory))
         {
-            await Import();
+            await Import(token);
         }
         else if (!string.IsNullOrEmpty(eraConfig.ExportDirectory))
         {
@@ -30,12 +29,9 @@ public class EraCliRunner(
 
     private async Task Export(CancellationToken cancellation)
     {
-        var start = eraConfig.From;
-        var end = eraConfig.To;
-
         try
         {
-            await eraExporter.Export(eraConfig.ExportDirectory!, start, end, cancellation: cancellation);
+            await eraExporter.Export(eraConfig.ExportDirectory!, eraConfig.From, eraConfig.To, cancellation: cancellation);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
@@ -52,11 +48,11 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Import()
+    private async Task Import(CancellationToken cancellation)
     {
         try
         {
-            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, processExitSource.Token);
+            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, cancellation);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {

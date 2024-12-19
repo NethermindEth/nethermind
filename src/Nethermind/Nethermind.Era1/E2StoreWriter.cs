@@ -20,10 +20,10 @@ namespace Nethermind.Era1;
 public class E2StoreWriter : IDisposable
 {
     internal const int HeaderSize = 8;
-
     private readonly Stream _stream;
-    private bool _disposedValue;
     private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+    private bool _disposedValue;
 
     public long Position => _stream.Position;
 
@@ -46,6 +46,7 @@ public class E2StoreWriter : IDisposable
 
         return await WriteEntry(type, arraySegment, cancellation);
     }
+
     public async Task<int> WriteEntry(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
         using ArrayPoolList<byte> headerBuffer = new(HeaderSize);

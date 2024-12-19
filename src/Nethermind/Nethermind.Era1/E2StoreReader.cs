@@ -18,8 +18,11 @@ namespace Nethermind.Era1;
 
 public class E2StoreReader : IDisposable
 {
-    internal const int HeaderSize = 8;
-    internal const int ValueSizeLimit = 1024 * 1024 * 50;
+    private const int HeaderSize = 8;
+    private const int IndexSectionCount = 8;
+    private const int IndexSectionStartBlock = 8;
+    private const int IndexOffsetSize = 8;
+    private const int ValueSizeLimit = 1024 * 1024 * 50;
 
     private readonly SafeFileHandle _file;
 
@@ -103,15 +106,16 @@ public class E2StoreReader : IDisposable
         if (blockNumber > _startBlock + _blockCount || blockNumber < _startBlock)
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
 
-        // 8 * <offset> + <count>
-        int indexLength = 8 * (int)_blockCount + 8;
-        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!) * 8;
+        // <offset> * 8 + <count>
+        int indexLength = (int)_blockCount * IndexOffsetSize + IndexSectionCount;
+        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!) * IndexOffsetSize;
 
         // <header> + <start block> + <the rest of the index>
-        int sizeIncludingHeader = HeaderSize + 8 + indexLength;
+        int indexSizeIncludingHeader = HeaderSize + IndexSectionStartBlock + indexLength;
 
+        // This is negative, relative to start of index (including header)
         long relativeOffset = ReadInt64(_fileLength - offsetLocation);
-        return _fileLength - sizeIncludingHeader + relativeOffset;
+        return _fileLength - indexSizeIncludingHeader + relativeOffset;
     }
 
     private void EnsureIndexAvailable()
@@ -121,10 +125,10 @@ public class E2StoreReader : IDisposable
         if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 
         // Read the block count
-        _blockCount = (long)ReadUInt64(_fileLength - 8);
+        _blockCount = (long)ReadUInt64(_fileLength - IndexSectionCount);
 
-        // <starting block> + 8 * <offset> + <count>
-        int indexLength = 8 + 8 * (int)_blockCount + 8;
+        // <starting block> + <offsets> * 8 + <count>
+        int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
         // Verify that its a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
@@ -149,11 +153,11 @@ public class E2StoreReader : IDisposable
         {
             EnsureIndexAvailable();
 
-            // <index header> + <starting block> + 8 * <offset> + <count>
-            int indexLength = 8 + 8 + 8 * (int)_blockCount + 8;
+            // <index header> + <starting block> + <offset> * 8 + <count>
+            int indexLengthIncludingHeader = HeaderSize + IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
             // <header> + <the 32 byte hash> + <indexes>
-            int accumulatorFromLast = E2StoreWriter.HeaderSize + 32 + indexLength;
+            int accumulatorFromLast = E2StoreWriter.HeaderSize + 32 + indexLengthIncludingHeader;
 
             return _fileLength - accumulatorFromLast;
         }
@@ -202,11 +206,5 @@ public class E2StoreReader : IDisposable
         Span<byte> buff = stackalloc byte[8];
         RandomAccess.Read(_file, buff, position);
         return BinaryPrimitives.ReadUInt64LittleEndian(buff);
-    }
-
-    private void ReadToByteBuffer(IByteBuffer buffer, long position, int length)
-    {
-        RandomAccess.Read(_file, buffer.Array.AsSpan().Slice(buffer.ArrayOffset, length), position);
-        buffer.SetWriterIndex(buffer.WriterIndex + length);
     }
 }
