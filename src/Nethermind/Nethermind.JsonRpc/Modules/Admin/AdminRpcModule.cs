@@ -137,10 +137,12 @@ public class AdminRpcModule : IAdminRpcModule
 
     public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode)
     {
-        bool added = await _trustedNodesManager.AddAsync(enode);
+        Enode enodeObj = new(enode);
+        bool added = await _trustedNodesManager.AddAsync(enodeObj);
+
         if (added)
         {
-            _peerPool.GetOrAdd(new NetworkNode(enode));
+            _peerPool.GetOrAdd(new NetworkNode(enodeObj.ToString()));
 
             return ResultWrapper<bool>.Success(true);
         }

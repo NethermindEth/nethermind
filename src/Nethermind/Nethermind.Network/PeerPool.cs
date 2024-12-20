@@ -88,13 +88,6 @@ namespace Nethermind.Network
 
         private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
-            string enodeString = arg.Node.ToString(Node.Format.ENode);
-
-            if (_trustedNodesManager.IsTrusted(enodeString))
-            {
-                arg.Node.IsTrusted = true;
-            }
-
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
             {
                 if (_logger.IsDebug) _logger.Debug(
@@ -116,8 +109,10 @@ namespace Nethermind.Network
 
             string enodeString = node.ToString(Node.Format.ENode);
 
+            Enode enode = new Enode(enodeString);
+
             // Check if this node is trusted
-            if (_trustedNodesManager.IsTrusted(enodeString))
+            if (_trustedNodesManager.IsTrusted(enode))
             {
                 node.IsTrusted = true;
             }
