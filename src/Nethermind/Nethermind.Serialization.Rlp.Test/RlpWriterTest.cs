@@ -9,7 +9,7 @@ public class RlpWriterTest
     [Test]
     public void WriteShortString()
     {
-        var serialized = Rlp.Write(static writer => { writer.Write("dog"); });
+        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write("dog"); });
 
         byte[] expected = [0x83, (byte)'d', (byte)'o', (byte)'g'];
         serialized.Should().BeEquivalentTo(expected);
@@ -18,7 +18,7 @@ public class RlpWriterTest
     [Test]
     public void WriteEmptyString()
     {
-        var serialized = Rlp.Write(static writer => { writer.Write(""); });
+        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write(""); });
 
         byte[] expected = [0x80];
         serialized.Should().BeEquivalentTo(expected);
@@ -27,9 +27,9 @@ public class RlpWriterTest
     [Test]
     public void WriteLongString()
     {
-        var serialized = Rlp.Write(writer =>
+        var serialized = Rlp.Write(static (ref RlpWriter w) =>
         {
-            writer.Write("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
+            w.Write("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
         });
 
         byte[] expected = [0xb8, 0x38, .."Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
@@ -42,7 +42,7 @@ public class RlpWriterTest
         for (int i = 0; i < 0x80; i++)
         {
             var integer = i;
-            var serialized = Rlp.Write(writer => { writer.Write(integer); });
+            var serialized = Rlp.Write((ref RlpWriter w) => { w.Write(integer); });
 
             byte[] expected = [(byte)integer];
             serialized.Should().BeEquivalentTo(expected);
@@ -56,7 +56,7 @@ public class RlpWriterTest
         for (int i = 0x80; i < 0x0100; i++)
         {
             var integer = i;
-            var serialized = Rlp.Write(writer => { writer.Write(integer); });
+            var serialized = Rlp.Write((ref RlpWriter w) => { w.Write(integer); });
 
             expected[1] = (byte)integer;
             serialized.Should().BeEquivalentTo(expected);
@@ -70,7 +70,7 @@ public class RlpWriterTest
         for (int i = 0x100; i < 0xFFFF; i++)
         {
             var integer = i;
-            var serialized = Rlp.Write(writer => { writer.Write(integer); });
+            var serialized = Rlp.Write((ref RlpWriter w) => { w.Write(integer); });
 
             expected[1] = (byte)((integer & 0xFF00) >> 8);
             expected[2] = (byte)((integer & 0x00FF) >> 0);
@@ -81,12 +81,12 @@ public class RlpWriterTest
     [Test]
     public void WriteStringList()
     {
-        var serialized = Rlp.Write(static writer =>
+        var serialized = Rlp.Write(static (ref RlpWriter w) =>
         {
-            writer.WriteList(static writer =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
-                writer.Write("cat");
-                writer.Write("dog");
+                w.Write("cat");
+                w.Write("dog");
             });
         });
 
@@ -97,7 +97,7 @@ public class RlpWriterTest
     [Test]
     public void WriteEmptyList()
     {
-        var serialized = Rlp.Write(static writer => { writer.WriteList(static _ => { }); });
+        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
 
         byte[] expected = [0xc0];
         serialized.Should().BeEquivalentTo(expected);
@@ -106,7 +106,7 @@ public class RlpWriterTest
     [Test]
     public void WriteSpan()
     {
-        var serialized = Rlp.Write(static writer => { writer.Write([0x04, 0x00]); });
+        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write([0x04, 0x00]); });
 
         byte[] expected = [0x82, 0x04, 0x00];
         serialized.Should().BeEquivalentTo(expected);
@@ -115,16 +115,16 @@ public class RlpWriterTest
     [Test]
     public void WriteSetTheoreticalRepresentation()
     {
-        var serialized = Rlp.Write(static writer =>
+        var serialized = Rlp.Write(static (ref RlpWriter w) =>
         {
-            writer.WriteList(static root =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
-                root.WriteList(static _ => { });
-                root.WriteList(static w => { w.WriteList(static _ => { }); });
-                root.WriteList(static w =>
+                w.WriteList(static (ref RlpWriter _) => { });
+                w.WriteList(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
+                w.WriteList(static (ref RlpWriter w) =>
                 {
-                    w.WriteList(static _ => { });
-                    w.WriteList(static w => { w.WriteList(static _ => { }); });
+                    w.WriteList(static (ref RlpWriter _) => { });
+                    w.WriteList(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
                 });
             });
         });

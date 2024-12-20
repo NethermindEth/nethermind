@@ -7,25 +7,71 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.Rlp.Test;
 
-public interface IRlpWriter
-{
-    void Write<T>(T value) where T: IBinaryInteger<T>, ISignedNumber<T>;
-    void Write(ReadOnlySpan<byte> value);
-    void WriteList(Action<IRlpWriter> action);
-}
+public delegate void RefRlpWriterAction(ref RlpWriter arg);
 
-public sealed class RlpContentWriter : IRlpWriter
+public ref struct RlpWriter
 {
-    private readonly byte[] _buffer;
+    private const bool LengthMode = false;
+    private const bool ContentMode = true;
+
+    private bool _mode;
+
+    public int Length { get; private set; }
+
+    private byte[] _buffer;
     private int _position;
 
-    public RlpContentWriter(byte[] buffer)
+    public static RlpWriter LengthWriter()
     {
-        _buffer = buffer;
-        _position = 0;
+        return new RlpWriter
+        {
+            _mode = LengthMode
+        };
+    }
+
+    public static RlpWriter ContentWriter(byte[] buffer)
+    {
+        return new RlpWriter
+        {
+            _mode = ContentMode,
+            _buffer = buffer
+        };
     }
 
     public void Write<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
+    {
+        switch (_mode)
+        {
+            case LengthMode:
+                LengthWrite(value);
+                break;
+            case ContentMode:
+                ContentWrite(value);
+                break;
+        }
+    }
+
+    private void LengthWrite<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
+    {
+        var size = Marshal.SizeOf<T>();
+        Span<byte> bigEndian = stackalloc byte[size];
+        value.WriteBigEndian(bigEndian);
+        bigEndian = bigEndian.TrimStart((byte)0);
+
+        if (bigEndian.Length == 0)
+        {
+            Length++;
+        } else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
+        {
+            Length++;
+        }
+        else
+        {
+            LengthWrite(bigEndian);
+        }
+    }
+
+    private void ContentWrite<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
     {
         var size = Marshal.SizeOf<T>();
         Span<byte> bigEndian = stackalloc byte[size];
@@ -41,11 +87,41 @@ public sealed class RlpContentWriter : IRlpWriter
         }
         else
         {
-            Write(bigEndian);
+            ContentWrite(bigEndian);
         }
     }
 
     public void Write(ReadOnlySpan<byte> value)
+    {
+        switch (_mode)
+        {
+            case LengthMode:
+                LengthWrite(value);
+                break;
+            case ContentMode:
+                ContentWrite(value);
+                break;
+        }
+    }
+
+    private void LengthWrite(scoped ReadOnlySpan<byte> value)
+    {
+        if (value.Length < 55)
+        {
+            Length++;
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, value.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            Length += 1 + binaryLength.Length;
+        }
+
+        Length += value.Length;
+    }
+
+    private void ContentWrite(scoped ReadOnlySpan<byte> value)
     {
         if (value.Length < 55)
         {
@@ -65,10 +141,40 @@ public sealed class RlpContentWriter : IRlpWriter
         _position += value.Length;
     }
 
-    public void WriteList(Action<IRlpWriter> action)
+    public void WriteList(RefRlpWriterAction action)
     {
-        var lengthWriter = new RlpLengthWriter();
-        action(lengthWriter);
+        switch (_mode)
+        {
+            case LengthMode:
+                LengthWriteList(action);
+                break;
+            case ContentMode:
+                ContentWriteList(action);
+                break;
+        }
+    }
+
+    private void LengthWriteList(RefRlpWriterAction action)
+    {
+        var inner = LengthWriter();
+        action(ref inner);
+        if (inner.Length < 55)
+        {
+            Length += 1 + inner.Length;
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, inner.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            Length += 1 + inner.Length + binaryLength.Length;
+        }
+    }
+
+    private void ContentWriteList(RefRlpWriterAction action)
+    {
+        var lengthWriter = LengthWriter();
+        action(ref lengthWriter);
         if (lengthWriter.Length < 55)
         {
             _buffer[_position++] = (byte)(0xC0 + lengthWriter.Length);
@@ -83,70 +189,6 @@ public sealed class RlpContentWriter : IRlpWriter
             _position += binaryLength.Length;
         }
 
-        action(this);
-    }
-}
-
-public sealed class RlpLengthWriter : IRlpWriter
-{
-    public int Length { get; private set; }
-
-    public RlpLengthWriter()
-    {
-        Length = 0;
-    }
-
-    public void Write<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
-    {
-        var size = Marshal.SizeOf<T>();
-        Span<byte> bigEndian = stackalloc byte[size];
-        value.WriteBigEndian(bigEndian);
-        bigEndian = bigEndian.TrimStart((byte)0);
-
-        if (bigEndian.Length == 0)
-        {
-            Length++;
-        } else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
-        {
-            Length++;
-        }
-        else
-        {
-            Write(bigEndian);
-        }
-    }
-
-    public void Write(ReadOnlySpan<byte> value)
-    {
-        if (value.Length < 55)
-        {
-            Length++;
-        }
-        else
-        {
-            Span<byte> binaryLength = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32BigEndian(binaryLength, value.Length);
-            binaryLength = binaryLength.TrimStart((byte)0);
-            Length += 1 + binaryLength.Length;
-        }
-
-        Length += value.Length;
-    }
-
-    public void WriteList(Action<IRlpWriter> action)
-    {
-        var inner = new RlpLengthWriter();
-        action(inner);
-        if (inner.Length < 55)
-        {
-            Length += 1 + inner.Length;
-        }
-        else
-        {
-            Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
-            BinaryPrimitives.WriteInt32BigEndian(binaryLength, inner.Length);
-            binaryLength = binaryLength.TrimStart((byte)0);
-            Length += 1 + inner.Length + binaryLength.Length;
-        }
+        action(ref this);
     }
 }

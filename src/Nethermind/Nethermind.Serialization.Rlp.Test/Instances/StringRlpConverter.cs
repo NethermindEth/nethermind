@@ -13,7 +13,7 @@ public abstract class StringRlpConverter : IRlpConverter<string>
         return Encoding.UTF8.GetString(obj);
     }
 
-    public static void Write(IRlpWriter writer, string value)
+    public static void Write(ref RlpWriter writer, string value)
     {
         ReadOnlySpan<byte> bytes = Encoding.UTF8.GetBytes(value);
         writer.Write(bytes);
@@ -23,5 +23,5 @@ public abstract class StringRlpConverter : IRlpConverter<string>
 public static class StringRlpConverterExt
 {
     public static string ReadString(this ref RlpReader reader) => StringRlpConverter.Read(ref reader);
-    public static void Write(this IRlpWriter writer, string value) => StringRlpConverter.Write(writer, value);
+    public static void Write(this ref RlpWriter writer, string value) => StringRlpConverter.Write(ref writer, value);
 }
