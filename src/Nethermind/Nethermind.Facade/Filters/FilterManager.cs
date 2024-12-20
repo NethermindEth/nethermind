@@ -29,7 +29,6 @@ namespace Nethermind.Blockchain.Filters
         private Hash256 _lastBlockHash;
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
-        private long _logIndex;
 
         public FilterManager(
             IFilterStore filterStore,
@@ -61,7 +60,6 @@ namespace Nethermind.Blockchain.Filters
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
-            _logIndex = 0;
             AddBlock(e.Block);
         }
 
@@ -163,10 +161,8 @@ namespace Nethermind.Blockchain.Filters
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
             {
-                StoreLogs(filter, txReceipt, _logIndex);
+                StoreLogs(filter, txReceipt);
             }
-
-            _logIndex += txReceipt.Logs?.Length ?? 0;
         }
 
         private void AddBlock(Block block)
@@ -193,7 +189,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt)
         {
             if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
             {
@@ -204,7 +200,7 @@ namespace Nethermind.Blockchain.Filters
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];
-                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, i);
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, i);
                 if (filterLog is not null)
                 {
                     logs.Add(filterLog);
@@ -219,7 +215,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
-        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
+        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
@@ -242,16 +238,16 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == BlockParameterType.Earliest
                 || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
-                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry);
             }
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
-                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry);
             }
 
-            return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
+            return new FilterLog(index, txReceipt, logEntry);
         }
     }
 }
