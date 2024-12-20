@@ -5,13 +5,13 @@ namespace Nethermind.Serialization.Rlp.Test;
 
 public static class Rlp
 {
-    public static byte[] Write(Action<IRlpWriter> action)
+    public static byte[] Write(RefRlpWriterAction action)
     {
-        var lengthWriter = new RlpLengthWriter();
-        action(lengthWriter);
+        var lengthWriter = RlpWriter.LengthWriter();
+        action(ref lengthWriter);
         var serialized = new byte[lengthWriter.Length];
-        var contentWriter = new RlpContentWriter(serialized);
-        action(contentWriter);
+        var contentWriter = RlpWriter.ContentWriter(serialized);
+        action(ref contentWriter);
 
         return serialized;
     }

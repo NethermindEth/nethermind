@@ -11,12 +11,12 @@ public class RlpReadWriteTest
     [Test]
     public void HeterogeneousList()
     {
-        var rlp = Rlp.Write(static w =>
+        var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static w =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
-                w.WriteList(static w => { w.Write(42); });
-                w.WriteList(static w =>
+                w.WriteList(static (ref RlpWriter w) => { w.Write(42); });
+                w.WriteList(static (ref RlpWriter w) =>
                 {
                     w.Write("dog");
                     w.Write("cat");
@@ -47,9 +47,9 @@ public class RlpReadWriteTest
     [Test]
     public void LongList()
     {
-        var rlp = Rlp.Write(static w =>
+        var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static w =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
                 for (int i = 0; i < 100; i++)
                 {
@@ -79,16 +79,16 @@ public class RlpReadWriteTest
     [Test]
     public void MutlipleLongList()
     {
-        var rlp = Rlp.Write(static w =>
+        var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static w =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
                 for (int i = 0; i < 100; i++)
                 {
                     w.Write("dog");
                 }
             });
-            w.WriteList(static w =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
                 for (int i = 0; i < 50; i++)
                 {
@@ -133,9 +133,9 @@ public class RlpReadWriteTest
     [TestCase(2)]
     public void UnknownLengthList([Values(1, 3, 5, 10, 20)] int length)
     {
-        var rlp = Rlp.Write(root =>
+        var rlp = Rlp.Write((ref RlpWriter root) =>
         {
-            root.WriteList(w =>
+            root.WriteList((ref RlpWriter w) =>
             {
                 for (int i = 0; i < length; i++)
                 {
@@ -164,7 +164,7 @@ public class RlpReadWriteTest
     [Test]
     public void InvalidObjectReading()
     {
-        var rlp = Rlp.Write(static w => { w.Write(42); });
+        var rlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
         Action tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => { r.ReadList((scoped ref RlpReader _) => { }); });
 
         tryRead.Should().Throw<RlpReaderException>();
@@ -173,7 +173,7 @@ public class RlpReadWriteTest
     [Test]
     public void InvalidListReading()
     {
-        var rlp = Rlp.Write(static w => { w.WriteList(static _ => { }); });
+        var rlp = Rlp.Write(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
         Func<int> tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadInt32());
 
         tryRead.Should().Throw<RlpReaderException>();
@@ -185,8 +185,8 @@ public class RlpReadWriteTest
         RefRlpReaderFunc<int> intReader = (scoped ref RlpReader r) => r.ReadInt32();
         RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadList(intReader);
 
-        var intRlp = Rlp.Write(static w => { w.Write(42); });
-        var wrappedIntRlp = Rlp.Write(static w => w.WriteList(static w => { w.Write(42); }));
+        var intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
+        var wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteList(static (ref RlpWriter w) => { w.Write(42); }));
 
         foreach (var rlp in (byte[][]) [intRlp, wrappedIntRlp])
         {
@@ -222,9 +222,9 @@ public class RlpReadWriteTest
             });
         };
 
-        var rlp = Rlp.Write(static w =>
+        var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static w =>
+            w.WriteList(static (ref RlpWriter w) =>
             {
                 w.Write("dog");
                 w.Write("cat");
@@ -253,9 +253,9 @@ public class RlpReadWriteTest
             }),
         ];
 
-        var rlp = Rlp.Write(w =>
+        var rlp = Rlp.Write((ref RlpWriter w) =>
         {
-            w.WriteList(w =>
+            w.WriteList((ref RlpWriter w) =>
             {
                 foreach (var student in students)
                 {

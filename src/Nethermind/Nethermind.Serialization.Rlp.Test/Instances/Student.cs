@@ -32,18 +32,18 @@ public abstract class StudentRlpConverter : IRlpConverter<Student>
         });
     }
 
-    public static void Write(IRlpWriter writer, Student value)
+    public static void Write(ref RlpWriter writer, Student value)
     {
-        writer.WriteList(r =>
+        writer.WriteList((ref RlpWriter w) =>
         {
-            r.Write(value.Name);
-            r.Write(value.Age);
-            r.WriteList(r =>
+            w.Write(value.Name);
+            w.Write(value.Age);
+            w.WriteList((ref RlpWriter w) =>
             {
                 foreach (var (subject, score) in value.Scores)
                 {
-                    r.Write(subject);
-                    r.Write(score);
+                    w.Write(subject);
+                    w.Write(score);
                 }
             });
         });
@@ -53,5 +53,5 @@ public abstract class StudentRlpConverter : IRlpConverter<Student>
 public static class StudentExt
 {
     public static Student ReadStudent(this ref RlpReader reader) => StudentRlpConverter.Read(ref reader);
-    public static void Write(this IRlpWriter writer, Student value) => StudentRlpConverter.Write(writer, value);
+    public static void Write(this ref RlpWriter writer, Student value) => StudentRlpConverter.Write(ref writer, value);
 }

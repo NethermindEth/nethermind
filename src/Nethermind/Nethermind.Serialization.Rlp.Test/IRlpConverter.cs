@@ -6,5 +6,5 @@ namespace Nethermind.Serialization.Rlp.Test;
 public interface IRlpConverter<T> where T : allows ref struct
 {
     public static abstract T Read(ref RlpReader reader);
-    public static abstract void Write(IRlpWriter writer, T value);
+    public static abstract void Write(ref RlpWriter writer, T value);
 }
