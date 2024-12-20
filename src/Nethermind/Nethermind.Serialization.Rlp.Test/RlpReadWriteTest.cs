@@ -178,4 +178,24 @@ public class RlpReadWriteTest
 
         tryRead.Should().Throw<RlpReaderException>();
     }
+
+    [Test]
+    public void Choice()
+    {
+        var unwrapped = Rlp.Write(static w => { w.Write(42); });
+        var wrapped = Rlp.Write(static w => w.WriteList(static w => { w.Write(42); }));
+
+        foreach (var rlp in (byte[][]) [wrapped, unwrapped])
+        {
+            int decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
+            {
+                return r.Choice(
+                    (scoped ref RlpReader r) => r.ReadList(static (scoped ref RlpReader r) => r.ReadInt32()),
+                    (scoped ref RlpReader r) => r.ReadInt32()
+                );
+            });
+
+            decoded.Should().Be(42);
+        }
+    }
 }
