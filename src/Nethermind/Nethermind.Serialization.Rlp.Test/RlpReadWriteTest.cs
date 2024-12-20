@@ -24,12 +24,12 @@ public class RlpReadWriteTest
             });
         });
 
-        var decoded = Rlp.Read(rlp, (ref RlpReader r) =>
+        var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (ref RlpReader r) =>
+            return r.ReadList(static (scoped ref RlpReader r) =>
             {
-                var _1 = r.ReadList(static (ref RlpReader r) => r.ReadInt32());
-                var _2 = r.ReadList(static (ref RlpReader r) =>
+                var _1 = r.ReadList(static (scoped ref RlpReader r) => r.ReadInt32());
+                var _2 = r.ReadList(static (scoped ref RlpReader r) =>
                 {
                     var _1 = r.ReadString();
                     var _2 = r.ReadString();
@@ -58,9 +58,9 @@ public class RlpReadWriteTest
             });
         });
 
-        List<string> decoded = Rlp.Read(rlp, (ref RlpReader r) =>
+        List<string> decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            return r.ReadList((ref RlpReader r) =>
+            return r.ReadList((scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 for (int i = 0; i < 100; i++)
@@ -97,9 +97,9 @@ public class RlpReadWriteTest
             });
         });
 
-        var (dogs, cats) = Rlp.Read(rlp, (ref RlpReader r) =>
+        var (dogs, cats) = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            var dogs = r.ReadList((ref RlpReader r) =>
+            var dogs = r.ReadList((scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 while (r.HasNext)
@@ -109,7 +109,7 @@ public class RlpReadWriteTest
 
                 return result;
             });
-            var cats = r.ReadList((ref RlpReader r) =>
+            var cats = r.ReadList((scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 while (r.HasNext)
@@ -144,9 +144,9 @@ public class RlpReadWriteTest
             });
         });
 
-        List<int> decoded = Rlp.Read(rlp, (ref RlpReader r) =>
+        List<int> decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            return r.ReadList((ref RlpReader r) =>
+            return r.ReadList((scoped ref RlpReader r) =>
             {
                 List<int> result = [];
                 while (r.HasNext)
@@ -165,7 +165,7 @@ public class RlpReadWriteTest
     public void InvalidObjectReading()
     {
         var rlp = Rlp.Write(static w => { w.Write(42); });
-        Action tryRead = () => Rlp.Read(rlp, (ref RlpReader r) => { r.ReadList((ref RlpReader _) => { }); });
+        Action tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => { r.ReadList((scoped ref RlpReader _) => { }); });
 
         tryRead.Should().Throw<RlpReaderException>();
     }
@@ -174,7 +174,7 @@ public class RlpReadWriteTest
     public void InvalidListReading()
     {
         var rlp = Rlp.Write(static w => { w.WriteList(static _ => { }); });
-        Func<int> tryRead = () => Rlp.Read(rlp, (ref RlpReader r) => r.ReadInt32());
+        Func<int> tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadInt32());
 
         tryRead.Should().Throw<RlpReaderException>();
     }
