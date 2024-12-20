@@ -124,6 +124,6 @@ public ref struct RlpReader
                 _position = startingPosition;
             }
         }
-        throw new RlpReaderException("No alternative succeeded");
+        throw new RlpReaderException("RLP does not correspond to any alternative");
     }
 }
