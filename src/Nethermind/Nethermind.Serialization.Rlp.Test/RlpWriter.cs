@@ -8,7 +8,7 @@ namespace Nethermind.Serialization.Rlp.Test;
 public interface IRlpWriter
 {
     void WriteByte(byte value);
-    void WriteBytes(scoped ReadOnlySpan<byte> value);
+    void WriteObject(ReadOnlySpan<byte> value);
     void WriteList(Action<IRlpWriter> action);
 }
 
@@ -28,8 +28,22 @@ public sealed class RlpContentWriter : IRlpWriter
         _buffer[_position++] = value;
     }
 
-    public void WriteBytes(ReadOnlySpan<byte> value)
+    public void WriteObject(ReadOnlySpan<byte> value)
     {
+        if (value.Length < 55)
+        {
+            _buffer[_position++] = (byte)(0x80 + value.Length);
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, value.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            _buffer[_position++] = (byte)(0xB7 + binaryLength.Length);
+            binaryLength.CopyTo(_buffer.AsSpan()[_position..]);
+            _position += binaryLength.Length;
+        }
+
         value.CopyTo(_buffer.AsSpan()[_position..]);
         _position += value.Length;
     }
@@ -70,8 +84,20 @@ public sealed class RlpLengthWriter : IRlpWriter
         Length++;
     }
 
-    public void WriteBytes(ReadOnlySpan<byte> value)
+    public void WriteObject(ReadOnlySpan<byte> value)
     {
+        if (value.Length < 55)
+        {
+            Length += 1;
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, value.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            Length += 1 + binaryLength.Length;
+        }
+
         Length += value.Length;
     }
 

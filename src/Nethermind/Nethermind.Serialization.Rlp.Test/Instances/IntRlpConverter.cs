@@ -24,7 +24,7 @@ public abstract class IntRlpConverter : IRlpConverter<int>
             Span<byte> bytes = stackalloc byte[sizeof(int)];
             BinaryPrimitives.WriteInt32BigEndian(bytes, value);
             bytes = bytes.TrimStart((byte)0);
-            writer.Write(bytes);
+            writer.WriteObject(bytes);
         }
     }
 }
