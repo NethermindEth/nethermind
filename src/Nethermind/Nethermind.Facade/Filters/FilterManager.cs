@@ -165,6 +165,7 @@ namespace Nethermind.Blockchain.Filters
             {
                 StoreLogs(filter, txReceipt, _logIndex);
             }
+
             _logIndex += txReceipt.Logs?.Length ?? 0;
         }
 
