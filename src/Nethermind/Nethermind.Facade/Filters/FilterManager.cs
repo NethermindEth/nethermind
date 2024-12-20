@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain.Filters
         private Hash256 _lastBlockHash;
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
+        private long _logIndex;
 
         public FilterManager(
             IFilterStore filterStore,
@@ -60,6 +61,7 @@ namespace Nethermind.Blockchain.Filters
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
+            _logIndex = 0;
             AddBlock(e.Block);
         }
 
@@ -161,8 +163,9 @@ namespace Nethermind.Blockchain.Filters
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
             {
-                StoreLogs(filter, txReceipt);
+                StoreLogs(filter, txReceipt, _logIndex);
             }
+            _logIndex += txReceipt.Logs?.Length ?? 0;
         }
 
         private void AddBlock(Block block)
@@ -189,7 +192,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex)
         {
             if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
             {
@@ -200,7 +203,7 @@ namespace Nethermind.Blockchain.Filters
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];
-                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, i);
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++);
                 if (filterLog is not null)
                 {
                     logs.Add(filterLog);
