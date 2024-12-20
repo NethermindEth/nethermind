@@ -195,4 +195,44 @@ public class RlpReadWriteTest
             decoded.Should().Be(42);
         }
     }
+
+    [Test]
+    public void ChoiceDeep()
+    {
+        RefRlpReaderFunc<(string, string, string)> readerA = static (scoped ref RlpReader r) =>
+        {
+            return r.ReadList(static (scoped ref RlpReader r) =>
+            {
+                    var _1 = r.ReadString();
+                    var _2 = r.ReadString();
+                    var _3 = r.ReadString();
+
+                    return (_1, _2, _3);
+            });
+        };
+        RefRlpReaderFunc<(string, string, string)> readerB = static (scoped ref RlpReader r) =>
+        {
+            return r.ReadList(static (scoped ref RlpReader r) =>
+            {
+                var _1 = r.ReadString();
+                var _2 = r.ReadString();
+                var _3 = r.ReadInt32();
+
+                return (_1, _2, _3.ToString());
+            });
+        };
+
+        var rlp = Rlp.Write(static w =>
+        {
+            w.WriteList(static w =>
+            {
+                w.Write("dog");
+                w.Write("cat");
+                w.Write(42);
+            });
+        });
+
+        var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(readerA, readerB));
+        decoded.Should().Be(("dog", "cat", "42"));
+    }
 }
