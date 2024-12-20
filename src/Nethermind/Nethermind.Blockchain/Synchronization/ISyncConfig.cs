@@ -167,4 +167,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
     int HeaderStateDistance { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    ulong FastHeadersMemoryBudget { get; set; }
 }
