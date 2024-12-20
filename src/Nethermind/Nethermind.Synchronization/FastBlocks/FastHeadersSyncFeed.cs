@@ -512,7 +512,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
                 InsertHeaders(newBatchToProcess);
                 MarkDirty();
-                HeadersSyncQueueReport.Update(HeadersInQueue);
+                HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
             }
 
             if (headers.Count > 0)
