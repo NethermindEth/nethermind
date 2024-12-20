@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Serialization.Rlp.Test;
+using System;
+
+namespace Nethermind.Serialization.FastRlp;
 
 public static class Rlp
 {

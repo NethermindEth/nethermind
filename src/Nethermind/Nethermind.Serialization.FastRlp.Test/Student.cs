@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Serialization.Rlp.Test.Instances;
+using Nethermind.Serialization.FastRlp.Instances;
+
+namespace Nethermind.Serialization.FastRlp.Test;
 
 public record Student(string Name, int Age, Dictionary<string, int> Scores);
 

@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.Serialization.Rlp.Test;
+namespace Nethermind.Serialization.FastRlp;
 
 public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg) where TResult : allows ref struct;
 
