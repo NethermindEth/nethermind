@@ -200,7 +200,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
 
-            releaseSpec.IsEip7742Enabled = (chainSpec.Parameters.Eip7742TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7840Enabled = (chainSpec.Parameters.Eip7840TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             SetMaxAndTargetBlobCount(chainSpec, releaseSpec, releaseStartTimestamp);
 
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
@@ -251,7 +251,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void SetMaxAndTargetBlobCount(ChainSpec chainSpec, ReleaseSpec spec, ulong? releaseStartTimestamp = null)
         {
-            if (!spec.IsEip7742Enabled) return;
+            if (!spec.IsEip7840Enabled) return;
 
             (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetForkWithPreviousFork(chainSpec, releaseStartTimestamp);
             if (fork is null)

@@ -325,6 +325,8 @@ namespace Nethermind.Core.Specs
 
         bool IsEip7742Enabled { get; }
 
+        bool IsEip7840Enabled { get; }
+
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
 

@@ -115,6 +115,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsEip7742Enabled { get; set; }
+        public bool IsEip7840Enabled => _spec.IsEip7840Enabled;
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => _spec.IsOpHoloceneEnabled;
 

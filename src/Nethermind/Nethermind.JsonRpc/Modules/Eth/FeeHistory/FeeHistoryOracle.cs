@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
 
                 IReleaseSpec spec = _specProvider.GetSpec(b.Header);
-                double maxBlobGasPerBlock = !spec.IsEip7742Enabled
+                double maxBlobGasPerBlock = !spec.IsEip7840Enabled
                     ? Eip4844Constants.GetMaxBlobsPerBlock()
                     : spec.MaxBlobCount;
 
