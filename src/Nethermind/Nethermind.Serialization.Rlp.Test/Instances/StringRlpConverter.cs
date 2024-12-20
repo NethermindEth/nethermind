@@ -16,7 +16,7 @@ public abstract class StringRlpConverter : IRlpConverter<string>
     public static void Write(IRlpWriter writer, string value)
     {
         ReadOnlySpan<byte> bytes = Encoding.UTF8.GetBytes(value);
-        writer.Write(bytes);
+        writer.WriteObject(bytes);
     }
 }
 
