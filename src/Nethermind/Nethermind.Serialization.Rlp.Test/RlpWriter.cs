@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.Rlp.Test;
 
 public interface IRlpWriter
 {
-    void WriteByte(byte value);
-    void WriteObject(ReadOnlySpan<byte> value);
+    void Write<T>(T value) where T: IBinaryInteger<T>, ISignedNumber<T>;
+    void Write(ReadOnlySpan<byte> value);
     void WriteList(Action<IRlpWriter> action);
 }
 
@@ -23,12 +25,27 @@ public sealed class RlpContentWriter : IRlpWriter
         _position = 0;
     }
 
-    public void WriteByte(byte value)
+    public void Write<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
     {
-        _buffer[_position++] = value;
+        var size = Marshal.SizeOf<T>();
+        Span<byte> bigEndian = stackalloc byte[size];
+        value.WriteBigEndian(bigEndian);
+        bigEndian = bigEndian.TrimStart((byte)0);
+
+        if (bigEndian.Length == 0)
+        {
+            _buffer[_position++] = 0;
+        } else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
+        {
+            _buffer[_position++] = bigEndian[0];
+        }
+        else
+        {
+            Write(bigEndian);
+        }
     }
 
-    public void WriteObject(ReadOnlySpan<byte> value)
+    public void Write(ReadOnlySpan<byte> value)
     {
         if (value.Length < 55)
         {
@@ -79,16 +96,31 @@ public sealed class RlpLengthWriter : IRlpWriter
         Length = 0;
     }
 
-    public void WriteByte(byte value)
+    public void Write<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
     {
-        Length++;
+        var size = Marshal.SizeOf<T>();
+        Span<byte> bigEndian = stackalloc byte[size];
+        value.WriteBigEndian(bigEndian);
+        bigEndian = bigEndian.TrimStart((byte)0);
+
+        if (bigEndian.Length == 0)
+        {
+            Length++;
+        } else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
+        {
+            Length++;
+        }
+        else
+        {
+            Write(bigEndian);
+        }
     }
 
-    public void WriteObject(ReadOnlySpan<byte> value)
+    public void Write(ReadOnlySpan<byte> value)
     {
         if (value.Length < 55)
         {
-            Length += 1;
+            Length++;
         }
         else
         {

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
+using System.Runtime.InteropServices;
+
 namespace Nethermind.Serialization.Rlp.Test;
 
 public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg) where TResult : allows ref struct;
@@ -22,21 +25,40 @@ public ref struct RlpReader
 
     public bool HasNext => _position < _buffer.Length;
 
-    public ReadOnlySpan<byte> ReadObject()
+    public T ReadInteger<T>() where T : IBinaryInteger<T>, ISignedNumber<T>
     {
-        ReadOnlySpan<byte> result;
+        ReadOnlySpan<byte> bigEndian;
         var header = _buffer[_position];
         if (header < 0x80)
         {
-            result = _buffer.Slice(_position++, 1);
+            bigEndian = _buffer.Slice(_position++, 1);
         }
-        else if (header < 0xB8)
+        else
+        {
+            bigEndian = ReadBytes();
+        }
+
+        Span<byte> buffer = stackalloc byte[Marshal.SizeOf<T>()];
+        bigEndian.CopyTo(buffer[^bigEndian.Length..]);
+        return T.ReadBigEndian(buffer, false);
+    }
+
+    public ReadOnlySpan<byte> ReadBytes()
+    {
+        ReadOnlySpan<byte> result;
+        var header = _buffer[_position];
+        if (header < 0x80 || header >= 0xC0)
+        {
+            throw new RlpReaderException("RLP does not correspond to a byte string");
+        }
+
+        if (header < 0xB8)
         {
             header -= 0x80;
             result = _buffer.Slice(++_position, header);
             _position += header;
         }
-        else if (header < 0xC0)
+        else
         {
             header -= 0xB7;
             ReadOnlySpan<byte> binaryLength = _buffer.Slice(++_position, header);
@@ -45,10 +67,6 @@ public ref struct RlpReader
             result = _buffer.Slice(_position, length);
             _position += length;
         }
-        else
-        {
-            throw new RlpReaderException("RLP does not correspond to an object");
-        }
 
         return result;
     }
@@ -56,7 +74,7 @@ public ref struct RlpReader
     public T ReadList<T>(RefRlpReaderFunc<T> func)
     {
         T result;
-        var header = _buffer[_position];
+        var header = _buffer[_position++];
         if (header < 0xC0)
         {
             throw new RlpReaderException("RLP does not correspond to a list");
@@ -64,7 +82,6 @@ public ref struct RlpReader
 
         if (header < 0xF8)
         {
-            _position += 1;
             var length = header - 0xC0;
             var reader = new RlpReader(_buffer.Slice(_position, length));
             result = func(ref reader);
@@ -72,7 +89,6 @@ public ref struct RlpReader
         }
         else
         {
-            _position += 1;
             var lengthOfLength = header - 0xF7;
             ReadOnlySpan<byte> binaryLength = _buffer.Slice(_position, lengthOfLength);
             _position += lengthOfLength;
