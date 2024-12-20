@@ -16,6 +16,15 @@ public class RlpWriterTest
     }
 
     [Test]
+    public void WriteEmptyString()
+    {
+        var serialized = Rlp.Write(static writer => { writer.Write(""); });
+
+        byte[] expected = [0x80];
+        serialized.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
     public void WriteLongString()
     {
         var serialized = Rlp.Write(writer =>
@@ -24,15 +33,6 @@ public class RlpWriterTest
         });
 
         byte[] expected = [0xb8, 0x38, .."Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
-        serialized.Should().BeEquivalentTo(expected);
-    }
-
-    [Test]
-    public void WriteEmptyString()
-    {
-        var serialized = Rlp.Write(static writer => { writer.Write(""); });
-
-        byte[] expected = [0x80];
         serialized.Should().BeEquivalentTo(expected);
     }
 
@@ -104,7 +104,7 @@ public class RlpWriterTest
     }
 
     [Test]
-    public void WriteByteArray()
+    public void WriteSpan()
     {
         var serialized = Rlp.Write(static writer => { writer.WriteObject([0x04, 0x00]); });
 

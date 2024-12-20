@@ -80,6 +80,30 @@ public class RlpReaderTest
     }
 
     [Test]
+    public void ReadEmptyList()
+    {
+        byte[] source = [0xc0];
+
+        var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        {
+            return r.ReadList((scoped ref RlpReader _) => Array.Empty<object>());
+        });
+
+        actual.Should().BeEmpty();
+    }
+
+    [Test]
+    public void ReadSpan()
+    {
+        byte[] source = [0x82, 0x04, 0x00];
+
+        ReadOnlySpan<byte> actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadObject());
+
+        ReadOnlySpan<byte> expected = [0x04, 0x00];
+        actual.SequenceEqual(expected).Should().BeTrue();
+    }
+
+    [Test]
     public void ReadSetTheoreticalRepresentation()
     {
         byte[] source = [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0];
@@ -116,33 +140,5 @@ public class RlpReaderTest
             new object[] { new object[] { } },
             new object[] { new object[] { }, new object[] { new object[] { } } },
         });
-    }
-
-    [Test]
-    public void ReadEmptyList()
-    {
-        byte[] source = [0xc0];
-
-        var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
-        {
-            return r.ReadList((scoped ref RlpReader _) => Array.Empty<object>());
-        });
-
-        actual.Should().BeEmpty();
-    }
-
-    [Test]
-    public void ReadSpan()
-    {
-        byte[] source = [0x82, 0x04, 0x00];
-
-        ReadOnlySpan<byte> actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
-        {
-            var result = r.ReadObject();
-            return result;
-        });
-
-        ReadOnlySpan<byte> expected = [0x04, 0x00];
-        actual.SequenceEqual(expected).Should().BeTrue();
     }
 }
