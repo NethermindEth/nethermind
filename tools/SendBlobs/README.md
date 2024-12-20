@@ -65,7 +65,7 @@ sh
                                              0x0000000000000000000000000000000000000000000000000000000000000000 \
                                              0x000000000000000000000000000000000000f1c1 10000 4
 
-# send several transactions with 1 blob, with 6 blobs and than with 2 blobs
+# send several transactions with 1 blob, with 6 blobs and then with 2 blobs
 ./SendBlobs --rpcurl http://localhost:8545
             --bloboptions 10x1,10x6,10x2 \
             --privatekey  0x0000000000000000000000000000000000000000000000000000000000000000 \
