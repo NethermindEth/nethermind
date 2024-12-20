@@ -23,6 +23,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Serialization.FastRlp\Nethermind.Serialization.FastRlp.csproj" />
+      <ProjectReference Include="..\Nethermind.Serialization.FastRlp.Generator\Nethermind.Serialization.FastRlp.Generator.csproj" OutputItemType="Analyzer" />
     </ItemGroup>
 
 </Project>

@@ -230,6 +230,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Fa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FastRlp", "Nethermind.Serialization.FastRlp\Nethermind.Serialization.FastRlp.csproj", "{3D358FD8-E047-4770-BCDF-8FBBBBDDE03A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FastRlp.Generator", "Nethermind.Serialization.FastRlp.Generator\Nethermind.Serialization.FastRlp.Generator.csproj", "{838687B6-9915-4BD2-98CC-79A4130B89B0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -636,6 +638,10 @@ Global
 		{3D358FD8-E047-4770-BCDF-8FBBBBDDE03A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3D358FD8-E047-4770-BCDF-8FBBBBDDE03A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3D358FD8-E047-4770-BCDF-8FBBBBDDE03A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
