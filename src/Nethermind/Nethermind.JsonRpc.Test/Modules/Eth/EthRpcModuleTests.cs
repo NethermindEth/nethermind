@@ -255,33 +255,6 @@ public partial class EthRpcModuleTests
         Assert.That(serializedPendingAfter, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}"));
     }
 
-
-    [Test]
-    public async Task Eth_get_tx_count_missing_trie()
-    {
-
-
-        /*using Context ctx = await Context.Create();*/
-        /*ctx.Test.StateDb.Clear();*/
-        /*BlockParameter? blockParameter = null;*/
-        /*BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);*/
-        /*string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");*/
-        /*var expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"missing trie node {header?.StateRoot} (path ) state {header?.StateRoot} is not available\"}},\"id\":67}}";*/
-        /*Assert.That(serialized, Is.EqualTo(expected));*/
-
-
-        using Context ctx = await Context.Create();
-        ctx.Test.StateDb.Clear();
-        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true));
-        // print the serialized value:
-        Console.WriteLine("!!!!!!!!! serialized: " + serialized);
-        Console.WriteLine(serialized);
-
-
-        // {"jsonrpc":"2.0","error":{"code":-32002,"message":"No state available for block 3 (0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3)","data":"0x0"},"id":67}
-        /*Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}"));*/
-    }
-
     [Test]
     public async Task Eth_get_filter_changes_empty()
     {
