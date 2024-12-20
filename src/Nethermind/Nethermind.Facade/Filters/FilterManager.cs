@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Hash256>());
+                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
                 transactions.Add(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Hash256>());
+                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new List<Hash256>());
                 transactions.Remove(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain.Filters
                 throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             }
 
-            List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Hash256>());
+            List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static i => new List<Hash256>());
             blocks.Add(block.Hash);
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            List<FilterLog> logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
+            List<FilterLog> logs = _logs.GetOrAdd(filter.Id, static i => new List<FilterLog>());
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];

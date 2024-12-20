@@ -28,7 +28,7 @@ public class GetNodeDataMessageTests
     [Test]
     public void Throws_on_null_argument()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new GetNodeDataMessage(null));
+        Assert.Throws<ArgumentNullException>(static () => _ = new GetNodeDataMessage(null));
     }
 
     [Test]

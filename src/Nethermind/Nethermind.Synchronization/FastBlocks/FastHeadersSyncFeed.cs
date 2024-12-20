@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly Lock _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
+        private readonly ulong _fastHeadersMemoryBudget;
         protected long _lowestRequestedHeaderNumber;
 
         protected Hash256 _nextHeaderHash;
@@ -67,7 +68,6 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private readonly ReaderWriterLockSlim _resetLock = new();
 
-        private IEnumerator<KeyValuePair<long, HeadersSyncBatch>>? _enumerator;
         private ulong _memoryEstimate;
         private long _headersEstimate;
 
@@ -104,18 +104,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private long CalculateHeadersInQueue()
         {
             // Reuse the enumerator
-            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _dependencies.GetEnumerator();
+            using var enumerator = _dependencies.GetEnumerator();
 
             long count = 0;
             while (enumerator.MoveNext())
             {
                 count += enumerator.Current.Value.Response?.Count ?? 0;
             }
-
-            // Stop gap method to reduce allocations from non-struct enumerator
-            // https://github.com/dotnet/runtime/pull/38296
-            enumerator.Reset();
-            _enumerator = enumerator;
 
             return count;
         }
@@ -138,18 +133,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private ulong CalculateMemoryInQueue()
         {
             // Reuse the enumerator
-            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _dependencies.GetEnumerator();
+            using var enumerator = _dependencies.GetEnumerator();
 
             ulong amount = 0;
             while (enumerator.MoveNext())
             {
                 amount += (ulong)enumerator.Current.Value?.ResponseSizeEstimate;
             }
-
-            // Stop gap method to reduce allocations from non-struct enumerator
-            // https://github.com/dotnet/runtime/pull/38296
-            enumerator.Reset();
-            _enumerator = enumerator;
 
             return amount;
         }
@@ -169,6 +159,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
+            _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
@@ -229,7 +220,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || destinationHeaderRequested
-                                 || MemoryInQueue >= MemoryAllowance.FastBlocksMemory
+                                 || MemoryInQueue >= _fastHeadersMemoryBudget
                                  || isImmediateSync && AnyHeaderDownloaded;
 
             if (noBatchesLeft)
@@ -385,7 +376,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
-                        .OrderByDescending(kvp => kvp.Key))
+                        .OrderByDescending(static kvp => kvp.Key))
                     {
                         builder.AppendLine(keyValuePair.Value);
                     }
@@ -512,15 +503,18 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             headers.AsSpan().Reverse();
-
-            using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
-            newBatchToProcess.StartNumber = lastHeader.Number;
-            newBatchToProcess.RequestSize = headers.Count;
-            newBatchToProcess.Response = headers;
-            if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
-            InsertHeaders(newBatchToProcess);
-
             int newRequestSize = batch.RequestSize - headers.Count;
+            if (headers.Count > 0)
+            {
+                using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
+                newBatchToProcess.StartNumber = lastHeader.Number;
+                newBatchToProcess.RequestSize = headers.Count;
+                newBatchToProcess.Response = headers;
+                if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
+                InsertHeaders(newBatchToProcess);
+                MarkDirty();
+                HeadersSyncQueueReport.Update(HeadersInQueue);
+            }
 
             if (newRequestSize == 0) return null;
 

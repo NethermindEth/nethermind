@@ -94,7 +94,7 @@ public class WalletTests
     [OneTimeTearDown]
     public void TearDown()
     {
-        Parallel.ForEach(_wallets, wallet =>
+        Parallel.ForEach(_wallets, static wallet =>
         {
             wallet.Dispose();
         });

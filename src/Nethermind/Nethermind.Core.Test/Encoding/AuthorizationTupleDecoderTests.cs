@@ -19,9 +19,9 @@ public class AuthorizationTupleDecoderTests
         yield return new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[64], 0));
         yield return new AuthorizationTuple(
             ulong.MaxValue,
-            new Address(Enumerable.Range(0, 20).Select(i => (byte)0xff).ToArray()),
+            new Address(Enumerable.Range(0, 20).Select(static i => (byte)0xff).ToArray()),
             ulong.MaxValue,
-            new Signature(Enumerable.Range(0, 64).Select(i => (byte)0xff).ToArray(), 1));
+            new Signature(Enumerable.Range(0, 64).Select(static i => (byte)0xff).ToArray(), 1));
     }
 
     [TestCaseSource(nameof(AuthorizationTupleEncodeCases))]
@@ -53,72 +53,72 @@ public class AuthorizationTupleDecoderTests
     {
         yield return TupleRlpStream(
             //Wrong chain size
-            Enumerable.Range(0, 9).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 9).Select(static i => (byte)0xFF).ToArray(),
             Address.Zero.Bytes,
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
             //Wrong address size
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 19).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 19).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
             //Wrong address size
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 21).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 21).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
             //Wrong nonce size
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Address.Zero.Bytes,
-            Enumerable.Range(0, 9).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 9).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
             //Wrong yParity size
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Address.Zero.Bytes,
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 2).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 2).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
             //Wrong R size
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Address.Zero.Bytes,
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 33).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 33).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
             //Wrong S size
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Address.Zero.Bytes,
-            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
-            Enumerable.Range(0, 33).Select(i => (byte)0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 33).Select(static i => (byte)0xFF).ToArray()
             );
     }
 
