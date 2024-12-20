@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Serialization.Rlp.Test.Instances;
+using System;
+
+namespace Nethermind.Serialization.FastRlp.Instances;
 
 // NOTE: No need for `Write` overloads since they're covered by generic primitives
 // `Read` methods are provided for a consistent API (instead of using generics primitives)

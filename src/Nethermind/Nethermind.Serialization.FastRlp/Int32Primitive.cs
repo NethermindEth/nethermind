@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 
-namespace Nethermind.Serialization.Rlp.Test;
+namespace Nethermind.Serialization.FastRlp;
 
-public static class Int32Primitive
+internal static class Int32Primitive
 {
     /// <summary>
     /// Reads a <see cref="int" /> from the beginning of a read-only span of bytes, as big endian.

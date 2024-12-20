@@ -21,4 +21,8 @@
         <Using Include="NUnit.Framework"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Serialization.FastRlp\Nethermind.Serialization.FastRlp.csproj" />
+    </ItemGroup>
+
 </Project>

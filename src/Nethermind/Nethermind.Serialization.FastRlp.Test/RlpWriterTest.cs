@@ -1,7 +1,10 @@
-﻿using FluentAssertions;
-using Nethermind.Serialization.Rlp.Test.Instances;
+﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Serialization.Rlp.Test;
+using FluentAssertions;
+using Nethermind.Serialization.FastRlp.Instances;
+
+namespace Nethermind.Serialization.FastRlp.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class RlpWriterTest
