@@ -560,9 +560,7 @@ public class FastHeadersSyncTests
         }
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
-        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        ISyncReport report = new NullSyncReport();
         using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
         feed.InitializeFeed();
 
