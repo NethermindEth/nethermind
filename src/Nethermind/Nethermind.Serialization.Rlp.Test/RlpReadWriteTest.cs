@@ -203,11 +203,11 @@ public class RlpReadWriteTest
         {
             return r.ReadList(static (scoped ref RlpReader r) =>
             {
-                    var _1 = r.ReadString();
-                    var _2 = r.ReadString();
-                    var _3 = r.ReadString();
+                var _1 = r.ReadString();
+                var _2 = r.ReadString();
+                var _3 = r.ReadString();
 
-                    return (_1, _2, _3);
+                return (_1, _2, _3);
             });
         };
         RefRlpReaderFunc<(string, string, string)> readerB = static (scoped ref RlpReader r) =>
@@ -234,5 +234,50 @@ public class RlpReadWriteTest
 
         var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(readerA, readerB));
         decoded.Should().Be(("dog", "cat", "42"));
+    }
+
+    [Test]
+    public void UserDefinedRecord()
+    {
+        List<Student> students =
+        [
+            new("Ana", 23, new Dictionary<string, int>
+            {
+                { "Math", 7 },
+                { "Literature", 9 }
+            }),
+            new("Bob", 25, new Dictionary<string, int>
+            {
+                { "Math", 9 },
+                { "Literature", 6 }
+            }),
+        ];
+
+        var rlp = Rlp.Write(w =>
+        {
+            w.WriteList(w =>
+            {
+                foreach (var student in students)
+                {
+                    w.Write(student);
+                }
+            });
+        });
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            return r.ReadList(static (scoped ref RlpReader r) =>
+            {
+                List<Student> result = [];
+                while (r.HasNext)
+                {
+                    result.Add(r.ReadStudent());
+                }
+
+                return result;
+            });
+        });
+
+        decoded.Should().BeEquivalentTo(students);
     }
 }
