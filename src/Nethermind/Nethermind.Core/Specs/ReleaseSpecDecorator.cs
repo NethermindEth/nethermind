@@ -68,6 +68,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4844Enabled => spec.IsEip4844Enabled;
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
     public virtual bool IsEip7742Enabled => spec.IsEip7742Enabled;
+    public virtual bool IsEip7840Enabled => spec.IsEip7840Enabled;
     public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
     public bool IsEip6110Enabled => spec.IsEip6110Enabled;
     public Address DepositContractAddress => spec.DepositContractAddress;
@@ -92,6 +93,10 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaxInitCodeSize => spec.MaxInitCodeSize;
     public virtual bool ValidateChainId => spec.ValidateChainId;
     public virtual bool ClearEmptyAccountWhenTouched => spec.ClearEmptyAccountWhenTouched;
+
+    public ulong TargetBlobCount { get; set; }
+    public ulong MaxBlobCount { get; set; }
+
     // VM
     public virtual bool LimitCodeSize => spec.LimitCodeSize;
     public virtual bool UseHotAndColdStorage => spec.UseHotAndColdStorage;

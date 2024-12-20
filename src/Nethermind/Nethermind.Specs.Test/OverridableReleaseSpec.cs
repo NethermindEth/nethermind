@@ -115,6 +115,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsEip7742Enabled { get; set; }
+        public bool IsEip7840Enabled => _spec.IsEip7840Enabled;
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => _spec.IsOpHoloceneEnabled;
 
@@ -155,6 +156,9 @@ namespace Nethermind.Specs.Test
                 _overridenEip4844TransitionTimeStamp = value;
             }
         }
+
+        public ulong TargetBlobCount { get; set; }
+        public ulong MaxBlobCount { get; set; }
 
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
