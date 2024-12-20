@@ -57,14 +57,6 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 continue;
             }
 
-            // Extract the `using` statements from the file containing the record
-            var usingDirectiveSyntaxes = recordDecl
-                .SyntaxTree
-                .GetRoot()
-                .DescendantNodes()
-                .OfType<UsingDirectiveSyntax>()
-                .Select(syntax => syntax.Name!.ToString());
-
             // Extract the record name with namespace if needed
             var recordName = symbol.Name;
             var fullTypeName = symbol.ToDisplayString();
@@ -74,7 +66,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             var parameters = GetRecordParameters(recordDecl);
 
             // Build the converter class source
-            var generatedCode = GenerateConverterClass(usingDirectiveSyntaxes, fullTypeName, recordName, parameters);
+            var generatedCode = GenerateConverterClass(fullTypeName, recordName, parameters);
 
             // Add to the compilation
             context.AddSource($"{recordName}RlpConverter.g.cs", SourceText.From(generatedCode, Encoding.UTF8));
@@ -104,7 +96,6 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     }
 
     private static string GenerateConverterClass(
-        IEnumerable<string> usingDirectives,
         string fullTypeName,
         string recordName,
         List<(string Name, string TypeName)> parameters)
@@ -116,10 +107,6 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         sb.AppendLine("using System.CodeDom.Compiler;");
         sb.AppendLine("using Nethermind.Serialization.FastRlp;");
         sb.AppendLine("using Nethermind.Serialization.FastRlp.Instances;");
-        foreach (var usingDirective in usingDirectives)
-        {
-            sb.AppendLine($"using {usingDirective};");
-        }
         sb.AppendLine();
         sb.AppendLine("namespace Nethermind.Serialization.FastRlp.Derived;");
         sb.AppendLine("");
