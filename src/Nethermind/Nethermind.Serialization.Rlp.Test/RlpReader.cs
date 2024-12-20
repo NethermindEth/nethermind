@@ -20,6 +20,8 @@ public ref struct RlpReader
         _position = 0;
     }
 
+    public bool HasNext => _position < _buffer.Length;
+
     public ReadOnlySpan<byte> ReadObject()
     {
         ReadOnlySpan<byte> result;
@@ -92,5 +94,20 @@ public ref struct RlpReader
         });
     }
 
-    public bool HasNext => _position < _buffer.Length;
+    public T Choice<T>(params ReadOnlySpan<RefRlpReaderFunc<T>> alternatives)
+    {
+        int startingPosition = _position;
+        foreach (var f in alternatives)
+        {
+            try
+            {
+                return f(ref this);
+            }
+            catch (Exception)
+            {
+                _position = startingPosition;
+            }
+        }
+        throw new RlpReaderException("No alternative succeeded");
+    }
 }
