@@ -9,7 +9,6 @@ public delegate void RefRlpReaderAction(ref RlpReader arg);
 
 public class RlpReaderException(string message) : Exception(message);
 
-// TODO: We might want to add `IDisposable` to ensure that there are no trailing bytes.
 public ref struct RlpReader
 {
     private readonly ReadOnlySpan<byte> _buffer;
