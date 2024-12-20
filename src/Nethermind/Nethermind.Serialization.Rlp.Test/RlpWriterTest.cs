@@ -106,7 +106,7 @@ public class RlpWriterTest
     [Test]
     public void WriteSpan()
     {
-        var serialized = Rlp.Write(static writer => { writer.WriteObject([0x04, 0x00]); });
+        var serialized = Rlp.Write(static writer => { writer.Write([0x04, 0x00]); });
 
         byte[] expected = [0x82, 0x04, 0x00];
         serialized.Should().BeEquivalentTo(expected);

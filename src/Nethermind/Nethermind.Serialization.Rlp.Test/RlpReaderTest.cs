@@ -97,7 +97,7 @@ public class RlpReaderTest
     {
         byte[] source = [0x82, 0x04, 0x00];
 
-        ReadOnlySpan<byte> actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadObject());
+        ReadOnlySpan<byte> actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes());
 
         ReadOnlySpan<byte> expected = [0x04, 0x00];
         actual.SequenceEqual(expected).Should().BeTrue();
