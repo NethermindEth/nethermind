@@ -154,7 +154,7 @@ namespace Nethermind.Init
                     FastBlocksMemory = Math.Min(1.GB(), (long)(0.1 * _remainingMemory));
                 }
 
-                Synchronization.MemoryAllowance.FastBlocksMemory = (ulong)FastBlocksMemory;
+                syncConfig.FastHeadersMemoryBudget = (ulong)FastBlocksMemory;
             }
         }
 

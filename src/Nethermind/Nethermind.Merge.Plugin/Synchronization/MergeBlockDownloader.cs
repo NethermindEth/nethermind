@@ -324,8 +324,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (blocksSynced > 0)
                 {
+                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
                 else
                 {

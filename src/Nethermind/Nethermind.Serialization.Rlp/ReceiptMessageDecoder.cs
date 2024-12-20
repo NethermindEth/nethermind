@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -9,29 +10,39 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
+    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
     {
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemNull())
+            Span<byte> span = rlpStream.PeekNextItem();
+            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
+            TxReceipt response = Decode(ref ctx, rlpBehaviors);
+            rlpStream.SkipItem();
+
+            return response;
+        }
+
+        public TxReceipt Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (ctx.IsNextItemNull())
             {
-                rlpStream.ReadByte();
+                ctx.ReadByte();
                 return null;
             }
 
             TxReceipt txReceipt = new();
-            if (!rlpStream.IsSequenceNext())
+            if (!ctx.IsSequenceNext())
             {
-                rlpStream.SkipLength();
-                txReceipt.TxType = (TxType)rlpStream.ReadByte();
+                ctx.SkipLength();
+                txReceipt.TxType = (TxType)ctx.ReadByte();
             }
 
-            _ = rlpStream.ReadSequenceLength();
-            byte[] firstItem = rlpStream.DecodeByteArray();
+            _ = ctx.ReadSequenceLength();
+            byte[] firstItem = ctx.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
@@ -41,18 +52,18 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
             }
 
-            txReceipt.Bloom = rlpStream.DecodeBloom();
+            txReceipt.Bloom = ctx.DecodeBloom();
 
-            int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
+            int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-            int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(lastCheck);
+            int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {
-                entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
+                entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
             }
             txReceipt.Logs = entries;
 
