@@ -17,7 +17,7 @@ Options:
   --rpcurl <rpcUrl>                      Url of the Json RPC.
   --bloboptions <blobOptions>            Options in format '10x1-2', '2x5-5' etc. for the blobs.
   --privatekey <privateKey>              The key to use for sending blobs.
-  --keyfile <keyFile>                    File containing private keys that each blob tx will be send from.
+  --keyfile <keyFile>                    File containing private keys that each blob tx will be sent from.
   --receiveraddress <receiverAddress>    Receiver address of the blobs.
   --maxfeeperblobgas <maxFeePerBlobGas>  (Optional) Set the maximum fee per blob data.
   --feemultiplier <feeMultiplier>        (Optional) A multiplier to use for gas fees.
