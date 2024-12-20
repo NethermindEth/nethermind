@@ -182,18 +182,15 @@ public class RlpReadWriteTest
     [Test]
     public void Choice()
     {
-        var unwrapped = Rlp.Write(static w => { w.Write(42); });
-        var wrapped = Rlp.Write(static w => w.WriteList(static w => { w.Write(42); }));
+        RefRlpReaderFunc<int> intReader = (scoped ref RlpReader r) => r.ReadInt32();
+        RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadList(intReader);
 
-        foreach (var rlp in (byte[][]) [wrapped, unwrapped])
+        var intRlp = Rlp.Write(static w => { w.Write(42); });
+        var wrappedIntRlp = Rlp.Write(static w => w.WriteList(static w => { w.Write(42); }));
+
+        foreach (var rlp in (byte[][]) [intRlp, wrappedIntRlp])
         {
-            int decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
-            {
-                return r.Choice(
-                    (scoped ref RlpReader r) => r.ReadList(static (scoped ref RlpReader r) => r.ReadInt32()),
-                    (scoped ref RlpReader r) => r.ReadInt32()
-                );
-            });
+            int decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(wrappedReader, intReader));
 
             decoded.Should().Be(42);
         }
