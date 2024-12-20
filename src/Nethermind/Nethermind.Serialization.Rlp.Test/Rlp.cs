@@ -16,16 +16,17 @@ public static class Rlp
         return serialized;
     }
 
-    public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func)
+    public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func) where T : allows ref struct
     {
         var reader = new RlpReader(source);
+        T result = func(ref reader);
         // TODO: We might want to add an option to check for no trailing bytes.
-        return func(ref reader);
+        return result;
     }
 
     public static void Read(ReadOnlySpan<byte> source, RefRlpReaderAction func)
     {
-        Read<object?>(source, (ref RlpReader reader) =>
+        Read<object?>(source, (scoped ref RlpReader reader) =>
         {
             func(ref reader);
             return null;

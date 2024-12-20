@@ -3,7 +3,7 @@
 
 namespace Nethermind.Serialization.Rlp.Test;
 
-public delegate TResult RefRlpReaderFunc<out TResult>(ref RlpReader arg);
+public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg) where TResult : allows ref struct;
 
 public delegate void RefRlpReaderAction(ref RlpReader arg);
 
@@ -85,7 +85,7 @@ public ref struct RlpReader
 
     public void ReadList(RefRlpReaderAction func)
     {
-        ReadList<object?>((ref RlpReader r) =>
+        ReadList<object?>((scoped ref RlpReader r) =>
         {
             func(ref r);
             return null;
