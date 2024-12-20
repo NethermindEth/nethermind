@@ -11,8 +11,8 @@ namespace Nethermind.Network
     {
         IEnumerable<NetworkNode> Nodes { get; }
         Task InitAsync();
-        Task<bool> AddAsync(string enode, bool updateFile = true);
-        Task<bool> RemoveAsync(string enode, bool updateFile = true);
-        bool IsTrusted(string enode);
+    Task<bool> AddAsync(Enode enode, bool updateFile = true);
+    Task<bool> RemoveAsync(Enode enode, bool updateFile = true);
+    bool IsTrusted(Enode enode);
     }
 }

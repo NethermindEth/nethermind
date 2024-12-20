@@ -47,14 +47,24 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug($"Trusted nodes file not found for path: {_trustedNodesPath}");
                 return;
             }
+            List<string> lines = new();
+            await foreach (string line in File.ReadLinesAsync(_trustedNodesPath))
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    lines.Add(line);
+                }
+            }
 
-            string data = await File.ReadAllTextAsync(_trustedNodesPath);
-            string[] nodes = GetNodes(data);
+            string[] nodes = lines.Distinct().ToArray();
+
             if (_logger.IsInfo)
                 _logger.Info($"Loaded {nodes.Length} trusted nodes from file: {Path.GetFullPath(_trustedNodesPath)}");
+
             if (nodes.Length != 0 && _logger.IsDebug)
             {
-                _logger.Debug($"Trusted nodes: {Environment.NewLine}{data}");
+                string formattedNodes = string.Join(Environment.NewLine, nodes);
+                _logger.Debug($"Trusted nodes: {Environment.NewLine}{formattedNodes}");
             }
 
             List<NetworkNode> networkNodes = new();
@@ -89,9 +99,9 @@ namespace Nethermind.Network
             return nodes.Distinct().ToArray();
         }
 
-        public async Task<bool> AddAsync(string enode, bool updateFile = true)
+        public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
         {
-            NetworkNode networkNode = new(enode);
+            NetworkNode networkNode = new(enode.ToString());
             if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
             {
                 if (_logger.IsInfo) _logger.Info($"Trusted node was already added: {enode}");
@@ -109,9 +119,9 @@ namespace Nethermind.Network
             return true;
         }
 
-        public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
+        public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true)
         {
-            NetworkNode networkNode = new(enode);
+            NetworkNode networkNode = new(enode.ToString());
             if (!_nodes.TryRemove(networkNode.NodeId, out _))
             {
                 if (_logger.IsInfo) _logger.Info($"Trusted node was not found: {enode}");
@@ -129,9 +139,9 @@ namespace Nethermind.Network
             return true;
         }
 
-        public bool IsTrusted(string enode)
+        public bool IsTrusted(Enode enode)
         {
-            NetworkNode node = new(enode);
+            NetworkNode node = new(enode.ToString());
             return _nodes.ContainsKey(node.NodeId);
         }
 
