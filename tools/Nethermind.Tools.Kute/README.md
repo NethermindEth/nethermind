@@ -18,7 +18,7 @@ To get real JSON-RPC messages, run the Nethermind Client using the `RpcRecorderS
 
 > We'll assume that the JWT secret used by the Nethermind Client is stored in `keystore/jwt-secret`.
 
-Kute includes a built in help that can be accessed by the options `-h | --help`.
+Kute includes a built-in help that can be accessed by the options `-h | --help`.
 
 Some typical usages are as follows:
 
