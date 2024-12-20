@@ -23,8 +23,8 @@ public class OptimismTransactionForRpcTests
     public static readonly Transaction[] Transactions = [
         Build.TestObject,
         Build
-            .With(s => s.IsOPSystemTransaction = true)
-            .With(s => s.Mint = 1234)
+            .With(static s => s.IsOPSystemTransaction = true)
+            .With(static s => s.Mint = 1234)
             .TestObject,
         Build
             .WithGasLimit(0x1234)

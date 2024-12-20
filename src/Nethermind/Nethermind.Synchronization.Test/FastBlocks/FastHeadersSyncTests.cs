@@ -558,6 +558,39 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public async Task Limits_persisted_headers_dependency()
+    {
+        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        var pivotHeader = peerChain.FindHeader(700)!;
+        var syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = pivotHeader.Number.ToString(),
+            PivotHash = pivotHeader.Hash!.ToString(),
+            PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!,
+            FastHeadersMemoryBudget = (ulong)100.KB(),
+        };
+
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
+
+        // Insert some chain
+        for (int i = 300; i < 600; i++)
+        {
+            localBlockTree.Insert(peerChain.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+        }
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        ISyncReport report = Substitute.For<ISyncReport>();
+        report.HeadersInQueue.Returns(new MeasuredProgress());
+        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
+        feed.InitializeFeed();
+
+        (await feed.PrepareRequest()).Should().NotBe(null);
+        (await feed.PrepareRequest()).Should().Be(null);
+    }
+
+    [Test]
     public async Task Will_never_lose_batch_on_invalid_batch()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();

@@ -80,7 +80,7 @@ public class SnapProviderTests
             (TestItem.KeccakE, TestItem.GenerateRandomAccount()),
             (TestItem.KeccakF, TestItem.GenerateRandomAccount()),
         ];
-        Array.Sort(entries, (e1, e2) => e1.Item1.CompareTo(e2.Item1));
+        Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
@@ -122,7 +122,7 @@ public class SnapProviderTests
             (TestItem.KeccakE, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
             (TestItem.KeccakF, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
         ];
-        Array.Sort(entries, (e1, e2) => e1.Item1.CompareTo(e2.Item1));
+        Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 

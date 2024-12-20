@@ -44,11 +44,11 @@ public class TxPoolContentListsTests
         blockFinder.Head.Returns(block);
 
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        transactionProcessor.When((x) => x.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
-            .Do(info => ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost);
+        transactionProcessor.When(static (x) => x.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
+            .Do(static info => ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost);
 
         transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
-            .Returns(info =>
+            .Returns(static info =>
             {
                 if (((BlockExecutionContext)info[1]).Header.GasUsed <= ((BlockExecutionContext)info[1]).Header.GasLimit)
                     return TransactionResult.Ok;
@@ -98,7 +98,7 @@ public class TxPoolContentListsTests
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
 
-        return result.Data!.Select(list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(tx => (int)tx.Input![0]).ToArray()).ToArray();
+        return result.Data!.Select(static list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(static tx => (int)tx.Input![0]).ToArray()).ToArray();
     }
 
     public static IEnumerable FinalizingTests
@@ -109,11 +109,11 @@ public class TxPoolContentListsTests
             {
                 return [
                     txs.ToDictionary(
-                        kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
-                        kv => kv.Value.Select(txId =>
+                        static kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
+                        static kv => kv.Value.Select(static txId =>
                             Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(7).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
                         ).ToArray()),
-                    localAccounts.Select(a => Build.An.Address.FromNumber(a).TestObject).ToArray(),
+                    localAccounts.Select(static a => Build.An.Address.FromNumber(a).TestObject).ToArray(),
                     blockGasLimit,
                     maxBytesPerTxList,
                     maxTransactionsLists

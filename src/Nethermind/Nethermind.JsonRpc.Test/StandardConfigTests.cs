@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Test
         private static void ForEachMethod(Action<MethodInfo> verifier)
         {
             string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
-                .OrderBy(n => n).ToArray();
+                .OrderBy(static n => n).ToArray();
             foreach (string dll in dlls)
             {
                 TestContext.Out.WriteLine($"Verifying {nameof(StandardJsonRpcTests)} on {Path.GetFileName(dll)}");
