@@ -512,8 +512,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
                 InsertHeaders(newBatchToProcess);
                 MarkDirty();
-                HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
                 HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
+                HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
             }
 
             if (newRequestSize == 0) return null;

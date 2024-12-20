@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Synchronization
         /// </summary>
         public int HeaderStateDistance { get; set; } = 0;
 
-        public ulong FastHeadersMemoryBudget { get; set; }= (ulong)128.MB();
+        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
 
         public override string ToString()
         {
