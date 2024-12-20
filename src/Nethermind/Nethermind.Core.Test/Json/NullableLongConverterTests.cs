@@ -17,9 +17,9 @@ namespace Nethermind.Core.Test.Json
 
         public void Test_roundtrip()
         {
-            TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter);
-            TestConverter(1L, (a, b) => a.Equals(b), converter);
-            TestConverter(0L, (a, b) => a.Equals(b), converter);
+            TestConverter(int.MaxValue, static (a, b) => a.Equals(b), converter);
+            TestConverter(1L, static (a, b) => a.Equals(b), converter);
+            TestConverter(0L, static (a, b) => a.Equals(b), converter);
         }
 
         [Test]

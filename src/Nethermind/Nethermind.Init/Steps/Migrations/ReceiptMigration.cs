@@ -291,7 +291,7 @@ namespace Nethermind.Init.Steps.Migrations
             TxReceipt?[] receipts = _receiptStorage.Get(block);
             TxReceipt[] notNullReceipts = receipts.Length == 0
                 ? []
-                : receipts.Where(r => r is not null).Cast<TxReceipt>().ToArray();
+                : receipts.Where(static r => r is not null).Cast<TxReceipt>().ToArray();
 
             if (notNullReceipts.Length == 0) return;
 
