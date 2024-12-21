@@ -11,24 +11,15 @@ namespace Nethermind.Synchronization.Reporting
     {
         void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e);
 
-        MeasuredProgress FullSyncBlocksDownloaded { get; }
+        ProgressLogger FullSyncBlocksDownloaded { get; }
 
-        long FullSyncBlocksKnown { get; set; }
+        ProgressLogger FastBlocksHeaders { get; }
 
-        MeasuredProgress HeadersInQueue { get; }
+        ProgressLogger FastBlocksBodies { get; }
 
-        MeasuredProgress BodiesInQueue { get; }
+        ProgressLogger FastBlocksReceipts { get; }
 
-        MeasuredProgress ReceiptsInQueue { get; }
+        ProgressLogger BeaconHeaders { get; }
 
-        MeasuredProgress FastBlocksHeaders { get; }
-
-        MeasuredProgress FastBlocksBodies { get; }
-
-        MeasuredProgress FastBlocksReceipts { get; }
-
-        MeasuredProgress BeaconHeaders { get; }
-
-        MeasuredProgress BeaconHeadersInQueue { get; }
     }
 }
