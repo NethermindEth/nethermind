@@ -515,7 +515,7 @@ namespace Nethermind.Network.P2P
                 catch (Exception e)
                 {
                     if (_logger.IsTrace)
-                            _logger.Trace($"Error while disconnecting on context on {this} : {e}");
+                        _logger.Trace($"Error while disconnecting on context on {this} : {e}");
                 }
             }
 
