@@ -32,9 +32,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
-    private long _lastBlockNumber;
-    private long _lastBlockGasLimit;
-
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -49,6 +46,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+
+    private long _lastBlockNumber;
+    private long _lastBlockGasLimit;
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
