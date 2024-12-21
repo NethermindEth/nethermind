@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
+
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.EventArg;
@@ -53,7 +55,7 @@ namespace Nethermind.Network.P2P
         /// <summary>
         ///  Drop tcp connection after a delay
         /// </summary>
-        void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
+        Task MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
 
         void Handshake(PublicKey handshakeRemoteNodeId);
 
