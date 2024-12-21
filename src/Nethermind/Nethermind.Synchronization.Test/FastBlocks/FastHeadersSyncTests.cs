@@ -607,7 +607,7 @@ public class FastHeadersSyncTests
         };
 
         IChainLevelInfoRepository levelInfoRepository = new ChainLevelInfoRepository(new TestMemDb());
-        IBlockTree localBlockTree = Build.A. BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null)
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null)
             .WithChainLevelInfoRepository(levelInfoRepository)
             .WithSyncConfig(syncConfig).TestObject;
 
