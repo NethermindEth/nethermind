@@ -79,13 +79,7 @@ public class P2PProtocolHandler(
 
         // We are expecting to receive Hello message anytime from the handshake completion,
         // irrespective of sending Hello from our side
-        CheckProtocolInitTimeout().ContinueWith(x =>
-        {
-            if (x.IsFaulted && Logger.IsError)
-            {
-                Logger.Error("Error during p2pProtocol handler timeout logic", x.Exception);
-            }
-        });
+        _ = CheckProtocolInitTimeout();
     }
 
     public override void HandleMessage(Packet msg)
