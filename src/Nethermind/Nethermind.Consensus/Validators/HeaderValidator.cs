@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = BlockErrorMessages.InvalidHeaderHash;
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash, header.CalculateHash());
                 return false;
             }
 
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = BlockErrorMessages.InvalidBaseFeePerGas;
+                    error = BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas);
                     return false;
                 }
             }
@@ -357,7 +357,7 @@ namespace Nethermind.Consensus.Validators
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                    error = BlockErrorMessages.IncorrectExcessBlobGas;
+                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }
             }
