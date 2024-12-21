@@ -158,12 +158,12 @@ public class SessionTests
     }
 
     [Test]
-    public void Enabling_snappy_on_disconnected_will_not_cause_trouble()
+    public async Task Enabling_snappy_on_disconnected_will_not_cause_trouble()
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         session.EnableSnappy();
     }
 
@@ -272,7 +272,7 @@ public class SessionTests
     }
 
     [Test]
-    public void Raises_event_on_disconnected()
+    public async Task Raises_event_on_disconnected()
     {
         bool wasCalled = false;
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
@@ -280,7 +280,7 @@ public class SessionTests
 
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
         Assert.That(wasCalled, Is.True);
     }
 
@@ -315,18 +315,18 @@ public class SessionTests
     }
 
     [Test]
-    public void Error_on_channel_when_disconnecting_channels_does_not_prevent_the_event()
+    public async Task Error_on_channel_when_disconnecting_channels_does_not_prevent_the_event()
     {
         bool wasCalled = false;
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         _channel.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
         session.Disconnected += (s, e) => wasCalled = true;
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
         Assert.That(wasCalled, Is.True);
     }
 
     [Test]
-    public void Error_on_context_when_disconnecting_channels_does_not_prevent_the_event()
+    public async Task Error_on_context_when_disconnecting_channels_does_not_prevent_the_event()
     {
         bool wasCalled = false;
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
@@ -334,12 +334,12 @@ public class SessionTests
         session.Disconnected += (s, e) => wasCalled = true;
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
         Assert.That(wasCalled, Is.True);
     }
 
     [Test]
-    public void Can_disconnect_many_times()
+    public async Task Can_disconnect_many_times()
     {
         int wasCalledTimes = 0;
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
@@ -349,19 +349,19 @@ public class SessionTests
         session.Init(5, _channelHandlerContext, _packetSender);
         session.InitiateDisconnect(DisconnectReason.Other);
         session.InitiateDisconnect(DisconnectReason.Other);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         Assert.That(wasCalledTimes, Is.EqualTo(1));
     }
 
     [Test]
-    public void Can_disconnect_before_init()
+    public async Task Can_disconnect_before_init()
     {
         int wasCalledTimes = 0;
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalledTimes++;
         session.Handshake(TestItem.PublicKeyA);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         session.Init(5, _channelHandlerContext, _packetSender);
         Assert.That(wasCalledTimes, Is.EqualTo(1));
     }
@@ -597,7 +597,7 @@ public class SessionTests
     }
 
     [Test]
-    public void Updates_local_and_remote_metrics_on_disconnects()
+    public async Task Updates_local_and_remote_metrics_on_disconnects()
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
@@ -607,7 +607,7 @@ public class SessionTests
 
         long beforeLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         long beforeRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, string.Empty);
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, string.Empty);
         long afterLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         long afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         Assert.That(afterLocal, Is.EqualTo(beforeLocal + 1));
@@ -621,7 +621,7 @@ public class SessionTests
 
         beforeLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         beforeRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, string.Empty);
+        await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, string.Empty);
         afterLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         Assert.That(afterLocal, Is.EqualTo(beforeLocal));
