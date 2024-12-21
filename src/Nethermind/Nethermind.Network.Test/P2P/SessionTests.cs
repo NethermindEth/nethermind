@@ -194,7 +194,7 @@ public class SessionTests
         task.Start();
 
         await Task.Delay(20);
-        session.InitiateDisconnect(DisconnectReason.Other, "test");
+        await session.InitiateDisconnect(DisconnectReason.Other, "test");
         await Task.Delay(10);
         shouldStop = true;
     }
@@ -229,7 +229,7 @@ public class SessionTests
     }
 
     [Test]
-    public void Cannot_dispose_unless_disconnected()
+    public async Task Cannot_dispose_unless_disconnected()
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
@@ -246,7 +246,7 @@ public class SessionTests
         session.AddProtocolHandler(bbb);
         session.AddProtocolHandler(ccc);
 
-        session.InitiateDisconnect(DisconnectReason.Other, "test");
+        await session.InitiateDisconnect(DisconnectReason.Other, "test");
         session.Dispose();
 
         aaa.Received().DisconnectProtocol(DisconnectReason.Other, "test");
@@ -347,8 +347,8 @@ public class SessionTests
 
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.InitiateDisconnect(DisconnectReason.Other);
-        session.InitiateDisconnect(DisconnectReason.Other);
+        await session.InitiateDisconnect(DisconnectReason.Other);
+        await session.InitiateDisconnect(DisconnectReason.Other);
         await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
         await session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         Assert.That(wasCalledTimes, Is.EqualTo(1));

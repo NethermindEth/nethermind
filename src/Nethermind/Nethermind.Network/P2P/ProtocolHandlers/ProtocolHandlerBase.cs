@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                 }
 
-                Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                await Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
             }
             else
             {
