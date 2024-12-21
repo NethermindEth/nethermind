@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Cpu;
 
 namespace Nethermind.JsonRpc.Modules;
 
 public static class IRpcModuleProviderExtensions
 {
-    private static readonly int _cpuCount = Environment.ProcessorCount;
+    private static readonly int _cpuCount = RuntimeInformation.PhysicalCoreCount;
 
     public static void RegisterBounded<T>(
         this IRpcModuleProvider rpcModuleProvider,
