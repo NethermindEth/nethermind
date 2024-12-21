@@ -32,8 +32,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
-    private static long _lastBlockNumber;
-    private static long _lastBlockGasLimit;
+    private long _lastBlockNumber;
+    private long _lastBlockGasLimit;
 
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
@@ -83,7 +83,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
 
-    private static string GetGasChange(long blockGasLimit)
+    private string GetGasChange(long blockGasLimit)
     {
         return (blockGasLimit - _lastBlockGasLimit) switch
         {
