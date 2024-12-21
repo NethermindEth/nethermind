@@ -366,7 +366,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
+        public Task InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
@@ -383,22 +383,22 @@ namespace Nethermind.Network.P2P
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
                 if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
-                return;
+                return Task.CompletedTask;
             }
 
             lock (_sessionStateLock)
             {
                 if (IsClosing)
                 {
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 if (State <= SessionState.HandshakeComplete)
                 {
-                    if (_disconnectAfterInitialized is not null) return;
+                    if (_disconnectAfterInitialized is not null) return Task.CompletedTask;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 State = SessionState.DisconnectingProtocols;
@@ -424,7 +424,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            MarkDisconnected(disconnectReason, DisconnectType.Local, details);
+            return MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         private readonly Lock _sessionStateLock = new();
@@ -444,7 +444,7 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
-        public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
+        public async Task MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             lock (_sessionStateLock)
             {
@@ -491,28 +491,32 @@ namespace Nethermind.Network.P2P
             if (_context is null)
             {
                 //in case pipeline did not get to p2p - no disconnect delay
-                _channel.DisconnectAsync().ContinueWith(x =>
+                try
                 {
-                    if (x.IsFaulted && _logger.IsTrace)
-                        _logger.Trace($"Error while disconnecting on channel on {this} : {x.Exception}");
-                });
+                    await _channel.DisconnectAsync();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Error while disconnecting on context on {this} : {e}");
+                }
             }
             else
             {
-                Task delayTask =
-                    disconnectType == DisconnectType.Local
-                        ? Task.Delay(Timeouts.Disconnection)
-                        : Task.CompletedTask;
-                delayTask.ContinueWith(t =>
+                if (disconnectType == DisconnectType.Local)
+                {
+                    await Task.Delay(Timeouts.Disconnection);
+                }
+
+                try
+                {
+                    await _context.DisconnectAsync();
+                }
+                catch (Exception e)
                 {
                     if (_logger.IsTrace)
-                        _logger.Trace($"{this} disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
-                    _context.DisconnectAsync().ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsTrace)
-                            _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
-                    });
-                });
+                        _logger.Trace($"Error while disconnecting on context on {this} : {e}");
+                }
             }
 
             lock (_sessionStateLock)

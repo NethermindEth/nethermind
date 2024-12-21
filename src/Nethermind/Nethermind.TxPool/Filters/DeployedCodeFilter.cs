@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -13,11 +14,12 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class DeployedCodeFilter(IReadOnlyStateProvider worldState, ICodeInfoRepository codeInfoRepository, IChainHeadSpecProvider specProvider) : IIncomingTxFilter
     {
+        private readonly Func<Address, bool> _isDelegatedCode = (sender) => codeInfoRepository.TryGetDelegation(worldState, sender, out _);
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             return worldState.IsInvalidContractSender(specProvider.GetCurrentHeadSpec(),
                 tx.SenderAddress!,
-                () => codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
+                _isDelegatedCode)
                 ? AcceptTxResult.SenderIsContract
                 : AcceptTxResult.Accepted;
         }
