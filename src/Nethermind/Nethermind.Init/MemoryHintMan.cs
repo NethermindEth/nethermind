@@ -122,7 +122,7 @@ namespace Nethermind.Init
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            long hashCacheMemory = txPoolConfig.Size / 4L * 1024L * 128L;
+            long hashCacheMemory = txPoolConfig.Size / 1024L * 128L;
             if ((_remainingMemory * 0.05) < hashCacheMemory)
             {
                 hashCacheMemory = Math.Min((long)(_remainingMemory * 0.05), hashCacheMemory);
