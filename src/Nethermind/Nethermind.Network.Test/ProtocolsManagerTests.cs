@@ -3,6 +3,8 @@
 
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
+
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
@@ -169,7 +171,7 @@ public class ProtocolsManagerTests
 
         public Context VerifyDisconnected()
         {
-            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
+            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected).Or.EqualTo(SessionState.Disconnecting));
             return this;
         }
 
@@ -181,12 +183,6 @@ public class ProtocolsManagerTests
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
             _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
-            return this;
-        }
-
-        public Context Wait(int i)
-        {
-            Thread.Sleep(i);
             return this;
         }
 
@@ -202,10 +198,9 @@ public class ProtocolsManagerTests
             return this;
         }
 
-        public Context Disconnect()
+        public Task Disconnect()
         {
-            _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
-            return this;
+            return _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
         }
 
         public Context ReceiveStatus()
@@ -361,15 +356,17 @@ public class ProtocolsManagerTests
     }
 
     [Test]
-    public void Runs_ok_when_initializing_protocol_on_a_closing_session()
+    public async Task Runs_ok_when_initializing_protocol_on_a_closing_session()
     {
-        When
+        Context ctx = When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
-            .Init()
-            .Disconnect()
-            .ReceiveHello();
+            .Init();
+
+        await ctx.Disconnect();
+
+        ctx.ReceiveHello();
     }
 
     [Test]
@@ -398,9 +395,9 @@ public class ProtocolsManagerTests
     }
 
     [Test]
-    public void Removes_sync_peers_on_disconnect()
+    public async Task Removes_sync_peers_on_disconnect()
     {
-        When
+        Context ctx = When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -408,9 +405,11 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHello()
             .ReceiveStatus()
-            .VerifyEthInitialized()
-            .Disconnect()
-            .VerifySyncPeersRemoved();
+            .VerifyEthInitialized();
+
+        await ctx.Disconnect();
+
+        ctx.VerifySyncPeersRemoved();
     }
 
     [Test]

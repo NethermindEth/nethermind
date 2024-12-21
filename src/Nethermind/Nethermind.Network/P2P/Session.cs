@@ -366,7 +366,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
+        public Task InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
@@ -383,22 +383,22 @@ namespace Nethermind.Network.P2P
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
                 if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
-                return;
+                return Task.CompletedTask;
             }
 
             lock (_sessionStateLock)
             {
                 if (IsClosing)
                 {
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 if (State <= SessionState.HandshakeComplete)
                 {
-                    if (_disconnectAfterInitialized is not null) return;
+                    if (_disconnectAfterInitialized is not null) return Task.CompletedTask;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 State = SessionState.DisconnectingProtocols;
@@ -424,7 +424,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            _ = MarkDisconnected(disconnectReason, DisconnectType.Local, details);
+            return MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         private readonly Lock _sessionStateLock = new();
