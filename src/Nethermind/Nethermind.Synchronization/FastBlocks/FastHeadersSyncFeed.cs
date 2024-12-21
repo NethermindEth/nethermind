@@ -488,7 +488,7 @@ namespace Nethermind.Synchronization.FastBlocks
             // This only check for the last header though, which is fine as headers are so small, the time it take
             // to download one is more or less the same as the whole batch. So many small batch is slower than
             // less large batch.
-            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None);
+            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (lastHeader is null) return batch;
 
             using ArrayPoolList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(1);
@@ -496,7 +496,7 @@ namespace Nethermind.Synchronization.FastBlocks
             for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
             {
                 // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
-                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
+                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, i);
                 if (nextHeader is null) break;
                 headers.Add(nextHeader);
                 lastHeader = nextHeader;
