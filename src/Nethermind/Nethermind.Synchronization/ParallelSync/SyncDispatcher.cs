@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -20,13 +19,13 @@ namespace Nethermind.Synchronization.ParallelSync
         private static readonly TimeSpan ActiveTaskDisposeTimeout = TimeSpan.FromSeconds(10);
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
-
         private ILogger Logger { get; }
         private ISyncFeed<T> Feed { get; }
         private ISyncDownloader<T> Downloader { get; }
         private ISyncPeerPool SyncPeerPool { get; }
 
         private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;
         private readonly int _allocateTimeoutMs;
@@ -73,7 +72,8 @@ namespace Nethermind.Synchronization.ParallelSync
             try
             {
                 _activeTasks.AddCount(1);
-                await DispatchLoop(cancellationToken);
+                using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
+                await DispatchLoop(linkedSource.Token);
             }
             finally
             {
@@ -313,6 +313,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 return ValueTask.CompletedTask;
             }
 
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
             _activeTasks.Signal();
             if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
             {
