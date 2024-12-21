@@ -32,6 +32,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
+    private static long _lastBlockNumber;
+    private static long _lastBlockGasLimit;
+
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -80,6 +83,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
 
+    private static string GetGasChange(long blockGasLimit)
+    {
+        return (blockGasLimit - _lastBlockGasLimit) switch
+        {
+            > 0 => "👆",
+            < 0 => "👇",
+            _ => "  "
+        };
+    }
+
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>
     /// and the hash of the last valid block.
@@ -97,7 +110,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {
-            _logger.Info($"Received {requestStr}, {block.ParsedExtraData()}");
+            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+            _lastBlockNumber = block.Number;
+            _lastBlockGasLimit = block.Header.GasLimit;
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
