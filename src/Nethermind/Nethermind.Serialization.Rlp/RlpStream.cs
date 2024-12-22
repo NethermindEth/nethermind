@@ -183,15 +183,6 @@ namespace Nethermind.Serialization.Rlp
             _position += bytesToWrite.Length;
         }
 
-        public virtual void Write(IReadOnlyList<byte> bytesToWrite)
-        {
-            for (int i = 0; i < bytesToWrite.Count; ++i)
-            {
-                Data[_position + i] = bytesToWrite[i];
-            }
-            Position += bytesToWrite.Count;
-        }
-
         protected virtual string Description =>
             Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
@@ -590,32 +581,6 @@ namespace Nethermind.Serialization.Rlp
                 byte prefix = (byte)(183 + lengthOfLength);
                 WriteByte(prefix);
                 WriteEncodedLength(input.Length);
-                Write(input);
-            }
-        }
-
-        public void Encode(IReadOnlyList<byte> input)
-        {
-            if (input.Count == 0)
-            {
-                WriteByte(EmptyArrayByte);
-            }
-            else if (input.Count == 1 && input[0] < 128)
-            {
-                WriteByte(input[0]);
-            }
-            else if (input.Count < 56)
-            {
-                byte smallPrefix = (byte)(input.Count + 128);
-                WriteByte(smallPrefix);
-                Write(input);
-            }
-            else
-            {
-                int lengthOfLength = Rlp.LengthOfLength(input.Count);
-                byte prefix = (byte)(183 + lengthOfLength);
-                WriteByte(prefix);
-                WriteEncodedLength(input.Count);
                 Write(input);
             }
         }

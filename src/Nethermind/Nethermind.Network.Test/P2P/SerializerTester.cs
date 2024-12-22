@@ -50,6 +50,7 @@ namespace Nethermind.Network.Test.P2P
             {
                 buffer.Release();
                 buffer2.Release();
+                message.TryDispose();
             }
         }
     }

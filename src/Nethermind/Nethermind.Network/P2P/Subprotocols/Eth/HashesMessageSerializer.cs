@@ -40,9 +40,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Hashes.Count; i++)
+            foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                rlpStream.Encode(message.Hashes[i]);
+                rlpStream.Encode(hash);
             }
         }
 
