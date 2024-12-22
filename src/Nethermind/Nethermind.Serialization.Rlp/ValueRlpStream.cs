@@ -15,13 +15,11 @@ namespace Nethermind.Serialization.Rlp;
 
 public ref struct ValueRlpStream(in CappedArray<byte> data)
 {
-    private readonly ref readonly CappedArray<byte> _data = ref data;
+    public readonly ReadOnlySpan<byte> Data = data.AsSpan();
     private int _position = 0;
 
     internal readonly string Description =>
-        Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
-
-    public readonly ref readonly CappedArray<byte> Data => ref _data;
+        Data[..Math.Min(Rlp.DebugMessageContentLength, Length)].ToHexString() ?? "0x";
 
     public int Position
     {
@@ -29,7 +27,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         set => _position = value;
     }
 
-    public readonly bool IsNull => Unsafe.IsNullRef(ref Unsafe.AsRef(in _data));
+    public readonly bool IsNull => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(Data));
     public readonly bool IsNotNull => !IsNull;
     public readonly int Length => Data.Length;
 
@@ -271,12 +269,12 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
     public byte ReadByte()
     {
-        return Data![_position++];
+        return Data[_position++];
     }
 
     public readonly byte PeekByte()
     {
-        return Data![_position];
+        return Data[_position];
     }
 
     public void SkipBytes(int length)
@@ -284,9 +282,9 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         _position += length;
     }
 
-    public Span<byte> Read(int length)
+    public ReadOnlySpan<byte> Read(int length)
     {
-        Span<byte> data = Data.AsSpan(_position, length);
+        ReadOnlySpan<byte> data = Data.Slice(_position, length);
         _position += length;
         return data;
     }
@@ -305,7 +303,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
                 $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Length} starting with {Description}");
         }
 
-        Span<byte> keccakSpan = Read(32);
+        ReadOnlySpan<byte> keccakSpan = Read(32);
         if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
         {
             return Keccak.OfAnEmptyString;
@@ -334,25 +332,25 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
                 $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Length} starting with {Description}");
         }
 
-        Span<byte> keccakSpan = Read(32);
+        ReadOnlySpan<byte> keccakSpan = Read(32);
         keccak = new ValueHash256(keccakSpan);
         return true;
     }
 
-    public readonly Span<byte> PeekNextItem()
+    public readonly ReadOnlySpan<byte> PeekNextItem()
     {
         int length = PeekNextRlpLength();
         return Peek(length);
     }
 
-    public readonly Span<byte> Peek(int length)
+    public readonly ReadOnlySpan<byte> Peek(int length)
     {
         return Peek(0, length);
     }
 
-    public readonly Span<byte> Peek(int offset, int length)
+    public readonly ReadOnlySpan<byte> Peek(int offset, int length)
     {
-        return Data.AsSpan(_position + offset, length);
+        return Data.Slice(_position + offset, length);
     }
 
     public byte[] DecodeByteArray()

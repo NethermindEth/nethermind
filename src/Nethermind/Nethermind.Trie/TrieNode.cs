@@ -1242,7 +1242,7 @@ namespace Nethermind.Trie
                         default:
                             {
                                 rlpStream.Position--;
-                                Span<byte> fullRlp = rlpStream.PeekNextItem();
+                                ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                                 data = childOrRef = child;
                                 break;
@@ -1309,7 +1309,7 @@ namespace Nethermind.Trie
                         }
                     default:
                         {
-                            Span<byte> fullRlp = rlpStream.PeekNextItem();
+                            ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             rlpStream.SkipItem();
                             output[i] = child;
