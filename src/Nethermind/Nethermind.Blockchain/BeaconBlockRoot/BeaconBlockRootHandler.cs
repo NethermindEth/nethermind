@@ -72,17 +72,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             };
 
             transaction.Hash = transaction.CalculateHash();
-
-            // Skip reads in SSTORE for calculating gas cost
-            spec.IsSystemTransaction = true;
-            try
-            {
-                processor.Execute(transaction, header, tracer);
-            }
-            finally
-            {
-                spec.IsSystemTransaction = false;
-            }
+            processor.Execute(transaction, header, tracer);
         }
     }
 }

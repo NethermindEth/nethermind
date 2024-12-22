@@ -423,6 +423,6 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Skip read in SSTORE for calculating gas cost as not charged
         /// </summary>
-        bool IsSystemTransaction { get; set; }
+        bool IsSystemTransaction { get; }
     }
 }
