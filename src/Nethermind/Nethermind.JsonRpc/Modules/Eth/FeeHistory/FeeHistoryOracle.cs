@@ -254,10 +254,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 : txs.Select(static tx => tx.GasLimit));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
+            Span<long> gasUsedSpan = gasUsed.AsSpan();
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                rewardInfos.Add(new RewardInfo(gasUsed[i], premiumPerGas));
+                rewardInfos.Add(new RewardInfo(gasUsedSpan[i], premiumPerGas));
             }
 
             rewardInfos.Sort(static (i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));

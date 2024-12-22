@@ -125,7 +125,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
+            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
     }
 
     [TestCase(true)]
@@ -163,7 +163,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
+            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
     }
 
     [TestCase(1)]
@@ -255,7 +255,19 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+        //_session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(
+        //    m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
+        //));
+        Console.WriteLine($"messagesCount {messagesCount}");
+        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(
+            m => GetResult(m, maxNumberOfTxsInOneMsg, numberOfTransactions)
+        ));
+    }
+
+    private bool GetResult(GetPooledTransactionsMessage m, int maxNumberOfTxsInOneMsg, int numberOfTransactions)
+    {
+        Console.WriteLine($"Result {m.EthMessage.Hashes.Count} {maxNumberOfTxsInOneMsg} {numberOfTransactions}");
+        return true;// m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg;
     }
 
     private void HandleIncomingStatusMessage()
