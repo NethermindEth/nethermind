@@ -43,11 +43,12 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
         {
             // https://eips.ethereum.org/EIPS/eip-4788
             // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH to be header.timestamp
-            UInt256 slotIndex = block.Timestamp % HistoryBufferLength;
-            builder.AddStorage(in slotIndex);
+            ulong slotIndex = header.Timestamp % HistoryBufferLength;
+            UInt256 slot256 = slotIndex;
+            builder.AddStorage(in slot256);
             // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH + HISTORY_BUFFER_LENGTH to be calldata[0:32]
-            slotIndex += HistoryBufferLength;
-            builder.AddStorage(in slotIndex);
+            slot256 = slotIndex + HistoryBufferLength;
+            builder.AddStorage(in slot256);
         }
 
         return (eip4788ContractAddress, builder.Build());
