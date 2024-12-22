@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -107,44 +108,51 @@ public partial class BlockProcessor(
                 preWarmTask = null;
                 WaitForCacheClear();
                 Block suggestedBlock = suggestedBlocks[i];
-                if (blocksCount > 64 && i % 8 == 0)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
-                }
 
-                if (notReadOnly)
-                {
-                    BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                }
-
+                CancellationTokenSource? cancellationTokenSource = null;
                 Block processedBlock;
                 TxReceipt[] receipts;
-
-                bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
-                if (!skipPrewarming)
+                try
                 {
-                    using CancellationTokenSource cancellationTokenSource = new();
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
-                    // Block is processed, we can cancel the prewarm task
-                    cancellationTokenSource.Cancel();
-                }
-                else
-                {
-                    CacheType result = preWarmer?.ClearCaches() ?? default;
-                    if (result != default)
+                    bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
+                    if (!skipPrewarming)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
+                        cancellationTokenSource = new();
+                        preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
                     }
-                    // Even though we skip prewarming we still need to ensure the caches are cleared
+                    else
+                    {
+                        // Even though we skip prewarming we still need to ensure the caches are cleared
+                        CacheType result = preWarmer?.ClearCaches() ?? default;
+                        if (result != default)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
+                        }
+                    }
+
+                    if (blocksCount > 64 && i % 8 == 0)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
+                    }
+
+                    if (notReadOnly)
+                    {
+                        BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                    }
+
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+
+                    processedBlocks[i] = processedBlock;
+
+                    // be cautious here as AuRa depends on processing
+                    PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
                 }
-
-                processedBlocks[i] = processedBlock;
-
-                // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
-                QueueClearCaches(preWarmTask);
+                finally
+                {
+                    // Block is processed, we can cancel the prewarm task
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref cancellationTokenSource);
+                    QueueClearCaches(preWarmTask);
+                }
 
                 if (notReadOnly)
                 {
