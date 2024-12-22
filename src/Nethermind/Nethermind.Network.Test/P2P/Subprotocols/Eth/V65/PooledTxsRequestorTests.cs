@@ -24,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private readonly Action<GetPooledTransactionsMessage> _doNothing = static msg => msg.Dispose();
         private IPooledTxsRequestor _requestor;
         private ArrayPoolList<Hash256> _response;
-        
+
         [TearDown]
         public void TearDown()
         {
