@@ -134,6 +134,6 @@ namespace Nethermind.Specs
             set => _eip2935ContractAddress = value;
         }
 
-        public bool IsSystemTransaction { get; set; }
+        public bool IsSystemTransaction => false;
     }
 }

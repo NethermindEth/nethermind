@@ -133,5 +133,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
 
-    public bool IsSystemTransaction { get => spec.IsSystemTransaction; set => spec.IsSystemTransaction = value; }
+    public virtual bool IsSystemTransaction { get => spec.IsSystemTransaction; }
 }

@@ -8,5 +8,6 @@ namespace Nethermind.Specs
     public class SystemTransactionReleaseSpec(IReleaseSpec spec, bool isAura, bool isGenesis) : ReleaseSpecDecorator(spec)
     {
         public override bool IsEip158Enabled => !isAura && isGenesis && base.IsEip158Enabled;
+        public override bool IsSystemTransaction => true;
     }
 }
