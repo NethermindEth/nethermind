@@ -419,5 +419,10 @@ namespace Nethermind.Core.Specs
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+
+        /// <summary>
+        /// Skip read in SSTORE for calculating gas cost as not charged
+        /// </summary>
+        bool IsSystemTransaction { get; set; }
     }
 }
