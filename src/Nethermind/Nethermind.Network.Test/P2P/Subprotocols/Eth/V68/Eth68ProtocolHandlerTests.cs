@@ -255,19 +255,7 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        //_session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(
-        //    m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
-        //));
-        Console.WriteLine($"messagesCount {messagesCount}");
-        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(
-            m => GetResult(m, maxNumberOfTxsInOneMsg, numberOfTransactions)
-        ));
-    }
-
-    private bool GetResult(GetPooledTransactionsMessage m, int maxNumberOfTxsInOneMsg, int numberOfTransactions)
-    {
-        Console.WriteLine($"Result {m.EthMessage.Hashes.Count} {maxNumberOfTxsInOneMsg} {numberOfTransactions}");
-        return true;// m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg;
+        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
     }
 
     private void HandleIncomingStatusMessage()
