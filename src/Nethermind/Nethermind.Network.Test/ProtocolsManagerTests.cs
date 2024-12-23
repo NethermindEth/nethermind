@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
-using System.Threading;
-using System.Threading.Tasks;
-
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
@@ -171,7 +168,7 @@ public class ProtocolsManagerTests
 
         public Context VerifyDisconnected()
         {
-            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected).Or.EqualTo(SessionState.Disconnecting));
+            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
             return this;
         }
 
@@ -198,9 +195,10 @@ public class ProtocolsManagerTests
             return this;
         }
 
-        public Task Disconnect()
+        public Context Disconnect()
         {
-            return _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
+            _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
+            return this;
         }
 
         public Context ReceiveStatus()
@@ -356,17 +354,15 @@ public class ProtocolsManagerTests
     }
 
     [Test]
-    public async Task Runs_ok_when_initializing_protocol_on_a_closing_session()
+    public void Runs_ok_when_initializing_protocol_on_a_closing_session()
     {
-        Context ctx = When
+        When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
-            .Init();
-
-        await ctx.Disconnect();
-
-        ctx.ReceiveHello();
+            .Init()
+            .Disconnect()
+            .ReceiveHello();
     }
 
     [Test]
@@ -395,9 +391,9 @@ public class ProtocolsManagerTests
     }
 
     [Test]
-    public async Task Removes_sync_peers_on_disconnect()
+    public void Removes_sync_peers_on_disconnect()
     {
-        Context ctx = When
+        When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()
@@ -405,11 +401,9 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHello()
             .ReceiveStatus()
-            .VerifyEthInitialized();
-
-        await ctx.Disconnect();
-
-        ctx.VerifySyncPeersRemoved();
+            .VerifyEthInitialized()
+            .Disconnect()
+            .VerifySyncPeersRemoved();
     }
 
     [Test]

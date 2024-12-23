@@ -57,7 +57,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         }
         catch (Exception e)
         {
-            await handler.Session.InitiateDisconnect(e is EthSyncException ? DisconnectReason.EthSyncException : DisconnectReason.BackgroundTaskFailure, e.Message);
+            handler.Session.InitiateDisconnect(e is EthSyncException ? DisconnectReason.EthSyncException : DisconnectReason.BackgroundTaskFailure, e.Message);
             if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
         }
     }

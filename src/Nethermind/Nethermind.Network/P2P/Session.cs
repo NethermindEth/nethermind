@@ -366,7 +366,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public Task InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
@@ -383,22 +383,22 @@ namespace Nethermind.Network.P2P
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
                 if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
-                return Task.CompletedTask;
+                return;
             }
 
             lock (_sessionStateLock)
             {
                 if (IsClosing)
                 {
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 if (State <= SessionState.HandshakeComplete)
                 {
-                    if (_disconnectAfterInitialized is not null) return Task.CompletedTask;
+                    if (_disconnectAfterInitialized is not null) return;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 State = SessionState.DisconnectingProtocols;
@@ -424,7 +424,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            return MarkDisconnected(disconnectReason, DisconnectType.Local, details);
+            MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         private readonly Lock _sessionStateLock = new();
@@ -444,7 +444,7 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
-        public async Task MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
+        public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             lock (_sessionStateLock)
             {
@@ -487,6 +487,25 @@ namespace Nethermind.Network.P2P
 
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
+            _ = DisconnectAsync(disconnectType);
+
+            lock (_sessionStateLock)
+            {
+                State = SessionState.Disconnected;
+            }
+
+            if (Disconnected is not null)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
+                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
+            }
+            else if (_logger.IsDebug)
+                _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
+        }
+
+        private async Task DisconnectAsync(DisconnectType disconnectType)
+        {
             //Possible in case of disconnect before p2p initialization
             if (_context is null)
             {
@@ -518,20 +537,6 @@ namespace Nethermind.Network.P2P
                         _logger.Trace($"Error while disconnecting on context on {this} : {e}");
                 }
             }
-
-            lock (_sessionStateLock)
-            {
-                State = SessionState.Disconnected;
-            }
-
-            if (Disconnected is not null)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
-                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
-            }
-            else if (_logger.IsDebug)
-                _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
