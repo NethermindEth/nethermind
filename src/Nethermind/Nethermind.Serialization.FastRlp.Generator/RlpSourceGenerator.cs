@@ -127,8 +127,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         foreach (var (name, typeName) in parameters)
         {
-            var writeCall = MapTypeToWriteCall(name, typeName);
-            sb.AppendLine($"w.{writeCall};");
+            var writeCall = MapTypeToWriteCall(typeName);
+            sb.AppendLine($"w.{writeCall}(value.{name});");
         }
 
         sb.AppendLine("});");
@@ -143,7 +143,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         foreach (var (name, typeName) in parameters)
         {
             var readCall = MapTypeToReadCall(typeName);
-            sb.AppendLine($"var {name} = r.{readCall};");
+            sb.AppendLine($"var {name} = r.{readCall}();");
         }
 
         sb.Append($"return new {fullTypeName}(");
@@ -182,9 +182,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         switch (syntax.ToString())
         {
             case "byte[]" or "System.Byte[]" or "Span<byte>" or "System.Span<byte>" or "System.ReadOnlySpan<byte>":
-                return "ReadBytes()";
-            case "int":
-                return "ReadInt32()";
+                return "ReadBytes";
         }
 
         // Generics
@@ -196,20 +194,28 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             var sb = new StringBuilder("Read");
             sb.Append(typeConstructor.Capitalize());
             sb.Append("<");
-            foreach (var typeParameter in typeParameters)
+
+            var genericTypes = typeParameters
+                .Select(t => t.ToString());
+            var rlpConverterTypes = typeParameters
+                .Select(t => $"{MapTypeAlias(t.ToString())}RlpConverter");
+
+            var readTypeParameters = genericTypes.Concat(rlpConverterTypes).Intersperse(", ");
+            foreach (string rtp in readTypeParameters)
             {
-                sb.Append($"{typeParameter.ToString()}, {typeParameter.ToString().Capitalize()}RlpConverter");
+                sb.Append(rtp);
             }
-            sb.Append(">()");
+
+            sb.Append(">");
 
             return sb.ToString();
         }
 
-        // Defaults
-        return $"Read{syntax.ToString().Capitalize()}()";
+        // Default
+        return $"Read{MapTypeAlias(syntax.ToString())}";
     }
 
-    private static string MapTypeToWriteCall(string name, TypeSyntax syntax)
+    private static string MapTypeToWriteCall(TypeSyntax syntax)
     {
         // Generics
         if (syntax is GenericNameSyntax generic)
@@ -218,21 +224,53 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
             var sb = new StringBuilder("Write");
             sb.Append("<");
-            foreach (var typeParameter in typeParameters)
+
+            var genericTypes = typeParameters
+                .Select(t => t.ToString());
+            var rlpConverterTypes = typeParameters
+                .Select(t => $"{MapTypeAlias(t.ToString())}RlpConverter");
+
+            var readTypeParameters = genericTypes.Concat(rlpConverterTypes).Intersperse(", ");
+            foreach (string rtp in readTypeParameters)
             {
-                sb.Append($"{typeParameter.ToString()}, {typeParameter.ToString().Capitalize()}RlpConverter");
+                sb.Append(rtp);
             }
-            sb.Append($">(value.{name})");
+
+            sb.Append(">");
 
             return sb.ToString();
         }
 
-        // Defaults
-        return $"Write(value.{name})";
+        // Default
+        return "Write";
     }
+
+    private static string MapTypeAlias(string alias) =>
+        alias switch
+        {
+            "string" => "String",
+            "short" => "Int16",
+            "int" => "Int32",
+            "long" => "Int64",
+            _ => alias
+        };
 }
 
 public static class StringExt
 {
     public static string Capitalize(this string str) => str[0].ToString().ToUpper() + str[1..];
+}
+
+public static class EnumerableExt
+{
+    public static IEnumerable<T> Intersperse<T>(this IEnumerable<T> source, T element)
+    {
+        bool first = true;
+        foreach (T value in source)
+        {
+            if (!first) yield return element;
+            yield return value;
+            first = false;
+        }
+    }
 }
