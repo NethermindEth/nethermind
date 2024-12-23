@@ -72,13 +72,13 @@ public ref struct RlpReader
         return result;
     }
 
-    public T ReadList<T>(RefRlpReaderFunc<T> func)
+    public T ReadSequence<T>(RefRlpReaderFunc<T> func)
     {
         T result;
         var header = _buffer[_position++];
         if (header < 0xC0)
         {
-            throw new RlpReaderException("RLP does not correspond to a list");
+            throw new RlpReaderException("RLP does not correspond to a sequence");
         }
 
         if (header < 0xF8)
@@ -102,9 +102,9 @@ public ref struct RlpReader
         return result;
     }
 
-    public void ReadList(RefRlpReaderAction func)
+    public void ReadSequence(RefRlpReaderAction func)
     {
-        ReadList<object?>((scoped ref RlpReader r) =>
+        ReadSequence<object?>((scoped ref RlpReader r) =>
         {
             func(ref r);
             return null;

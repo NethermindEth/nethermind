@@ -121,7 +121,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // `Write` method
         sb.AppendLine($"public static void Write(ref RlpWriter w, {fullTypeName} value)");
         sb.AppendLine("{");
-        sb.AppendLine("w.WriteList((ref RlpWriter w) => ");
+        sb.AppendLine("w.WriteSequence((ref RlpWriter w) => ");
         sb.AppendLine("{");
 
         foreach (var (name, _) in parameters)
@@ -135,7 +135,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // `Read` method
         sb.AppendLine($"public static {fullTypeName} Read(ref RlpReader r)");
         sb.AppendLine("{");
-        sb.AppendLine("return r.ReadList(static (scoped ref RlpReader r) =>");
+        sb.AppendLine("return r.ReadSequence(static (scoped ref RlpReader r) =>");
         sb.AppendLine("{");
 
         foreach (var (name, typeName) in parameters)

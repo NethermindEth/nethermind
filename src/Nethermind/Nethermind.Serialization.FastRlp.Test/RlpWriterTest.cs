@@ -86,7 +86,7 @@ public class RlpWriterTest
     {
         var serialized = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
                 w.Write("cat");
                 w.Write("dog");
@@ -100,7 +100,7 @@ public class RlpWriterTest
     [Test]
     public void WriteEmptyList()
     {
-        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
+        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
 
         byte[] expected = [0xc0];
         serialized.Should().BeEquivalentTo(expected);
@@ -120,14 +120,14 @@ public class RlpWriterTest
     {
         var serialized = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
-                w.WriteList(static (ref RlpWriter _) => { });
-                w.WriteList(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
-                w.WriteList(static (ref RlpWriter w) =>
+                w.WriteSequence(static (ref RlpWriter _) => { });
+                w.WriteSequence(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
+                w.WriteSequence(static (ref RlpWriter w) =>
                 {
-                    w.WriteList(static (ref RlpWriter _) => { });
-                    w.WriteList(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
+                    w.WriteSequence(static (ref RlpWriter _) => { });
+                    w.WriteSequence(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
                 });
             });
         });
