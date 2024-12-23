@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Processing
         {
         }
 
-        public ReadOnlyTxProcessingEnv(
+        private ReadOnlyTxProcessingEnv(
             IStateReader stateReader,
             IWorldState stateProvider,
             ICodeInfoRepository codeInfoRepository,
