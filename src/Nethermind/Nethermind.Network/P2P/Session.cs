@@ -487,6 +487,25 @@ namespace Nethermind.Network.P2P
 
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
+            _ = DisconnectAsync(disconnectType);
+
+            lock (_sessionStateLock)
+            {
+                State = SessionState.Disconnected;
+            }
+
+            if (Disconnected is not null)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
+                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
+            }
+            else if (_logger.IsDebug)
+                _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
+        }
+
+        private async Task DisconnectAsync(DisconnectType disconnectType)
+        {
             //Possible in case of disconnect before p2p initialization
             if (_context is null)
             {
@@ -518,20 +537,6 @@ namespace Nethermind.Network.P2P
                         _logger.Trace($"Error while disconnecting on context on {this} : {e}");
                 }
             }
-
-            lock (_sessionStateLock)
-            {
-                State = SessionState.Disconnected;
-            }
-
-            if (Disconnected is not null)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
-                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
-            }
-            else if (_logger.IsDebug)
-                _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
