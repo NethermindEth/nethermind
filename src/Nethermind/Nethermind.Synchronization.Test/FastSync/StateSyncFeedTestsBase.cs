@@ -130,8 +130,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             containerBuilder.RegisterBuildCallback((ctx) =>
             {
-                CancelOnDisposeToken tokenHolder = ctx.Resolve<CancelOnDisposeToken>();
-                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(tokenHolder.Token);
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
                 ctx.Resolve<ISyncPeerPool>().Start();
             });
 
@@ -140,12 +139,14 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength)
         {
-            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new();
+            // Note: The `RunContinuationsAsynchronously` is very important, or the thread might continue synchronously
+            // which causes unexpected hang.
+            TaskCompletionSource dormantAgainSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             safeContext.Feed.StateChanged += (_, e) =>
             {
                 if (e.NewState == SyncFeedState.Dormant)
                 {
-                    dormantAgainSource.TrySetResult(0);
+                    dormantAgainSource.TrySetResult();
                 }
             };
 
