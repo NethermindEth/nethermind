@@ -182,8 +182,10 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // Hard-coded cases
         switch (syntax.ToString())
         {
-            case "byte[]" or "System.Byte[]" or "Span<byte>" or "System.Span<byte>" or "System.ReadOnlySpan<byte>":
-                return "ReadBytes";
+            case "byte[]" or "Byte[]" or "System.Byte[]":
+                return "ReadBytes().ToArray()";
+            case "Span<byte>" or "System.Span<byte>" or "ReadOnlySpan<byte>" or "System.ReadOnlySpan<byte>":
+                return "ReadBytes()";
         }
 
         // Generics

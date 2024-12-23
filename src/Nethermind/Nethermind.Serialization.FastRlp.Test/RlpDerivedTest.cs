@@ -18,6 +18,9 @@ public record PlayerWithScores(int Id, string Username, Dictionary<string, int> 
 [RlpSerializable]
 public record Tree(string Value, List<Tree> Children);
 
+[RlpSerializable]
+public record RawData(int Tag, byte[] Data);
+
 public class RlpDerivedTest
 {
     [Test]
