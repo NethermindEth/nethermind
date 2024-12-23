@@ -17,6 +17,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _codeDb;
+    private readonly IDbProvider _dbProvider;
 
     public ReadOnlyWorldStateManager(
         IDbProvider dbProvider,
@@ -24,6 +25,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         ILogManager logManager
     )
     {
+        _dbProvider = dbProvider;
         _readOnlyTrieStore = readOnlyTrieStore;
         _logManager = logManager;
 
@@ -58,5 +60,10 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     {
         add => throw new InvalidOperationException("Unsupported operation");
         remove => throw new InvalidOperationException("Unsupported operation");
+    }
+
+    public IOverridableWorldScope CreateOverridableWorldScope()
+    {
+        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
     }
 }
