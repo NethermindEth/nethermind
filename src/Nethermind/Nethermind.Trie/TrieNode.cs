@@ -36,7 +36,7 @@ namespace Nethermind.Trie
         private static readonly object _nullNode = new();
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
-        private static Action<TrieNode, Hash256?, TreePath> _markPersisted => (tn, _, _) => tn.IsPersisted = true;
+        private static readonly Action<TrieNode, Hash256?, TreePath> _markPersisted = static (tn, _, _) => tn.IsPersisted = true;
 
         private const long _dirtyMask = 0b001;
         private const long _persistedMask = 0b010;
@@ -1242,7 +1242,7 @@ namespace Nethermind.Trie
                         default:
                             {
                                 rlpStream.Position--;
-                                Span<byte> fullRlp = rlpStream.PeekNextItem();
+                                ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                                 data = childOrRef = child;
                                 break;
@@ -1309,7 +1309,7 @@ namespace Nethermind.Trie
                         }
                     default:
                         {
-                            Span<byte> fullRlp = rlpStream.PeekNextItem();
+                            ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             rlpStream.SkipItem();
                             output[i] = child;

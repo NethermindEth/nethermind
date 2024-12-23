@@ -71,8 +71,8 @@ public class NodeHealthServiceTests
                 healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
         CheckHealthResult result = nodeHealthService.CheckHealth();
         Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
-        Assert.That(FormatMessages(result.Messages.Select(x => x.Message)), Is.EqualTo(test.ExpectedMessage));
-        Assert.That(FormatMessages(result.Messages.Select(x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
+        Assert.That(FormatMessages(result.Messages.Select(static x => x.Message)), Is.EqualTo(test.ExpectedMessage));
+        Assert.That(FormatMessages(result.Messages.Select(static x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
         Assert.That(result.IsSyncing, Is.EqualTo(test.IsSyncing));
         Assert.That(test.ExpectedErrors, Is.EqualTo(result.Errors).AsCollection);
     }
@@ -152,8 +152,8 @@ public class NodeHealthServiceTests
 
         CheckHealthResult result = nodeHealthService.CheckHealth();
         Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
-        Assert.That(FormatMessages(result.Messages.Select(x => x.Message)), Is.EqualTo(test.ExpectedMessage));
-        Assert.That(FormatMessages(result.Messages.Select(x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
+        Assert.That(FormatMessages(result.Messages.Select(static x => x.Message)), Is.EqualTo(test.ExpectedMessage));
+        Assert.That(FormatMessages(result.Messages.Select(static x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
         Assert.That(result.IsSyncing, Is.EqualTo(test.IsSyncing));
         Assert.That(test.ExpectedErrors, Is.EqualTo(result.Errors).AsCollection);
     }
@@ -458,9 +458,9 @@ public class NodeHealthServiceTests
 
     private static string FormatMessages(IEnumerable<string> messages)
     {
-        if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
+        if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
         {
-            var joined = string.Join(". ", messages.Where(x => !string.IsNullOrWhiteSpace(x)));
+            var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
             if (!string.IsNullOrWhiteSpace(joined))
             {
                 return joined + ".";

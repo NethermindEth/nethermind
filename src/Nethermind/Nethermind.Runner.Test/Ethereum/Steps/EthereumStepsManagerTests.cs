@@ -193,7 +193,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
         public override async Task Execute(CancellationToken cancellationToken)
         {
-            await Task.Run(() => throw new TestException());
+            await Task.Run(static () => throw new TestException());
         }
     }
 

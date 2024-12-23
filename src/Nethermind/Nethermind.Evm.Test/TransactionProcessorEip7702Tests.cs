@@ -554,15 +554,13 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> EXTCODEHASHAccountSetup()
     {
-        yield return new object[] {
-            (IWorldState state, Address account, Address target) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account does not exists
             },
             new byte[] { 0x0 }
         };
-        yield return new object[] {
-            (IWorldState state, Address account, Address target) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account is delegated
                 byte[] code = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
@@ -572,16 +570,14 @@ internal class TransactionProcessorEip7702Tests
             },
             Eip7702Constants.HashOfDelegationCode.BytesToArray()
         };
-        yield return new object[] {
-            (IWorldState state, Address account, Address target) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account exists but is not delegated
                 state.CreateAccountIfNotExists(account, 1);
             },
             Keccak.OfAnEmptyString.ValueHash256.ToByteArray()
         };
-        yield return new object[] {
-            (IWorldState state, Address account, Address target) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account is dead
                 state.CreateAccountIfNotExists(account, 0);
@@ -692,7 +688,7 @@ internal class TransactionProcessorEip7702Tests
 
         AccessTxTracer txTracer = new AccessTxTracer();
         TransactionResult result = _transactionProcessor.Execute(tx, block.Header, txTracer);
-        Assert.That(txTracer.AccessList.Select(a => a.Address), Is.SupersetOf(shouldCountAsAccessed));
+        Assert.That(txTracer.AccessList.Select(static a => a.Address), Is.SupersetOf(shouldCountAsAccessed));
     }
 
     [TestCase(true)]

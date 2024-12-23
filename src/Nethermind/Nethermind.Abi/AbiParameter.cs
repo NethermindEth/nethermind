@@ -48,15 +48,15 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         internal static readonly Dictionary<string, Func<int?, int?, AbiType>> SimpleTypeFactories = new Dictionary<string, Func<int?, int?, AbiType>>(StringComparer.InvariantCultureIgnoreCase)
         {
-            {"int", (m, n) => new AbiInt(m ?? 256)},
-            {"uint", (m, n) => new AbiUInt(m ?? 256)},
-            {"address", (m, n) => AbiType.Address},
-            {"bool", (m, n) => AbiType.Bool},
-            {"fixed", (m, n) => new AbiFixed(m ?? 128, n ?? 18)},
-            {"ufixed", (m, n) => new AbiUFixed(m ?? 128, n ?? 18)},
-            {"bytes", (m, n) => m.HasValue ?  new AbiBytes(m.Value) : AbiType.DynamicBytes},
-            {"function", (m, n) => AbiType.Function},
-            {"string", (m, n) => AbiType.String}
+            {"int", static (m, n) => new AbiInt(m ?? 256)},
+            {"uint", static (m, n) => new AbiUInt(m ?? 256)},
+            {"address", static (m, n) => AbiType.Address},
+            {"bool", static (m, n) => AbiType.Bool},
+            {"fixed", static (m, n) => new AbiFixed(m ?? 128, n ?? 18)},
+            {"ufixed", static (m, n) => new AbiUFixed(m ?? 128, n ?? 18)},
+            {"bytes", static (m, n) => m.HasValue ?  new AbiBytes(m.Value) : AbiType.DynamicBytes},
+            {"function", static (m, n) => AbiType.Function},
+            {"string", static (m, n) => AbiType.String}
         };
 
         [GeneratedRegex("^(?<T>u?int(?<M>\\d{1,3})?|address|bool|u?fixed((?<M>\\d{1,3})x(?<N>\\d{1,2}))?|bytes(?<M>\\d{1,3})?|function|string|tuple)(?<A>\\[(?<L>\\d+)?\\])?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

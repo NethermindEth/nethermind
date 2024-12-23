@@ -157,8 +157,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 private void SetDefaults()
                 {
                     SyncPeerPool = Substitute.For<ISyncPeerPool>();
-                    SyncPeerPool.InitializedPeers.Returns(_peers.Select(p => new PeerInfo(p)));
-                    SyncPeerPool.AllPeers.Returns(_peers.Select(p => new PeerInfo(p)));
+                    SyncPeerPool.InitializedPeers.Returns(_peers.Select(static p => new PeerInfo(p)));
+                    SyncPeerPool.AllPeers.Returns(_peers.Select(static p => new PeerInfo(p)));
 
                     SyncProgressResolver = Substitute.For<ISyncProgressResolver>();
                     SyncProgressResolver.ChainDifficulty.Returns(ValidGenesis.TotalDifficulty ?? 0);
@@ -204,7 +204,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder IfThisNodeHasNeverSyncedBefore()
                 {
-                    _syncProgressSetups.Add(() => "fresh start");
+                    _syncProgressSetups.Add(static () => "fresh start");
                     return this;
                 }
 
