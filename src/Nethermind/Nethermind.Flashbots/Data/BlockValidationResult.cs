@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Flashbots.Data;
@@ -45,17 +44,4 @@ public class FlashbotsResult
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? ValidationError { get; set; }
-}
-
-public class ResultHash
-{
-    public Hash256 BlockHash { get; set; }
-
-    public Hash256 TxRoot { get; set; }
-
-    public ResultHash(Hash256 blockHash, Hash256 txRoot)
-    {
-        BlockHash = blockHash;
-        TxRoot = txRoot;
-    }
 }

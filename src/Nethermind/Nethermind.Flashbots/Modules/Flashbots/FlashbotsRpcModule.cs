@@ -21,7 +21,4 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
     Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) =>
         _validateSubmissionHandler.ValidateSubmission(@params);
 
-    Task<ResultWrapper<ResultHash>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3Hash(BuilderBlockValidationRequestHash @params) =>
-        _validateSubmissionHandler.ValidateSubmissionHash(@params);
-
 }
