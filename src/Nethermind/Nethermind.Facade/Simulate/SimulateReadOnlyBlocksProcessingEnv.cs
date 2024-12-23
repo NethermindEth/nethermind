@@ -43,8 +43,15 @@ public class SimulateBlockValidationTransactionsExecutor(
     }
 }
 
-public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
+public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
 {
+    public IStateReader StateReader { get; protected set; }
+    protected IWorldState StateProvider { get; set; }
+    public IBlockTree BlockTree { get; protected set; }
+    public IBlockhashProvider BlockhashProvider { get; protected set; }
+
+    public ISpecProvider SpecProvider { get; }
+
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
     private readonly ITransactionProcessor _transactionProcessor;
@@ -58,8 +65,14 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ISpecProvider specProvider,
         ILogManager? logManager = null,
         bool validate = false)
-        : base(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), blockTree, specProvider, logManager)
     {
+
+        SpecProvider = specProvider;
+        StateReader = worldStateManager.GlobalStateReader;
+        StateProvider = worldStateManager.CreateResettableWorldState();
+        BlockTree = blockTree;
+        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
         WorldStateManager = worldStateManager;

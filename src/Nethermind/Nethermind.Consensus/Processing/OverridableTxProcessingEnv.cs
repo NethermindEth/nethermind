@@ -14,11 +14,17 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverridableTxProcessorSource
+public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
 {
+    public IStateReader StateReader { get; }
+    public IBlockTree BlockTree { get; }
+    public IBlockhashProvider BlockhashProvider { get; }
+    public ISpecProvider SpecProvider { get; }
+    protected ILogManager LogManager { get; }
+
     private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
 
-    protected new OverridableWorldState StateProvider { get; }
+    protected OverridableWorldState StateProvider { get; }
     protected OverridableWorldStateManager WorldStateManager { get; }
     protected OverridableCodeInfoRepository CodeInfoRepository { get; }
     protected IVirtualMachine Machine { get; }
@@ -29,10 +35,18 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverrida
         IReadOnlyBlockTree readOnlyBlockTree,
         ISpecProvider specProvider,
         ILogManager? logManager
-    ) : base(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), readOnlyBlockTree, specProvider, logManager)
+    )
     {
+        SpecProvider = specProvider;
+        StateReader = worldStateManager.GlobalStateReader;
+        BlockTree = readOnlyBlockTree;
+        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+        LogManager = logManager;
+
         WorldStateManager = worldStateManager;
-        StateProvider = (OverridableWorldState)base.StateProvider;
+
+        StateProvider = (OverridableWorldState)worldStateManager.CreateResettableWorldState();
+
         CodeInfoRepository = new(new CodeInfoRepository());
         Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
         _transactionProcessorLazy = new(CreateTransactionProcessor);
