@@ -15,4 +15,10 @@ public interface IFlashbotsConfig : IConfig
 
     [ConfigItem(Description = "If set to true, withdrawals to the fee recipient are excluded from the balance delta", DefaultValue = "false")]
     public bool ExcludeWithdrawals { get; set; }
+
+    [ConfigItem(Description = "If set to true, the pre-warmer will be enabled", DefaultValue = "false")]
+    public bool EnablePreWarmer { get; set; }
+
+    [ConfigItem(Description = "If set to true, the validation will be enabled", DefaultValue = "false")]
+    public bool EnableValidation { get; set; }
 }

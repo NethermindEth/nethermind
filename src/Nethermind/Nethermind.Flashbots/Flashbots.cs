@@ -27,16 +27,27 @@ public class Flashbots : INethermindPlugin
     public string Author => "Nethermind";
     public Task InitRpcModules()
     {
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(
+            _api.WorldStateManager ?? throw new ArgumentNullException(nameof(_api.WorldStateManager)),
+            _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
+            _api.SpecProvider,
+            _api.LogManager
+        );
+
         ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
             _api.WorldStateManager ?? throw new ArgumentNullException(nameof(_api.WorldStateManager)),
             _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
             _api.SpecProvider,
             _api.LogManager
         );
+
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
             _api.HeaderValidator ?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
             _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
             readOnlyTxProcessingEnv,
+            readOnlyTxProcessingEnvFactory,
+            _api.LogManager ?? throw new ArgumentNullException(nameof(_api.LogManager)),
+            _api.SpecProvider ?? throw new ArgumentNullException(nameof(_api.SpecProvider)),
             _flashbotsConfig
         );
 

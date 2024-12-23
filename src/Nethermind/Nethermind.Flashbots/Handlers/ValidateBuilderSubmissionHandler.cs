@@ -31,12 +31,14 @@ namespace Nethermind.Flashbots.Handlers;
 
 public class ValidateSubmissionHandler
 {
-    private const ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
+    private ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
          | ProcessingOptions.IgnoreParentNotOnMainChain
          | ProcessingOptions.ForceProcessing
-         | ProcessingOptions.StoreReceipts
-         | ProcessingOptions.NoValidation;
+         | ProcessingOptions.StoreReceipts;
     private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
+
+    private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
+
     private readonly IBlockTree _blockTree;
     private readonly IHeaderValidator _headerValidator;
     private readonly IBlockValidator _blockValidator;
@@ -46,15 +48,24 @@ public class ValidateSubmissionHandler
 
     private readonly IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
 
+    private readonly ILogManager _logManager;
+    private readonly ISpecProvider _specProvider;
+
     public ValidateSubmissionHandler(
         IHeaderValidator headerValidator,
         IBlockValidator blockValidator,
         ReadOnlyTxProcessingEnv txProcessingEnv,
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        ILogManager logManager,
+        ISpecProvider specProvider,
         IFlashbotsConfig flashbotsConfig)
     {
         _headerValidator = headerValidator;
         _blockValidator = blockValidator;
         _txProcessingEnv = txProcessingEnv;
+        _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
+        _specProvider = specProvider;
+        _logManager = logManager;
         _blockTree = _txProcessingEnv.BlockTree;
         _logger = txProcessingEnv.LogManager!.GetClassLogger();
         _flashbotsConfig = flashbotsConfig;
@@ -211,17 +222,18 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-
-        using IReadOnlyTxProcessingScope processingScope = _txProcessingEnv.Build(parentHeader.StateRoot!);
+        using IReadOnlyTxProcessingScope processingScope = _readOnlyTxProcessingEnvFactory.Create().Build(parentHeader.StateRoot!);
         IWorldState currentState = processingScope.WorldState;
         ITransactionProcessor transactionProcessor = processingScope.TransactionProcessor;
 
         UInt256 feeRecipientBalanceBefore = currentState.HasStateForRoot(currentState.StateRoot) ? (currentState.AccountExists(feeRecipient) ? currentState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
-        BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor);
+        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(_readOnlyTxProcessingEnvFactory, _specProvider, _logManager);
 
-        EthereumEcdsa ecdsa = new EthereumEcdsa(_txProcessingEnv.SpecProvider.ChainId);
-        IReleaseSpec spec = _txProcessingEnv.SpecProvider.GetSpec(parentHeader);
+        BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor, _flashbotsConfig.EnablePreWarmer ? preWarmer : null);
+
+        EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
+        IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
         RecoverSenderAddress(block, ecdsa, spec);
 
@@ -230,6 +242,10 @@ public class ValidateSubmissionHandler
 
         try
         {
+            if (!_flashbotsConfig.EnableValidation)
+            {
+                ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
+            }
             Block processedBlock = blockProcessor.Process(currentState.StateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
@@ -312,7 +328,7 @@ public class ValidateSubmissionHandler
 
         long? targetGasLimit = desiredGasLimit;
         long newBlockNumber = parentHeader.Number + 1;
-        IReleaseSpec spec = _txProcessingEnv.SpecProvider.GetSpec(newBlockNumber, parentHeader.Timestamp);
+        IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp);
         if (targetGasLimit is not null)
         {
             long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);
@@ -414,21 +430,22 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private BlockProcessor CreateBlockProcessor(IWorldState stateProvider, ITransactionProcessor transactionProcessor)
+    private BlockProcessor CreateBlockProcessor(IWorldState stateProvider, ITransactionProcessor transactionProcessor, IBlockCachePreWarmer? preWarmer = null)
     {
         return new BlockProcessor(
-            _txProcessingEnv.SpecProvider,
+            _specProvider,
             _blockValidator,
-            new Consensus.Rewards.RewardCalculator(_txProcessingEnv.SpecProvider),
+            new Consensus.Rewards.RewardCalculator(_specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             _receiptStorage,
             transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            new BlockhashStore(_txProcessingEnv.SpecProvider, stateProvider),
-            logManager: _txProcessingEnv.LogManager,
-            withdrawalProcessor: new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
-            receiptsRootCalculator: new ReceiptsRootCalculator()
+            new BlockhashStore(_specProvider, stateProvider),
+            logManager: _logManager,
+            withdrawalProcessor: new WithdrawalProcessor(stateProvider, _logManager!),
+            receiptsRootCalculator: new ReceiptsRootCalculator(),
+            preWarmer: preWarmer
         );
     }
 }

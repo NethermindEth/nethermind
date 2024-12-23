@@ -9,4 +9,7 @@ public class FlashbotsConfig : IFlashbotsConfig
     public bool UseBalanceDiffProfit { get; set; } = false;
 
     public bool ExcludeWithdrawals { get; set; } = false;
+
+    public bool EnablePreWarmer { get; set; } = true;
+    public bool EnableValidation { get; set; } = false;
 }
