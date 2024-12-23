@@ -179,5 +179,6 @@ namespace Nethermind.Specs.Test
         public IBaseFeeCalculator BaseFeeCalculator => _spec.BaseFeeCalculator;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+        public bool IsSystemTransaction => _spec.IsSystemTransaction;
     }
 }
