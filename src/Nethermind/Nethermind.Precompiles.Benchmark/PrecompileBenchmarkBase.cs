@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -28,6 +29,9 @@ namespace Nethermind.Precompiles.Benchmark
             public byte[]? ExpectedResult { get; } = expected;
 
             public string Name { get; } = name;
+
+            public long Gas(IReleaseSpec releaseSpec) =>
+                precompile.BaseGasCost(releaseSpec) + precompile.DataGasCost(Bytes, releaseSpec);
 
             public override string ToString() => Name;
         }
@@ -71,6 +75,6 @@ namespace Nethermind.Precompiles.Benchmark
 
         [Benchmark(Baseline = true)]
         public (ReadOnlyMemory<byte>, bool) Baseline()
-            => Input.Precompile.Run(Input.Bytes, Berlin.Instance);
+            => Input.Precompile.Run(Input.Bytes, Cancun.Instance);
     }
 }
