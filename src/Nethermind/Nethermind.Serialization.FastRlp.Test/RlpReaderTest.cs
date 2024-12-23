@@ -80,6 +80,15 @@ public class RlpReaderTest
     }
 
     [Test]
+    public void ReadStringListCollection()
+    {
+        byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
+        var actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadList<string, StringRlpConverter>());
+
+        actual.Should().BeEquivalentTo("cat", "dog");
+    }
+
+    [Test]
     public void ReadEmptyList()
     {
         byte[] source = [0xc0];
