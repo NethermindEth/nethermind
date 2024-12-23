@@ -37,7 +37,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(compilation, Execute);
     }
 
-    private void Execute(SourceProductionContext context,
+    private void Execute(
+        SourceProductionContext context,
         (Compilation Compilation, ImmutableArray<RecordDeclarationSyntax> RecordsDeclarationSyntaxes) p)
     {
         // For each record with the attribute, generate the RlpConverter class
@@ -57,16 +58,18 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 continue;
             }
 
-            // Extract the record name with namespace if needed
+            // Extract the fully qualified record name with its namespace
             var recordName = symbol.Name;
             var fullTypeName = symbol.ToDisplayString();
+            // TODO: Deal with missing and nested namespaces
+            var @namespace = symbol.ContainingNamespace?.ToDisplayString();
 
             // Gather recursively all members that are fields or primary constructor parameters
             // so we can read them in the same order they are declared.
             var parameters = GetRecordParameters(recordDecl);
 
             // Build the converter class source
-            var generatedCode = GenerateConverterClass(fullTypeName, recordName, parameters);
+            var generatedCode = GenerateConverterClass(@namespace, fullTypeName, recordName, parameters);
 
             // Add to the compilation
             context.AddSource($"{recordName}RlpConverter.g.cs", SourceText.From(generatedCode, Encoding.UTF8));
@@ -96,6 +99,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     }
 
     private static string GenerateConverterClass(
+        string? @namespace,
         string fullTypeName,
         string recordName,
         List<(string Name, string TypeName)> parameters)
@@ -108,7 +112,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         sb.AppendLine("using Nethermind.Serialization.FastRlp;");
         sb.AppendLine("using Nethermind.Serialization.FastRlp.Instances;");
         sb.AppendLine();
-        sb.AppendLine("namespace Nethermind.Serialization.FastRlp.Derived;");
+        if (@namespace is not null) sb.AppendLine($"namespace {@namespace};");
         sb.AppendLine("");
         sb.AppendLine(GeneratedCodeAttribute);
         sb.AppendLine($"public abstract class {recordName}RlpConverter : IRlpConverter<{fullTypeName}>");
@@ -124,6 +128,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         {
             sb.AppendLine($"w.Write(value.{name});");
         }
+
         sb.AppendLine("});");
         sb.AppendLine("}");
 
@@ -145,6 +150,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             sb.Append(parameters[i].Name);
             if (i < parameters.Count - 1) sb.Append(", ");
         }
+
         sb.AppendLine(");");
 
         sb.AppendLine("});");
@@ -155,8 +161,10 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         sb.AppendLine(GeneratedCodeAttribute);
         sb.AppendLine($"public static class {recordName}Ext");
         sb.AppendLine("{");
-        sb.AppendLine($"public static {fullTypeName} Read{recordName}(this ref RlpReader reader) => {recordName}RlpConverter.Read(ref reader);");
-        sb.AppendLine($"public static void Write(this ref RlpWriter writer, {fullTypeName} value) => {recordName}RlpConverter.Write(ref writer, value);");
+        sb.AppendLine(
+            $"public static {fullTypeName} Read{recordName}(this ref RlpReader reader) => {recordName}RlpConverter.Read(ref reader);");
+        sb.AppendLine(
+            $"public static void Write(this ref RlpWriter writer, {fullTypeName} value) => {recordName}RlpConverter.Write(ref writer, value);");
         sb.AppendLine("}");
 
         return sb.ToString();
@@ -179,5 +187,5 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
 public static class StringExt
 {
-    public static string Capitalize (this string str) => str[0].ToString().ToUpper() + str[1..];
+    public static string Capitalize(this string str) => str[0].ToString().ToUpper() + str[1..];
 }

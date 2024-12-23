@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-// Automatically imports all source-generated instances
-using Nethermind.Serialization.FastRlp.Derived;
-// Imports `RlpSerializable` attribute
 using Nethermind.Serialization.FastRlp.Generator;
 
 namespace Nethermind.Serialization.FastRlp.Test;
