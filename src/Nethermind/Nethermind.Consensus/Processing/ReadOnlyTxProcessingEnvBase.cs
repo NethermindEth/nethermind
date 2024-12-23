@@ -18,22 +18,20 @@ public class ReadOnlyTxProcessingEnvBase
     public IBlockhashProvider BlockhashProvider { get; protected set; }
 
     public ISpecProvider SpecProvider { get; }
-    public ILogManager? LogManager { get; set; }
+    protected ILogManager LogManager { get; }
 
     protected ReadOnlyTxProcessingEnvBase(
-        IWorldStateManager worldStateManager,
+        IStateReader stateReader,
+        IWorldState stateProvider,
         IBlockTree readOnlyBlockTree,
-        ISpecProvider? specProvider,
-        ILogManager? logManager,
-        IWorldState? worldStateToWarmUp = null
+        ISpecProvider specProvider,
+        ILogManager logManager
     )
     {
-        ArgumentNullException.ThrowIfNull(specProvider);
-        ArgumentNullException.ThrowIfNull(worldStateManager);
         SpecProvider = specProvider;
-        StateReader = worldStateManager.GlobalStateReader;
-        StateProvider = worldStateManager.CreateResettableWorldState(worldStateToWarmUp);
-        BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
+        StateReader = stateReader;
+        StateProvider = stateProvider;
+        BlockTree = readOnlyBlockTree;
         BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
         LogManager = logManager;
     }
