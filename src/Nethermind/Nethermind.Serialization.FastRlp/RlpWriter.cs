@@ -8,6 +8,8 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.FastRlp;
 
+public delegate void RefRlpWriterAction<in T>(ref RlpWriter arg, T value) where T: allows ref struct;
+
 public delegate void RefRlpWriterAction(ref RlpWriter arg);
 
 public ref struct RlpWriter
