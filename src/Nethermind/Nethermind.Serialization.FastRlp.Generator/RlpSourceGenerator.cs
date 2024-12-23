@@ -127,8 +127,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         foreach (var (name, typeName) in parameters)
         {
-            var writeCall = MapTypeToWriteCall(typeName);
-            sb.AppendLine($"w.{writeCall}(value.{name});");
+            var writeCall = MapTypeToWriteCall(name, typeName);
+            sb.AppendLine($"w.{writeCall};");
         }
 
         sb.AppendLine("});");
@@ -143,7 +143,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         foreach (var (name, typeName) in parameters)
         {
             var readCall = MapTypeToReadCall(typeName);
-            sb.AppendLine($"var {name} = r.{readCall}();");
+            sb.AppendLine($"var {name} = r.{readCall};");
         }
 
         sb.Append($"return new {fullTypeName}(");
@@ -193,29 +193,31 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
             var sb = new StringBuilder("Read");
             sb.Append(typeConstructor.Capitalize());
-            sb.Append("<");
+            sb.AppendLine("(");
 
-            var genericTypes = typeParameters
-                .Select(t => t.ToString());
-            var rlpConverterTypes = typeParameters
-                .Select(t => $"{MapTypeAlias(t.ToString())}RlpConverter");
-
-            var readTypeParameters = genericTypes.Concat(rlpConverterTypes).Intersperse(", ");
-            foreach (string rtp in readTypeParameters)
+            foreach (var typeParameter in typeParameters)
             {
-                sb.Append(rtp);
+                sb.Append("static (scoped ref RlpReader r) =>");
+                sb.Append("{");
+                sb.Append($"return r.{MapTypeToReadCall(typeParameter)};");
+                sb.Append("},");
             }
 
-            sb.Append(">");
+            sb.Length -= 1; // Remove the trailing `,`
+            sb.Append(")");
 
             return sb.ToString();
         }
 
         // Default
-        return $"Read{MapTypeAlias(syntax.ToString())}";
+        return $"Read{MapTypeAlias(syntax.ToString())}()";
     }
 
-    private static string MapTypeToWriteCall(TypeSyntax syntax)
+    /// <summary>
+    /// Map the type name to the appropriate Write method on the `RlpWriter`
+    /// Extend this mapping for more types as needed.
+    /// </summary>
+    private static string MapTypeToWriteCall(string name, TypeSyntax syntax)
     {
         // Generics
         if (syntax is GenericNameSyntax generic)
@@ -223,26 +225,25 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             var typeParameters = generic.TypeArgumentList.Arguments;
 
             var sb = new StringBuilder("Write");
-            sb.Append("<");
+            sb.AppendLine("(");
 
-            var genericTypes = typeParameters
-                .Select(t => t.ToString());
-            var rlpConverterTypes = typeParameters
-                .Select(t => $"{MapTypeAlias(t.ToString())}RlpConverter");
-
-            var readTypeParameters = genericTypes.Concat(rlpConverterTypes).Intersperse(", ");
-            foreach (string rtp in readTypeParameters)
+            sb.AppendLine($"value.{name},");
+            foreach (var typeParameter in typeParameters)
             {
-                sb.Append(rtp);
+                sb.Append($"static (ref RlpWriter w, {typeParameter.ToString()} value) =>");
+                sb.Append("{");
+                sb.Append("w.Write(value);");
+                sb.Append("},");
             }
 
-            sb.Append(">");
+            sb.Length -= 1; // Remove the trailing `,`
+            sb.Append(")");
 
             return sb.ToString();
         }
 
         // Default
-        return "Write";
+        return $"Write(value.{name})";
     }
 
     private static string MapTypeAlias(string alias) =>
