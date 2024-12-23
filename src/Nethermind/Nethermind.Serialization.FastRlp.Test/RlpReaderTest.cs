@@ -80,15 +80,6 @@ public class RlpReaderTest
     }
 
     [Test]
-    public void ReadStringListCollection()
-    {
-        byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
-        var actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadList<string, StringRlpConverter>());
-
-        actual.Should().BeEquivalentTo("cat", "dog");
-    }
-
-    [Test]
     public void ReadEmptyList()
     {
         byte[] source = [0xc0];
@@ -149,5 +140,28 @@ public class RlpReaderTest
             new object[] { new object[] { } },
             new object[] { new object[] { }, new object[] { new object[] { } } },
         });
+    }
+
+
+    [Test]
+    public void ReadListEquivalentToExplicit()
+    {
+        byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
+        var decodedList = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadList<string, StringRlpConverter>());
+        var decodedExplicit = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        {
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
+            {
+                List<string> result = [];
+                while (r.HasNext)
+                {
+                    result.Add(r.ReadString());
+                }
+
+                return result;
+            });
+        });
+
+        decodedList.Should().BeEquivalentTo(decodedExplicit);
     }
 }
