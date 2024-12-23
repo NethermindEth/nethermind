@@ -21,6 +21,9 @@ public record Tree(string Value, List<Tree> Children);
 [RlpSerializable]
 public record RawData(int Tag, byte[] Data);
 
+[RlpSerializable]
+public record Integers(short A, int B, long C, Int128 D);
+
 public class RlpDerivedTest
 {
     [Test]
