@@ -135,21 +135,4 @@ public class RlpWriterTest
         byte[] expected = [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0];
         serialized.Should().BeEquivalentTo(expected);
     }
-
-    [Test]
-    public void WriteListEquivalentToExplicit()
-    {
-        var list = new List<string> { "cat", "dog" };
-        var rlpList = Rlp.Write((ref RlpWriter w) => w.Write<string, StringRlpConverter>(list));
-        var rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
-        {
-            w.WriteSequence(static (ref RlpWriter w) =>
-            {
-                w.Write("cat");
-                w.Write("dog");
-            });
-        });
-
-        rlpList.Should().BeEquivalentTo(rlpExplicit);
-    }
 }

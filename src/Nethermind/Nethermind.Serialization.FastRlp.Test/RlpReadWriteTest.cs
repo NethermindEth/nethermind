@@ -280,4 +280,25 @@ public class RlpReadWriteTest
 
         decoded.Should().BeEquivalentTo(students);
     }
+
+    [Test]
+    public void ListCollection()
+    {
+        var list = new List<string> { "cat", "dog" };
+        var rlp = Rlp.Write((ref RlpWriter w) => w.Write<string, StringRlpConverter>(list));
+
+        var rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
+        {
+            w.WriteSequence(static (ref RlpWriter w) =>
+            {
+                w.Write("cat");
+                w.Write("dog");
+            });
+        });
+        rlpExplicit.Should().BeEquivalentTo(rlp);
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadList<string, StringRlpConverter>());
+
+        list.Should().BeEquivalentTo(decoded);
+    }
 }
