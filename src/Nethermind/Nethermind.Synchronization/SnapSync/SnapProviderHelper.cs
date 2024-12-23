@@ -110,11 +110,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
-            in ValueHash256? startingHash,
-            IReadOnlyList<PathWithStorageSlot> slots,
-            in ValueHash256 expectedRootHash,
-            in ValueHash256? limitHash,
             PathWithAccount account,
+            IReadOnlyList<PathWithStorageSlot> slots,
+            in ValueHash256? startingHash,
+            in ValueHash256? limitHash,
             IReadOnlyList<byte[]>? proofs = null
         )
         {
@@ -123,7 +122,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 lastHash = slots[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, account.Account.StorageRoot, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -139,7 +138,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash.ValueHash256 != expectedRootHash)
+            if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
             {
                 return (AddRangeResult.DifferentRootHash, true);
             }

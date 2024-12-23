@@ -40,6 +40,6 @@ public class StateSyncPivotTest
         stateSyncPivot.GetPivotHeader().Should().NotBeNull();
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(newBestSuggested).TestObject);
-        stateSyncPivot.GetPivotHeader().Number.Should().Be(newBestHeader);
+        stateSyncPivot.GetPivotHeader()!.Number.Should().Be(newBestHeader);
     }
 }
