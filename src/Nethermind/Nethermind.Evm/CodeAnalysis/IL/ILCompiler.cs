@@ -26,6 +26,68 @@ using Label = Sigil.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal static class ILCompiler
 {
+    public static class FullAOR
+    {
+        public static void CompileContract(ContractMetadata contractMetadata, IVMConfig vmConfig)
+        {
+            PersistedAssemblyBuilder assemblyBuilder = new PersistedAssemblyBuilder(new AssemblyName("Nethermind.Evm.Precompiled.Live"), typeof(object).Assembly);
+            ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("ContractsModule");
+            TypeBuilder contractStructBuilder = moduleBuilder.DefineType($"{contractMetadata.TargetCodeInfo.Address}", TypeAttributes.Public |
+                TypeAttributes.Sealed | TypeAttributes.SequentialLayout, typeof(ValueType));
+
+            // create a property ILChunkExecutionState Current
+            PropertyBuilder currentProp = contractStructBuilder.EmitProperty<ILChunkExecutionState>("Current", true, true);
+            // create a property IContractState State
+            PropertyBuilder stateProp = contractStructBuilder.EmitProperty<IContractState>("State", true, true);
+            // create a property EvmState EvmState
+            PropertyBuilder evmStateProp = contractStructBuilder.EmitProperty<EvmState>("EvmState", true, false);
+            // create a property ITxTracer Tracer
+            PropertyBuilder tracerProp = contractStructBuilder.EmitProperty<ITxTracer>("Tracer", true, false);
+            // create a property IReleaseSpec Spec
+            PropertyBuilder specProp = contractStructBuilder.EmitProperty<IReleaseSpec>("Spec", true, false);
+            // create a property IWorldState WorldState
+            PropertyBuilder worldStateProp = contractStructBuilder.EmitProperty<IWorldState>("WorldState", true, false);
+            // create a property IBlockhashProvider BlockhashProvider
+            PropertyBuilder blockhashProviderProp = contractStructBuilder.EmitProperty<IBlockhashProvider>("BlockhashProvider", true, false);
+            // create a property ICodeInfoRepository CodeInfoRepository
+            PropertyBuilder codeInfoRepositoryProp = contractStructBuilder.EmitProperty<ICodeInfoRepository>("CodeInfoRepository", true, false);
+
+            // create a constructor for the contract
+            ConstructorBuilder constructor = contractStructBuilder.DefineDefaultConstructor(MethodAttributes.Public);
+
+            // create a constructor for the contract that takes all the properties
+            ConstructorBuilder fullConstructor = contractStructBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, new Type[] { typeof(EvmState), typeof(IWorldState), typeof(ICodeInfoRepository), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer) });
+            ILGenerator fullConstructorIL = fullConstructor.GetILGenerator();
+            fullConstructorIL.Emit(OpCodes.Ldarg_0);
+            fullConstructorIL.Emit(OpCodes.Ldarg_1);
+            fullConstructorIL.Emit(OpCodes.Call, evmStateProp.GetSetMethod());
+            fullConstructorIL.Emit(OpCodes.Ldarg_0);
+            fullConstructorIL.Emit(OpCodes.Ldarg_2);
+            fullConstructorIL.Emit(OpCodes.Call, worldStateProp.GetSetMethod());
+            fullConstructorIL.Emit(OpCodes.Ldarg_0);
+            fullConstructorIL.Emit(OpCodes.Ldarg_3);
+            fullConstructorIL.Emit(OpCodes.Call, codeInfoRepositoryProp.GetSetMethod());
+            fullConstructorIL.Emit(OpCodes.Ldarg_0);
+            fullConstructorIL.Emit(OpCodes.Ldarg_S, 4);
+            fullConstructorIL.Emit(OpCodes.Call, specProp.GetSetMethod());
+            fullConstructorIL.Emit(OpCodes.Ldarg_0);
+            fullConstructorIL.Emit(OpCodes.Ldarg_S, 5);
+            fullConstructorIL.Emit(OpCodes.Call, blockhashProviderProp.GetSetMethod());
+            fullConstructorIL.Emit(OpCodes.Ldarg_0);
+            fullConstructorIL.Emit(OpCodes.Ldarg_S, 6);
+            fullConstructorIL.Emit(OpCodes.Call, tracerProp.GetSetMethod());
+            fullConstructorIL.Emit(OpCodes.Ret);
+
+            // create a method MoveNext
+            MethodBuilder moveNextMethod = contractStructBuilder.DefineMethod("MoveNext", MethodAttributes.Public | MethodAttributes.Virtual, typeof(bool), new Type[] { typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int).MakeByRefType(), typeof(Word).MakeByRefType() });
+
+        }
+
+        public static void EmitMoveNext(ContractMetadata metadata, IVMConfig config)
+        {
+
+        }
+    }
     public static class PartialAOT
     {
         public delegate void ExecuteSegment(

@@ -19,6 +19,40 @@ using System.Runtime.CompilerServices;
 using static Nethermind.Evm.IL.EmitExtensions;
 
 namespace Nethermind.Evm.IL;
+public static class TypeEmit
+{
+    public static FieldBuilder EmitField<TField>(this TypeBuilder typeBuilder, string fieldName, bool isPublic)
+        where TField : allows ref struct
+    {
+        FieldBuilder fieldBuilder = typeBuilder.DefineField(fieldName, typeof(TField), isPublic ? FieldAttributes.Public : FieldAttributes.Private);
+        return fieldBuilder;
+    }
+
+    public static PropertyBuilder EmitProperty<TProperty>(this TypeBuilder typeBuilder, string PropertyName, bool hasGetter, bool hasSetter, FieldBuilder? field = null)
+        where TProperty : allows ref struct
+    {
+        if (field is null)
+        {
+            field = typeBuilder.EmitField<TProperty>(PropertyName, isPublic: true);
+        }
+
+        PropertyBuilder propertyBuilder = typeBuilder.DefineProperty(PropertyName, PropertyAttributes.None, typeof(ILChunkExecutionState), Type.EmptyTypes);
+        MethodBuilder getMethod = typeBuilder.DefineMethod($"get_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, typeof(ILChunkExecutionState), Type.EmptyTypes);
+        ILGenerator getMethodIL = getMethod.GetILGenerator();
+        getMethodIL.Emit(OpCodes.Ldarg_0);
+        getMethodIL.Emit(OpCodes.Ldfld, field);
+        getMethodIL.Emit(OpCodes.Ret);
+        propertyBuilder.SetGetMethod(getMethod);
+        MethodBuilder setMethod = typeBuilder.DefineMethod($"set_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, null, new Type[] { typeof(ILChunkExecutionState) });
+        ILGenerator setMethodIL = setMethod.GetILGenerator();
+        setMethodIL.Emit(OpCodes.Ldarg_0);
+        setMethodIL.Emit(OpCodes.Ldarg_1);
+        setMethodIL.Emit(OpCodes.Stfld, field);
+        setMethodIL.Emit(OpCodes.Ret);
+        propertyBuilder.SetSetMethod(setMethod);
+        return propertyBuilder;
+    }
+}
 
 public static class StackEmit
 {
