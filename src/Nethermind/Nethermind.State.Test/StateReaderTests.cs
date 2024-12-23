@@ -316,7 +316,7 @@ namespace Nethermind.Store.Test
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
 
-            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static () => true);
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
 
             Assert.That(result, Is.False);
         }
