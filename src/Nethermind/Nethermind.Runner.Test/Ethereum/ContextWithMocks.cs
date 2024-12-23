@@ -123,7 +123,6 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncPointers>())
                     .AddSingleton(Substitute.For<ISynchronizer>())
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
-                    .AddSingleton(Substitute.For<IBlockingVerifyTrie>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
                     .AddSingleton(Substitute.For<ISyncServer>())
                     .Build(),

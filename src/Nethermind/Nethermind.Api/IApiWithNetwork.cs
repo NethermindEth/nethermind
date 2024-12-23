@@ -18,7 +18,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
