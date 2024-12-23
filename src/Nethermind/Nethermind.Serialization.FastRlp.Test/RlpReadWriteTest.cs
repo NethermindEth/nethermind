@@ -13,10 +13,10 @@ public class RlpReadWriteTest
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
-                w.WriteList(static (ref RlpWriter w) => { w.Write(42); });
-                w.WriteList(static (ref RlpWriter w) =>
+                w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); });
+                w.WriteSequence(static (ref RlpWriter w) =>
                 {
                     w.Write("dog");
                     w.Write("cat");
@@ -26,10 +26,10 @@ public class RlpReadWriteTest
 
         var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
-                var _1 = r.ReadList(static (scoped ref RlpReader r) => r.ReadInt32());
-                var _2 = r.ReadList(static (scoped ref RlpReader r) =>
+                var _1 = r.ReadSequence(static (scoped ref RlpReader r) => r.ReadInt32());
+                var _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
                 {
                     var _1 = r.ReadString();
                     var _2 = r.ReadString();
@@ -49,7 +49,7 @@ public class RlpReadWriteTest
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
                 for (int i = 0; i < 100; i++)
                 {
@@ -60,7 +60,7 @@ public class RlpReadWriteTest
 
         List<string> decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            return r.ReadList((scoped ref RlpReader r) =>
+            return r.ReadSequence((scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 for (int i = 0; i < 100; i++)
@@ -81,14 +81,14 @@ public class RlpReadWriteTest
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
                 for (int i = 0; i < 100; i++)
                 {
                     w.Write("dog");
                 }
             });
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
                 for (int i = 0; i < 50; i++)
                 {
@@ -99,7 +99,7 @@ public class RlpReadWriteTest
 
         var (dogs, cats) = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            var dogs = r.ReadList((scoped ref RlpReader r) =>
+            var dogs = r.ReadSequence((scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 while (r.HasNext)
@@ -109,7 +109,7 @@ public class RlpReadWriteTest
 
                 return result;
             });
-            var cats = r.ReadList((scoped ref RlpReader r) =>
+            var cats = r.ReadSequence((scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 while (r.HasNext)
@@ -135,7 +135,7 @@ public class RlpReadWriteTest
     {
         var rlp = Rlp.Write((ref RlpWriter root) =>
         {
-            root.WriteList((ref RlpWriter w) =>
+            root.WriteSequence((ref RlpWriter w) =>
             {
                 for (int i = 0; i < length; i++)
                 {
@@ -146,7 +146,7 @@ public class RlpReadWriteTest
 
         List<int> decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
         {
-            return r.ReadList((scoped ref RlpReader r) =>
+            return r.ReadSequence((scoped ref RlpReader r) =>
             {
                 List<int> result = [];
                 while (r.HasNext)
@@ -165,7 +165,7 @@ public class RlpReadWriteTest
     public void InvalidObjectReading()
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
-        Action tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => { r.ReadList((scoped ref RlpReader _) => { }); });
+        Action tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => { r.ReadSequence((scoped ref RlpReader _) => { }); });
 
         tryRead.Should().Throw<RlpReaderException>();
     }
@@ -173,7 +173,7 @@ public class RlpReadWriteTest
     [Test]
     public void InvalidListReading()
     {
-        var rlp = Rlp.Write(static (ref RlpWriter w) => { w.WriteList(static (ref RlpWriter _) => { }); });
+        var rlp = Rlp.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
         Func<int> tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadInt32());
 
         tryRead.Should().Throw<RlpReaderException>();
@@ -183,10 +183,10 @@ public class RlpReadWriteTest
     public void Choice()
     {
         RefRlpReaderFunc<int> intReader = (scoped ref RlpReader r) => r.ReadInt32();
-        RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadList(intReader);
+        RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadSequence(intReader);
 
         var intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
-        var wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteList(static (ref RlpWriter w) => { w.Write(42); }));
+        var wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); }));
 
         foreach (var rlp in (byte[][]) [intRlp, wrappedIntRlp])
         {
@@ -201,7 +201,7 @@ public class RlpReadWriteTest
     {
         RefRlpReaderFunc<(string, string, string)> readerA = static (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 var _1 = r.ReadString();
                 var _2 = r.ReadString();
@@ -212,7 +212,7 @@ public class RlpReadWriteTest
         };
         RefRlpReaderFunc<(string, string, string)> readerB = static (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 var _1 = r.ReadString();
                 var _2 = r.ReadString();
@@ -224,7 +224,7 @@ public class RlpReadWriteTest
 
         var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteList(static (ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
                 w.Write("dog");
                 w.Write("cat");
@@ -255,7 +255,7 @@ public class RlpReadWriteTest
 
         var rlp = Rlp.Write((ref RlpWriter w) =>
         {
-            w.WriteList((ref RlpWriter w) =>
+            w.WriteSequence((ref RlpWriter w) =>
             {
                 foreach (var student in students)
                 {
@@ -266,7 +266,7 @@ public class RlpReadWriteTest
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 List<Student> result = [];
                 while (r.HasNext)

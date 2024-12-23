@@ -142,20 +142,20 @@ public ref struct RlpWriter
         _position += value.Length;
     }
 
-    public void WriteList(RefRlpWriterAction action)
+    public void WriteSequence(RefRlpWriterAction action)
     {
         switch (_mode)
         {
             case LengthMode:
-                LengthWriteList(action);
+                LengthWriteSequence(action);
                 break;
             case ContentMode:
-                ContentWriteList(action);
+                ContentWriteSequence(action);
                 break;
         }
     }
 
-    private void LengthWriteList(RefRlpWriterAction action)
+    private void LengthWriteSequence(RefRlpWriterAction action)
     {
         var inner = LengthWriter();
         action(ref inner);
@@ -172,7 +172,7 @@ public ref struct RlpWriter
         }
     }
 
-    private void ContentWriteList(RefRlpWriterAction action)
+    private void ContentWriteSequence(RefRlpWriterAction action)
     {
         var lengthWriter = LengthWriter();
         action(ref lengthWriter);

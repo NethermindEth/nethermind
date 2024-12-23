@@ -67,7 +67,7 @@ public class RlpReaderTest
         byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
         var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 var cat = r.ReadString();
                 var dog = r.ReadString();
@@ -86,7 +86,7 @@ public class RlpReaderTest
 
         var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
-            return r.ReadList((scoped ref RlpReader _) => Array.Empty<object>());
+            return r.ReadSequence((scoped ref RlpReader _) => Array.Empty<object>());
         });
 
         actual.Should().BeEmpty();
@@ -110,20 +110,20 @@ public class RlpReaderTest
 
         object[] actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
-            return r.ReadList(static (scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
-                var _1 = r.ReadList(static (scoped ref RlpReader _) => Array.Empty<object>());
-                var _2 = r.ReadList(static (scoped ref RlpReader r) =>
+                var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
+                var _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
                 {
-                    var _1 = r.ReadList(static (scoped ref RlpReader _) => Array.Empty<object>());
+                    var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
                     return new object[] { _1 };
                 });
-                var _3 = r.ReadList(static (scoped ref RlpReader r) =>
+                var _3 = r.ReadSequence(static (scoped ref RlpReader r) =>
                 {
-                    var _1 = r.ReadList(static (scoped ref RlpReader _) => Array.Empty<object>());
-                    var _2 = r.ReadList(static (scoped ref RlpReader r) =>
+                    var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
+                    var _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
                     {
-                        var _1 = r.ReadList(static (scoped ref RlpReader _) => Array.Empty<object>());
+                        var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
                         return new object[] { _1 };
                     });
 

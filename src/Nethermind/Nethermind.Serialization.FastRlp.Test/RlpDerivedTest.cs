@@ -12,7 +12,7 @@ public record Player(int Id, string Username);
 public class RlpDerivedTest
 {
     [Test]
-    public void ReadDerivedRecord()
+    public void FlatRecord()
     {
         var player = new Player(Id: 42, Username: "SuperUser");
         ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(player));

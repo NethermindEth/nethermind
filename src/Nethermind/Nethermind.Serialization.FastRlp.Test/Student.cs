@@ -15,11 +15,11 @@ public abstract class StudentRlpConverter : IRlpConverter<Student>
 {
     public static Student Read(ref RlpReader reader)
     {
-        return reader.ReadList(static (scoped ref RlpReader r) =>
+        return reader.ReadSequence(static (scoped ref RlpReader r) =>
         {
             var name = r.ReadString();
             var age = r.ReadInt32();
-            var scores = r.ReadList(static (scoped ref RlpReader r) =>
+            var scores = r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 Dictionary<string, int> scores = [];
                 while (r.HasNext)
@@ -39,11 +39,11 @@ public abstract class StudentRlpConverter : IRlpConverter<Student>
 
     public static void Write(ref RlpWriter writer, Student value)
     {
-        writer.WriteList((ref RlpWriter w) =>
+        writer.WriteSequence((ref RlpWriter w) =>
         {
             w.Write(value.Name);
             w.Write(value.Age);
-            w.WriteList((ref RlpWriter w) =>
+            w.WriteSequence((ref RlpWriter w) =>
             {
                 foreach (var (subject, score) in value.Scores)
                 {
