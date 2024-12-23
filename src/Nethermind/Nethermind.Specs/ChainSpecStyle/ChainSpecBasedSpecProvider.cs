@@ -10,6 +10,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -199,6 +201,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
 
+            releaseSpec.IsEip7840Enabled = (chainSpec.Parameters.Eip7840TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            SetMaxAndTargetBlobCount(chainSpec, releaseSpec, releaseStartTimestamp);
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
@@ -243,6 +247,39 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             return releaseSpec;
+        }
+
+        private void SetMaxAndTargetBlobCount(ChainSpec chainSpec, ReleaseSpec spec, ulong? releaseStartTimestamp = null)
+        {
+            if (!spec.IsEip7840Enabled) return;
+
+            (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork(chainSpec, releaseStartTimestamp);
+            if (fork is null) return;
+
+            if (chainSpec.BlobSchedule.TryGetValue(fork.Name.ToLower(), out ChainSpecBlobCountJson blobCount) ||
+                chainSpec.BlobSchedule.TryGetValue(previousFork.Name.ToLower(), out blobCount))
+            {
+                spec.TargetBlobCount = blobCount.TargetBlobCount;
+                spec.MaxBlobCount = blobCount.MaxBlobCount;
+            }
+            else
+            {
+                spec.TargetBlobCount = 0;
+                spec.MaxBlobCount = 0;
+            }
+        }
+
+        private (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork(ChainSpec chainSpec, ulong? releaseStartTimestamp = null)
+        {
+            // TODO: add Osaka
+            if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+            {
+                return (Prague.Instance, Cancun.Instance);
+            }
+
+            return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                ? (Cancun.Instance, Shanghai.Instance)
+                : (null, null);
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
