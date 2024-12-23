@@ -89,7 +89,7 @@ namespace Nethermind.AuRa.Test.Validators
             ValidatorStore store = new(db);
             if (validatorsToAdd is not null)
             {
-                foreach ((long FinalizingBlock, Address[] Validators) validator in validatorsToAdd.OrderBy(v => v.FinalizingBlock))
+                foreach ((long FinalizingBlock, Address[] Validators) validator in validatorsToAdd.OrderBy(static v => v.FinalizingBlock))
                 {
                     store.SetValidators(validator.FinalizingBlock, validator.Validators);
                 }
@@ -137,7 +137,7 @@ namespace Nethermind.AuRa.Test.Validators
             static Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
             validators ??= Array.Empty<(long FinalizingBlock, Address[] Validators)>();
-            (long FinalizingBlock, Address[] Validators)[] ordered = validators.OrderByDescending(v => v.FinalizingBlock).ToArray();
+            (long FinalizingBlock, Address[] Validators)[] ordered = validators.OrderByDescending(static v => v.FinalizingBlock).ToArray();
 
             MemDb memDb = new();
 

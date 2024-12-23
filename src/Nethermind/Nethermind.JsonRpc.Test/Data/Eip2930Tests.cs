@@ -246,7 +246,7 @@ public class Eip2930Tests
 
         Transaction afterConversion = transactionForRpc.ToTransaction();
 
-        afterConversion.Should().BeEquivalentTo(transaction, option => option.ComparingByMembers<Transaction>().Excluding(tx => tx.Data));
+        afterConversion.Should().BeEquivalentTo(transaction, static option => option.ComparingByMembers<Transaction>().Excluding(static tx => tx.Data));
         afterConversion.Data.AsArray().Should().BeEquivalentTo(transaction.Data.AsArray());
     }
 }

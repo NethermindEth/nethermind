@@ -548,14 +548,14 @@ public class TrieNodeTests
     public void Size_of_a_heavy_leaf_is_correct()
     {
         Context ctx = new();
-        Assert.That(ctx.HeavyLeaf.GetMemorySize(false), Is.EqualTo(248));
+        Assert.That(ctx.HeavyLeaf.GetMemorySize(false), Is.EqualTo(208));
     }
 
     [Test]
     public void Size_of_a_tiny_leaf_is_correct()
     {
         Context ctx = new();
-        Assert.That(ctx.TiniestLeaf.GetMemorySize(false), Is.EqualTo(168));
+        Assert.That(ctx.TiniestLeaf.GetMemorySize(false), Is.EqualTo(136));
     }
 
     [Test]
@@ -563,14 +563,13 @@ public class TrieNodeTests
     {
         Context ctx = new();
         TrieNode node = new(NodeType.Branch);
-        node.Key = new byte[] { 1 };
         for (int i = 0; i < 16; i++)
         {
             node.SetChild(i, ctx.AccountLeaf);
         }
 
-        Assert.That(node.GetMemorySize(true), Is.EqualTo(4048));
-        Assert.That(node.GetMemorySize(false), Is.EqualTo(208));
+        Assert.That(node.GetMemorySize(true), Is.EqualTo(3376));
+        Assert.That(node.GetMemorySize(false), Is.EqualTo(176));
     }
 
     [Test]
@@ -581,7 +580,7 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(120));
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
     }
 
     [Test]
@@ -592,22 +591,22 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(288));
-        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(120));
+        Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
     }
 
     [Test]
     public void Size_of_an_unknown_empty_node_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown);
-        trieNode.GetMemorySize(false).Should().Be(56);
+        trieNode.GetMemorySize(false).Should().Be(48);
     }
 
     [Test]
     public void Size_of_an_unknown_node_with_keccak_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-        trieNode.GetMemorySize(false).Should().Be(104);
+        trieNode.GetMemorySize(false).Should().Be(96);
     }
 
     [Test]
@@ -615,7 +614,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Extension);
         trieNode.SetChild(0, null);
-        trieNode.GetMemorySize(false).Should().Be(96);
+        trieNode.GetMemorySize(false).Should().Be(64);
     }
 
     [Test]
@@ -623,7 +622,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Branch);
         trieNode.SetChild(0, null);
-        trieNode.GetMemorySize(false).Should().Be(208);
+        trieNode.GetMemorySize(false).Should().Be(176);
     }
 
     [Test]
@@ -631,14 +630,14 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Leaf);
         trieNode.Value = new byte[7];
-        trieNode.GetMemorySize(false).Should().Be(152);
+        trieNode.GetMemorySize(false).Should().Be(104);
     }
 
     [Test]
     public void Size_of_an_unknown_node_with_full_rlp_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown, new byte[7]);
-        trieNode.GetMemorySize(false).Should().Be(120);
+        trieNode.GetMemorySize(false).Should().Be(112);
     }
 
     [Test]
@@ -738,7 +737,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        trieNode.GetMemorySize(false).Should().Be(144);
+        trieNode.GetMemorySize(false).Should().Be(112);
     }
 
     [Test]
@@ -751,7 +750,7 @@ public class TrieNodeTests
         trieNode.PrunePersistedRecursively(1);
         TrieNode cloned = trieNode.Clone();
 
-        cloned.GetMemorySize(false).Should().Be(144);
+        cloned.GetMemorySize(false).Should().Be(112);
     }
 
     [Test]

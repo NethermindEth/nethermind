@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.Test.Mocks
         {
             get
             {
-                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, () => new FirstFree(false));
+                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, static () => new FirstFree(false));
 
                 return _instance;
             }
@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Test.Mocks
         {
             get
             {
-                if (_replaceableInstance is null) LazyInitializer.EnsureInitialized(ref _replaceableInstance, () => new FirstFree(true));
+                if (_replaceableInstance is null) LazyInitializer.EnsureInitialized(ref _replaceableInstance, static () => new FirstFree(true));
 
                 return _replaceableInstance;
             }

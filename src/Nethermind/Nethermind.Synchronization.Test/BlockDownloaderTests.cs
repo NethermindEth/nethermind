@@ -368,10 +368,10 @@ public partial class BlockDownloaderTests
         Context ctx = new();
         BlockDownloader downloader = ctx.BlockDownloader;
         Task task1 = downloader.DownloadHeaders(null, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
-        await task1.ContinueWith(t => Assert.That(t.IsFaulted, Is.True));
+        await task1.ContinueWith(static t => Assert.That(t.IsFaulted, Is.True));
 
         Task task2 = downloader.DownloadBlocks(null, new BlocksRequest(), CancellationToken.None);
-        await task2.ContinueWith(t => Assert.That(t.IsFaulted, Is.True));
+        await task2.ContinueWith(static t => Assert.That(t.IsFaulted, Is.True));
     }
 
     [Test]
@@ -702,7 +702,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
 
         await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None)
-            .ContinueWith(t => Assert.That(t.IsFaulted, Is.True));
+            .ContinueWith(static t => Assert.That(t.IsFaulted, Is.True));
     }
 
     [Test]
@@ -1354,7 +1354,7 @@ public partial class BlockDownloaderTests
             {
                 BlockBody body = _bodies[blockHashes[i]];
                 receipts[i] = body.Transactions
-                    .Select(t => Build.A.Receipt
+                    .Select(static t => Build.A.Receipt
                         .WithStatusCode(StatusCode.Success)
                         .WithGasUsed(10)
                         .WithBloom(Bloom.Empty)

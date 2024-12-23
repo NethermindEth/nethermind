@@ -35,7 +35,7 @@ namespace Nethermind.Config
 
         public IEnumerable<(string Category, string Name)> GetConfigKeys()
         {
-            return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("NETHERMIND_")).Select(v => v.Split('_')).Select(a =>
+            return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(static k => k.StartsWith("NETHERMIND_")).Select(static v => v.Split('_')).Select(static a =>
             {
                 // actually only possible value is "NETHERMIND_"
                 if (a.Length <= 1)
