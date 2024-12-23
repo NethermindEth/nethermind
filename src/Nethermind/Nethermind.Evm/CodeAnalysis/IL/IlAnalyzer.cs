@@ -120,130 +120,6 @@ public static class IlAnalyzer
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
-        {
-            List<InstructionChunk> segmentsFound = new();
-            int offset = ilinfo.IlevmChunks?.Length ?? 0;   
-            if (codeData.Item1.Length == 0)
-            {
-                return;
-            }
-
-            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
-
-            int[] statefulOpcodeindex = new int[codeData.Item1.Length];
-
-            int j = 0;
-            for (int i = 0; i < codeData.Item1.Length; i++)
-            {
-                if (codeData.Item1[i].Operation.IsStateful())
-                {
-                    statefulOpcodeindex[j++] = i;
-                }
-            }
-
-            long segmentAvgSize = 0;
-            for (int i = -1; i < j; i++)
-            {
-                int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
-                int end = i == j - 1 || i + 1 == statefulOpcodeindex.Length ? codeData.Item1.Length : statefulOpcodeindex[i + 1];
-                if (start > end)
-                {
-                    continue;
-                }
-
-                var segment = codeData.Item1[start..end];
-                if (segment.Length == 0)
-                {
-                    continue;
-                }
-                var firstOp = segment[0];
-                var lastOp = segment[^1];
-                var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
-
-                segmentAvgSize += segment.Length;
-
-                if(segment.Length <= 1)
-                {
-                    continue;
-                }
-
-                var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig, out int[] JumpDestinations);
-                ilinfo.AddMapping(segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
-                if (vmConfig.AggressivePartialAotMode)
-                {
-                    for (int k = 0; k < JumpDestinations.Length; k++)
-                    {
-                        ilinfo.AddMapping(JumpDestinations[k], segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
-                    }
-                }
-                segmentsFound.Add(segmentExecutionCtx);
-            }
-
-            if(segmentsFound.Count == 0)
-            {
-                return;
-            }
-
-            if (ilinfo.IlevmChunks is null)
-            {
-                ilinfo.IlevmChunks = segmentsFound.ToArray();
-            }
-            else
-            {
-                List<InstructionChunk> combined = [
-                    ..ilinfo.IlevmChunks,
-                    ..segmentsFound
-                ];
-                ilinfo.IlevmChunks = combined.ToArray();
-            }
-            Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
-        }
-
-        static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
-        {
-            List<InstructionChunk> patternsFound = new();
-            int offset = ilinfo.IlevmChunks?.Length ?? 0;   
-            var (strippedBytecode, data) = StripByteCode(machineCode.Span);
-            foreach ((Type _, IPatternChunk chunkHandler) in _patterns)
-            {
-                for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
-                {
-                    bool found = true;
-                    for (int j = 0; j < chunkHandler.Pattern.Length && found; j++)
-                    {
-                        found = ((byte)strippedBytecode[i + j].Operation == chunkHandler.Pattern[j]);
-                    }
-
-                    if (found)
-                    {
-                        ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, patternsFound.Count + offset, ILMode.PATTERN_BASED_MODE);
-                        patternsFound.Add(chunkHandler);
-                        i += chunkHandler.Pattern.Length - 1;
-                    }
-                }
-            }
-
-            if (patternsFound.Count == 0)
-            {
-                return;
-            }
-
-            if (ilinfo.IlevmChunks is null) {
-                ilinfo.IlevmChunks = patternsFound.ToArray();
-            }
-            else
-            {
-                List<InstructionChunk> combined = [
-                    ..ilinfo.IlevmChunks,
-                    ..patternsFound
-                ];
-
-                ilinfo.IlevmChunks = combined.ToArray();
-            }
-            Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
-        }
-
         switch (mode)
         {
             case ILMode.PATTERN_BASED_MODE:
@@ -253,5 +129,245 @@ public static class IlAnalyzer
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
                 break;
         }
+    }
+
+    internal static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
+    {
+        List<InstructionChunk> patternsFound = new();
+        int offset = ilinfo.IlevmChunks?.Length ?? 0;
+        var (strippedBytecode, data) = StripByteCode(machineCode.Span);
+        foreach ((Type _, IPatternChunk chunkHandler) in _patterns)
+        {
+            for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
+            {
+                bool found = true;
+                for (int j = 0; j < chunkHandler.Pattern.Length && found; j++)
+                {
+                    found = ((byte)strippedBytecode[i + j].Operation == chunkHandler.Pattern[j]);
+                }
+
+                if (found)
+                {
+                    ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, patternsFound.Count + offset, ILMode.PATTERN_BASED_MODE);
+                    patternsFound.Add(chunkHandler);
+                    i += chunkHandler.Pattern.Length - 1;
+                }
+            }
+        }
+
+        if (patternsFound.Count == 0)
+        {
+            return;
+        }
+
+        if (ilinfo.IlevmChunks is null)
+        {
+            ilinfo.IlevmChunks = patternsFound.ToArray();
+        }
+        else
+        {
+            List<InstructionChunk> combined = [
+                ..ilinfo.IlevmChunks,
+                    ..patternsFound
+            ];
+
+            ilinfo.IlevmChunks = combined.ToArray();
+        }
+        Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
+    }
+
+    internal static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
+    {
+        List<InstructionChunk> segmentsFound = new();
+        int offset = ilinfo.IlevmChunks?.Length ?? 0;
+        if (codeData.Item1.Length == 0)
+        {
+            return;
+        }
+
+        string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
+        List<SegmentMetadata> segments = new();
+        List<int> jumpdests = new();
+
+
+        int startSegment = 0;
+        for (int i = 0; i < codeData.Item1.Length; i++)
+        {
+            if (codeData.Item1[i].Operation is Instruction.JUMPDEST)
+            {
+                jumpdests.Add(codeData.Item1[i].ProgramCounter);
+            }
+
+            if (codeData.Item1[i].IsStateful)
+            {
+                int endSegment = i;
+                segments.Add(AnalyzeSegment(codeData.Item1, startSegment..endSegment));
+                startSegment = i + 1;
+                continue;
+            }
+        }
+
+        if(startSegment < codeData.Item1.Length)
+        {
+            segments.Add(AnalyzeSegment(codeData.Item1, startSegment..));
+        }
+
+        var contractMetadata = new ContractMetadata
+        {
+            TargetCodeInfo = codeInfo,
+            Segments = segments.ToArray(),
+            Jumpdests = jumpdests.ToArray(),
+            EmbeddedData = codeData.Item2
+        };
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            string segmentName = GenerateName(segments[i].Boundaries);
+            PrecompiledChunk segmentExecutionCtx = PartialAOT.CompileSegment(segmentName, contractMetadata, i, vmConfig, out var localJumpdests);
+            ilinfo.AddMapping(contractMetadata.Segments[i].Segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
+            if (vmConfig.AggressivePartialAotMode)
+            {
+                for (int k = 0; k < localJumpdests.Length; k++)
+                {
+                    ilinfo.AddMapping(localJumpdests[k], segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
+                }
+            }
+            segmentsFound.Add(segmentExecutionCtx);
+        }
+
+        if (segmentsFound.Count == 0)
+        {
+            return;
+        }
+
+        if (ilinfo.IlevmChunks is null)
+        {
+            ilinfo.IlevmChunks = segmentsFound.ToArray();
+        }
+        else
+        {
+            List<InstructionChunk> combined = [
+                ..ilinfo.IlevmChunks,
+                    ..segmentsFound
+            ];
+            ilinfo.IlevmChunks = combined.ToArray();
+        }
+        Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
+    }
+    internal static SegmentMetadata AnalyzeSegment(OpcodeInfo[] fullcode, Range segmentRange)
+    {
+        SegmentMetadata metadata = new()
+        {
+            Segment = [.. fullcode[segmentRange]]
+        };
+
+        SubSegmentMetadata subSegment = new();
+        metadata.SubSegments = new();
+
+        int subsegmentStart = 0;
+        int costStart = 0;
+
+        subSegment.SetInitialStackData(metadata.Segment[subsegmentStart].Metadata.StackBehaviorPop, metadata.Segment[subsegmentStart].Metadata.StackBehaviorPush - metadata.Segment[subsegmentStart].Metadata.StackBehaviorPop, metadata.Segment[subsegmentStart].Metadata.StackBehaviorPush);
+        subSegment.Start = subsegmentStart;
+        metadata.StackOffsets = new int[metadata.Segment.Length];
+        int currentStackSize = 0;
+
+        bool hasJumpdest = true;
+        bool hasInvalidOpcode = false;
+
+        long coststack = 0;
+
+        bool notStart = true;
+
+        for (int pc = 0; pc < metadata.Segment.Length; pc++)
+        {
+            OpcodeInfo op = metadata.Segment[pc];
+            metadata.StackOffsets[pc] = currentStackSize;
+            subSegment.End = pc;
+            switch (op.Operation)
+            {
+                case Instruction.JUMPDEST when !notStart:
+                    subSegment.Start = subsegmentStart;
+                    subSegment.RequiredStack = -subSegment.RequiredStack;
+                    subSegment.End = pc - 1;
+                    subSegment.IsFailing = hasInvalidOpcode;
+                    subSegment.IsReachable = hasJumpdest;
+                    subSegment.StaticGasSubSegmentes[costStart] = coststack;
+                    metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+
+
+                    subsegmentStart = pc;
+                    subSegment = new();
+                    subSegment.Start = subsegmentStart;
+
+                    costStart = pc;
+                    coststack = op.Metadata.GasCost;
+                    currentStackSize = 0;
+                    hasJumpdest = true;
+                    hasInvalidOpcode = false;
+                    break;
+                default:
+                    coststack += op.Metadata.GasCost;
+                    subSegment.End = pc;
+                    hasInvalidOpcode |= op.IsInvalid;
+                    // handle stack analysis 
+                    currentStackSize -= op.Metadata.StackBehaviorPop;
+                    if (currentStackSize < subSegment.RequiredStack)
+                    {
+                        subSegment.RequiredStack = currentStackSize;
+                    }
+
+                    currentStackSize += op.Metadata.StackBehaviorPush;
+                    if (currentStackSize > subSegment.MaxStack)
+                    {
+                        subSegment.MaxStack = currentStackSize;
+                    }
+
+                    subSegment.LeftOutStack = currentStackSize;
+                    if (op.IsTerminating || op.IsJump || op.Operation is Instruction.GAS)
+                    {
+                        if(op.Operation is not Instruction.GAS)
+                        {
+                            subSegment.Start = subsegmentStart;
+                            subSegment.RequiredStack = -subSegment.RequiredStack;
+                            subSegment.IsFailing = hasInvalidOpcode;
+                            subSegment.IsReachable = hasJumpdest;
+
+                            subSegment.StaticGasSubSegmentes[costStart] = coststack; // remember the stackHeadRef chain of opcodes
+
+                            metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+
+                            subsegmentStart = pc + 1;
+                            subSegment = new();
+
+                            currentStackSize = 0;
+                            hasJumpdest = op.Operation is Instruction.JUMPI;
+                            hasInvalidOpcode = false;
+                            costStart = pc + 1;             // start with the next again
+                            coststack = 0;
+                        } else
+                        {
+                            subSegment.StaticGasSubSegmentes[costStart] = coststack; // remember the stackHeadRef chain of opcodes
+                            costStart = pc + 1;             // start with the next again
+                            coststack = 0;
+                        }
+                    }
+                    break;
+            }
+            notStart = false;
+        }
+
+        if (!metadata.SubSegments.ContainsKey(subsegmentStart))
+        {
+            subSegment.Start = subsegmentStart;
+            subSegment.StaticGasSubSegmentes[costStart] = coststack;
+            subSegment.IsReachable = hasJumpdest;
+            subSegment.IsFailing = hasInvalidOpcode;
+            subSegment.RequiredStack = -subSegment.RequiredStack;
+            subSegment.End = metadata.Segment.Length - 1;
+            metadata.SubSegments[subSegment.Start] = subSegment;
+        }
+
+        return metadata;
     }
 }

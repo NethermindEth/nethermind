@@ -30,6 +30,7 @@ using Nethermind.Trie.Pruning;
 using System.Diagnostics;
 using Nethermind.Abi;
 using System.Runtime.CompilerServices;
+using Nethermind.Trie;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -42,7 +43,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return GasCostOf.JumpDest;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -62,7 +63,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -2180,7 +2181,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PartialAotThreshold = 1,
                 IsPartialAotEnabled = true,
                 AggressivePartialAotMode = false,
-                BakeInTracingInPartialAotMode = true
             });
 
 
@@ -2305,7 +2305,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 try
                 {
                     var codeinfo = new CodeInfo([(byte)instruction]);
-                    ILCompiler.CompileSegment(name, codeinfo, [opcode], [], config, out _);
+                    IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
                 }
                 catch (NotSupportedException nse)
                 {
@@ -2363,10 +2363,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var outputBuffer = new byte[32];
             state.InitStacks();
 
-            ILChunkExecutionResult iLChunkExecutionResult = new ILChunkExecutionResult(ref _returnBuffer);
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState(ref _returnBuffer);
 
-            var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.msg}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config, out _);
+            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
+            var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
+
             ctx.PrecompiledSegment(
                 SpecProvider.ChainId,
                 ref state,
@@ -2436,10 +2437,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             state.InitStacks();
 
-            ILChunkExecutionResult iLChunkExecutionResult = new ILChunkExecutionResult(ref _returnBuffer);
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState(ref _returnBuffer);
 
-            var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.msg}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config, out _);
+            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
+            var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
+
             ctx.PrecompiledSegment(
                 SpecProvider.ChainId,
                 ref state,
@@ -2500,7 +2502,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             state.InitStacks();
 
-            ILChunkExecutionResult iLChunkExecutionResult = new ILChunkExecutionResult(ref _returnBuffer);
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState(ref _returnBuffer);
 
             var config = new VMConfig
             {
@@ -2512,8 +2514,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 AggressivePartialAotMode = true,
             };
 
-            var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.msg}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config, out _);
+            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
+            var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
+
             ctx.PrecompiledSegment(
                 SpecProvider.ChainId,
                 ref state,
