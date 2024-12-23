@@ -16,6 +16,6 @@ public class VerifyStateOnStateSyncFinished(IBlockingVerifyTrie blockingVerifyTr
     {
         treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
 
-        blockingVerifyTrie.TryStartVerifyTrie(evt.Root);
+        blockingVerifyTrie.TryStartVerifyTrie(evt.Pivot);
     }
 }

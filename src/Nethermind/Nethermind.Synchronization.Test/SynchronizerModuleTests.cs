@@ -50,8 +50,9 @@ public class SynchronizerModuleTests
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
         IStateReader stateReader = ctx.Resolve<IStateReader>();
 
-        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
-        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
+        BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
+        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
+        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
 
         await Task.Delay(100);
 
@@ -69,6 +70,7 @@ public class SynchronizerModuleTests
         IBlockProcessingQueue blockQueue = ctx.Resolve<IBlockProcessingQueue>();
 
         ManualResetEvent treeVisitorBlocker = new ManualResetEvent(false);
+        BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
 
         stateReader
             .When(sr => sr.RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>()))
@@ -79,7 +81,7 @@ public class SynchronizerModuleTests
 
         Task triggerTask = Task.Run(() =>
         {
-            treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
+            treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
         });
 
         await Task.Delay(100);

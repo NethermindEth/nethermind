@@ -765,7 +765,7 @@ namespace Nethermind.Synchronization.FastSync
 
             CleanupMemory();
 
-            SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(_rootNode));
+            SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(_stateSyncPivot.GetPivotHeader()));
         }
 
         private void CleanupMemory()

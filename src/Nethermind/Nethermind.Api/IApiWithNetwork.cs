@@ -57,7 +57,6 @@ namespace Nethermind.Api
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 
         IContainer? ApiWithNetworkServiceContainer { get; set; }
-        IBlockingVerifyTrie BlockingVerifyTrie { get; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
         {

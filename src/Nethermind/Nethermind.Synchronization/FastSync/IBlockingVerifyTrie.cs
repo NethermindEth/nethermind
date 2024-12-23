@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastSync;
 
 public interface IBlockingVerifyTrie
 {
-    bool TryStartVerifyTrie(Hash256 rootNode);
+    bool TryStartVerifyTrie(BlockHeader stateAtBlock);
 }

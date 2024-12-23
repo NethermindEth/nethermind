@@ -118,7 +118,7 @@ public class AdminModuleTests
     public async Task Test_admin_verifyTrie()
     {
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie")).Should().Contain("Unable to start verify trie");
-        _blockingVerifyTrie.TryStartVerifyTrie(Arg.Any<Hash256>()).Returns(true);
+        _blockingVerifyTrie.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie")).Should().Contain("Starting");
     }
 

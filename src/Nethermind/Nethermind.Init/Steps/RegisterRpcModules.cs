@@ -133,7 +133,7 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            _api.BlockingVerifyTrie,
+            _api.BlockingVerifyTrie!,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,

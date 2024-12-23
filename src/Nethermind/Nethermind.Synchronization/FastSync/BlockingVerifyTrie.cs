@@ -7,16 +7,18 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.FastSync;
 
 public class BlockingVerifyTrie(
-    IBlockProcessingQueue processingQueue,
+    ITrieStore trieStore,
     IStateReader stateReader,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IProcessExitSource exitSource,
@@ -26,22 +28,24 @@ public class BlockingVerifyTrie(
 
     private bool _alreadyRunning = false;
 
-    public bool TryStartVerifyTrie(Hash256 rootNode)
+    public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
     {
         if (Interlocked.CompareExchange(ref _alreadyRunning, true, false))
         {
             return false;
         }
 
-        ManualResetEvent processingBlocker = new ManualResetEvent(false);
-
-        processingQueue.BlockRemoved += ProcessingQueueOnBlockRemoved;
-
         Task.Factory.StartNew(() =>
         {
             try
             {
                 _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+
+                Hash256 rootNode = stateAtBlock.StateRoot;
+
+                // This is to block processing as with halfpath old nodes will be removed
+                using IBlockCommitter? _ = trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
+
                 TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, exitSource.Token);
                 if (stats.MissingNodes > 0)
                 {
@@ -57,19 +61,9 @@ public class BlockingVerifyTrie(
             {
                 _logger.Error($"Error in verify trie", e);
             }
-            finally
-            {
-                processingBlocker.Set();
-                processingQueue.BlockRemoved -= ProcessingQueueOnBlockRemoved;
-            }
 
         }, TaskCreationOptions.LongRunning);
 
         return true;
-
-        void ProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs blockRemovedEventArgs)
-        {
-            processingBlocker.WaitOne();
-        }
     }
 }

@@ -151,7 +151,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<string>.Fail("Head is null. Unable to know state root to verify.");
         }
 
-        if (!_blockingVerifyTrie.TryStartVerifyTrie(_blockTree.Head!.StateRoot!))
+        if (!_blockingVerifyTrie.TryStartVerifyTrie(_blockTree.Head!.Header))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
         }
