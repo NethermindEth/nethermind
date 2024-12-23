@@ -50,6 +50,9 @@ public class BlockingVerifyTrie(
 
                 _logger.Info($"Stats after finishing state \n" + stats);
             }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception e)
             {
                 _logger.Error($"Error in verify trie", e);
