@@ -80,9 +80,9 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     /// Gathers the record’s primary constructor parameters and public fields/properties
     /// in the order they appear in the record declaration.
     /// </summary>
-    private static List<(string Name, string TypeName)> GetRecordParameters(RecordDeclarationSyntax recordDecl)
+    private static List<(string Name, TypeSyntax TypeName)> GetRecordParameters(RecordDeclarationSyntax recordDecl)
     {
-        List<(string, string)> parameters = [];
+        List<(string, TypeSyntax)> parameters = [];
 
         // Primary constructor parameters
         if (recordDecl.ParameterList is not null)
@@ -90,7 +90,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             foreach (var param in recordDecl.ParameterList.Parameters)
             {
                 var paramName = param.Identifier.Text;
-                var paramType = param.Type?.ToString() ?? "object";
+                var paramType = param.Type!;
+
                 parameters.Add((paramName, paramType));
             }
         }
@@ -102,7 +103,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         string? @namespace,
         string fullTypeName,
         string recordName,
-        List<(string Name, string TypeName)> parameters)
+        List<(string Name, TypeSyntax TypeName)> parameters)
     {
         var sb = new StringBuilder();
 
@@ -124,9 +125,10 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         sb.AppendLine("w.WriteSequence((ref RlpWriter w) => ");
         sb.AppendLine("{");
 
-        foreach (var (name, _) in parameters)
+        foreach (var (name, typeName) in parameters)
         {
-            sb.AppendLine($"w.Write(value.{name});");
+            var writeCall = MapTypeToWriteCall(name, typeName);
+            sb.AppendLine($"w.{writeCall};");
         }
 
         sb.AppendLine("});");
@@ -174,14 +176,59 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     /// Map the type name to the appropriate Read method on the `RlpReader`
     /// Extend this mapping for more types as needed.
     /// </summary>
-    private static string MapTypeToReadCall(string typeName)
+    private static string MapTypeToReadCall(TypeSyntax syntax)
     {
-        return typeName switch
+        // Hard-coded cases
+        switch (syntax.ToString())
         {
-            "byte[]" or "System.Byte[]" or "Span<byte>" or "System.Span<byte>" or "System.ReadOnlySpan<byte>" => "ReadBytes()",
-            "int" => "ReadInt32()",
-            _ => $"Read{typeName.Capitalize()}()"
-        };
+            case "byte[]" or "System.Byte[]" or "Span<byte>" or "System.Span<byte>" or "System.ReadOnlySpan<byte>":
+                return "ReadBytes()";
+            case "int":
+                return "ReadInt32()";
+        }
+
+        // Generics
+        if (syntax is GenericNameSyntax generic)
+        {
+            var typeConstructor = generic.Identifier.ToString();
+            var typeParameters = generic.TypeArgumentList.Arguments;
+
+            var sb = new StringBuilder("Read");
+            sb.Append(typeConstructor.Capitalize());
+            sb.Append("<");
+            foreach (var typeParameter in typeParameters)
+            {
+                sb.Append($"{typeParameter.ToString()}, {typeParameter.ToString().Capitalize()}RlpConverter");
+            }
+            sb.Append(">()");
+
+            return sb.ToString();
+        }
+
+        // Defaults
+        return $"Read{syntax.ToString().Capitalize()}()";
+    }
+
+    private static string MapTypeToWriteCall(string name, TypeSyntax syntax)
+    {
+        // Generics
+        if (syntax is GenericNameSyntax generic)
+        {
+            var typeParameters = generic.TypeArgumentList.Arguments;
+
+            var sb = new StringBuilder("Write");
+            sb.Append("<");
+            foreach (var typeParameter in typeParameters)
+            {
+                sb.Append($"{typeParameter.ToString()}, {typeParameter.ToString().Capitalize()}RlpConverter");
+            }
+            sb.Append($">(value.{name})");
+
+            return sb.ToString();
+        }
+
+        // Defaults
+        return $"Write(value.{name})";
     }
 }
 
