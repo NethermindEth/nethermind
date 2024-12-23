@@ -32,9 +32,7 @@ public class ReadOnlyTxProcessingEnvFactory(
         if (worldStateToWarmUp is null)
         {
             return new ReadOnlyTxProcessingEnv(
-                worldStateManager.GlobalStateReader,
-                worldStateManager.CreateResettableWorldState(),
-                new CodeInfoRepository(),
+                worldStateManager,
                 readOnlyBlockTree,
                 specProvider,
                 logManager);
