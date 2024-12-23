@@ -729,7 +729,7 @@ namespace Nethermind.Network.Test
 
                 foreach (Session session in clone)
                 {
-                    _ = session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+                    session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
                 }
             }
 

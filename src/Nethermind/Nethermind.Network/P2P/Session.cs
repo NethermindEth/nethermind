@@ -366,7 +366,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public Task InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
@@ -383,22 +383,22 @@ namespace Nethermind.Network.P2P
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
                 if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
-                return Task.CompletedTask;
+                return;
             }
 
             lock (_sessionStateLock)
             {
                 if (IsClosing)
                 {
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 if (State <= SessionState.HandshakeComplete)
                 {
-                    if (_disconnectAfterInitialized is not null) return Task.CompletedTask;
+                    if (_disconnectAfterInitialized is not null) return;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 State = SessionState.DisconnectingProtocols;
@@ -424,7 +424,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            return MarkDisconnected(disconnectReason, DisconnectType.Local, details);
+            MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         private readonly Lock _sessionStateLock = new();
@@ -444,7 +444,7 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
-        public async Task MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
+        public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             lock (_sessionStateLock)
             {
