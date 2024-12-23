@@ -111,5 +111,10 @@ namespace Nethermind.JsonRpc
         /// Invalid RPC simulate call transaction
         /// </summary>
         public const int InvalidTransaction = -38014;
+
+        /// <summary>
+        /// Too many blocks for simulation
+        /// </summary>
+        public const int ClientLimitExceededError = -38026;
     }
 }
