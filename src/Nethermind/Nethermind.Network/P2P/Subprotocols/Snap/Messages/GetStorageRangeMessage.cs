@@ -18,7 +18,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public override void Dispose()
         {
-            StorageRange?.Dispose();
             base.Dispose();
         }
     }
