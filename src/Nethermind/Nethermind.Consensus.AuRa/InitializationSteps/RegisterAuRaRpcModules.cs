@@ -96,7 +96,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         : TraceModuleFactory(trieStore, dbProvider, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource,
             receiptFinder, specProvider, poSSwitcher, logManager)
     {
-        protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(OverridableWorldStateManager worldStateManager,
+        protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope,
             IRewardCalculator rewardCalculator)
         {
@@ -244,7 +244,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             badBlockStore, fileSystem, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-            OverridableWorldStateManager worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+            IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
         {
             return new AuRaReadOnlyChainProcessingEnv(
                 scope,

@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
-        public OverridableWorldStateManager OverridableWorldStateManager { get; private set; } = null!;
+        public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =

@@ -22,5 +22,5 @@ class TaikoTraceModuleFactory(
     ISpecProvider specProvider, IPoSSwitcher poSSwitcher, ILogManager logManager) :
     TraceModuleFactory(trieStore, dbProvider, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource, receiptFinder, specProvider, poSSwitcher, logManager)
 {
-    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(OverridableWorldStateManager worldStateManager) => new TaikoReadOnlyTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
+    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) => new TaikoReadOnlyTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
 }

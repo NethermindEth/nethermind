@@ -48,7 +48,7 @@ public class BlockchainBridgeTests
     private IDbProvider _dbProvider;
 
     private class TestReadOnlyTxProcessingEnv(
-        OverridableWorldStateManager worldStateManager,
+        IOverridableWorldScope worldStateManager,
         IReadOnlyBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager logManager,
@@ -72,13 +72,12 @@ public class BlockchainBridgeTests
         _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
         _specProvider = MainnetSpecProvider.Instance;
 
-        IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
-        OverridableWorldStateManager worldStateManager = new(_dbProvider, trieStore, LimboLogs.Instance);
+        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        IOverridableWorldScope overridableWorldScope = worldStateManager.CreateOverridableWorldScope();
 
         IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
         TestReadOnlyTxProcessingEnv processingEnv = new(
-            worldStateManager,
+            overridableWorldScope,
             readOnlyBlockTree,
             _specProvider,
             LimboLogs.Instance,
@@ -207,13 +206,10 @@ public class BlockchainBridgeTests
     [TestCase(0)]
     public void Bridge_head_is_correct(long headNumber)
     {
-        IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
-        OverridableWorldStateManager worldStateManager =
-            new(_dbProvider, trieStore, LimboLogs.Instance);
+        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
         IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
         OverridableTxProcessingEnv processingEnv = new(
-            worldStateManager,
+            worldStateManager.CreateOverridableWorldScope(),
             roBlockTree,
             _specProvider,
             LimboLogs.Instance);

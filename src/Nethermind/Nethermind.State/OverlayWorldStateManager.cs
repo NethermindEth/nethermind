@@ -42,4 +42,9 @@ public class OverlayWorldStateManager(
         add => overlayTrieStore.ReorgBoundaryReached += value;
         remove => overlayTrieStore.ReorgBoundaryReached -= value;
     }
+
+    public IOverridableWorldScope CreateOverridableWorldScope()
+    {
+        throw new InvalidOperationException("Cannot create overridable world scope from overlay works state manager");
+    }
 }

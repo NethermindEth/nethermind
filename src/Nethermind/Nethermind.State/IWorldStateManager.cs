@@ -21,4 +21,20 @@ public interface IWorldStateManager
     IWorldState CreateResettableWorldState(IWorldState? forWarmup = null);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+    IOverridableWorldScope CreateOverridableWorldScope();
+}
+
+public interface IOverridableWorldScope
+{
+    IOverridableWorldState WorldState { get; }
+    IStateReader GlobalStateReader { get; }
+
+    // WTF! you may be thinking. Yea, me to.
+    IReadOnlyTrieStore TrieStore { get; }
+}
+
+public interface IOverridableWorldState : IWorldState
+{
+    void ResetOverrides();
 }

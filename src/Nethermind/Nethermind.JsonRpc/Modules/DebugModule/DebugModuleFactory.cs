@@ -111,7 +111,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     }
 
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        OverridableWorldStateManager worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+        IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
     {
         return new ReadOnlyChainProcessingEnv(
             scope,
