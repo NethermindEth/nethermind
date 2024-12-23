@@ -63,7 +63,7 @@ namespace Nethermind.Network.Discovery.Test
         [TearDown]
         public async Task CleanUp()
         {
-            _channels.ForEach(x => { x.CloseAsync(); });
+            _channels.ForEach(static x => { x.CloseAsync(); });
             await Task.Delay(50);
         }
 
@@ -80,7 +80,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
 
             PingMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address2, _address, new byte[32])
             {
@@ -89,7 +89,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
 
             AssertMetrics(258);
         }
@@ -107,7 +107,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Pong));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
 
             PongMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
@@ -115,7 +115,7 @@ namespace Nethermind.Network.Discovery.Test
             };
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Pong));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
 
             AssertMetrics(240);
         }
@@ -133,7 +133,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.FindNode));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
 
             FindNodeMsg msg2 = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
@@ -142,7 +142,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.FindNode));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
 
             AssertMetrics(216);
         }
@@ -160,7 +160,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
 
             NeighborsMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
             {
@@ -169,7 +169,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
 
             AssertMetrics(210);
         }

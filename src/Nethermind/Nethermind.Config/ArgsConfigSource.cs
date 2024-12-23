@@ -31,7 +31,7 @@ namespace Nethermind.Config
 
         public IEnumerable<(string Category, string Name)> GetConfigKeys()
         {
-            var argsPairs = _args.Keys.Select(k => k.Split('.')).Select(a =>
+            var argsPairs = _args.Keys.Select(static k => k.Split('.')).Select(static a =>
             {
                 if (a.Length == 0)
                 {
