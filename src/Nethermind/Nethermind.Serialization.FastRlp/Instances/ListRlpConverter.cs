@@ -5,31 +5,29 @@ using System.Collections.Generic;
 
 namespace Nethermind.Serialization.FastRlp.Instances;
 
-// TODO: We might want to introduce an interface for collection types (ex. List)
-// Main issue are HKT (aka Generics of Generics)
 public abstract class ListRlpConverter<T>
 {
-    public static List<T> Read<TConverter>(ref RlpReader reader) where TConverter : IRlpConverter<T>
+    public static List<T> Read(ref RlpReader reader, RefRlpReaderFunc<T> func)
     {
         return reader.ReadSequence((scoped ref RlpReader r) =>
         {
             List<T> result = [];
             while (r.HasNext)
             {
-                result.Add(TConverter.Read(ref r));
+                result.Add(func(ref r));
             }
 
             return result;
         });
     }
 
-    public static void Write<TConverter>(ref RlpWriter writer, List<T> value) where TConverter : IRlpConverter<T>
+    public static void Write(ref RlpWriter writer, List<T> value, RefRlpWriterAction<T> action)
     {
         writer.WriteSequence((ref RlpWriter w) =>
         {
             foreach (T v in value)
             {
-                TConverter.Write(ref w, v);
+                action(ref w, v);
             }
         });
     }
@@ -37,11 +35,9 @@ public abstract class ListRlpConverter<T>
 
 public static class ListRlpConverterExt
 {
-    public static List<T> ReadList<T, TConverter>(this ref RlpReader reader)
-        where TConverter : IRlpConverter<T>
-        => ListRlpConverter<T>.Read<TConverter>(ref reader);
+    public static List<T> ReadList<T>(this ref RlpReader reader, RefRlpReaderFunc<T> func)
+        => ListRlpConverter<T>.Read(ref reader, func);
 
-    public static void Write<T, TConverter>(this ref RlpWriter writer, List<T> value)
-        where TConverter : IRlpConverter<T>
-        => ListRlpConverter<T>.Write<TConverter>(ref writer, value);
+    public static void Write<T>(this ref RlpWriter writer, List<T> value, RefRlpWriterAction<T> action)
+        => ListRlpConverter<T>.Write(ref writer, value, action);
 }

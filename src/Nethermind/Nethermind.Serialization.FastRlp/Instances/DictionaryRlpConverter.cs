@@ -7,9 +7,7 @@ namespace Nethermind.Serialization.FastRlp.Instances;
 
 public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 {
-    public static Dictionary<TKey, TValue> Read<TKeyConverter, TValueConverter>(ref RlpReader reader)
-        where TKeyConverter : IRlpConverter<TKey>
-        where TValueConverter : IRlpConverter<TValue>
+    public static Dictionary<TKey, TValue> Read(ref RlpReader reader, RefRlpReaderFunc<TKey> readKey, RefRlpReaderFunc<TValue> readValue)
     {
         return reader.ReadSequence((scoped ref RlpReader r) =>
         {
@@ -18,8 +16,8 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
             {
                 (TKey key, TValue value) = r.ReadSequence((scoped ref RlpReader r) =>
                 {
-                    TKey key = TKeyConverter.Read(ref r);
-                    TValue value = TValueConverter.Read(ref r);
+                    TKey key = readKey(ref r);
+                    TValue value = readValue(ref r);
 
                     return (key, value);
                 });
@@ -31,9 +29,7 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
         });
     }
 
-    public static void Write<TKeyConverter, TValueConverter>(ref RlpWriter writer, Dictionary<TKey, TValue> value)
-        where TKeyConverter : IRlpConverter<TKey>
-        where TValueConverter : IRlpConverter<TValue>
+    public static void Write(ref RlpWriter writer, Dictionary<TKey, TValue> value, RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue)
     {
         writer.WriteSequence((ref RlpWriter w) =>
         {
@@ -41,8 +37,8 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
             {
                 w.WriteSequence((ref RlpWriter w) =>
                 {
-                    TKeyConverter.Write(ref w, k);
-                    TValueConverter.Write(ref w, v);
+                    writeKey(ref w, k);
+                    writeValue(ref w, v);
                 });
             }
         });
@@ -51,20 +47,18 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 
 public static class DictionaryRlpConverterExt
 {
-    public static Dictionary<TKey, TValue> ReadDictionary<TKey, TValue, TKeyConverter, TValueConverter>(
-        this ref RlpReader reader
-    )
-        where TKey : notnull
-        where TKeyConverter : IRlpConverter<TKey>
-        where TValueConverter : IRlpConverter<TValue>
-        => DictionaryRlpConverter<TKey, TValue>.Read<TKeyConverter, TValueConverter>(ref reader);
+    public static Dictionary<TKey, TValue> ReadDictionary<TKey, TValue>(
+        this ref RlpReader reader,
+        RefRlpReaderFunc<TKey> readKey,
+        RefRlpReaderFunc<TValue> readValue
+    ) where TKey : notnull
+        => DictionaryRlpConverter<TKey, TValue>.Read(ref reader, readKey, readValue);
 
-    public static void Write<TKey, TValue, TKeyConverter, TValueConverter>(
+    public static void Write<TKey, TValue>(
         this ref RlpWriter writer,
-        Dictionary<TKey, TValue> value
-    )
-        where TKey : notnull
-        where TValueConverter : IRlpConverter<TValue>
-        where TKeyConverter : IRlpConverter<TKey>
-        => DictionaryRlpConverter<TKey, TValue>.Write<TKeyConverter, TValueConverter>(ref writer, value);
+        Dictionary<TKey, TValue> value,
+        RefRlpWriterAction<TKey> writeKey,
+        RefRlpWriterAction<TValue> writeValue
+    ) where TKey : notnull
+        => DictionaryRlpConverter<TKey, TValue>.Write(ref writer, value, writeKey, writeValue);
 }
