@@ -368,7 +368,7 @@ namespace Nethermind.Trie
                     if (data is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
-                        Span<byte> nextItem = rlpStream.Data.AsSpan(rlpStream.Position, length);
+                        ReadOnlySpan<byte> nextItem = rlpStream.Data.Slice(rlpStream.Position, length);
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                         position += nextItem.Length;
                         rlpStream.SkipBytes(length);
