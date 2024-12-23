@@ -15,6 +15,9 @@ public record PlayerWithFriends(int Id, string Username, List<string> Friends);
 [RlpSerializable]
 public record PlayerWithScores(int Id, string Username, Dictionary<string, int> Scores);
 
+[RlpSerializable]
+public record Tree(string Value, List<Tree> Children);
+
 public class RlpDerivedTest
 {
     [Test]
@@ -49,5 +52,21 @@ public class RlpDerivedTest
 
         var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadPlayerWithScores());
         decoded.Should().BeEquivalentTo(player);
+    }
+
+    [Test]
+    public void RecursiveRecord()
+    {
+        var tree = new Tree("foo",
+        [
+            new Tree("bar",
+                [new Tree("dog", [])]),
+            new Tree("qux",
+                [new Tree("cat", [])])
+        ]);
+        ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(tree));
+
+        var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadTree());
+        decoded.Should().BeEquivalentTo(tree);
     }
 }
