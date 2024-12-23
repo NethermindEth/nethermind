@@ -285,6 +285,7 @@ public class RlpReadWriteTest
     public void ListCollection()
     {
         var list = new List<string> { "cat", "dog" };
+
         var rlp = Rlp.Write((ref RlpWriter w) => w.Write<string, StringRlpConverter>(list));
 
         var rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
@@ -300,5 +301,37 @@ public class RlpReadWriteTest
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadList<string, StringRlpConverter>());
 
         list.Should().BeEquivalentTo(decoded);
+    }
+
+    [Test]
+    public void DictionaryCollection()
+    {
+        var dictionary = new Dictionary<int, string>
+        {
+            { 1, "dog" },
+            { 2, "cat" },
+        };
+
+        var rlp = Rlp.Write((ref RlpWriter w) => w.Write<int, string, Int32RlpConverter, StringRlpConverter>(dictionary));
+
+        var rlpExplicit = Rlp.Write((ref RlpWriter w) =>
+        {
+            w.WriteSequence((ref RlpWriter w) =>
+            {
+                foreach (var (k, v) in dictionary)
+                {
+                    w.WriteSequence((ref RlpWriter w) =>
+                    {
+                        w.Write(k);
+                        w.Write(v);
+                    });
+                }
+            });
+        });
+        rlp.Should().BeEquivalentTo(rlpExplicit);
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadDictionary<int, string, Int32RlpConverter, StringRlpConverter>());
+
+        decoded.Should().BeEquivalentTo(dictionary);
     }
 }
