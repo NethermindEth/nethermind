@@ -19,7 +19,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
     private int _position = 0;
 
     internal readonly string Description =>
-        Data[..Math.Min(Rlp.DebugMessageContentLength, Length)].ToHexString() ?? "0x";
+        Data[..Math.Min(Rlp.DebugMessageContentLength, Data.Length)].ToHexString() ?? "0x";
 
     public int Position
     {
@@ -33,9 +33,9 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
     public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
     {
-        int positionStored = Position;
+        int positionStored = _position;
         int numberOfItems = 0;
-        while (Position < (beforePosition ?? Length))
+        while (_position < (beforePosition ?? Data.Length))
         {
             int prefix = ReadByte();
             if (prefix <= 128)
@@ -59,7 +59,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             }
             else
             {
-                Position--;
+                _position--;
                 int sequenceLength = ReadSequenceLength();
                 SkipBytes(sequenceLength);
             }
@@ -71,7 +71,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             }
         }
 
-        Position = positionStored;
+        _position = positionStored;
         return numberOfItems;
     }
 
@@ -155,7 +155,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         if (prefix < 192)
         {
             throw new RlpException(
-                $"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Length} starting with {Description}");
+                $"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {_position} in the message of length {Data.Length} starting with {Description}");
         }
 
         if (prefix <= 247)
@@ -300,7 +300,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         if (prefix != 128 + 32)
         {
             throw new RlpException(
-                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Length} starting with {Description}");
+                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {Data.Length} starting with {Description}");
         }
 
         ReadOnlySpan<byte> keccakSpan = Read(32);
@@ -329,7 +329,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         if (prefix != 128 + 32)
         {
             throw new RlpException(
-                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Length} starting with {Description}");
+                $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {Data.Length} starting with {Description}");
         }
 
         ReadOnlySpan<byte> keccakSpan = Read(32);
@@ -448,7 +448,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
     public void Reset()
     {
-        Position = 0;
+        _position = 0;
     }
 
     private const byte EmptyArrayByte = 128;
@@ -457,6 +457,6 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
     public override readonly string ToString()
     {
-        return $"[{nameof(RlpStream)}|{Position}/{Length}]";
+        return $"[{nameof(RlpStream)}|{_position}/{Data.Length}]";
     }
 }
