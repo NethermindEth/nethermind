@@ -47,6 +47,7 @@ using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -122,6 +123,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISyncPointers>())
                     .AddSingleton(Substitute.For<ISynchronizer>())
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
+                    .AddSingleton(Substitute.For<IBlockingVerifyTrie>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
                     .AddSingleton(Substitute.For<ISyncServer>())
                     .Build(),

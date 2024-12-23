@@ -44,7 +44,7 @@ public class SynchronizerModuleTests
     }
 
     [Test]
-    public void TestOnTreeSyncFinish_CallVisit()
+    public async Task TestOnTreeSyncFinish_CallVisit()
     {
         IContainer ctx = CreateTestContainer();
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
@@ -52,6 +52,8 @@ public class SynchronizerModuleTests
 
         treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
         treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
+
+        await Task.Delay(100);
 
         stateReader
             .Received(1)
