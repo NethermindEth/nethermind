@@ -127,11 +127,13 @@ public class RegisterRpcModules : IStep
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
+
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
+            _api.BlockingVerifyTrie,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,

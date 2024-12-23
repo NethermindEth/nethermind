@@ -67,4 +67,10 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<PruningStatus> admin_prune();
+
+    [JsonRpcMethod(Description = "Runs VerifyTrie.",
+        EdgeCaseHint = "",
+        ExampleResponse = "\"Starting\"",
+        IsImplemented = true)]
+    ResultWrapper<string> admin_verifyTrie();
 }

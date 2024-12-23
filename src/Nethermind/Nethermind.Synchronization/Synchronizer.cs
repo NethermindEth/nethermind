@@ -299,6 +299,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
+            .AddSingleton<IBlockingVerifyTrie, BlockingVerifyTrie>()
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()

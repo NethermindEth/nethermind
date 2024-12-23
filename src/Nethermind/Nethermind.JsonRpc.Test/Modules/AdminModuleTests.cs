@@ -19,6 +19,7 @@ using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,6 +33,7 @@ public class AdminModuleTests
     private EthereumJsonSerializer _serializer = null!;
     private NetworkConfig _networkConfig = null!;
     private IBlockTree _blockTree = null!;
+    private IBlockingVerifyTrie _blockingVerifyTrie = null!;
     private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
     private const string _exampleDataDir = "/example/dbdir";
 
@@ -39,6 +41,7 @@ public class AdminModuleTests
     public void Setup()
     {
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        _blockingVerifyTrie = Substitute.For<IBlockingVerifyTrie>();
         _networkConfig = new NetworkConfig();
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
@@ -57,6 +60,7 @@ public class AdminModuleTests
             _networkConfig,
             peerPool,
             staticNodesManager,
+            _blockingVerifyTrie,
             enode,
             _exampleDataDir,
             new ManualPruningTrigger(),
@@ -108,6 +112,14 @@ public class AdminModuleTests
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         response.Result!.ToString().Should().Be(_exampleDataDir);
+    }
+
+    [Test]
+    public async Task Test_admin_verifyTrie()
+    {
+        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie")).Should().Contain("Unable to start verify trie");
+        _blockingVerifyTrie.TryStartVerifyTrie(Arg.Any<Hash256>()).Returns(true);
+        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie")).Should().Contain("Starting");
     }
 
     [Test]

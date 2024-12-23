@@ -18,6 +18,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
@@ -56,6 +57,7 @@ namespace Nethermind.Api
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 
         IContainer? ApiWithNetworkServiceContainer { get; set; }
+        IBlockingVerifyTrie BlockingVerifyTrie { get; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
         {
