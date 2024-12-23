@@ -12,6 +12,9 @@ public record Player(int Id, string Username);
 [RlpSerializable]
 public record PlayerWithFriends(int Id, string Username, List<string> Friends);
 
+[RlpSerializable]
+public record PlayerWithScores(int Id, string Username, Dictionary<string, int> Scores);
+
 public class RlpDerivedTest
 {
     [Test]
@@ -31,6 +34,20 @@ public class RlpDerivedTest
         ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadPlayerWithFriends());
+        decoded.Should().BeEquivalentTo(player);
+    }
+
+    [Test]
+    public void RecordWithDictionary()
+    {
+        var player = new PlayerWithScores(Id: 42, Username: "SuperUser", Scores: new()
+        {
+            { "foo", 42 },
+            { "bar", 1337 }
+        });
+        ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(player));
+
+        var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadPlayerWithScores());
         decoded.Should().BeEquivalentTo(player);
     }
 }
