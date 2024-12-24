@@ -1865,7 +1865,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .KECCAK256()
                     .PushData(1)
                     .SSTORE()
-                    .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.KECCAK256], Prepare.EvmCode
                     .MSTORE(0, Enumerable.Range(0, 16).Select(i => (byte)i).ToArray())
