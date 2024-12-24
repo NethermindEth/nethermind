@@ -86,7 +86,7 @@ public class RlpReaderTest
 
         var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
-            return r.ReadSequence((scoped ref RlpReader _) => Array.Empty<object>());
+            return r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
         });
 
         actual.Should().BeEmpty();
