@@ -14,9 +14,14 @@ using Nethermind.State;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource
+    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        protected readonly ILogManager _logManager;
+        public IStateReader StateReader { get; }
+        protected IWorldState StateProvider { get; }
+        protected IBlockTree BlockTree { get; }
+        public IBlockhashProvider BlockhashProvider { get; }
+        protected ISpecProvider SpecProvider { get; }
+        protected ILogManager LogManager { get; }
 
         protected ITransactionProcessor? _transactionProcessor;
         protected ITransactionProcessor TransactionProcessor
@@ -57,18 +62,24 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager
-            ) : base(stateReader, stateProvider, readOnlyBlockTree, specProvider, logManager)
+            )
         {
+            SpecProvider = specProvider;
+            StateReader = stateReader;
+            StateProvider = stateProvider;
+            BlockTree = readOnlyBlockTree;
+            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+
             CodeInfoRepository = codeInfoRepository;
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
-            _logManager = logManager;
+            LogManager = logManager;
         }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor() =>
-            new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
+            new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
