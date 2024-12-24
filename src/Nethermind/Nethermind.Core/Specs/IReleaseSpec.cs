@@ -338,6 +338,13 @@ namespace Nethermind.Core.Specs
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
 
+        /// <summary>
+        /// EIP-7780: Add blob schedule to EL config files
+        /// </summary>
+        bool IsEip7840Enabled { get; }
+        public ulong TargetBlobCount { get; set; }
+        public ulong MaxBlobCount { get; set; }
+
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
