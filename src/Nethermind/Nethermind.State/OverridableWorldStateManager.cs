@@ -10,25 +10,18 @@ namespace Nethermind.State;
 
 public class OverridableWorldStateManager : IOverridableWorldScope
 {
-    private readonly ReadOnlyDbProvider _readOnlyDbProvider;
     private readonly StateReader _reader;
-
-    private readonly OverlayTrieStore _overlayTrieStore;
-    private readonly ILogManager? _logManager;
 
     public OverridableWorldStateManager(IDbProvider dbProvider, IReadOnlyTrieStore trieStore, ILogManager? logManager)
     {
-        dbProvider = _readOnlyDbProvider = new(dbProvider, true);
-        OverlayTrieStore overlayTrieStore = new(dbProvider.StateDb, trieStore, logManager);
+        IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
+        OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore, logManager);
 
-        _logManager = logManager;
-        _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
-        _overlayTrieStore = overlayTrieStore;
+        _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
 
-        WorldState = new OverridableWorldState(_overlayTrieStore, _readOnlyDbProvider, _logManager);
+        WorldState = new OverridableWorldState(overlayTrieStore, readOnlyDbProvider, logManager);
     }
 
     public IOverridableWorldState WorldState { get; }
     public IStateReader GlobalStateReader => _reader;
-    public IReadOnlyTrieStore TrieStore => _overlayTrieStore.AsReadOnly();
 }
