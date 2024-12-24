@@ -30,6 +30,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -378,7 +379,8 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             // TODO: Add a proper config for the state persistence depth.
-            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
+            snapServer = new LastNRootSnapServer(_api.WorldStateManager!.SnapServer!, new LastNStateRootTracker(_api.BlockTree, 128));
+
         }
 
         _api.ProtocolsManager = new ProtocolsManager(

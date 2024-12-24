@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -40,6 +41,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     public IStateReader GlobalStateReader { get; }
 
     public bool SupportHashLookup => _readOnlyTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
+    public ISnapServer? SnapServer => new SnapServer.SnapServer(_readOnlyTrieStore, _codeDb, GlobalStateReader, _logManager);
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {

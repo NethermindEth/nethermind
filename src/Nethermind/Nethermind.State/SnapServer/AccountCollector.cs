@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 
-namespace Nethermind.Synchronization.SnapSync;
+namespace Nethermind.State.SnapServer;
 
 public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
 {
