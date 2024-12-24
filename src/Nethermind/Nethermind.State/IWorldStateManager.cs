@@ -29,9 +29,6 @@ public interface IOverridableWorldScope
 {
     IOverridableWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
-
-    // WTF! you may be thinking. Yea, me to.
-    IReadOnlyTrieStore TrieStore { get; }
 }
 
 public interface IOverridableWorldState : IWorldState
