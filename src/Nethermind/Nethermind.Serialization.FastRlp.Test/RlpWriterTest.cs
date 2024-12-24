@@ -45,7 +45,7 @@ public class RlpWriterTest
         for (int i = 0; i < 0x80; i++)
         {
             var integer = i;
-            var serialized = Rlp.Write((ref RlpWriter w) => { w.Write(integer); });
+            var serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
 
             byte[] expected = [(byte)integer];
             serialized.Should().BeEquivalentTo(expected);
@@ -59,7 +59,7 @@ public class RlpWriterTest
         for (int i = 0x80; i < 0x0100; i++)
         {
             var integer = i;
-            var serialized = Rlp.Write((ref RlpWriter w) => { w.Write(integer); });
+            var serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
 
             expected[1] = (byte)integer;
             serialized.Should().BeEquivalentTo(expected);
@@ -73,7 +73,7 @@ public class RlpWriterTest
         for (int i = 0x100; i < 0xFFFF; i++)
         {
             var integer = i;
-            var serialized = Rlp.Write((ref RlpWriter w) => { w.Write(integer); });
+            var serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
 
             expected[1] = (byte)((integer & 0xFF00) >> 8);
             expected[2] = (byte)((integer & 0x00FF) >> 0);
