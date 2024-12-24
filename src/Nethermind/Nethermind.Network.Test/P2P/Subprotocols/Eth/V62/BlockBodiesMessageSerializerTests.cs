@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
@@ -21,9 +19,9 @@ public class BlockBodiesMessageSerializerTests
     public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies),
-        additionallyExcluding: (o) =>
-            o.Excluding(c => c.Name == nameof(Transaction.SenderAddress))
-                .Excluding(c => c.Name == nameof(Transaction.NetworkWrapper)));
+        additionallyExcluding: static (o) =>
+            o.Excluding(static c => c.Name == nameof(Transaction.SenderAddress))
+                .Excluding(static c => c.Name == nameof(Transaction.NetworkWrapper)));
 
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)
@@ -35,7 +33,7 @@ public class BlockBodiesMessageSerializerTests
         foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
         {
             if (body is null) continue;
-            foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))
+            foreach (Transaction tx in body.Transactions.Where(static t => t.SupportsBlobs))
             {
                 Assert.That(tx.NetworkWrapper, Is.Null);
             }
@@ -56,14 +54,14 @@ public class BlockBodiesMessageSerializerTests
         yield return new BlockBody[] { null };
 
         // body with null withdrawals
-        yield return new BlockBody[] { new(new[] { tx }, Array.Empty<BlockHeader>(), null) };
+        yield return new BlockBody[] { new(new[] { tx }, [], null) };
 
         yield return new BlockBody[]
         {
             // body with empty withdrawals
-            new(new[] { tx }, new[] { header }, Array.Empty<Withdrawal>()),
+            new(new[] { tx }, new[] { header }, []),
             // body with a single withdrawals
-            new(new[] { tx }, Array.Empty<BlockHeader>(),
+            new(new[] { tx }, [],
                 new[]
                 {
                     Build.A.Withdrawal

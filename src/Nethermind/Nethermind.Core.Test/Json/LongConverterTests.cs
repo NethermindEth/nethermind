@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
 using System.Text.Json;
 
 using Nethermind.Serialization.Json;
@@ -19,9 +17,9 @@ namespace Nethermind.Core.Test.Json
 
         public void Test_roundtrip()
         {
-            TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter);
-            TestConverter(1L, (a, b) => a.Equals(b), converter);
-            TestConverter(0L, (a, b) => a.Equals(b), converter);
+            TestConverter(int.MaxValue, static (a, b) => a.Equals(b), converter);
+            TestConverter(1L, static (a, b) => a.Equals(b), converter);
+            TestConverter(0L, static (a, b) => a.Equals(b), converter);
         }
 
         [Test]
@@ -63,7 +61,7 @@ namespace Nethermind.Core.Test.Json
         public void Throws_on_null()
         {
             Assert.Throws<JsonException>(
-                () => JsonSerializer.Deserialize<long>("null", options));
+                static () => JsonSerializer.Deserialize<long>("null", options));
         }
     }
 }

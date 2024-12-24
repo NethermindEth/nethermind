@@ -40,7 +40,7 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
                 BlockProduced?.Invoke(this, new BlockEventArgs(block));
             }
         }
-        catch (Exception e) when (!(e is TaskCanceledException))
+        catch (Exception e) when (e is not TaskCanceledException)
         {
             if (Logger.IsError) Logger.Error("Failed to produce block", e);
             Metrics.FailedBlockSeals++;

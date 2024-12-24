@@ -12,7 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -29,7 +29,10 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_call(new TransactionForRpc(Build.A.Transaction.TestObject), new[] { ParityTraceTypes.Trace.ToString() }, BlockParameter.Latest)
+        test.Module.trace_call(
+                call: TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject),
+                traceTypes: [ParityTraceTypes.Trace.ToString()],
+                blockParameter: BlockParameter.Latest)
             .Should().BeEquivalentTo(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0])));
     }
 
@@ -38,9 +41,11 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        TransactionForRpcWithTraceTypes[] calls = { new() { TraceTypes = new[] { ParityTraceTypes.Trace.ToString() }, Transaction = new TransactionForRpc(Build.A.Transaction.TestObject) } };
+        TransactionForRpcWithTraceTypes[] calls = [
+            new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) }
+        ];
         test.Module.trace_callMany(calls, BlockParameter.Latest)
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(t => new ParityTxTraceFromReplay(t))));
+            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
     [Test]
@@ -76,7 +81,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         test.Module.trace_replayBlockTransactions(new BlockParameter(1), new[] { ParityTraceTypes.Trace.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(t => new ParityTxTraceFromReplay(t))));
+            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
     [Test]
@@ -85,7 +90,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         test.Module.trace_replayBlockTransactions(BlockParameter.Latest, new[] { ParityTraceTypes.Trace.ToString(), ParityTraceTypes.Rewards.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.DbTraces.Select(t => new ParityTxTraceFromReplay(t))));
+            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.DbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
     [Test]
@@ -136,7 +141,7 @@ public class TraceStoreRpcModuleTests
             ReceiptFinder.FindBlockHash(nonDbTransaction).Returns(dbBlock);
 
             ResultWrapper<ParityTxTraceFromReplay> nonDbReplayWrapper = ResultWrapper<ParityTxTraceFromReplay>.Success(new(NonDbTraces[0]));
-            ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> nonDbReplaysWrapper = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(NonDbTraces.Select(t => new ParityTxTraceFromReplay(t)));
+            ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> nonDbReplaysWrapper = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t)));
 
             InnerModule.trace_call(Arg.Any<TransactionForRpc>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplayWrapper);

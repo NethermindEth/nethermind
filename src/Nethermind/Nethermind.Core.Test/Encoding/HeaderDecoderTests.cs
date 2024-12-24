@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -14,7 +13,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
-[TestFixture]
 public class HeaderDecoderTests
 {
     [TestCase(true)]
@@ -66,7 +64,7 @@ public class HeaderDecoderTests
     {
         Rlp rlp = Rlp.Encode((BlockHeader?)null);
         BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
-        Assert.Null(decoded);
+        Assert.That(decoded, Is.Null);
     }
 
     [Test]
@@ -166,7 +164,7 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
-            .WithRequestsRoot(Keccak.Zero).TestObject;
+            .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
@@ -184,12 +182,12 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
-            .WithRequestsRoot(Keccak.Zero).TestObject;
+            .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
+        blockHeader.Should().BeEquivalentTo(header);
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

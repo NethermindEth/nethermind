@@ -89,7 +89,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             receiptStorage,
             readOnlyTxProcessingEnv.TransactionProcessor,
             new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
-            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),

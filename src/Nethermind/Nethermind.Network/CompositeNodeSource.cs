@@ -3,6 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
@@ -11,18 +18,30 @@ public class CompositeNodeSource : INodeSource
 {
     private readonly INodeSource[] _nodeSources;
 
-    public List<Node> LoadInitialList()
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        List<Node> all = new();
-        foreach (INodeSource nodeSource in _nodeSources)
+        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+
+        using ArrayPoolList<Task> feedTasks = _nodeSources.Select(async innerSource =>
         {
-            all.AddRange(nodeSource.LoadInitialList());
+            await foreach (Node node in innerSource.DiscoverNodes(cancellationToken))
+            {
+                await ch.Writer.WriteAsync(node, cancellationToken);
+            }
+        }).ToPooledList(_nodeSources.Length * 16);
+
+        try
+        {
+            await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return node;
+            }
         }
-
-        return all;
+        finally
+        {
+            await Task.WhenAll(feedTasks.AsSpan());
+        }
     }
-
-    public event EventHandler<NodeEventArgs>? NodeAdded;
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
@@ -31,7 +50,6 @@ public class CompositeNodeSource : INodeSource
         _nodeSources = nodeSources;
         foreach (INodeSource nodeSource in nodeSources)
         {
-            nodeSource.NodeAdded += PeerSourceOnNodeAdded;
             nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
     }
@@ -39,10 +57,5 @@ public class CompositeNodeSource : INodeSource
     private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
     {
         NodeRemoved?.Invoke(sender, e);
-    }
-
-    private void PeerSourceOnNodeAdded(object? sender, NodeEventArgs e)
-    {
-        NodeAdded?.Invoke(sender, e);
     }
 }

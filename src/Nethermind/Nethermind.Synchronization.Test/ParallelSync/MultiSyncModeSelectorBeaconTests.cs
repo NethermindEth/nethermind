@@ -336,6 +336,18 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
     }
 
+    [Test]
+    public void When_finished_state_sync_and_header_moved_forward()
+    {
+        Scenario.GoesLikeThis(_needToWaitForHeaders)
+            .WhenInBeaconSyncMode(BeaconSync.None)
+            .IfThisNodeJustFinishedStateSyncButBehindHeader(FastBlocksState.FinishedHeaders)
+            .AndGoodPeersAreKnown()
+            .WhenSnapSyncIsConfigured()
+            .WhenStateAndBestHeaderCanBeBeDifferent(6) //allow best state to be max 6 block apart from best block header
+            .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastBodies);
+    }
+
     [TestCase(FastBlocksState.None)]
     [TestCase(FastBlocksState.FinishedHeaders)]
     [TestCase(FastBlocksState.FinishedBodies)]

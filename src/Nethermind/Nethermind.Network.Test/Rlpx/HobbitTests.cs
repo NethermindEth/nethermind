@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Common.Internal.Logging;
@@ -38,13 +37,13 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            var secrets = NetTestVectors.GetSecretsPair();
+            var (A, B) = NetTestVectors.GetSecretsPair();
 
-            _frameCipherA = new FrameCipher(secrets.A.AesSecret);
-            _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
+            _frameCipherA = new FrameCipher(A.AesSecret);
+            _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
 
-            _frameCipherB = new FrameCipher(secrets.B.AesSecret);
-            _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.B);
+            _frameCipherB = new FrameCipher(B.AesSecret);
+            _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
 
             _frame = new byte[16 + 16 + 16 + 16];
             _frame[2] = 16; // size

@@ -37,11 +37,14 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
-    [ConfigItem(Description = "Block Production timeout, in milliseconds.", DefaultValue = "4000")]
+    [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
-    [ConfigItem(Description = "Genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
+    [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "The ticker that gas rewards are denominated in for processing logs", DefaultValue = "ETH", HiddenFromDocs = true)]
+    string GasToken { get; set; }
 
     byte[] GetExtraDataBytes();
 }

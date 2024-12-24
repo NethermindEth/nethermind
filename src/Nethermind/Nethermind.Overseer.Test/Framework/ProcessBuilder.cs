@@ -41,7 +41,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private static void ProcessOnExited(object sender, EventArgs eventArgs)
         {
-            TestContext.WriteLine($"Process exited: {((Process)sender).StartInfo.Arguments}");
+            TestContext.Out.WriteLine($"Process exited: {((Process)sender).StartInfo.Arguments}");
         }
 
         private static void ProcessOnOutputDataReceived(object sender, DataReceivedEventArgs dataReceivedEventArgs)

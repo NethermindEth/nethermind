@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -48,11 +47,8 @@ namespace Nethermind.Blockchain
 
             bool isFastSyncSearch = false;
 
-            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null)
-            {
+            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
-            }
 
             for (var i = 0; i < _maxDepth; i++)
             {

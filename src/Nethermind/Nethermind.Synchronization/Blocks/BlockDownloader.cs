@@ -92,8 +92,8 @@ namespace Nethermind.Synchronization.Blocks
                 return;
             }
 
+            _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, e.Block.Number);
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-            _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
         protected PeerInfo? _previousBestPeer = null;
@@ -167,7 +167,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-                Stopwatch sw = Stopwatch.StartNew();
+                long startTime = Stopwatch.GetTimestamp();
                 using IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 Hash256? startHeaderHash = headers[0]?.Hash;
@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 ancestorLookupLevel = 0;
-                AdjustSyncBatchSize(sw.Elapsed);
+                AdjustSyncBatchSize(Stopwatch.GetElapsedTime(startTime));
 
                 for (int i = 1; i < headers.Count; i++)
                 {
@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (headersSynced > 0)
                 {
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
+                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                 }
                 else
                 {
@@ -389,8 +389,8 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
+                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
                 else
                 {
@@ -411,7 +411,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 if (downloadTask.HasTimeoutException())
                 {
-                    if (_logger.IsDebug) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
+                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
                     _syncBatchSize.Shrink();
                 }
 

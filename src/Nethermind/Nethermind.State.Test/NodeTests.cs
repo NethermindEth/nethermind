@@ -14,18 +14,6 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.Children)]
     public class NodeTest
     {
-        [OneTimeSetUp]
-        public void Setup()
-        {
-            TrieNode.AllowBranchValues = true;
-        }
-
-        [OneTimeTearDown]
-        public void TearDown()
-        {
-            TrieNode.AllowBranchValues = false;
-        }
-
         [Test]
         public void Two_children_store_encode()
         {
@@ -62,7 +50,7 @@ namespace Nethermind.Store.Test
             TrieNode decoded = new(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree, TreePath.Empty);
             TreePath emptyPath = TreePath.Empty;
-            TrieNode child0 = decoded.GetChild(tree, ref emptyPath, 0);
+            _ = decoded.GetChild(tree, ref emptyPath, 0);
             decoded.RlpEncode(tree, ref emptyPath);
         }
 
@@ -76,7 +64,7 @@ namespace Nethermind.Store.Test
             TrieNode decoded = new(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree, TreePath.Empty);
             TreePath emptyPath = TreePath.Empty;
-            TrieNode child = decoded.GetChild(tree, ref emptyPath, 3);
+            _ = decoded.GetChild(tree, ref emptyPath, 3);
             decoded.RlpEncode(tree, ref emptyPath);
         }
 
@@ -141,7 +129,6 @@ namespace Nethermind.Store.Test
 
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
-            TrieNode.AllowBranchValues = true;
             TreePath emptyPath = TreePath.Empty;
             CappedArray<byte> rlp = node.RlpEncode(null, ref emptyPath);
             node.ResolveKey(null, ref emptyPath, true);

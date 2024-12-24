@@ -8,8 +8,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -24,7 +24,7 @@ public partial class ShardBlobTxDecoderTests
     public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();
 
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
-        TxDecoderTests.TestObjectsSource().Select(tos => (tos.Item1
+        TxDecoderTests.TestCaseSource().Select(static tos => (Build.A.Transaction.From(tos.Item1)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithShardBlobTxTypeAndFields(2, false)
             .SignedAndResolved()

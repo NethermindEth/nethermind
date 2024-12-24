@@ -1,0 +1,28 @@
+{
+  "Init": {
+    "ChainSpecPath": "chainspec/linea-sepolia.json",
+    "GenesisHash": "0x65a64c825d7c13ce1bf077801d0b6b2a89853e19e4a89a5433d7d85d2102a20b",
+    "BaseDbPath": "nethermind_db/linea-sepolia",
+    "LogFileName": "linea-sepolia.logs.txt"
+  },
+  "Merge": {
+    "Enabled": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Metrics": {
+    "NodeName": "LineaSepolia"
+  },
+  "Sync": {
+    "SnapSync": true,
+    "PivotNumber": 7300000,
+    "PivotHash": "0xb5be783d3492d6440fd646a4ea3c76b0d91bf31e597c463a0a236fe217ec59ec",
+    "PivotTotalDifficulty": "14600001",
+    "HeaderStateDistance": 6
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545
+  }
+}

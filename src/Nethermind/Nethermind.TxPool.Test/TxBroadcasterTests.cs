@@ -216,7 +216,7 @@ public class TxBroadcasterTests
             transactions[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithData(isLarge ? new byte[4 * 1024] : Array.Empty<byte>()) //some part of txs (10%) is large (>4KB)
+                .WithData(isLarge ? new byte[4 * 1024] : []) //some part of txs (10%) is large (>4KB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -242,7 +242,7 @@ public class TxBroadcasterTests
 
         // check if full transactions and hashes returned by broadcaster are as expected
         expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(t => t.Hash).ToArray());
+        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
     }
 
     [Test]
@@ -288,7 +288,7 @@ public class TxBroadcasterTests
 
         // check if full transactions and hashes returned by broadcaster are as expected
         expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(t => t.Hash).ToArray());
+        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
     }
 
     [Test]
@@ -407,17 +407,17 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs, o => o.Excluding(transaction => transaction.MaxFeePerGas));
+        expectedTxs.Should().BeEquivalentTo(pickedTxs, static o => o.Excluding(static transaction => transaction.MaxFeePerGas));
     }
 
     [Test]
-    public void should_not_pick_blob_txs_with_MaxFeePerBlobGas_lower_than_CurrentPricePerBlobGas([Values(1, 2, 99, 100, 101, 1000)] int threshold)
+    public void should_not_pick_blob_txs_with_MaxFeePerBlobGas_lower_than_CurrentFeePerBlobGas([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        const int currentPricePerBlobGasInGwei = 250;
-        _headInfo.CurrentPricePerBlobGas.Returns(currentPricePerBlobGasInGwei.GWei());
+        const int currentFeePerBlobGas = 250;
+        _headInfo.CurrentFeePerBlobGas.Returns(currentFeePerBlobGas.GWei());
 
         // add 256 transactions with MaxFeePerBlobGas 0-255
         int addedTxsCount = TestItem.PrivateKeys.Length;
@@ -437,7 +437,7 @@ public class TxBroadcasterTests
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         // count number of expected hashes to broadcast
-        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentPricePerBlobGasInGwei);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentFeePerBlobGas);
 
         // prepare list of expected hashes to broadcast
         List<Transaction> expectedTxs = new();
@@ -453,7 +453,7 @@ public class TxBroadcasterTests
         pickedHashes.Count.Should().Be(expectedCount);
 
         // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
-        expectedTxs.Count(t => t.MaxFeePerBlobGas >= (UInt256)currentPricePerBlobGasInGwei).Should().Be(expectedCount);
+        expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas).Should().Be(expectedCount);
     }
 
     [Test]

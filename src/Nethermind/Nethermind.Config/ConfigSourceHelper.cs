@@ -7,14 +7,26 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Int256;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config
 {
-    internal static class ConfigSourceHelper
+    public static class ConfigSourceHelper
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
+            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
+            {
+                return IsNullString(valueString) ? null : ParseValue(nullableType, valueString, category, name);
+            }
+
+            if (!valueType.IsValueType && IsNullString(valueString))
+            {
+                return null;
+            }
+
             try
             {
                 object value;
@@ -23,8 +35,13 @@ namespace Nethermind.Config
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
+                    if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith("["))
+                    {
+                        // hex encoded byte array
+                        value = Bytes.FromHexString(valueString.Trim());
+                    }
                     //In case of collection of objects (more complex config models) we parse entire collection
-                    if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
+                    else if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                     {
                         var objCollection = JsonSerializer.Deserialize(valueString, valueType);
                         value = objCollection;
@@ -32,13 +49,13 @@ namespace Nethermind.Config
                     else
                     {
                         valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
-                        var valueItems = valueString.Split(',').Select(s => s.Trim()).ToArray();
-                        var collection = valueType.IsGenericType
+                        var valueItems = valueString.Split(',').Select(static s => s.Trim()).ToArray();
+                        IList collection = (valueType.IsGenericType
                             ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
-                            : (IList)Activator.CreateInstance(valueType, valueItems.Length);
+                            : (IList)Activator.CreateInstance(valueType, valueItems.Length))!;
 
                         var i = 0;
-                        foreach (var valueItem in valueItems)
+                        foreach (string valueItem in valueItems)
                         {
                             string item = valueItem;
                             if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
@@ -81,35 +98,70 @@ namespace Nethermind.Config
             }
         }
 
-        public static object GetDefault(Type type)
+        private static bool IsNullString(string valueString) =>
+            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.OrdinalIgnoreCase);
+
+        public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
+
+        private static bool TryFromHex(Type type, string itemValue, out object value)
         {
-            return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
+            if (!itemValue.StartsWith("0x"))
+            {
+                value = null;
+                return false;
+            }
+
+            if (typeof(IConvertible).IsAssignableFrom(type) && type != typeof(string))
+            {
+                object baseValue = type == typeof(ulong)
+                    ? Convert.ToUInt64(itemValue, 16) // Use UInt64 parsing for unsigned types to avoid overflow
+                    : Convert.ToInt64(itemValue, 16); // Default to Int64 parsing for other integer types
+
+                value = Convert.ChangeType(baseValue, type);
+                return true;
+            }
+
+            value = null;
+            return false;
         }
 
         private static object GetValue(Type valueType, string itemValue)
         {
+            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
+            {
+                return IsNullString(itemValue) ? null : GetValue(nullableType, itemValue);
+            }
+
+            if (!valueType.IsValueType && IsNullString(itemValue))
+            {
+                return null;
+            }
+
             if (valueType == typeof(UInt256))
             {
                 return UInt256.Parse(itemValue);
             }
 
-            if (valueType.IsEnum)
+            if (valueType == typeof(Address))
             {
-                if (Enum.TryParse(valueType, itemValue, true, out var enumValue))
-                {
-                    return enumValue;
-                }
-
-                throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
+                return Address.TryParse(itemValue, out Address address)
+                    ? address
+                    : throw new FormatException($"Could not parse {itemValue} to {typeof(Address)}");
             }
 
-            var nullableType = Nullable.GetUnderlyingType(valueType);
+            if (valueType == typeof(Hash256))
+            {
+                return new Hash256(itemValue);
+            }
 
-            return nullableType is null
-                ? Convert.ChangeType(itemValue, valueType)
-                : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase)
-                    ? Convert.ChangeType(itemValue, nullableType)
-                    : null;
+            if (valueType.IsEnum)
+            {
+                return Enum.TryParse(valueType, itemValue, true, out object enumValue)
+                    ? enumValue
+                    : throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
+            }
+
+            return TryFromHex(valueType, itemValue, out object value) ? value : Convert.ChangeType(itemValue, valueType);
         }
     }
 }

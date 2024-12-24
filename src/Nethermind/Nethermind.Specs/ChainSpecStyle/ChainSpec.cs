@@ -11,7 +11,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
-    /// https://wiki.parity.io/Chain-specification
+    /// https://openethereum.github.io/Chain-specification
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -34,15 +34,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public string SealEngineType { get; set; }
 
-        public AuRaParameters AuRa { get; set; }
-
-        public CliqueParameters Clique { get; set; }
-
-        public EthashParameters Ethash { get; set; }
-
-        public OptimismParameters Optimism { get; set; }
-
         public ChainParameters Parameters { get; set; }
+
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 

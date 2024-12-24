@@ -21,44 +21,6 @@ namespace Nethermind.Evm;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
-    internal sealed class CodeLruCache
-    {
-        private const int CacheCount = 16;
-        private const int CacheMax = CacheCount - 1;
-        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
-
-        public CodeLruCache()
-        {
-            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
-            for (int i = 0; i < _caches.Length; i++)
-            {
-                // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
-            }
-        }
-
-        public CodeInfo? Get(in ValueHash256 codeHash)
-        {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            return cache.Get(codeHash);
-        }
-
-        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
-        {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            return cache.Set(codeHash, codeInfo);
-        }
-
-        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
-
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
-        {
-            codeInfo = Get(codeHash);
-            return codeInfo is not null;
-        }
-    }
-
-
     private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = InitializePrecompiledContracts();
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
@@ -81,13 +43,13 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
             [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiMulPrecompile.Address] = new(G1MultiMulPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
             [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
             [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiMulPrecompile.Address] = new(G2MultiMulPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
@@ -102,13 +64,26 @@ public class CodeInfoRepository : ICodeInfoRepository
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
+        delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
         {
             return _localPrecompiles[codeSource];
         }
 
+        CodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource);
+
+        if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
+        {
+            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
+        }
+
+        return cachedCodeInfo;
+    }
+
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource)
+    {
         CodeInfo? cachedCodeInfo = null;
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
@@ -145,34 +120,75 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
-    {
-        if (!_codeCache.TryGet(codeHash, out CodeInfo? codeInfo))
-        {
-            codeInfo = new(initCode.ToArray());
-
-            // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
-        }
-
-        return codeInfo;
-    }
-
-
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         CodeInfo codeInfo = new(code);
         codeInfo.AnalyseInBackgroundIfRequired();
 
-        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
+        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);
+    }
+
+    public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        if (codeSource == Address.Zero)
+        {
+            state.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
+            return;
+        }
+        byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+        Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
+        codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
+        ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
+        state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
+        _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+    }
+
+    /// <summary>
+    /// Retrieves code hash of delegation if delegated. Otherwise code hash of <paramref name="address"/>.
+    /// </summary>
+    /// <param name="worldState"></param>
+    /// <param name="address"></param>
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address)
+    {
+        ValueHash256 codeHash = worldState.GetCodeHash(address);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        {
+            return Keccak.OfAnEmptyString.ValueHash256;
+        }
+
+        CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
+        return codeInfo.IsEmpty
+            ? Keccak.OfAnEmptyString.ValueHash256
+            : TryGetDelegatedAddress(codeInfo.MachineCode.Span, out Address? delegationAddress)
+                ? worldState.GetCodeHash(delegationAddress)
+                : codeHash;
+    }
+
+    /// <remarks>
+    /// Parses delegation code to extract the contained address.
+    /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
+    /// </remarks>
+    private static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
+    {
+        if (Eip7702Constants.IsDelegatedCode(code))
+        {
+            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
+            return true;
+        }
+
+        address = null;
+        return false;
     }
 
     private CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, address).MachineCode.Span, out delegatedAddress);
 
     private class CachedPrecompile(
         Address address,
@@ -199,4 +215,42 @@ public class CodeInfoRepository : ICodeInfoRepository
             return result;
         }
     }
+
+    private sealed class CodeLruCache
+    {
+        private const int CacheCount = 16;
+        private const int CacheMax = CacheCount - 1;
+        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
+
+        public CodeLruCache()
+        {
+            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
+            for (int i = 0; i < _caches.Length; i++)
+            {
+                // Cache per nibble to reduce contention as TxPool is very parallel
+                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
+            }
+        }
+
+        public CodeInfo? Get(in ValueHash256 codeHash)
+        {
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Get(codeHash);
+        }
+
+        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        {
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Set(codeHash, codeInfo);
+        }
+
+        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
+        {
+            codeInfo = Get(codeHash);
+            return codeInfo is not null;
+        }
+    }
 }
+

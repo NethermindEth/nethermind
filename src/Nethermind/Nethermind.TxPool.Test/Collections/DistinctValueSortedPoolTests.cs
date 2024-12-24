@@ -91,8 +91,8 @@ namespace Nethermind.TxPool.Test.Collections
             var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             var transactions = gasPriceAscending
-                ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(t => t.GasPrice)
-                : GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderByDescending(t => t.GasPrice);
+                ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(static t => t.GasPrice)
+                : GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderByDescending(static t => t.GasPrice);
 
             foreach (var transaction in transactions)
             {
@@ -168,7 +168,7 @@ namespace Nethermind.TxPool.Test.Collections
             protected override int GetKey(WithFinalizer value) => value.Index;
         }
 
-        IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
+        readonly IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create(static (t1, t2) =>
         {
             int t1Oddity = t1.Index % 2;
             int t2Oddity = t2.Index % 2;

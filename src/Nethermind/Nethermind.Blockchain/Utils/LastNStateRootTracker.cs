@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
@@ -49,14 +48,14 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
             // Queue is intact.
             _availableStateRoots.AddOrUpdate(
                 newHead.StateRoot,
-                (_) => 1,
-                (_, oldValue) => oldValue + 1);
+                static (_) => 1,
+                static (_, oldValue) => oldValue + 1);
             while (_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256 oldStateRoot))
             {
                 int newNum = _availableStateRoots.AddOrUpdate(
                     oldStateRoot,
-                    (_) => 0,
-                    (_, oldValue) => oldValue - 1);
+                    static (_) => 0,
+                    static (_, oldValue) => oldValue - 1);
                 if (newNum == 0) _availableStateRoots.Remove(oldStateRoot, out _);
             }
             _stateRootQueue.Enqueue(newHead.StateRoot);
@@ -73,8 +72,8 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         {
             newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
-                (_) => 1,
-                (_, oldValue) => oldValue + 1);
+                static (_) => 1,
+                static (_, oldValue) => oldValue + 1);
             stateRoots.Add(parent.StateRoot);
             parent = _blockTree.FindParentHeader(parent, BlockTreeLookupOptions.All);
         }

@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Test.Consensus
     [TestFixture]
     public class OneByOneTxSourceTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Can_serve_one_by_one()
         {
             ITxSource source = Substitute.For<ITxSource>();

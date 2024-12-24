@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -24,8 +23,6 @@ public static class KzgPolynomialCommitments
 
     private static IntPtr _ckzgSetup = IntPtr.Zero;
 
-    private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
-
     private static Task? _initializeTask;
 
     public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
@@ -40,7 +37,7 @@ public static class KzgPolynomialCommitments
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
+        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
 
         if (_ckzgSetup == IntPtr.Zero)
         {
@@ -67,7 +64,7 @@ public static class KzgPolynomialCommitments
             throw new ArgumentException($"{nameof(hashBuffer)} should be {BytesPerBlobVersionedHash} bytes", nameof(hashBuffer));
         }
 
-        if (_sha256.Value!.TryComputeHash(commitment, hashBuffer, out _))
+        if (SHA256.TryHashData(commitment, hashBuffer, out _))
         {
             hashBuffer[0] = KzgBlobHashVersionV1;
             return true;

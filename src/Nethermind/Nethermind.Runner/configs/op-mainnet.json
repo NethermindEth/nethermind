@@ -1,0 +1,45 @@
+{
+  "$schema": "https://gist.githubusercontent.com/flcl42/25b0396678b02cfc0c5dc1d68ea085a7/raw/2fda5155f38e9816bead94682eac92d3b7e74b8c/nethermind-config-schema.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/op-mainnet.json",
+    "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
+    "BaseDbPath": "nethermind_db/op-mainnet",
+    "LogFileName": "op-mainnet.logs.txt",
+    "MemoryHint": 2048000000,
+    "DisableGcOnNewPayload": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "AncientBodiesBarrier": 105235063,
+    "AncientReceiptsBarrier": 105235063,
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "PivotNumber": 129600000,
+    "PivotHash": "0xd06264ead4bb1a026135affe815b3b817c835f9513358e18991391c19b727eb9",
+    "PivotTotalDifficulty": "0"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2,
+    "TargetBlockGasLimit": 30000000
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://mainnet-sequencer.optimism.io"
+  }
+}

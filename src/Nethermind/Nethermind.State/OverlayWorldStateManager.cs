@@ -26,20 +26,15 @@ public class OverlayWorldStateManager(
     public IStateReader GlobalStateReader => _reader;
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
+    public bool SupportHashLookup => overlayTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache),
-                _codeDb,
-                logManager,
-                preBlockCaches)
-            : new WorldState(
-                overlayTrieStore,
-                _codeDb,
-                logManager);
+        ITrieStore trieStore = forWarmup is IPreBlockCaches { Caches: { } preBlockCaches }
+            ? new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache)
+            : overlayTrieStore;
+
+        return new WorldState(trieStore, _codeDb, logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

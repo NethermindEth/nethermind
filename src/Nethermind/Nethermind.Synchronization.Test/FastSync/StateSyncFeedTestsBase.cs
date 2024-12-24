@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -13,10 +14,8 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -24,27 +23,24 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 10000;
+        private const int TimeoutLength = 20000;
 
         private static IBlockTree? _blockTree;
-        protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
+        protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
         protected ILogger _logger;
         protected ILogManager _logManager = null!;
@@ -79,11 +75,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
 
-            remoteStorageTree.Commit(0);
+            remoteStorageTree.Commit();
             return remoteStorageTree;
         }
 
-        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
         {
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
@@ -97,66 +93,89 @@ namespace Nethermind.Synchronization.Test.FastSync
                 syncPeers[i] = mock;
             }
 
-            SafeContext ctx = PrepareDownloaderWithPeer(dbContext, syncPeers);
-            ctx.SyncPeerMocks = syncPeers;
-            return ctx;
-        }
+            ContainerBuilder builder = BuildTestContainerBuilder(dbContext, syncDispatcherAllocateTimeoutMs)
+                .AddSingleton<SyncPeerMock[]>(syncPeers);
 
-        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, IEnumerable<ISyncPeer> syncPeers)
-        {
-            SafeContext ctx = new();
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
-            ctx.Pool.Start();
-
-            foreach (ISyncPeer syncPeer in syncPeers)
+            builder.RegisterBuildCallback((ctx) =>
             {
-                ctx.Pool.AddPeer(syncPeer);
-            }
+                ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
+                foreach (ISyncPeer syncPeer in syncPeers)
+                {
+                    peerPool.AddPeer(syncPeer);
+                }
+            });
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-            ctx.Downloader = new StateSyncDownloader(_logManager);
-            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
-                0,
-                ctx.Feed!,
-                ctx.Downloader,
-                ctx.Pool,
-                new StateSyncAllocationStrategyFactory(),
-                _logManager);
-            Task _ = ctx.StateSyncDispatcher.Start(CancellationToken.None);
-            return ctx;
+            return builder.Build();
         }
 
-        protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
+        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
-            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new();
+            ContainerBuilder containerBuilder = new ContainerBuilder()
+                .AddModule(new TestSynchronizerModule(new TestSyncConfig()
+                {
+                    SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
+                    FastSync = true
+                }))
+                .AddSingleton<ILogManager>(_logManager)
+                .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
+                .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
+                .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
+
+                // Use factory function to make it lazy in case test need to replace IBlockTree
+                .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(
+                    $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{BlockTree.BestSuggestedHeader!.Number}",
+                    () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength((int)BlockTree.BestSuggestedHeader!.Number)))
+
+                .Add<SafeContext>();
+
+            containerBuilder.RegisterBuildCallback((ctx) =>
+            {
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
+                ctx.Resolve<ISyncPeerPool>().Start();
+            });
+
+            return containerBuilder;
+        }
+
+        protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength)
+        {
+            // Note: The `RunContinuationsAsynchronously` is very important, or the thread might continue synchronously
+            // which causes unexpected hang.
+            TaskCompletionSource dormantAgainSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             safeContext.Feed.StateChanged += (_, e) =>
             {
                 if (e.NewState == SyncFeedState.Dormant)
                 {
-                    dormantAgainSource.TrySetResult(0);
+                    dormantAgainSource.TrySetResult();
                 }
             };
 
-            safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState);
-            safeContext.Feed.Activate();
+            safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
 
             await Task.WhenAny(
                 dormantAgainSource.Task,
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext
+        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree, StateSyncPivot stateSyncPivot)
         {
-            public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
-            public ISyncPeerPool Pool { get; set; } = null!;
-            public TreeSync TreeFeed { get; set; } = null!;
-            public StateSyncFeed Feed { get; set; } = null!;
-            public StateSyncDownloader Downloader { get; set; } = null!;
-            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher { get; set; } = null!;
+            public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
+            public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
+            public TreeSync TreeFeed => container.Resolve<TreeSync>();
+            public StateSyncFeed Feed => container.Resolve<StateSyncFeed>();
+
+            public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
+            {
+                Block newBlock = Build.A.Block
+                    .WithParent(blockTree.BestSuggestedHeader!)
+                    .WithStateRoot(newRootHash)
+                    .TestObject;
+
+                blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
+                blockTree.UpdateMainChain([newBlock], false, true);
+
+                stateSyncPivot.UpdateHeaderForcefully();
+            }
         }
 
         protected class DbContext
@@ -324,7 +343,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public void Disconnect(DisconnectReason reason, string details)
             {
-                throw new NotImplementedException();
             }
 
             public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)

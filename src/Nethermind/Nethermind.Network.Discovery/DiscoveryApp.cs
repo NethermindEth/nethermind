@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.NetworkInformation;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -134,7 +135,7 @@ public class DiscoveryApp : IDiscoveryApp
             return;
         }
 
-        foreach (INodeLifecycleManager unreachable in _discoveryManager.GetNodeLifecycleManagers().Where(x => x.State == NodeLifecycleState.Unreachable))
+        foreach (INodeLifecycleManager unreachable in _discoveryManager.GetNodeLifecycleManagers().Where(static x => x.State == NodeLifecycleState.Unreachable))
         {
             unreachable.ResetUnreachableStatus();
         }
@@ -206,7 +207,7 @@ public class DiscoveryApp : IDiscoveryApp
 
                 //Check if we were able to communicate with any trusted nodes or persisted nodes
                 //if so no need to replay bootstrapping, we can start discovery process
-                if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count != 0)
+                if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
                 {
                     break;
                 }
@@ -341,12 +342,12 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
-            if (managers.Any(x => x.State == NodeLifecycleState.Active))
+            if (managers.Any(static x => x.State == NodeLifecycleState.Active))
             {
                 break;
             }
 
-            if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count != 0)
+            if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
             {
                 if (_logger.IsTrace)
                     _logger.Trace(
@@ -385,7 +386,7 @@ public class DiscoveryApp : IDiscoveryApp
 
         if (_logger.IsInfo)
             _logger.Info(
-                $"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
+                $"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
         return reachedNodeCounter > 0;
     }
 
@@ -432,7 +433,7 @@ public class DiscoveryApp : IDiscoveryApp
                 _logger.Error($"Error during discovery refresh process: {e}");
             }
 
-            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(static x => x.BondedItemsCount);
             waitTimeTimeMs =
                 nodesCountAfterDiscovery < 16
                     ? 10
@@ -485,6 +486,40 @@ public class DiscoveryApp : IDiscoveryApp
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
+
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // TODO: Rewrote this to properly support throttling.
+        Channel<Node> ch = Channel.CreateBounded<Node>(64); // Some reasonably large value
+        void handler(object? _, NodeEventArgs args)
+        {
+            if (!ch.Writer.TryWrite(args.Node))
+            {
+                // Keep in mind, the channel is already buffered, so forgetting this node is probably fine.
+                _nodesLocator.ShouldThrottle = true;
+            }
+            else
+            {
+                _nodesLocator.ShouldThrottle = false;
+            }
+        }
+
+        try
+        {
+            // TODO: Use lookup like kademlia
+            NodeAdded += handler;
+
+            await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return node;
+            }
+        }
+        finally
+        {
+            NodeAdded -= handler;
+            _nodesLocator.ShouldThrottle = false;
+        }
+    }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

@@ -10,7 +10,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -59,7 +58,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ISpecProvider specProvider,
         ILogManager? logManager = null,
         bool validate = false)
-        : base(worldStateManager, blockTree, specProvider, logManager)
+        : base(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), blockTree, specProvider, logManager)
     {
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
@@ -115,7 +114,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             StateProvider,
             NullReceiptStorage.Instance,
             _transactionProcessor,
-            new BeaconBlockRootHandler(_transactionProcessor),
+            new BeaconBlockRootHandler(_transactionProcessor, StateProvider),
             new BlockhashStore(SpecProvider, StateProvider),
             _logManager);
 }

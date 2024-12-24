@@ -102,6 +102,8 @@ internal class ChainSpecParamsJson
     // we can disable it if needed, but its expected not to cause issues
     public long? Eip3607Transition { get; set; } = 0;
 
+    public long? OntakeTransition { get; set; }
+
     public UInt256? Eip1559BaseFeeInitialValue { get; set; }
 
     public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }
@@ -118,7 +120,7 @@ internal class ChainSpecParamsJson
 
     public long? Eip1559FeeCollectorTransition { get; set; }
 
-    public Address Eip1559FeeCollector { get; set; }
+    public Address FeeCollector { get; set; }
 
     public long? Eip1559BaseFeeMinValueTransition { get; set; }
 
@@ -129,6 +131,7 @@ internal class ChainSpecParamsJson
     public UInt256? TerminalTotalDifficulty { get; set; }
 
     public long? TerminalPoWBlockNumber { get; set; }
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
 
     public ulong? Eip1153TransitionTimestamp { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
@@ -147,9 +150,15 @@ internal class ChainSpecParamsJson
     public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
     public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
+    public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
+    public ulong? Eip7251TransitionTimestamp { get; set; }
+    public Address Eip7251ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702TransitionTimestamp { get; set; }
+    public ulong? OpGraniteTransitionTimestamp { get; set; }
+    public ulong? OpHoloceneTransitionTimestamp { get; set; }
 }

@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Module_provider_will_recognize_disabled_modules()
         {
             JsonRpcConfig jsonRpcConfig = new();
-            jsonRpcConfig.EnabledModules = new string[0];
+            jsonRpcConfig.EnabledModules = [];
             _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
             ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);

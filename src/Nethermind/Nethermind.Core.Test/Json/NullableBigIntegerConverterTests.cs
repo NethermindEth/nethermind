@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
 using System.Numerics;
 using System.Text.Json;
 
@@ -18,10 +16,10 @@ namespace Nethermind.Core.Test.Json
         static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
         public void Test_roundtrip()
         {
-            TestConverter(null, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(BigInteger.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(BigInteger.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(null, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(BigInteger.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(BigInteger.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
 
         [Test]

@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
@@ -100,10 +101,27 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            if ((_api.NodeStorageFactory.CurrentKeyScheme != INodeStorage.KeyScheme.Hash || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.HalfPath)
-                && pruningConfig.CacheMb > 2000)
+            // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
+            // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
+            long maximumCacheMb = Environment.ProcessorCount * 250;
+            // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
+            maximumCacheMb = Math.Max(1000, maximumCacheMb);
+            if (pruningConfig.CacheMb > maximumCacheMb)
             {
-                if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than 2000MB is not recommended as it may cause long memory pruning time which affect attestation.");
+                // The user can also change `--Db.StateDbWriteBufferSize`.
+                // Which may or may not be better as each read will need to go through eacch write buffer.
+                // So having less of them is probably better..
+                if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than {maximumCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
+            }
+
+            var dbConfig = _api.Config<IDbConfig>();
+            var totalWriteBufferMb = dbConfig.StateDbWriteBufferNumber * dbConfig.StateDbWriteBufferSize / (ulong)1.MB();
+            var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
+            if (totalWriteBufferMb < minimumWriteBufferMb)
+            {
+                long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
+
+                if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
             }
 
             pruningStrategy = Prune
@@ -180,20 +198,10 @@ public class InitializeStateDb : IStep
 
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
-            Task.Run(() =>
-            {
-                try
-                {
-                    _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
-                    _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
-                }
-                catch (Exception ex)
-                {
-                    _logger!.Error(ex.ToString());
-                }
-            });
+            _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+            Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager, _api.ProcessExit!.Token);
+            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
         }
 
         // Init state if we need system calls before actual processing starts

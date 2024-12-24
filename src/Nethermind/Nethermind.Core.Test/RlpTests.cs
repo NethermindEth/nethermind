@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Serializing_empty_sequence()
         {
-            Rlp output = Rlp.Encode(new Rlp[] { });
+            Rlp output = Rlp.Encode(Array.Empty<Rlp>());
             Assert.That(output.Bytes, Is.EqualTo(new byte[] { 192 }));
         }
 
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Empty_byte_array()
         {
-            byte[] bytes = Array.Empty<byte>();
+            byte[] bytes = [];
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new byte[] { 128 });
