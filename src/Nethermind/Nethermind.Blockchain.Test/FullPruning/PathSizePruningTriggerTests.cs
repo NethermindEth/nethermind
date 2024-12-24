@@ -46,7 +46,7 @@ public class PathSizePruningTriggerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void throws_on_nonexisting_path()
     {
-        Action action = () => new PathSizePruningTrigger("path", 5, null!, Substitute.For<IFileSystem>());
+        Action action = static () => new PathSizePruningTrigger("path", 5, null!, Substitute.For<IFileSystem>());
         action.Should().Throw<ArgumentException>();
     }
 

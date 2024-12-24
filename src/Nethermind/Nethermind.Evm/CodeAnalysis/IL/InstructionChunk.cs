@@ -30,5 +30,5 @@ internal interface InstructionChunk
             ref long gasAvailable,
             ref EvmStack<T> stack,
             ITxTracer trace,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing;
+            ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing;
 }

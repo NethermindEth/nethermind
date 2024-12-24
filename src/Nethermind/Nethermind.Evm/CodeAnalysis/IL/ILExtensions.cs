@@ -202,76 +202,78 @@ public static class WordEmit
         }
     }
 }
+public static class UnsafeEmit
+{
+
+    public static MethodInfo GetAddOffsetRef<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Add) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetSubtractOffsetRef<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Subtract) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetAddBytesOffsetRef<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.AddByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetSubtractBytesOffsetRef<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.SubtractByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetReadUnalignedMethodInfo<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.ReadUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetWriteUnalignedMethodInfo<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.WriteUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetAsMethodInfo<TOriginal, TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.As) && m.ReturnType.IsByRef);
+        return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
+    }
+
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+    public unsafe static MethodInfo GetCastMethodInfo<TOriginal, TResult>() where TResult : struct
+    {
+        MethodInfo method = typeof(UnsafeEmit).GetMethod(nameof(UnsafeEmit.ReinterpretCast));
+        return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
+    }
+    public unsafe static Span<TResult> ReinterpretCast<TOriginal, TResult>(Span<TOriginal> original)
+        where TOriginal : struct
+        where TResult : struct
+    {
+        Span<TResult> result = Span<TResult>.Empty;
+        fixed (TOriginal* ptr = original)
+        {
+            result = new Span<TResult>(ptr, original.Length * sizeof(TOriginal) / sizeof(TResult));
+        }
+        return result;
+    }
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+
+}
+
 /// <summary>
 /// Extensions for <see cref="ILGenerator"/>.
 /// </summary>
 static class EmitExtensions
 {
-    public static class UnsafeEmit {
-
-        public static MethodInfo GetAddOffsetRef<TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Add) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-            return method.MakeGenericMethod(typeof(TResult));
-        }
-
-        public static MethodInfo GetSubtractOffsetRef<TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.Subtract) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-            return method.MakeGenericMethod(typeof(TResult));
-        }
-
-        public static MethodInfo GetAddBytesOffsetRef<TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.AddByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-            return method.MakeGenericMethod(typeof(TResult));
-        }
-
-        public static MethodInfo GetSubtractBytesOffsetRef<TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.SubtractByteOffset) && m.GetParameters()[0].ParameterType.IsByRef && m.GetParameters()[1].ParameterType == typeof(nint));
-            return method.MakeGenericMethod(typeof(TResult));
-        }
-
-        public static MethodInfo GetReadUnalignedMethodInfo<TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.ReadUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
-            return method.MakeGenericMethod(typeof(TResult));
-        }
-
-        public static MethodInfo GetWriteUnalignedMethodInfo<TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.WriteUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
-            return method.MakeGenericMethod(typeof(TResult));
-        }
-
-        public static MethodInfo GetAsMethodInfo<TOriginal, TResult>()
-        {
-            MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.As) && m.ReturnType.IsByRef);
-            return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
-        }
-
-#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
-        public unsafe static MethodInfo GetCastMethodInfo<TOriginal, TResult>() where TResult : struct
-        {
-            MethodInfo method = typeof(UnsafeEmit).GetMethod(nameof(UnsafeEmit.ReinterpretCast));
-            return method.MakeGenericMethod(typeof(TOriginal), typeof(TResult));
-        }
-        public unsafe static Span<TResult> ReinterpretCast<TOriginal, TResult>(Span<TOriginal> original)
-            where TOriginal : struct
-            where TResult : struct
-        {
-            Span<TResult> result = Span<TResult>.Empty;
-            fixed (TOriginal* ptr = original)
-            {
-                result = new Span<TResult>(ptr, original.Length * sizeof(TOriginal) / sizeof(TResult));
-            }
-            return result;
-        }
-#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
-
-    }
-
+    
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
     public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
     public static MethodInfo ConvertionExplicit<TFrom, TTo>() => ConvertionExplicit(typeof(TFrom), typeof(TTo));

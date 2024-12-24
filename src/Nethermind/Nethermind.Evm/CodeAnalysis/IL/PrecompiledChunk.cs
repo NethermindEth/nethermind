@@ -13,7 +13,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class PrecompiledChunk : InstructionChunk
 {
     public string Name => PrecompiledSegment.Method.Name;
-    internal ExecuteSegment PrecompiledSegment;
+    internal PartialAOT.ExecuteSegment PrecompiledSegment;
     internal byte[][] Data;
 
     public void Invoke<T>(EvmState vmState,
@@ -30,7 +30,7 @@ internal class PrecompiledChunk : InstructionChunk
         ref long gasAvailable,
         ref EvmStack<T> stack,
         ITxTracer trace,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         PrecompiledSegment.Invoke(
             chainId,

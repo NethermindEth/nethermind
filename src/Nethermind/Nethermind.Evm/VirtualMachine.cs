@@ -772,7 +772,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if(typeof(TOptimizing) == typeof(IsOptimizing))
             {
-                var chunkExecutionResult = new ILChunkExecutionResult(ref _returnDataBuffer);
+                var chunkExecutionResult = new ILChunkExecutionState(ref _returnDataBuffer);
                 while (ilInfo is not null && (ilInfo.TryExecute(_logger,
                     vmState,
                     in env,

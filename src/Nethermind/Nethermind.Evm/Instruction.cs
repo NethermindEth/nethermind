@@ -391,7 +391,6 @@ namespace Nethermind.Evm
             Instruction.STOP => true,
             Instruction.RETURN => true,
             Instruction.REVERT => true,
-            Instruction.INVALID => true,
             Instruction.SELFDESTRUCT => true,
             _ => !Enum.IsDefined<Instruction>(instruction)
         };

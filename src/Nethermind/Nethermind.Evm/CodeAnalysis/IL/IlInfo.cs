@@ -11,7 +11,7 @@ using static Nethermind.Evm.VirtualMachine;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal ref struct ILChunkExecutionResult(ref ReadOnlyMemory<byte> output)
+internal ref struct ILChunkExecutionState(ref ReadOnlyMemory<byte> output)
 {
     public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
     public bool ShouldJump;
@@ -19,6 +19,7 @@ internal ref struct ILChunkExecutionResult(ref ReadOnlyMemory<byte> output)
     public bool ShouldRevert;
     public bool ShouldReturn;
     public ref readonly ReadOnlyMemory<byte> ReturnData = ref output;
+    public CallResult CallResult; // usually empty not used
     public EvmExceptionType ExceptionType;
 }
 
@@ -84,7 +85,7 @@ internal class IlInfo
         ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<TTracingInstructions> stack,
-        ref ILChunkExecutionResult result)
+        ref ILChunkExecutionState result)
 
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {

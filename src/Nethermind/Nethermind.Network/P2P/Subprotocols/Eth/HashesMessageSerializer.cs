@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected static Hash256[] DeserializeHashes(RlpStream rlpStream)
         {
-            Hash256[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak());
             return hashes;
         }
 
@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream)
         {
-            return rlpStream.DecodeArrayPoolList(itemContext => itemContext.DecodeKeccak());
+            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak());
         }
 
         public void Serialize(IByteBuffer byteBuffer, T message)
@@ -40,9 +40,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Hashes.Count; i++)
+            foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                rlpStream.Encode(message.Hashes[i]);
+                rlpStream.Encode(hash);
             }
         }
 

@@ -129,7 +129,7 @@ public class BlockchainBridgeTests
             .WithIndex(index)
             .TestObject;
         IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
-            .Select(i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
+            .Select(static i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
         var block = Build.A.Block
             .WithTransactions(transactions.ToArray())
             .TestObject;
@@ -153,7 +153,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx =>
+            Arg.Is<BlockExecutionContext>(static blkCtx =>
                 blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
@@ -169,7 +169,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Number == 10),
             Arg.Any<ITxTracer>());
     }
 
@@ -184,7 +184,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
 
@@ -199,7 +199,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
             Arg.Any<ITxTracer>());
     }
 

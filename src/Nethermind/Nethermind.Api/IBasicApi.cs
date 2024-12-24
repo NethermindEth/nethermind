@@ -56,7 +56,7 @@ namespace Nethermind.Api
                 .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
-            Plugins.OfType<IConsensusWrapperPlugin>().Where(p => p.Enabled);
+            Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();

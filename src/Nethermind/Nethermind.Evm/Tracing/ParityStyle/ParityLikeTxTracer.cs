@@ -135,7 +135,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
-                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => st.IncludeInTrace);
+                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(static st => st.IncludeInTrace);
                 if (action.IncludeInTrace)
                 {
                     _currentAction.Subtraces.Add(action);
