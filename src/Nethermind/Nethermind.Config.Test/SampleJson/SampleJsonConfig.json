@@ -4,7 +4,7 @@
     "Cipher": "test"
   },
   "JsonRpc": {
-    "EnabledModules": "Eth,Debug"
+    "EnabledModules": "Eth,Debug,"
   },
   "Discovery": {
     "Concurrency": "4",

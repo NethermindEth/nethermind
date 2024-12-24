@@ -46,7 +46,33 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         }
 
         int nItems = inputData.Length / ItemSize;
+        return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
+    }
 
+    private (ReadOnlyMemory<byte>, bool) Mul(ReadOnlyMemory<byte> inputData)
+    {
+        G1 x = new(stackalloc long[G1.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
+        {
+            return IPrecompile.Failure;
+        }
+
+        bool scalarIsInfinity = !inputData.Span[BlsConst.LenG1..].ContainsAnyExcept((byte)0);
+        if (scalarIsInfinity || x.IsInf())
+        {
+            return (BlsConst.G1Inf, true);
+        }
+
+        Span<byte> scalar = stackalloc byte[32];
+        inputData.Span[BlsConst.LenG1..].CopyTo(scalar);
+        scalar.Reverse();
+
+        G1 res = x.Mult(scalar);
+        return (res.EncodeRaw(), true);
+    }
+
+    private (ReadOnlyMemory<byte>, bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    {
         using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);

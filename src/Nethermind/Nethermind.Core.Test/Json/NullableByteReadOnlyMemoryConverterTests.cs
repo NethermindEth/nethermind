@@ -19,7 +19,7 @@ public class NullableByteReadOnlyMemoryConverterTests : ConverterTestBase<ReadOn
 
     [TestCaseSource(nameof(NullableBytesTestCaseSource))]
     public void Test_roundtrip_with_leading_zeros(ReadOnlyMemory<byte>? value, string? _)
-        => TestConverter(value, (src, expected) => (src is null && expected is null) || src is not null && expected is not null && src.Value.Span.SequenceEqual(expected.Value.Span), ConverterWithLeadingZeros);
+        => TestConverter(value, static (src, expected) => (src is null && expected is null) || src is not null && expected is not null && src.Value.Span.SequenceEqual(expected.Value.Span), ConverterWithLeadingZeros);
 
 
     [TestCaseSource(nameof(NullableBytesTestCaseSource))]

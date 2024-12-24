@@ -22,5 +22,5 @@ public class Cancun : Shanghai
         Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress;
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Cancun());
 }

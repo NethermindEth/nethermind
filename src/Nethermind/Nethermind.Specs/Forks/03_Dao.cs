@@ -15,6 +15,6 @@ namespace Nethermind.Specs.Forks
             Name = "DAO";
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Dao());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Dao());
     }
 }

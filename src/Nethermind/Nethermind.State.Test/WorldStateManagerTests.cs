@@ -38,4 +38,19 @@ public class WorldStateManagerTests
 
         gotEvent.Should().BeTrue();
     }
+
+    [TestCase(INodeStorage.KeyScheme.Hash, true)]
+    [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
+    public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
+        trieStore.AsReadOnly().Returns(readOnlyTrieStore);
+        readOnlyTrieStore.Scheme.Returns(keyScheme);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+
+        worldStateManager.SupportHashLookup.Should().Be(hashSupported);
+    }
 }
