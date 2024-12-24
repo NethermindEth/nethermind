@@ -30,7 +30,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
-using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Era1;
 
 namespace Nethermind.Init.Steps;
 
@@ -124,6 +124,11 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
 
+        IContainer eraContainer = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
+            .AddModule(new EraModule())
+            .Build();
+        _api.DisposeStack.Push((IAsyncDisposable)eraContainer);
+
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
@@ -133,6 +138,7 @@ public class RegisterRpcModules : IStep
             _api.PeerPool,
             _api.StaticNodesManager,
             _api.Enode,
+            eraContainer.Resolve<IAdminEraService>(),
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters);
