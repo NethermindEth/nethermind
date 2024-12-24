@@ -38,6 +38,7 @@ public class SynchronizerModuleTests
             .AddSingleton(stateReader)
             .AddSingleton(treeSync)
             .AddSingleton(blockQueue)
+            .AddSingleton(Substitute.For<IBlockingVerifyTrie>())
             .AddSingleton(Substitute.For<IProcessExitSource>())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
@@ -48,7 +49,7 @@ public class SynchronizerModuleTests
     {
         IContainer ctx = CreateTestContainer();
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
-        IStateReader stateReader = ctx.Resolve<IStateReader>();
+        IBlockingVerifyTrie verifyTrie = ctx.Resolve<IBlockingVerifyTrie>();
 
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
         treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
@@ -56,49 +57,8 @@ public class SynchronizerModuleTests
 
         await Task.Delay(100);
 
-        stateReader
+        verifyTrie
             .Received(1)
-            .RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>());
-    }
-
-    [Test]
-    public async Task TestOnTreeSyncFinish_BlockProcessingQueue_UntilFinished()
-    {
-        IContainer ctx = CreateTestContainer();
-        ITreeSync treeSync = ctx.Resolve<ITreeSync>();
-        IStateReader stateReader = ctx.Resolve<IStateReader>();
-        IBlockProcessingQueue blockQueue = ctx.Resolve<IBlockProcessingQueue>();
-
-        ManualResetEvent treeVisitorBlocker = new ManualResetEvent(false);
-        BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
-
-        stateReader
-            .When(sr => sr.RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>()))
-            .Do((ci) =>
-            {
-                treeVisitorBlocker.WaitOne();
-            });
-
-        Task triggerTask = Task.Run(() =>
-        {
-            treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
-        });
-
-        await Task.Delay(100);
-
-        Task blockQueueTask = Task.Run(() =>
-        {
-            blockQueue.BlockRemoved +=
-                Raise.EventWith(null, new BlockRemovedEventArgs(null!, ProcessingResult.Success));
-        });
-
-        await Task.Delay(100);
-
-        blockQueueTask.IsCompleted.Should().BeFalse();
-        treeVisitorBlocker.Set();
-
-        await triggerTask;
-        await blockQueueTask;
-        blockQueue.BlockRemoved += Raise.EventWith(null, new BlockRemovedEventArgs(null!, ProcessingResult.Success));
+            .TryStartVerifyTrie(Arg.Any<BlockHeader>());
     }
 }
