@@ -33,13 +33,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
     public bool IsTracingLogs => false;
-    public bool IsTracingEvmChunks => false;
-    public bool IsTracingEvmSegments => false;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs || IsTracingEvmChunks || IsTracingEvmSegments;
-
-    public bool IsTracingPredefinedPatterns => throw new NotImplementedException();
-
-    public bool IsTracingCompiledSegments => throw new NotImplementedException();
+    public bool IsTracingIlEvmCalls => true;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
@@ -278,20 +273,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
-        _gasAlreadySetForCurrentOp = false;
-        _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc;
-        _traceEntry.Operation = null;
-        _traceEntry.OperationName = segmentId;
-        _traceEntry.Gas = gas;
-        _traceEntry.Depth = env.GetGethTraceDepth();
-        _trace.Entries.Add(_traceEntry);
-    }
-    public void Dispose() { }
-
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
@@ -302,4 +284,6 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _traceEntry.Depth = env.GetGethTraceDepth();
         _trace.Entries.Add(_traceEntry);
     }
+    public void Dispose() { }
+
 }

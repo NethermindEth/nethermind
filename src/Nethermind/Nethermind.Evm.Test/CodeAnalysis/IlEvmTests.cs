@@ -32,6 +32,7 @@ using Nethermind.Abi;
 using System.Runtime.CompilerServices;
 using Nethermind.Trie;
 
+using static System.Runtime.CompilerServices.Unsafe;
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
     internal class AbortDestinationPattern : IPatternChunk // for testing
@@ -131,10 +132,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<S02S01>();
         }
 
-        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000)
+        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000, byte[][] blobVersionedHashes = null)
             where T : ITxTracer
         {
-            Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable);
+
+            Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable, blobVersionedHashes);
         }
 
         public Address InsertCode(byte[] bytecode)
@@ -345,7 +347,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IEnumerable<(Instruction[], byte[], EvmExceptionType, (bool, bool))> GetJitBytecodesSamplesGenerator(bool turnOnAmortization, bool turnOnAggressiveMode)
             {
                 yield return ([Instruction.PUSH32], Prepare.EvmCode
-                        .PushSingle(23)
+                        .PUSHx([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
                         .PushSingle(1)
                         .SSTORE()
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -363,6 +365,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.SUB], Prepare.EvmCode
+                        .PushSingle(UInt256.MaxValue)
+                        .PushSingle(7)
+                        .SUB()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SUB], Prepare.EvmCode
                         .PushSingle(23)
                         .PushSingle(7)
                         .SUB()
@@ -386,6 +396,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .SSTORE()
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.ADD], Prepare.EvmCode
+                        .PushSingle(UInt256.MaxValue)
+                        .PushSingle(UInt256.MaxValue)
+                        .ADD()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.ADD], Prepare.EvmCode
+                        .PushSingle(UInt256.MaxValue)
+                        .PushSingle(7)
+                        .ADD()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.ADD], Prepare.EvmCode
                         .PushSingle(23)
                         .PushSingle(7)
@@ -484,6 +508,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(UInt256.MaxValue / 2)
+                        .PushSingle(2)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(UInt256.MaxValue)
+                        .PushSingle(2)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
                         .PushSingle(0)
                         .PushSingle(7)
                         .MUL()
@@ -515,6 +555,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .SSTORE()
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.EXP], Prepare.EvmCode
+                        .PushSingle(2)
+                        .PushSingle(255)
+                        .EXP()
+                        .PushData(2)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.EXP], Prepare.EvmCode
                         .PushSingle(0)
                         .PushSingle(7)
@@ -587,6 +634,29 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .SSTORE()
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.DIV], Prepare.EvmCode
+                        .PushSingle(1)
+                        .PushSingle(0)
+                        .DIV()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.DIV], Prepare.EvmCode
+                        .PushSingle(0)
+                        .PushSingle(1)
+                        .DIV()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.DIV], Prepare.EvmCode
+                        .PushSingle(UInt256.MaxValue)
+                        .PushSingle(UInt256.MaxValue)
+                        .PushSingle(100000)
+                        .DIV()
+                        .DIV()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.DIV], Prepare.EvmCode
                         .PushSingle(23)
                         .PushSingle(7)
@@ -761,6 +831,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 yield return ([Instruction.EQ], Prepare.EvmCode
                         .PushSingle(23)
+                        .PushSingle(23)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.EQ], Prepare.EvmCode
+                        .PushSingle(23)
                         .PushSingle(7)
                         .EQ()
                         .PushData(1)
@@ -822,10 +899,28 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .SSTORE()
                         .PushSingle(0)
                         .NOT()
-                        .PushData(1)
+                        .PushData(2)
+                        .SSTORE()
+                        .PushSingle(1024)
+                        .NOT()
+                        .PushData(3)
                         .SSTORE()
                         .PushSingle(UInt256.MaxValue)
                         .NOT()
+                        .PushData(4)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BLOBHASH], Prepare.EvmCode
+                        .PushSingle(11)
+                        .BLOBHASH()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BLOBHASH], Prepare.EvmCode
+                        .PushSingle(9)
+                        .BLOBHASH()
                         .PushData(1)
                         .SSTORE()
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -838,14 +933,38 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.BLOCKHASH], Prepare.EvmCode
+                    .BLOCKHASH(UInt256.MaxValue - 1000)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BLOCKHASH], Prepare.EvmCode
                     .BLOCKHASH(0)
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.CALLDATACOPY], Prepare.EvmCode
+                    .CALLDATACOPY(2, 2, 10) //dest, src, len
+                    .MLOAD(2)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.CALLDATACOPY], Prepare.EvmCode
+                    .CALLDATACOPY(0, 30, 2)
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.CALLDATACOPY], Prepare.EvmCode
                     .CALLDATACOPY(0, 0, 32)
                     .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALLDATALOAD], Prepare.EvmCode
+                    .CALLDATALOAD(16)
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -856,6 +975,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.MSIZE], Prepare.EvmCode
+                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(0)
+                    .Op(Instruction.MSTORE)
+                    .MSIZE()
+                    .PushData(1)
+                    .SSTORE()
+                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(32)
+                    .Op(Instruction.MSTORE)
+                    .MSIZE()
+                    .PushData(2)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.MSIZE], Prepare.EvmCode
                     .MSIZE()
                     .PushData(1)
@@ -950,7 +1083,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ADD()
                     .POP()
                     .GAS()
-                    .PushData(1)
+                    .PushData(2)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
@@ -1030,6 +1163,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 yield return ([Instruction.SHL], Prepare.EvmCode
                     .PushSingle(23)
+                    .PushSingle(0)
+                    .SHL()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SHL], Prepare.EvmCode
+                    .PushSingle(255)
+                    .PushSingle(10)
+                    .SHL()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SHL], Prepare.EvmCode
+                    .PushSingle(23)
                     .PushSingle(1)
                     .SHL()
                     .PushData(1)
@@ -1045,6 +1192,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.SHR], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue)
+                    .PushSingle(255)
+                    .SHR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SHR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(256)
+                    .SHR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SHR], Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(1)
                     .SHR()
@@ -1060,6 +1221,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue - 2)
+                    .PushSingle(0)
+                    .SAR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue - 2)
+                    .PushSingle(1)
+                    .SAR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.SAR], Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(0)
@@ -1153,9 +1328,38 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.XOR], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue)
+                    .PushSingle(1023)
+                    .XOR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.XOR], Prepare.EvmCode
+                    .PushSingle(255)
+                    .PushSingle(3)
+                    .XOR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.XOR], Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(1)
                     .XOR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SLT], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue - 1)
+                    .PushSingle(UInt256.MaxValue - 2)
+                    .SLT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SLT], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue - 2)
+                    .PushData(UInt256.MaxValue - 1)
+                    .SLT()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -1188,6 +1392,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushData(23)
                     .PushData(17)
                     .SGT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SGT], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue - 1)
+                    .PushSingle(UInt256.MaxValue - 2)
+                    .SLT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SGT], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue - 2)
+                    .PushData(UInt256.MaxValue - 1)
+                    .SLT()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -1214,6 +1432,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.BYTE], Prepare.EvmCode
+                    .BYTE(31, UInt256.MaxValue.PaddedBytes(32))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.BYTE], Prepare.EvmCode
+                    .BYTE(0, UInt256.MaxValue.PaddedBytes(32))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
                 yield return ([Instruction.BYTE], Prepare.EvmCode
                     .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
                     .PushData(1)
@@ -1288,6 +1516,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.SSTORE, Instruction.SLOAD], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue)
+                    .PushData(UInt256.MaxValue)
+                    .SSTORE()
+                    .PushData(UInt256.MaxValue)
+                    .SLOAD()
+                    .PushData(1)
+                    .SSTORE()
+                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SSTORE, Instruction.SLOAD], Prepare.EvmCode
                     .PushData(23)
                     .PushData(7)
                     .SSTORE()
@@ -1295,6 +1533,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SLOAD()
                     .PushData(1)
                     .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXTCODESIZE], Prepare.EvmCode
+                    .EXTCODESIZE(Address.FromNumber(23)) // Cold Access
+                    .EXTCODESIZE(Address.FromNumber(23)) // Warm Access
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.EXTCODESIZE], Prepare.EvmCode
@@ -1310,6 +1553,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.EXTCODECOPY], Prepare.EvmCode
+                    .EXTCODECOPY(Address.FromNumber(23), 0, 5, 32)
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .EXTCODECOPY(Address.FromNumber(23), 0, 5, 32) // warm
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXTCODECOPY], Prepare.EvmCode
                     .EXTCODECOPY(Address.FromNumber(23), 0, 0, 32)
                     .MLOAD(0)
                     .PushData(1)
@@ -1320,6 +1571,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .BALANCE(Address.FromNumber(23))
                     .PushData(1)
                     .SSTORE()
+                    .BALANCE(Address.FromNumber(23)) // warm access
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.SELFBALANCE], Prepare.EvmCode
@@ -1398,6 +1650,34 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 yield return ([Instruction.SDIV], Prepare.EvmCode
                     .PushData(23)
+                    .PushData(0)
+                    .SDIV()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SDIV], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue)
+                    .PushData((UInt256)Int256.Int256.MinusOne)
+                    .SDIV()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SDIV], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue)
+                    .PushData(7)
+                    .SDIV()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SDIV], Prepare.EvmCode
+                    .PushData((UInt256)new Int256.Int256(-23))
+                    .PushData(7)
+                    .SDIV()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SDIV], Prepare.EvmCode
+                    .PushData(23)
                     .PushData(7)
                     .SDIV()
                     .PushData(1)
@@ -1461,11 +1741,38 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.CODECOPY], Prepare.EvmCode
+                    .PushData(100)  // size
+                    .PushData(3) // code start idx
+                    .PushData(2) // memory start idx
+                    .CODECOPY()
+                    .MLOAD(2)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.CODECOPY], Prepare.EvmCode
+                    .PushData(32)  // size
+                    .PushData(0) // code start idx
+                    .PushData(0) // memory start idx
+                    .CODECOPY()
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.CODECOPY], Prepare.EvmCode
                     .PushData(0)
                     .PushData(32)
                     .PushData(7)
                     .CODECOPY()
                     .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MULMOD], Prepare.EvmCode
+                    .PushData(10)
+                    .PushData(10)
+                    .PushData(1)
+                    .MULMOD()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -1552,6 +1859,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.KECCAK256], Prepare.EvmCode
+                    .MSTORE(0, Enumerable.Range(0, 31).Select(i => (byte)i).ToArray())
+                    .PushData(32) // size
+                    .PushData(0) // mem start idx
+                    .KECCAK256()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.KECCAK256], Prepare.EvmCode
+                    .MSTORE(0, Enumerable.Range(0, 16).Select(i => (byte)i).ToArray())
+                    .PushData(16) // size
+                    .PushData(16) // mem start idx
+                    .KECCAK256()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.KECCAK256], Prepare.EvmCode
                     .MSTORE(0, Enumerable.Range(0, 16).Select(i => (byte)i).ToArray())
                     .PushData(0)
                     .PushData(16)
@@ -1562,6 +1885,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 yield return ([Instruction.PREVRANDAO], Prepare.EvmCode
                     .PREVRANDAO()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.RETURNDATACOPY], Prepare.EvmCode
+                    .PushData(32) // size
+                    .PushData(0) // data idx
+                    .PushData(0) // mem idx
+                    .RETURNDATACOPY()
+                    .MLOAD(0)
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -1578,6 +1911,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 yield return ([Instruction.BLOBBASEFEE], Prepare.EvmCode
                     .Op(Instruction.BLOBBASEFEE)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
+                    .PushData(65525)
+                    .PushData(1)
+                    .SIGNEXTEND()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
+                    .PushData(1023)
+                    .PushData(0)
+                    .SIGNEXTEND()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
@@ -1846,7 +2194,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void ILVM_JIT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
-            var address = standardChain.InsertCode(testcase.bytecode);
+
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 PatternMatchingThreshold = int.MaxValue,
@@ -1857,6 +2205,44 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 AnalysisQueueMaxSize = 1,
                 IsPartialAotEnabled = true
             });
+
+            byte[][] blobVersionedHashes = null;
+            switch (testcase.opcode[0])
+            {
+                case Instruction.BLOBHASH:
+                    var blobhashesCount = 10;
+                    blobVersionedHashes = new byte[blobhashesCount][];
+                    for (int i = 0; i < blobhashesCount; i++)
+                    {
+                        blobVersionedHashes[i] = new byte[32];
+                        for (int n = 0; n < blobhashesCount; n++)
+                        {
+                            blobVersionedHashes[i][n] = (byte)((i * 3 + 10 * 7) % 256);
+                        }
+                    }
+                    break;
+                case Instruction.RETURNDATACOPY:
+                    var returningCode = Prepare.EvmCode
+                        .PushData(UInt256.MaxValue)
+                        .PUSHx([0])
+                        .MSTORE()
+                        .Return(32, 0)
+                        .STOP()
+                        .Done;
+                    var callAddress = standardChain.InsertCode(returningCode);
+                    enhancedChain.InsertCode(returningCode);
+                    var callCode =
+                        Prepare.EvmCode
+                            .Call(callAddress, 100000)
+                            .Done;
+                    testcase.bytecode = Bytes.Concat(callCode, testcase.bytecode);
+                    break;
+                default:
+                    break;
+
+            }
+
+            var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
             GethTraceOptions tracerOptions = new GethTraceOptions
@@ -1868,15 +2254,26 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
 
             var bytecode = Prepare.EvmCode
-                .Call(address, 750_000)
+                .PushData(UInt256.MaxValue)
+                .PUSHx([2])
+                .MSTORE()
+                .PushData(0)
+                .PushData(0)
+                .PushData(32) // length
+                .PushData(2) // offset
+                .PushData(0) // value
+                .PushData(address)
+                .PushData(750_000)
+                .Op(Instruction.CALL)
                 .STOP()
                 .Done;
 
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, blobVersionedHashes: blobVersionedHashes);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.PARTIAL_AOT_MODE);
 
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, blobVersionedHashes: blobVersionedHashes);
 
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
