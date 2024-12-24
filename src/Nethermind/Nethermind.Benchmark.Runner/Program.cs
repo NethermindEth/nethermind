@@ -88,7 +88,7 @@ namespace Nethermind.Benchmark.Runner
             else
             {
                 string bytecode = options.ByteCode;
-                if(Path.Exists(bytecode))
+                if (Path.Exists(bytecode))
                 {
                     bytecode = File.ReadAllText(bytecode);
                 }

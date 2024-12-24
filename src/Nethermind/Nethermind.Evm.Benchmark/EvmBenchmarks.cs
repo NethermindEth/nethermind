@@ -129,7 +129,7 @@ namespace Nethermind.Evm.Benchmark
             Span<byte> stack = _evmState.DataStack;
             EvmStack<TIsTracing> _stack = new(in _evmState.DataStackHead, _txTracer, stack);
             _methodInfo(_evmState, ref _stack, long.MaxValue, _spec);
-            
+
         }
 
         public void Reset()
