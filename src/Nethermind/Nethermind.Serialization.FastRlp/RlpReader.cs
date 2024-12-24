@@ -102,15 +102,6 @@ public ref struct RlpReader
         return result;
     }
 
-    public void ReadSequence(RefRlpReaderAction func)
-    {
-        ReadSequence<object?>((scoped ref RlpReader r) =>
-        {
-            func(ref r);
-            return null;
-        });
-    }
-
     public T Choice<T>(params ReadOnlySpan<RefRlpReaderFunc<T>> alternatives)
     {
         int startingPosition = _position;

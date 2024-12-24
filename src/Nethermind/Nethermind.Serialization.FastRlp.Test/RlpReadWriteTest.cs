@@ -165,7 +165,10 @@ public class RlpReadWriteTest
     public void InvalidObjectReading()
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
-        Action tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => { r.ReadSequence((scoped ref RlpReader _) => { }); });
+        Action tryRead = () => Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            return r.ReadSequence(static (scoped ref RlpReader _) => null as object);
+        });
 
         tryRead.Should().Throw<RlpReaderException>();
     }
