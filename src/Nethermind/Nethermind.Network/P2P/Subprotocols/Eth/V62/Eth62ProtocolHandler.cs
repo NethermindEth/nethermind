@@ -261,12 +261,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
             IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
             try
             {
                 int startIdx = request.startIndex;
                 bool isTrace = Logger.IsTrace;
-                int count = transactions.Count;
-                for (int i = startIdx; i < count; i++)
+                for (int i = startIdx; i < transactionsSpan.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
@@ -275,7 +275,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         return ValueTask.CompletedTask;
                     }
 
-                    PrepareAndSubmitTransaction(transactions[i], isTrace);
+                    PrepareAndSubmitTransaction(transactionsSpan[i], isTrace);
                 }
 
                 transactions.Dispose();

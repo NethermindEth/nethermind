@@ -28,13 +28,12 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverrida
         OverridableWorldStateManager worldStateManager,
         IReadOnlyBlockTree readOnlyBlockTree,
         ISpecProvider specProvider,
-        ILogManager? logManager,
-        IWorldState? worldStateToWarmUp = null
-    ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+        ILogManager? logManager
+    ) : base(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), readOnlyBlockTree, specProvider, logManager)
     {
         WorldStateManager = worldStateManager;
         StateProvider = (OverridableWorldState)base.StateProvider;
-        CodeInfoRepository = new(new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache));
+        CodeInfoRepository = new(new CodeInfoRepository());
         Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }

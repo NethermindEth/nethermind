@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetStorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                StoragetRange = new()
+                StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
                     Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, null)).ToPooledList(TestItem.Keccaks.Length),
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetStorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                StoragetRange = new()
+                StorageRange = new()
                 {
                     RootHash = Keccak.OfAnEmptyString,
                     Accounts = ArrayPoolList<PathWithAccount>.Empty(),
