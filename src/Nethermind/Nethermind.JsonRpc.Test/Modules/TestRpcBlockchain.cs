@@ -150,9 +150,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider, WorldStateManager.TrieStore, LogManager);
+            IOverridableWorldScope overridableWorldStateManager = WorldStateManager.CreateOverridableWorldScope();
             OverridableTxProcessingEnv processingEnv = new(
-                overridableWorldStateManager,
+                WorldStateManager.CreateOverridableWorldScope(),
                 roBlockTree,
                 SpecProvider,
                 LimboLogs.Instance);

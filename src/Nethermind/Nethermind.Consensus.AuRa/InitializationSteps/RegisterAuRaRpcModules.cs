@@ -66,8 +66,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         AuRaTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,
@@ -82,8 +81,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
     }
 
     protected class AuRaTraceModuleFactory(
-        IReadOnlyTrieStore trieStore,
-        IDbProvider dbProvider,
+        IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
         IBlockPreprocessorStep recoveryStep,
@@ -93,7 +91,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IPoSSwitcher poSSwitcher,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : TraceModuleFactory(trieStore, dbProvider, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource,
+        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource,
             receiptFinder, specProvider, poSSwitcher, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
@@ -202,7 +200,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         AuRaDebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
+            _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
@@ -223,7 +221,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
     }
 
     protected class AuRaDebugModuleFactory(
-        IReadOnlyTrieStore trieStore,
+        IWorldStateManager worldStateManager,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -239,7 +237,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IFileSystem fileSystem,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : DebugModuleFactory(trieStore, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep,
+        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockValidator, recoveryStep,
             rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
             badBlockStore, fileSystem, logManager)
     {
