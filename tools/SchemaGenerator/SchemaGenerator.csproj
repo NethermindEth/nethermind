@@ -15,6 +15,9 @@
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Optimism\Nethermind.Optimism.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Shutter\Nethermind.Shutter.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.EthStats\Nethermind.EthStats.csproj" />
   </ItemGroup>
 
 </Project>
