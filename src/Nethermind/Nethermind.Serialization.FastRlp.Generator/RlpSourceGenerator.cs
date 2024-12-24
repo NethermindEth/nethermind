@@ -123,7 +123,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // `Write` method
         sb.AppendLine($"public static void Write(ref RlpWriter w, {fullTypeName} value)");
         sb.AppendLine("{");
-        sb.AppendLine("w.WriteSequence((ref RlpWriter w) => ");
+        sb.AppendLine($"w.WriteSequence(value, static (ref RlpWriter w, {fullTypeName} value) => ");
         sb.AppendLine("{");
 
         foreach (var (name, typeName) in parameters)
