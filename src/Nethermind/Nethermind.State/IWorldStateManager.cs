@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -10,7 +12,6 @@ public interface IWorldStateManager
 {
     IWorldState GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    IReadOnlyTrieStore TrieStore { get; }
     bool SupportHashLookup { get; }
 
     /// <summary>
@@ -23,6 +24,8 @@ public interface IWorldStateManager
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     IOverridableWorldScope CreateOverridableWorldScope();
+
+    IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 }
 
 public interface IOverridableWorldScope

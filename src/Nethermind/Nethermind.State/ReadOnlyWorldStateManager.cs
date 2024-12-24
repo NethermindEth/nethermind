@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -38,7 +39,6 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
     public bool SupportHashLookup => _readOnlyTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
@@ -65,5 +65,11 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
+    }
+
+    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode)
+    {
+        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
+        return new WorldState(overlayTrieStore, overlayCode, _logManager);
     }
 }
