@@ -77,7 +77,7 @@ public class RlpReadWriteTest
     }
 
     [Test]
-    public void MutlipleLongList()
+    public void MultipleLongList()
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) =>
         {
