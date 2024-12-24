@@ -12,6 +12,56 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 
 internal class ChainSpecParamsJson
 {
+
+    [JsonPropertyName("dencun")]
+    public ulong? DencunTransitionTimestamp
+    {
+        get => _dencunTransitionTimestamp;
+        set
+        {
+            _dencunTransitionTimestamp = value;
+            Eip4844TransitionTimestamp = value;
+            Eip4788TransitionTimestamp = value;
+            Eip1153TransitionTimestamp = value;
+            Eip5656TransitionTimestamp = value;
+            Eip6780TransitionTimestamp = value;
+        }
+    }
+
+    [JsonPropertyName("cancun")]
+    public ulong? CancunTransitionTimestamp
+    {
+        get => _cancunTransitionTimestamp;
+        set
+        {
+            _cancunTransitionTimestamp = value;
+            Eip4844TransitionTimestamp = value;
+            Eip4788TransitionTimestamp = value;
+            Eip1153TransitionTimestamp = value;
+            Eip5656TransitionTimestamp = value;
+            Eip6780TransitionTimestamp = value;
+        }
+    }
+
+    private ulong? _dencunTransitionTimestamp;
+    private ulong? _cancunTransitionTimestamp;
+
+    public bool ValidateNoTimestampConflicts()
+    {
+        return (DencunTransitionTimestamp == null || (
+                    Eip4844TransitionTimestamp == DencunTransitionTimestamp &&
+                    Eip4788TransitionTimestamp == DencunTransitionTimestamp &&
+                    Eip1153TransitionTimestamp == DencunTransitionTimestamp &&
+                    Eip5656TransitionTimestamp == DencunTransitionTimestamp &&
+                    Eip6780TransitionTimestamp == DencunTransitionTimestamp))
+               &&
+               (CancunTransitionTimestamp == null || (
+                    Eip4844TransitionTimestamp == CancunTransitionTimestamp &&
+                    Eip4788TransitionTimestamp == CancunTransitionTimestamp &&
+                    Eip1153TransitionTimestamp == CancunTransitionTimestamp &&
+                    Eip5656TransitionTimestamp == CancunTransitionTimestamp &&
+                    Eip6780TransitionTimestamp == CancunTransitionTimestamp));
+    }
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
