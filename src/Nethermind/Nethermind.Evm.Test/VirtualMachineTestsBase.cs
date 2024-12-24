@@ -156,9 +156,9 @@ public class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null, long gasLimit = 100000) where T : ITxTracer
+    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null, long gasLimit = 100000, byte[][]? blobVersionedHashes = null) where T : ITxTracer
     {
-        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, gasLimit, code);
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, gasLimit, code, blobVersionedHashes: blobVersionedHashes);
         _processor.Execute(transaction, block.Header, tracer);
         return tracer;
     }
