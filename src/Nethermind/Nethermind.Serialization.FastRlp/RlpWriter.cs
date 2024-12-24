@@ -194,4 +194,56 @@ public ref struct RlpWriter
 
         action(ref this);
     }
+
+    // TODO: Figure out how to unify overloads
+    public void WriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    {
+        switch (_mode)
+        {
+            case LengthMode:
+                LengthWriteSequence(ctx, action);
+                break;
+            case ContentMode:
+                ContentWriteSequence(ctx, action);
+                break;
+        }
+    }
+
+    private void LengthWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    {
+        var inner = LengthWriter();
+        action(ref inner, ctx);
+        if (inner.Length < 55)
+        {
+            Length += 1 + inner.Length;
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, inner.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            Length += 1 + inner.Length + binaryLength.Length;
+        }
+    }
+
+    private void ContentWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    {
+        var lengthWriter = LengthWriter();
+        action(ref lengthWriter, ctx);
+        if (lengthWriter.Length < 55)
+        {
+            _buffer[_position++] = (byte)(0xC0 + lengthWriter.Length);
+        }
+        else
+        {
+            Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
+            BinaryPrimitives.WriteInt32BigEndian(binaryLength, lengthWriter.Length);
+            binaryLength = binaryLength.TrimStart((byte)0);
+            _buffer[_position++] = (byte)(0xF7 + binaryLength.Length);
+            binaryLength.CopyTo(_buffer.AsSpan()[_position..]);
+            _position += binaryLength.Length;
+        }
+
+        action(ref this, ctx);
+    }
 }
