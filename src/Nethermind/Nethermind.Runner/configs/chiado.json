@@ -1,4 +1,5 @@
 {
+  "$schema": "/configs/schema.json",
   "Init": {
     "MemoryHint": 768000000,
     "ChainSpecPath": "chainspec/chiado.json",
@@ -16,10 +17,10 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 13420000,
+    "PivotNumber": "13420000",
     "PivotHash": "0x3f27cab16c8b54df8d749594e437450927fcb2f420c7aa63afa1c920215ffc6c",
     "PivotTotalDifficulty": "231708131825107706987652208063906496124457284",
-    "FastSyncCatchUpHeightDelta": "10000000000",
+    "FastSyncCatchUpHeightDelta": 10000000000,
     "UseGethLimitsInFastBlocks": false
   },
   "Blocks": {

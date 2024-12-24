@@ -69,6 +69,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Enr", ".
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Init.Snapshot", "..\..\src\Nethermind\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj", "{90AA7A9D-FC7F-419E-A671-A07FDD02DA10}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.EthStats", "..\..\src\Nethermind\Nethermind.EthStats\Nethermind.EthStats.csproj", "{D005A22C-A3BD-4FCC-A84D-4D4BFCBDADA2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.AuRa", "..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{C5BDD4A6-55B9-42FB-8D7E-592AA0EBEA59}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter", "..\..\src\Nethermind\Nethermind.Shutter\Nethermind.Shutter.csproj", "{1AFE7CD3-03EE-459C-8C06-C9B580FDF82B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -207,6 +213,18 @@ Global
 		{90AA7A9D-FC7F-419E-A671-A07FDD02DA10}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{90AA7A9D-FC7F-419E-A671-A07FDD02DA10}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{90AA7A9D-FC7F-419E-A671-A07FDD02DA10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D005A22C-A3BD-4FCC-A84D-4D4BFCBDADA2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D005A22C-A3BD-4FCC-A84D-4D4BFCBDADA2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D005A22C-A3BD-4FCC-A84D-4D4BFCBDADA2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D005A22C-A3BD-4FCC-A84D-4D4BFCBDADA2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C5BDD4A6-55B9-42FB-8D7E-592AA0EBEA59}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C5BDD4A6-55B9-42FB-8D7E-592AA0EBEA59}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C5BDD4A6-55B9-42FB-8D7E-592AA0EBEA59}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C5BDD4A6-55B9-42FB-8D7E-592AA0EBEA59}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1AFE7CD3-03EE-459C-8C06-C9B580FDF82B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1AFE7CD3-03EE-459C-8C06-C9B580FDF82B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1AFE7CD3-03EE-459C-8C06-C9B580FDF82B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1AFE7CD3-03EE-459C-8C06-C9B580FDF82B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

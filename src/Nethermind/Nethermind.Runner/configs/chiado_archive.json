@@ -1,4 +1,5 @@
 {
+  "$schema": "/configs/schema.json",
   "Init": {
     "MemoryHint": 768000000,
     "ChainSpecPath": "chainspec/chiado.json",

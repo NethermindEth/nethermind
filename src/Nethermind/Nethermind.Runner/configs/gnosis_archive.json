@@ -1,4 +1,5 @@
 {
+  "$schema": "/configs/schema.json",
   "Init": {
     "ChainSpecPath": "chainspec/gnosis.json",
     "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
@@ -28,14 +29,13 @@
   "Metrics": {
     "NodeName": "Gnosis Archive"
   },
-  "Bloom":
-  {
-    "IndexLevelBucketSizes" : [16, 16, 16]
+  "Bloom": {
+    "IndexLevelBucketSizes": [ 16, 16, 16 ]
   },
   "Pruning": {
     "Mode": "None"
   },
   "Merge": {
-	"FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
+    "FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
   }
 }

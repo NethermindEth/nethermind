@@ -8,7 +8,7 @@ using Nethermind.Core.Collections;
 Type iConfigType = typeof(IConfig);
 
 Type[] types = [
-    ..Directory.GetFiles(".", "Nethermind.*.dll").SelectMany(f => GetConfigTypes(Assembly.LoadFrom(f))),
+    ..Directory.GetFiles(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".", "Nethermind.*.dll").SelectMany(f => GetConfigTypes(Assembly.LoadFrom(f))),
     ];
 
 var assemblyName = new AssemblyName("Nethermind.Config");
@@ -26,15 +26,17 @@ Type configType = typeBuilder.CreateType();
 
 JsonSchema schema = JsonSchema.FromType(configType);
 
-foreach (var def in schema.Definitions)
+foreach (KeyValuePair<string, JsonSchema> def in schema.Definitions)
 {
-    if(def.Value.Enumeration is { Count: > 0 })
+    if (def.Value.Enumeration is { Count: > 0 })
     {
         def.Value.Type = JsonObjectType.String;
         def.Value.Enumeration.Clear();
         def.Value.Enumeration.AddRange(def.Value.EnumerationNames);
     }
 }
+
+schema.Properties.Add("$schema", new JsonSchemaProperty { Type = JsonObjectType.String });
 
 Console.WriteLine(schema.ToJson());
 

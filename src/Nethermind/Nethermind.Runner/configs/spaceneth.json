@@ -1,4 +1,5 @@
 {
+  "$schema": "/configs/schema.json",
   "Init": {
     "EnableUnsecuredDevWallet": true,
     "KeepDevWalletInMemory": true,
@@ -28,8 +29,26 @@
     "Host": "127.0.0.1",
     "Port": 8545,
     "EnabledModules": [
-      "Admin", "Clique", "Consensus", "Db", "Debug", "Deposit", "Erc20", "Eth", "Evm",
-      "Health", "Net", "Nft", "Parity", "Personal", "Proof", "Subscribe", "Trace", "TxPool", "Vault", "Web3"
+      "Admin",
+      "Clique",
+      "Consensus",
+      "Db",
+      "Debug",
+      "Deposit",
+      "Erc20",
+      "Eth",
+      "Evm",
+      "Health",
+      "Net",
+      "Nft",
+      "Parity",
+      "Personal",
+      "Proof",
+      "Subscribe",
+      "Trace",
+      "TxPool",
+      "Vault",
+      "Web3"
     ]
   },
   "Metrics": {

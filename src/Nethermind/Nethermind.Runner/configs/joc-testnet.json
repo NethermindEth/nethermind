@@ -1,4 +1,5 @@
 {
+  "$schema": "/configs/schema.json",
   "Init": {
     "ChainSpecPath": "chainspec/joc-testnet.json",
     "GenesisHash": "0x0fb7b4779aae36dc557227283f182bc9a3b232c07fae4a2553734c5817df1d06",

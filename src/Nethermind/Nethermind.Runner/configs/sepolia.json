@@ -1,4 +1,5 @@
 {
+  "$schema": "/configs/schema.json",
   "Init": {
     "ChainSpecPath": "chainspec/sepolia.json",
     "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
@@ -17,10 +18,10 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 7327000,
+    "PivotNumber": "7327000",
     "PivotHash": "0xe40a6655fec461e11c519b88a1deb09a72cd281f8891f4bef9e7ed9284aed616",
     "PivotTotalDifficulty": "17000018015853232",
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": 10000000000
   },
   "Blocks": {
     "TargetBlockGasLimit": 36000000
