@@ -11,7 +11,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -25,9 +24,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
-        OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
-        IWorldState worldState = overlayWorldStateManager.GlobalWorldState;
+        IWorldState worldState = worldStateManager.CreateOverlayWorldState(editableDbProvider.StateDb, editableDbProvider.CodeDb);
         BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
 
         return new SimulateReadOnlyBlocksProcessingEnv(
