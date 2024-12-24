@@ -1,5 +1,5 @@
 {
-  "$schema": "/configs/schema.json",
+  "$schema": "/schema.json",
   "Init": {
     "ChainSpecPath": "chainspec/energyweb.json",
     "GenesisHash": "0x0b6d3e680af2fc525392c720666cce58e3d8e6fe75ba4b48cb36bcc69039229b",

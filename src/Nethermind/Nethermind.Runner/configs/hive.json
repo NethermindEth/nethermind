@@ -1,5 +1,5 @@
 {
-  "$schema": "/configs/schema.json",
+  "$schema": "/schema.json",
   "Init": {
     "PubSubEnabled": true,
     "WebSocketsEnabled": true,

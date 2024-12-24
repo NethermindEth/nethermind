@@ -1,5 +1,5 @@
 {
-  "$schema": "/configs/schema.json",
+  "$schema": "/schema.json",
   "Init": {
     "IsMining": false,
     "ChainSpecPath": "chainspec/volta.json",

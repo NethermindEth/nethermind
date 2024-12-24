@@ -1,0 +1,2101 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "NethermindConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "Init": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IInitConfig"
+        }
+      ]
+    },
+    "Plugin": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IPluginConfig"
+        }
+      ]
+    },
+    "Sync": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/ISyncConfig"
+        }
+      ]
+    },
+    "Receipt": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IReceiptConfig"
+        }
+      ]
+    },
+    "Blocks": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IBlocksConfig"
+        }
+      ]
+    },
+    "NoCategory": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/INoCategoryConfig"
+        }
+      ]
+    },
+    "Mining": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IMiningConfig"
+        }
+      ]
+    },
+    "CensorshipDetector": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/ICensorshipDetectorConfig"
+        }
+      ]
+    },
+    "Pruning": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IPruningConfig"
+        }
+      ]
+    },
+    "Bloom": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IBloomConfig"
+        }
+      ]
+    },
+    "Db": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IDbConfig"
+        }
+      ]
+    },
+    "Grpc": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IGrpcConfig"
+        }
+      ]
+    },
+    "Snapshot": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/ISnapshotConfig"
+        }
+      ]
+    },
+    "JsonRpc": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IJsonRpcConfig"
+        }
+      ]
+    },
+    "KeyStore": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IKeyStoreConfig"
+        }
+      ]
+    },
+    "Merge": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IMergeConfig"
+        }
+      ]
+    },
+    "Metrics": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IMetricsConfig"
+        }
+      ]
+    },
+    "Discovery": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IDiscoveryConfig"
+        }
+      ]
+    },
+    "Network": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/INetworkConfig"
+        }
+      ]
+    },
+    "Optimism": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IOptimismConfig"
+        }
+      ]
+    },
+    "TxPool": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/ITxPoolConfig"
+        }
+      ]
+    },
+    "Wallet": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/IWalletConfig"
+        }
+      ]
+    },
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "IInitConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "EnableUnsecuredDevWallet": {
+          "type": "boolean"
+        },
+        "KeepDevWalletInMemory": {
+          "type": "boolean"
+        },
+        "WebSocketsEnabled": {
+          "type": "boolean"
+        },
+        "DiscoveryEnabled": {
+          "type": "boolean"
+        },
+        "ProcessingEnabled": {
+          "type": "boolean"
+        },
+        "PeerManagerEnabled": {
+          "type": "boolean"
+        },
+        "IsMining": {
+          "type": "boolean"
+        },
+        "ChainSpecPath": {
+          "type": "string"
+        },
+        "BaseDbPath": {
+          "type": "string"
+        },
+        "KzgSetupPath": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "GenesisHash": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "StaticNodesPath": {
+          "type": "string"
+        },
+        "LogFileName": {
+          "type": "string"
+        },
+        "LogDirectory": {
+          "type": "string"
+        },
+        "LogRules": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "StoreReceipts": {
+          "type": "boolean"
+        },
+        "ReceiptsMigration": {
+          "type": "boolean"
+        },
+        "DiagnosticMode": {
+          "$ref": "#/definitions/DiagnosticMode"
+        },
+        "AutoDump": {
+          "$ref": "#/definitions/DumpOptions"
+        },
+        "RpcDbUrl": {
+          "type": "string"
+        },
+        "MemoryHint": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "BadBlocksStored": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "DisableGcOnNewPayload": {
+          "type": "boolean"
+        },
+        "DisableMallocOpts": {
+          "type": "boolean"
+        },
+        "StateDbKeyScheme": {
+          "$ref": "#/definitions/KeyScheme"
+        },
+        "ExitOnBlockNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "BackgroundTaskConcurrency": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "DiagnosticMode": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "None",
+        "MemDb",
+        "RpcDb",
+        "ReadOnlyDb",
+        "VerifyRewards",
+        "VerifySupply",
+        "VerifyTrie"
+      ],
+      "enum": [
+        "None",
+        "MemDb",
+        "RpcDb",
+        "ReadOnlyDb",
+        "VerifyRewards",
+        "VerifySupply",
+        "VerifyTrie"
+      ]
+    },
+    "DumpOptions": {
+      "type": "string",
+      "description": "",
+      "x-enumFlags": true,
+      "x-enumNames": [
+        "None",
+        "Receipts",
+        "Parity",
+        "Geth",
+        "Rlp",
+        "Default",
+        "All",
+        "RlpLog"
+      ],
+      "enum": [
+        "None",
+        "Receipts",
+        "Parity",
+        "Geth",
+        "Rlp",
+        "Default",
+        "All",
+        "RlpLog"
+      ]
+    },
+    "KeyScheme": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Hash",
+        "HalfPath",
+        "Current"
+      ],
+      "enum": [
+        "Hash",
+        "HalfPath",
+        "Current"
+      ]
+    },
+    "IPluginConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "PluginOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ISyncConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "NetworkingEnabled": {
+          "type": "boolean"
+        },
+        "SynchronizationEnabled": {
+          "type": "boolean"
+        },
+        "FastSync": {
+          "type": "boolean"
+        },
+        "FastSyncCatchUpHeightDelta": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "FastBlocks": {
+          "type": "boolean",
+          "x-deprecated": true
+        },
+        "UseGethLimitsInFastBlocks": {
+          "type": "boolean"
+        },
+        "DownloadHeadersInFastSync": {
+          "type": "boolean"
+        },
+        "DownloadBodiesInFastSync": {
+          "type": "boolean"
+        },
+        "DownloadReceiptsInFastSync": {
+          "type": "boolean"
+        },
+        "PivotTotalDifficulty": {
+          "type": "string"
+        },
+        "PivotNumber": {
+          "type": "string"
+        },
+        "PivotHash": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "PivotNumberParsed": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "PivotTotalDifficultyParsed": {
+          "$ref": "#/definitions/UInt256"
+        },
+        "PivotHashParsed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/Hash256"
+            }
+          ]
+        },
+        "MaxAttemptsToUpdatePivot": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "AncientBodiesBarrier": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "AncientBodiesBarrierCalc": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "AncientReceiptsBarrier": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "AncientReceiptsBarrierCalc": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "SnapSync": {
+          "type": "boolean"
+        },
+        "SnapSyncAccountRangePartitionCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "FixReceipts": {
+          "type": "boolean"
+        },
+        "FixTotalDifficulty": {
+          "type": "boolean"
+        },
+        "FixTotalDifficultyStartingBlock": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "FixTotalDifficultyLastBlock": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "StrictMode": {
+          "type": "boolean"
+        },
+        "NonValidatorNode": {
+          "type": "boolean"
+        },
+        "TuneDbMode": {
+          "$ref": "#/definitions/TuneType"
+        },
+        "BlocksDbTuneDbMode": {
+          "$ref": "#/definitions/TuneType"
+        },
+        "MaxProcessingThreads": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "TrieHealing": {
+          "type": "boolean"
+        },
+        "ExitOnSynced": {
+          "type": "boolean"
+        },
+        "ExitOnSyncedWaitTimeSec": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MallocTrimIntervalSec": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SnapServingEnabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "MultiSyncModeSelectorLoopTimerMs": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SyncDispatcherEmptyRequestDelayMs": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SyncDispatcherAllocateTimeoutMs": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "NeedToWaitForHeader": {
+          "type": "boolean"
+        },
+        "VerifyTrieOnStateSyncFinished": {
+          "type": "boolean"
+        },
+        "StateMaxDistanceFromHead": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "StateMinDistanceFromHead": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "GCOnFeedFinished": {
+          "type": "boolean"
+        },
+        "HeaderStateDistance": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "FastHeadersMemoryBudget": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      }
+    },
+    "UInt256": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "UlongWithOverflow": {
+          "$ref": "#/definitions/ValueTupleOfUInt64AndBoolean"
+        },
+        "IsZero": {
+          "type": "boolean"
+        },
+        "IsOne": {
+          "type": "boolean"
+        },
+        "IsZeroOrOne": {
+          "type": "boolean"
+        },
+        "ZeroValue": {
+          "$ref": "#/definitions/UInt256"
+        },
+        "OneValue": {
+          "$ref": "#/definitions/UInt256"
+        },
+        "MaximalValue": {
+          "$ref": "#/definitions/UInt256"
+        },
+        "BitLen": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "IsUint64": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ValueTupleOfUInt64AndBoolean": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "Hash256": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ValueHash256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/ValueHash256"
+            }
+          ]
+        },
+        "Bytes": {
+          "$ref": "#/definitions/SpanOfByte"
+        },
+        "IsZero": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ValueHash256": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "SpanOfByte": {
+      "type": "object",
+      "x-deprecated": true,
+      "x-deprecatedMessage": "Types with embedded references are not supported in this version of your compiler.",
+      "additionalProperties": false,
+      "properties": {
+        "Length": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "IsEmpty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "TuneType": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Default",
+        "WriteBias",
+        "HeavyWrite",
+        "AggressiveHeavyWrite",
+        "DisableCompaction",
+        "EnableBlobFiles",
+        "HashDb"
+      ],
+      "enum": [
+        "Default",
+        "WriteBias",
+        "HeavyWrite",
+        "AggressiveHeavyWrite",
+        "DisableCompaction",
+        "EnableBlobFiles",
+        "HashDb"
+      ]
+    },
+    "IReceiptConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "StoreReceipts": {
+          "type": "boolean"
+        },
+        "ReceiptsMigration": {
+          "type": "boolean"
+        },
+        "ReceiptsMigrationDegreeOfParallelism": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "ForceReceiptsMigration": {
+          "type": "boolean"
+        },
+        "CompactReceiptStore": {
+          "type": "boolean"
+        },
+        "CompactTxIndex": {
+          "type": "boolean"
+        },
+        "TxLookupLimit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "MaxBlockDepth": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "IBlocksConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "TargetBlockGasLimit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "MinGasPrice": {
+          "$ref": "#/definitions/UInt256"
+        },
+        "RandomizedBlocks": {
+          "type": "boolean"
+        },
+        "ExtraData": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "SecondsPerSlot": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "PreWarmStateOnBlockProcessing": {
+          "type": "boolean"
+        },
+        "BlockProductionTimeoutMs": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "GenesisTimeoutMs": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "GasToken": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "INoCategoryConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Config": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "CliSwitchLocal": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "IMiningConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "TargetBlockGasLimit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "MinGasPrice": {
+          "$ref": "#/definitions/UInt256"
+        },
+        "RandomizedBlocks": {
+          "type": "boolean"
+        },
+        "ExtraData": {
+          "type": "string"
+        },
+        "BlocksConfig": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/IBlocksConfig"
+            }
+          ]
+        },
+        "Signer": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "ICensorshipDetectorConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "BlockCensorshipThreshold": {
+          "type": "integer"
+        },
+        "AddressesForCensorshipDetection": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "IPruningConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean",
+          "x-deprecated": true
+        },
+        "Mode": {
+          "$ref": "#/definitions/PruningMode"
+        },
+        "CacheMb": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "PersistenceInterval": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "FullPruningThresholdMb": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "FullPruningTrigger": {
+          "$ref": "#/definitions/FullPruningTrigger"
+        },
+        "FullPruningMaxDegreeOfParallelism": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "FullPruningMemoryBudgetMb": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "FullPruningDisableLowPriorityWrites": {
+          "type": "boolean"
+        },
+        "FullPruningMinimumDelayHours": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "FullPruningCompletionBehavior": {
+          "$ref": "#/definitions/FullPruningCompletionBehavior"
+        },
+        "AvailableSpaceCheckEnabled": {
+          "type": "boolean"
+        },
+        "TrackedPastKeyCountMemoryRatio": {
+          "type": "number",
+          "format": "double"
+        },
+        "PruningBoundary": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "PruningMode": {
+      "type": "string",
+      "description": "",
+      "x-enumFlags": true,
+      "x-enumNames": [
+        "None",
+        "Memory",
+        "Full",
+        "Hybrid"
+      ],
+      "enum": [
+        "None",
+        "Memory",
+        "Full",
+        "Hybrid"
+      ]
+    },
+    "FullPruningTrigger": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Manual",
+        "StateDbSize",
+        "VolumeFreeSpace"
+      ],
+      "enum": [
+        "Manual",
+        "StateDbSize",
+        "VolumeFreeSpace"
+      ]
+    },
+    "FullPruningCompletionBehavior": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "None",
+        "ShutdownOnSuccess",
+        "AlwaysShutdown"
+      ],
+      "enum": [
+        "None",
+        "ShutdownOnSuccess",
+        "AlwaysShutdown"
+      ]
+    },
+    "IBloomConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Index": {
+          "type": "boolean"
+        },
+        "IndexLevelBucketSizes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "MigrationStatistics": {
+          "type": "boolean"
+        },
+        "Migration": {
+          "type": "boolean"
+        }
+      }
+    },
+    "IDbConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "SharedBlockCacheSize": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "SkipMemoryHintSetting": {
+          "type": "boolean"
+        },
+        "EnableDbStatistics": {
+          "type": "boolean"
+        },
+        "EnableMetricsUpdater": {
+          "type": "boolean"
+        },
+        "StatsDumpPeriodSec": {
+          "type": "integer"
+        },
+        "MaxOpenFiles": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "WriteAheadLogSync": {
+          "type": "boolean"
+        },
+        "ReadAheadSize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64"
+        },
+        "RocksDbOptions": {
+          "type": "string"
+        },
+        "AdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "VerifyChecksum": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "EnableFileWarmer": {
+          "type": "boolean"
+        },
+        "CompressibilityHint": {
+          "type": "number",
+          "format": "double"
+        },
+        "BadBlocksDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BadBlocksDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlobTransactionsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlobTransactionsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlobTransactionsFullBlobTxsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlobTransactionsFullBlobTxsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlobTransactionsLightBlobTxsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlobTransactionsLightBlobTxsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlobTransactionsProcessedTxsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlobTransactionsProcessedTxsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "ReceiptsDbCompressibilityHint": {
+          "type": "number",
+          "format": "double"
+        },
+        "ReceiptsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "ReceiptsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "ReceiptsDefaultDbRocksDbOptions": {
+          "type": "string"
+        },
+        "ReceiptsDefaultDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "ReceiptsTransactionsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "ReceiptsTransactionsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "ReceiptsBlocksDbRocksDbOptions": {
+          "type": "string"
+        },
+        "ReceiptsBlocksDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlocksDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlocksDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "HeadersDbRocksDbOptions": {
+          "type": "string"
+        },
+        "HeadersDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlockNumbersDbRowCacheSize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64"
+        },
+        "BlockNumbersDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlockNumbersDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlockInfosDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BlockInfosDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "PendingTxsDbRocksDbOptions": {
+          "type": "string"
+        },
+        "PendingTxsDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "MetadataDbRocksDbOptions": {
+          "type": "string"
+        },
+        "MetadataDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BloomDbRocksDbOptions": {
+          "type": "string"
+        },
+        "BloomDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "CodeDbRowCacheSize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64"
+        },
+        "CodeDbRocksDbOptions": {
+          "type": "string"
+        },
+        "CodeDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "StateDbWriteBufferSize": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "StateDbWriteBufferNumber": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "StateDbVerifyChecksum": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "StateDbRowCacheSize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64"
+        },
+        "StateDbEnableFileWarmer": {
+          "type": "boolean"
+        },
+        "StateDbCompressibilityHint": {
+          "type": "number",
+          "format": "double"
+        },
+        "StateDbRocksDbOptions": {
+          "type": "string"
+        },
+        "StateDbAdditionalRocksDbOptions": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "IGrpcConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "Host": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "Port": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "ISnapshotConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "DownloadUrl": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "Checksum": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "SnapshotDirectory": {
+          "type": "string"
+        },
+        "SnapshotFileName": {
+          "type": "string"
+        }
+      }
+    },
+    "IJsonRpcConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "Host": {
+          "type": "string"
+        },
+        "Timeout": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "RequestQueueLimit": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "RpcRecorderBaseFilePath": {
+          "type": "string"
+        },
+        "RpcRecorderState": {
+          "$ref": "#/definitions/RpcRecorderState"
+        },
+        "Port": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "WebSocketsPort": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "IpcUnixDomainSocketPath": {
+          "type": "string"
+        },
+        "EnabledModules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "AdditionalRpcUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "GasCap": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "ReportIntervalSeconds": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "BufferResponses": {
+          "type": "boolean"
+        },
+        "CallsFilterFilePath": {
+          "type": "string"
+        },
+        "MaxRequestBodySize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "MaxLogsPerResponse": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "EthModuleConcurrentInstances": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "JwtSecretFile": {
+          "type": "string"
+        },
+        "UnsecureDevNoRpcAuthentication": {
+          "type": "boolean"
+        },
+        "MaxLoggedRequestParametersCharacters": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "MethodsLoggingFiltering": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "EngineHost": {
+          "type": "string"
+        },
+        "EnginePort": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "EngineEnabledModules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "MaxBatchSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxBatchResponseBodySize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "MaxSimulateBlocksCap": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "EstimateErrorMargin": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "CorsOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RpcRecorderState": {
+      "type": "string",
+      "description": "",
+      "x-enumFlags": true,
+      "x-enumNames": [
+        "None",
+        "Request",
+        "Response",
+        "All"
+      ],
+      "enum": [
+        "None",
+        "Request",
+        "Response",
+        "All"
+      ]
+    },
+    "IKeyStoreConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "KeyStoreDirectory": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "KeyStoreEncoding": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "Kdf": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "Cipher": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "KdfparamsDklen": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "KdfparamsN": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "KdfparamsP": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "KdfparamsR": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "KdfparamsSaltLen": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SymmetricEncrypterBlockSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SymmetricEncrypterKeySize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "IVSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "TestNodeKey": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "BlockAuthorAccount": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "EnodeAccount": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "EnodeKeyFile": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "Passwords": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "PasswordFiles": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "UnlockAccounts": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "IMergeConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "FinalTotalDifficulty": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "FinalTotalDifficultyParsed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/UInt256"
+            }
+          ]
+        },
+        "TerminalTotalDifficulty": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "TerminalTotalDifficultyParsed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/definitions/UInt256"
+            }
+          ]
+        },
+        "TerminalBlockHash": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "TerminalBlockNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "SecondsPerSlot": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "TerminalBlockHashParsed": {
+          "$ref": "#/definitions/Hash256"
+        },
+        "BuilderRelayUrl": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "PrioritizeBlockLatency": {
+          "type": "boolean"
+        },
+        "SweepMemory": {
+          "$ref": "#/definitions/GcLevel"
+        },
+        "CompactMemory": {
+          "$ref": "#/definitions/GcCompaction"
+        },
+        "CollectionsPerDecommit": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "NewPayloadTimeout": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SimulateBlockProduction": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GcLevel": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Gen0",
+        "Gen1",
+        "Gen2",
+        "NoGC"
+      ],
+      "enum": [
+        "Gen0",
+        "Gen1",
+        "Gen2",
+        "NoGC"
+      ]
+    },
+    "GcCompaction": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "No",
+        "Yes",
+        "Full"
+      ],
+      "enum": [
+        "No",
+        "Yes",
+        "Full"
+      ]
+    },
+    "IMetricsConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "ExposeHost": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "ExposePort": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "Enabled": {
+          "type": "boolean"
+        },
+        "CountersEnabled": {
+          "type": "boolean"
+        },
+        "PushGatewayUrl": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "IntervalSeconds": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "NodeName": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "EnableDbSizeMetrics": {
+          "type": "boolean"
+        },
+        "MonitoringGroup": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "MonitoringJob": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "IDiscoveryConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "BucketSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "BucketsCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "Concurrency": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "BitsPerHop": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxDiscoveryRounds": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "EvictionCheckInterval": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "SendNodeTimeout": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PongTimeout": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "BootnodePongTimeout": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PingRetryCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DiscoveryInterval": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DiscoveryPersistenceInterval": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DiscoveryNewCycleWaitTime": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "Bootnodes": {
+          "type": "string"
+        },
+        "UdpChannelCloseTimeout": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxNodeLifecycleManagersCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "NodeLifecycleManagersCleanupCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DropFullBucketNodeProbability": {
+          "type": "number",
+          "format": "float"
+        },
+        "MaxOutgoingMessagePerSecond": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DiscoveryVersion": {
+          "$ref": "#/definitions/DiscoveryVersion"
+        }
+      }
+    },
+    "DiscoveryVersion": {
+      "type": "string",
+      "description": "",
+      "x-enumFlags": true,
+      "x-enumNames": [
+        "V4",
+        "V5",
+        "All"
+      ],
+      "enum": [
+        "V4",
+        "V5",
+        "All"
+      ]
+    },
+    "INetworkConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "ExternalIp": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "LocalIp": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "StaticPeers": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "DiscoveryDns": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "OnlyStaticPeers": {
+          "type": "boolean"
+        },
+        "IsPeersPersistenceOn": {
+          "type": "boolean"
+        },
+        "ActivePeersMaxCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PriorityPeersMaxCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxActivePeers": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PeersPersistenceInterval": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PeersUpdateInterval": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "P2PPingInterval": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DiscoveryPort": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "P2PPort": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxPersistedPeerCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "PersistedPeerCountCleanupThreshold": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxCandidatePeerCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "CandidatePeerCountCleanupThreshold": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "DiagTracerEnabled": {
+          "type": "boolean"
+        },
+        "NettyArenaOrder": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxNettyArenaCount": {
+          "type": "integer"
+        },
+        "Bootnodes": {
+          "type": "string"
+        },
+        "EnableUPnP": {
+          "type": "boolean"
+        },
+        "SimulateSendLatencyMs": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "NumConcurrentOutgoingConnects": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxOutgoingConnectPerSec": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "ConnectTimeoutMs": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "ProcessingThreadCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "ClientIdMatcher": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "DisableDiscV4DnsFeeder": {
+          "type": "boolean"
+        }
+      }
+    },
+    "IOptimismConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "SequencerUrl": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      }
+    },
+    "ITxPoolConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "PeerNotificationThreshold": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MinBaseFeeThreshold": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "Size": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "BlobsSupport": {
+          "$ref": "#/definitions/BlobsSupportMode"
+        },
+        "PersistentBlobStorageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "BlobCacheSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "InMemoryBlobPoolSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxPendingTxsPerSender": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "MaxPendingBlobTxsPerSender": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "HashCacheSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "GasLimit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "ReportMinutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
+    "BlobsSupportMode": {
+      "type": "string",
+      "description": "",
+      "x-enumNames": [
+        "Disabled",
+        "InMemory",
+        "Storage",
+        "StorageWithReorgs"
+      ],
+      "enum": [
+        "Disabled",
+        "InMemory",
+        "Storage",
+        "StorageWithReorgs"
+      ]
+    },
+    "IWalletConfig": {
+      "type": "object",
+      "x-abstract": true,
+      "additionalProperties": false,
+      "properties": {
+        "DevAccounts": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    }
+  }
+}
