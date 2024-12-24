@@ -348,7 +348,7 @@ internal class D01P04EQ : IPatternChunk
 {
     public string Name => nameof(D01P04EQ);
     public byte[] Pattern => [(byte)Instruction.DUP1, (byte)Instruction.PUSH4, (byte)Instruction.EQ];
-    
+
 
     public long GasCost(EvmState vmState, IReleaseSpec spec)
     {

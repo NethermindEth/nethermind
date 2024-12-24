@@ -718,13 +718,13 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (!_txTracer.IsTracingRefunds)
         {
             return _txTracer.IsTracingOpLevelStorage
-                    ? ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) 
+                    ? ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec)
                     : ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
         else
         {
-            return _txTracer.IsTracingOpLevelStorage 
-                    ? ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) 
+            return _txTracer.IsTracingOpLevelStorage
+                    ? ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec)
                     : ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
     Empty:
@@ -770,7 +770,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         while ((uint)programCounter < codeLength)
         {
 
-            if(typeof(TOptimizing) == typeof(IsOptimizing))
+            if (typeof(TOptimizing) == typeof(IsOptimizing))
             {
                 var chunkExecutionResult = new ILChunkExecutionState(ref _returnDataBuffer);
                 while (ilInfo is not null && (ilInfo.TryExecute(_logger,
@@ -826,7 +826,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #if DEBUGDEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            
+
             Instruction instruction = (Instruction)code[programCounter];
 
             if (isCancelable && _txTracer.IsCancelled)

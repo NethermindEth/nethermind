@@ -42,7 +42,7 @@ public interface IVMConfig : IConfig
     public bool BakeInTracingInPartialAotMode { get; set; }
 
     [ConfigItem(
-        Description = "Sets Analysis Queue Max Size", 
+        Description = "Sets Analysis Queue Max Size",
         DefaultValue = "8")]
     public int AnalysisQueueMaxSize { get; set; }
 

@@ -157,7 +157,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
             }
 
-            if(mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
+            if (mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
             {
                 IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             }
@@ -2391,7 +2391,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
-           state.Dispose();
+            state.Dispose();
             Assert.That(iLChunkExecutionResult.ExceptionType == testcase.exceptionType);
         }
 
