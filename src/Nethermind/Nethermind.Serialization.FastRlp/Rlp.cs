@@ -18,7 +18,7 @@ public static class Rlp
         return serialized;
     }
 
-    public static ReadOnlySpan<byte> Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+    public static byte[] Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
         where TContext : allows ref struct
     {
         var lengthWriter = RlpWriter.LengthWriter();
