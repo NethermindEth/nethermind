@@ -8,15 +8,7 @@ namespace Nethermind.Serialization.FastRlp;
 public static class Rlp
 {
     public static byte[] Write(RefRlpWriterAction action)
-    {
-        var lengthWriter = RlpWriter.LengthWriter();
-        action(ref lengthWriter);
-        var serialized = new byte[lengthWriter.Length];
-        var contentWriter = RlpWriter.ContentWriter(serialized);
-        action(ref contentWriter);
-
-        return serialized;
-    }
+        => Write(action, static (ref RlpWriter w, RefRlpWriterAction action) => action(ref w));
 
     public static byte[] Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
         where TContext : allows ref struct
