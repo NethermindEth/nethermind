@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Healing;
+using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -29,5 +33,18 @@ public class WorldStateManager(
     {
         add => trieStore.ReorgBoundaryReached += value;
         remove => trieStore.ReorgBoundaryReached -= value;
+    }
+
+    public override void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
+    {
+        if (trieStore is HealingTrieStore healingTrieStore)
+        {
+            healingTrieStore.InitializeNetwork(hashRecovery);
+        }
+
+        if (worldState is HealingWorldState healingWorldState)
+        {
+            healingWorldState.InitializeNetwork(nodeRecovery);
+        }
     }
 }

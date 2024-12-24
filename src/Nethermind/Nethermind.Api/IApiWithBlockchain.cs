@@ -67,7 +67,6 @@ namespace Nethermind.Api
         IStateReader? StateReader { get; set; }
         IWorldStateManager? WorldStateManager { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
-        ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }

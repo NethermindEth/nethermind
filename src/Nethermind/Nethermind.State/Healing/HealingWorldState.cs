@@ -3,11 +3,10 @@
 
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.Trie;
+namespace Nethermind.State.Healing;
 
 public class HealingWorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches = null, bool populatePreBlockCache = true)
     : WorldState(trieStore, codeDb, logManager, new HealingStateTree(trieStore, logManager), new HealingStorageTreeFactory(), preBlockCaches, populatePreBlockCache)

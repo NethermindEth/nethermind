@@ -22,7 +22,7 @@ using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.Synchronization.Trie;
+using Nethermind.State.Healing;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -150,9 +150,6 @@ public class InitializeStateDb : IStep
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
-
-        // TODO: Needed by node serving. Probably should use `StateReader` instead.
-        setApi.TrieStore = trieStore;
 
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;

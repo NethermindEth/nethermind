@@ -12,21 +12,18 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Trie;
-
-public interface ITrieNodeRecovery<in TRequest>
-{
-    bool CanRecover => BlockchainProcessor.IsMainProcessingThread;
-    Task<byte[]?> Recover(ValueHash256 rlpHash, TRequest request);
-}
 
 public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
     protected readonly ILogger _logger;
     private const int MaxPeersForRecovery = 30;
+
+    public bool CanRecover => BlockchainProcessor.IsMainProcessingThread;
 
     protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager)
     {
