@@ -187,7 +187,6 @@ public class InitializeStateDb : IStep
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
         getApi.DisposeStack.Push(mainWorldTrieStore);
 
-        setApi.WorldState = stateManager.GlobalWorldState;
         setApi.StateReader = stateManager.GlobalStateReader;
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
 
