@@ -108,7 +108,7 @@ public static class ConcurrentDictionaryExtensions
 
     public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
     {
-        dictionary.AddOrUpdate(key, 1, (_, value) => value + 1);
+        dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
     }
 }
 

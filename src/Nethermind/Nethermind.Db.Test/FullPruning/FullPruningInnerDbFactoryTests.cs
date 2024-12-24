@@ -77,9 +77,9 @@ namespace Nethermind.Db.Test.FullPruning
 
             public TestContext()
             {
-                FileSystem.Path.Combine(Arg.Any<string>(), Arg.Any<string>()).Returns(c => Combine(c[0], c[1]));
+                FileSystem.Path.Combine(Arg.Any<string>(), Arg.Any<string>()).Returns(static c => Combine(c[0], c[1]));
                 FileSystem.DirectoryInfo.New(Path).Returns(Directory);
-                RocksDbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(c => c.Arg<DbSettings>().DbPath);
+                RocksDbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(static c => c.Arg<DbSettings>().DbPath);
             }
         }
     }

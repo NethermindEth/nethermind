@@ -242,7 +242,7 @@ public class TxBroadcasterTests
 
         // check if full transactions and hashes returned by broadcaster are as expected
         expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(t => t.Hash).ToArray());
+        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
     }
 
     [Test]
@@ -288,7 +288,7 @@ public class TxBroadcasterTests
 
         // check if full transactions and hashes returned by broadcaster are as expected
         expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(t => t.Hash).ToArray());
+        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
     }
 
     [Test]
@@ -407,7 +407,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs, o => o.Excluding(transaction => transaction.MaxFeePerGas));
+        expectedTxs.Should().BeEquivalentTo(pickedTxs, static o => o.Excluding(static transaction => transaction.MaxFeePerGas));
     }
 
     [Test]
@@ -453,7 +453,7 @@ public class TxBroadcasterTests
         pickedHashes.Count.Should().Be(expectedCount);
 
         // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
-        expectedTxs.Count(t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas).Should().Be(expectedCount);
+        expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas).Should().Be(expectedCount);
     }
 
     [Test]
