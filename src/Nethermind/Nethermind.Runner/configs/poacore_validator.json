@@ -1,4 +1,5 @@
 {
+  "$schema": "/config/schema.json",
   "Init": {
     "StoreReceipts": false,
     "IsMining": true,

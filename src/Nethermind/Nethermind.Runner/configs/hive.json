@@ -1,4 +1,5 @@
 {
+  "$schema": "/schema.json",
   "Init": {
     "PubSubEnabled": true,
     "WebSocketsEnabled": true,
