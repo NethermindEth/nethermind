@@ -41,10 +41,7 @@ public static class Rlp
 
     public static void Read(ReadOnlySpan<byte> source, RefRlpReaderAction func)
     {
-        Read<object?>(source, (scoped ref RlpReader reader) =>
-        {
-            func(ref reader);
-            return null;
-        });
+        var reader = new RlpReader(source);
+        func(ref reader);
     }
 }
