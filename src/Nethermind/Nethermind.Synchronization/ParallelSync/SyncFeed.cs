@@ -25,6 +25,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 _taskCompletionSource ??= new TaskCompletionSource();
             }
 
+            if (CurrentState == SyncFeedState.Finished && newState == SyncFeedState.Finished)
+            {
+                return;
+            }
+
             if (CurrentState == SyncFeedState.Finished)
             {
                 throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be {newState} again.");
