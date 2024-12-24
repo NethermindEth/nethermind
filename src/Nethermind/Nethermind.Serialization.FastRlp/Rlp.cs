@@ -18,7 +18,20 @@ public static class Rlp
         return serialized;
     }
 
-    public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func) where T : allows ref struct
+    public static ReadOnlySpan<byte> Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
+        where TContext : allows ref struct
+    {
+        var lengthWriter = RlpWriter.LengthWriter();
+        action(ref lengthWriter, ctx);
+        var serialized = new byte[lengthWriter.Length];
+        var contentWriter = RlpWriter.ContentWriter(serialized);
+        action(ref contentWriter, ctx);
+
+        return serialized;
+    }
+
+    public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func)
+        where T : allows ref struct
     {
         var reader = new RlpReader(source);
         T result = func(ref reader);

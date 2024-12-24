@@ -30,7 +30,7 @@ public class RlpDerivedTest
     public void FlatRecord()
     {
         var player = new Player(Id: 42, Username: "SuperUser");
-        ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(player));
+        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, Player player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayer());
         decoded.Should().BeEquivalentTo(player);
