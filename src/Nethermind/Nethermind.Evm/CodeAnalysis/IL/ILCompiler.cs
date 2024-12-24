@@ -182,7 +182,7 @@ internal static class ILCompiler
                 {
                     currentSegment = segmentMetadata.SubSegments[i];
                 }
-                    // if tracing mode is off, 
+                // if tracing mode is off, 
                 if (!bakeInTracerCalls)
                 {
                     // we skip compiling unreachable code
@@ -268,7 +268,7 @@ internal static class ILCompiler
                 // if tracing is off, we check the stackHeadRef requirement of the full jumpless segment at once
                 if (!bakeInTracerCalls)
                 {
-                        // we check if stackHeadRef underflow can occur
+                    // we check if stackHeadRef underflow can occur
                     if (currentSegment.RequiredStack != 0)
                     {
                         method.LoadLocal(stackHeadIdx);

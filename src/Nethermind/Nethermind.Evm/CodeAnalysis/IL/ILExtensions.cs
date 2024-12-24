@@ -135,7 +135,8 @@ public static class WordEmit
         {
             MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneLittleEndian)).GetMethod;
             il.Call(methodInfo);
-        } else
+        }
+        else
         {
             MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneBigEndian)).GetMethod;
             il.Call(methodInfo);
@@ -166,7 +167,7 @@ public static class WordEmit
 
     public static void EmitIsZeroOrOneCheck<T>(this Emit<T> il, Local? word = null)
     {
-        if(word is not null)
+        if (word is not null)
         {
             il.LoadLocalAddress(word);
         }
@@ -273,7 +274,7 @@ public static class UnsafeEmit
 /// </summary>
 static class EmitExtensions
 {
-    
+
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
     public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
     public static MethodInfo ConvertionExplicit<TFrom, TTo>() => ConvertionExplicit(typeof(TFrom), typeof(TTo));
@@ -329,7 +330,7 @@ static class EmitExtensions
         il.StoreLocal(local);
         il.Print(local);
     }
-    
+
 
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
@@ -499,7 +500,8 @@ static class EmitExtensions
 
     public static Sigil.Label AddExceptionLabel<T>(this Emit<T> il, Dictionary<EvmExceptionType, Sigil.Label> dict, EvmExceptionType evmExceptionType)
     {
-        if(!dict.ContainsKey(evmExceptionType)) {
+        if (!dict.ContainsKey(evmExceptionType))
+        {
             dict[evmExceptionType] = il.DefineLabel();
         }
         return dict[evmExceptionType];
