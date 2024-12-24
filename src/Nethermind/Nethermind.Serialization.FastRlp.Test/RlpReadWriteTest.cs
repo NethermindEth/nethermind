@@ -58,9 +58,9 @@ public class RlpReadWriteTest
             });
         });
 
-        List<string> decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
+        List<string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
-            return r.ReadSequence((scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 for (int i = 0; i < 100; i++)
@@ -144,9 +144,9 @@ public class RlpReadWriteTest
             });
         });
 
-        List<int> decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
+        List<int> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
-            return r.ReadSequence((scoped ref RlpReader r) =>
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 List<int> result = [];
                 while (r.HasNext)
@@ -177,7 +177,7 @@ public class RlpReadWriteTest
     public void InvalidListReading()
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
-        Func<int> tryRead = () => Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadInt32());
+        Func<int> tryRead = () => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt32());
 
         tryRead.Should().Throw<RlpReaderException>();
     }
@@ -185,7 +185,7 @@ public class RlpReadWriteTest
     [Test]
     public void Choice()
     {
-        RefRlpReaderFunc<int> intReader = (scoped ref RlpReader r) => r.ReadInt32();
+        RefRlpReaderFunc<int> intReader = static (scoped ref RlpReader r) => r.ReadInt32();
         RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadSequence(intReader);
 
         var intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
