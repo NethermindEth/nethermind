@@ -97,9 +97,9 @@ public class RlpReadWriteTest
             });
         });
 
-        var (dogs, cats) = Rlp.Read(rlp, (scoped ref RlpReader r) =>
+        var (dogs, cats) = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
-            var dogs = r.ReadSequence((scoped ref RlpReader r) =>
+            var dogs = r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 while (r.HasNext)
@@ -109,7 +109,7 @@ public class RlpReadWriteTest
 
                 return result;
             });
-            var cats = r.ReadSequence((scoped ref RlpReader r) =>
+            var cats = r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 List<string> result = [];
                 while (r.HasNext)
@@ -133,9 +133,9 @@ public class RlpReadWriteTest
     [TestCase(2)]
     public void UnknownLengthList([Values(1, 3, 5, 10, 20)] int length)
     {
-        var rlp = Rlp.Write((ref RlpWriter root) =>
+        var rlp = Rlp.Write(length, static (ref RlpWriter root, int length) =>
         {
-            root.WriteSequence((ref RlpWriter w) =>
+            root.WriteSequence(length, static (ref RlpWriter w, int length) =>
             {
                 for (int i = 0; i < length; i++)
                 {
@@ -253,9 +253,9 @@ public class RlpReadWriteTest
             }),
         ];
 
-        var rlp = Rlp.Write((ref RlpWriter w) =>
+        var rlp = Rlp.Write(students, static (ref RlpWriter w, List<Student> students) =>
         {
-            w.WriteSequence((ref RlpWriter w) =>
+            w.WriteSequence(students, static (ref RlpWriter w, List<Student> students) =>
             {
                 foreach (var student in students)
                 {
@@ -286,7 +286,7 @@ public class RlpReadWriteTest
     {
         var list = new List<string> { "cat", "dog" };
 
-        var rlp = Rlp.Write((ref RlpWriter w) => w.Write(list, StringRlpConverter.Write));
+        var rlp = Rlp.Write(list, static (ref RlpWriter w, List<string> list) => w.Write(list, StringRlpConverter.Write));
 
         var rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
         {
@@ -312,13 +312,13 @@ public class RlpReadWriteTest
             []
         ];
 
-        var rlp = Rlp.Write((ref RlpWriter w) =>
-            w.Write(list, (ref RlpWriter w, List<string> v) =>
+        var rlp = Rlp.Write(list, static (ref RlpWriter w, List<List<string>> list) =>
+            w.Write(list, static (ref RlpWriter w, List<string> v) =>
                 w.Write(v, StringRlpConverter.Write)));
 
         var rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
         {
-            w.WriteSequence((ref RlpWriter w) =>
+            w.WriteSequence(static (ref RlpWriter w) =>
             {
                 w.WriteSequence(static (ref RlpWriter w) =>
                 {
@@ -339,7 +339,7 @@ public class RlpReadWriteTest
         rlpExplicit.Should().BeEquivalentTo(rlp);
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
-            r.ReadList((scoped ref RlpReader r) =>
+            r.ReadList(static (scoped ref RlpReader r) =>
                 r.ReadList(StringRlpConverter.Read)));
 
         list.Should().BeEquivalentTo(decoded);
@@ -354,19 +354,19 @@ public class RlpReadWriteTest
             { 2, "cat" },
         };
 
-        var rlp = Rlp.Write((ref RlpWriter w) =>
+        var rlp = Rlp.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
             w.Write(dictionary, Int32RlpConverter.Write, StringRlpConverter.Write));
 
-        var rlpExplicit = Rlp.Write((ref RlpWriter w) =>
+        var rlpExplicit = Rlp.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
         {
-            w.WriteSequence((ref RlpWriter w) =>
+            w.WriteSequence(dictionary, static (ref RlpWriter w,Dictionary<int, string> dictionary) =>
             {
-                foreach (var (k, v) in dictionary)
+                foreach (var tuple in dictionary)
                 {
-                    w.WriteSequence((ref RlpWriter w) =>
+                    w.WriteSequence(tuple, static (ref RlpWriter w, KeyValuePair<int, string> tuple) =>
                     {
-                        w.Write(k);
-                        w.Write(v);
+                        w.Write(tuple.Key);
+                        w.Write(tuple.Value);
                     });
                 }
             });
