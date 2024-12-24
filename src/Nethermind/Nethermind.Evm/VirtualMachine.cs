@@ -718,13 +718,13 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (!_txTracer.IsTracingRefunds)
         {
             return _txTracer.IsTracingOpLevelStorage
-                    ? ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) 
+                    ? ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec)
                     : ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
         else
         {
-            return _txTracer.IsTracingOpLevelStorage 
-                    ? ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) 
+            return _txTracer.IsTracingOpLevelStorage
+                    ? ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec)
                     : ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
     Empty:
@@ -767,12 +767,12 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
+        var chunkExecutionResult = new ILChunkExecutionState(ref _returnDataBuffer);
         while ((uint)programCounter < codeLength)
         {
 
-            if(typeof(TOptimizing) == typeof(IsOptimizing))
+            if (typeof(TOptimizing) == typeof(IsOptimizing))
             {
-                var chunkExecutionResult = new ILChunkExecutionState(ref _returnDataBuffer);
                 while (ilInfo is not null && (ilInfo.TryExecute(_logger,
                     vmState,
                     in env,
@@ -826,7 +826,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #if DEBUGDEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            
+
             Instruction instruction = (Instruction)code[programCounter];
 
             if (isCancelable && _txTracer.IsCancelled)
@@ -1895,7 +1895,52 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
                     {
-                        exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
+                        if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
+
+                        Address codeSource = stack.PopAddress();
+                        if (codeSource is null) goto StackUnderflow;
+
+                        UInt256 callValue;
+                        switch (instruction)
+                        {
+                            case Instruction.CALL:
+                                if (stack.PopUInt256(out UInt256 value))
+                                {
+                                    callValue = value;
+                                }
+                                else
+                                {
+                                    goto StackUnderflow;
+                                }
+                                break;
+                            default:
+                                callValue = UInt256.Zero;
+                                break;
+                        }
+
+                        if (!stack.PopUInt256(out UInt256 dataOffset)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out UInt256 dataSize)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out UInt256 outputOffset)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out UInt256 outputSize)) goto StackUnderflow;
+
+
+                        exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(
+                            vmState, ref gasAvailable, spec, instruction,
+                            gasLimit,
+                            codeSource,
+                            callValue,
+                            dataOffset,
+                            dataSize,
+                            outputOffset,
+                            outputSize,
+                            out ReadOnlyMemory<byte>? toPushToStack,
+                            out returnData);
+
+                        if (toPushToStack is not null)
+                        {
+                            stack.PushBytes(toPushToStack.Value.Span);
+                        }
+
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         if (returnData is null)
@@ -2190,12 +2235,23 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec,
-        Instruction instruction, out object returnData)
+    private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref long gasAvailable, IReleaseSpec spec,
+        Instruction instruction,
+        UInt256 gasLimit,
+        Address codeSource,
+        UInt256 callValue,
+        UInt256 dataOffset,
+        UInt256 dataLength,
+        UInt256 outputOffset,
+        UInt256 outputLength,
+        out ReadOnlyMemory<byte>? toPushInStack,
+        out object returnData)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
         returnData = null;
+        toPushInStack = null;
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
         Metrics.IncrementCalls();
@@ -2203,31 +2259,9 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
-        if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
-        Address codeSource = stack.PopAddress();
-        if (codeSource is null) return EvmExceptionType.StackUnderflow;
-
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, true, _state, spec, _txTracer)) return EvmExceptionType.OutOfGas;
 
-        UInt256 callValue;
-        switch (instruction)
-        {
-            case Instruction.STATICCALL:
-                callValue = UInt256.Zero;
-                break;
-            case Instruction.DELEGATECALL:
-                callValue = env.Value;
-                break;
-            default:
-                if (!stack.PopUInt256(out callValue)) return EvmExceptionType.StackUnderflow;
-                break;
-        }
-
         UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
-        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 outputOffset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 outputLength)) return EvmExceptionType.StackUnderflow;
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
@@ -2285,7 +2319,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            toPushInStack = UInt256.Zero.PaddedBytes(32);
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
@@ -2310,7 +2344,8 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             // Non contract call, no need to construct call frame can just credit balance and return gas
             _returnDataBuffer = default;
-            stack.PushBytes(StatusCode.SuccessBytes.Span);
+            toPushInStack = StatusCode.SuccessBytes;
+
             UpdateGasUp(gasLimitUl, ref gasAvailable);
             return FastCall(spec, out returnData, in transferValue, target);
         }

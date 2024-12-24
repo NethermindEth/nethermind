@@ -28,6 +28,8 @@ internal static class ILCompiler
 {
     public static class FullAOR
     {
+        public delegate bool MoveNextDelegate(ref int gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
+
         public static void CompileContract(ContractMetadata contractMetadata, IVMConfig vmConfig)
         {
             PersistedAssemblyBuilder assemblyBuilder = new PersistedAssemblyBuilder(new AssemblyName("Nethermind.Evm.Precompiled.Live"), typeof(object).Assembly);
@@ -83,9 +85,12 @@ internal static class ILCompiler
 
         }
 
-        public static void EmitMoveNext(ContractMetadata metadata, IVMConfig config)
+        public static void EmitMoveNext(TypeBuilder contractBuilder, ContractMetadata metadata, IVMConfig config)
         {
-
+            Emit<MoveNextDelegate> method = Emit<MoveNextDelegate>.BuildInstanceMethod(
+                contractBuilder,
+                "MoveNext",
+                MethodAttributes.Public | MethodAttributes.Virtual);
         }
     }
     public static class PartialAOT
@@ -117,29 +122,169 @@ internal static class ILCompiler
 
         ref ILChunkExecutionState result);
 
-        private const int CHAINID_INDEX = 0;
-        private const int REF_VMSTATE_INDEX = 1;
-        private const int REF_ENV_INDEX = 2;
-        private const int REF_TXCTX_INDEX = 3;
-        private const int REF_BLKCTX_INDEX = 4;
-        private const int REF_MEMORY_INDEX = 5;
-        private const int REF_CURR_STACK_HEAD_INDEX = 6;
-        private const int STACK_HEAD_INDEX = 7;
-        private const int BLOCKHASH_PROVIDER_INDEX = 8;
-        private const int WORLD_STATE_INDEX = 9;
-        private const int CODE_INFO_REPOSITORY_INDEX = 10;
-        private const int SPEC_INDEX = 11;
-        private const int TXTRACER_INDEX = 12;
-        private const int PROGRAM_COUNTER_INDEX = 13;
-        private const int GAS_AVAILABLE_INDEX = 14;
-        private const int MACHINE_CODE_INDEX = 15;
-        private const int REF_CALLDATA_INDEX = 16;
-        private const int IMMEDIATES_DATA_INDEX = 17;
-        private const int REF_RESULT_INDEX = 18;
+        private class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
+        {
+            private const int CHAINID_INDEX = 0;
+            private const int REF_VMSTATE_INDEX = 1;
+            private const int REF_ENV_INDEX = 2;
+            private const int REF_TXCTX_INDEX = 3;
+            private const int REF_BLKCTX_INDEX = 4;
+            private const int REF_MEMORY_INDEX = 5;
+            private const int REF_CURR_STACK_HEAD_INDEX = 6;
+            private const int STACK_HEAD_INDEX = 7;
+            private const int BLOCKHASH_PROVIDER_INDEX = 8;
+            private const int WORLD_STATE_INDEX = 9;
+            private const int CODE_INFO_REPOSITORY_INDEX = 10;
+            private const int SPEC_INDEX = 11;
+            private const int TXTRACER_INDEX = 12;
+            private const int PROGRAM_COUNTER_INDEX = 13;
+            private const int GAS_AVAILABLE_INDEX = 14;
+            private const int MACHINE_CODE_INDEX = 15;
+            private const int REF_CALLDATA_INDEX = 16;
+            private const int IMMEDIATES_DATA_INDEX = 17;
+            private const int REF_RESULT_INDEX = 18;
+            public override void LoadBlockContext(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_BLKCTX_INDEX);
+            }
+
+            public override void LoadBlockhashProvider(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(BLOCKHASH_PROVIDER_INDEX);
+            }
+
+            public override void LoadCalldata(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_CALLDATA_INDEX);
+            }
+
+            public void LoadCalldataRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(REF_CALLDATA_INDEX, typeof(ReadOnlyMemory<byte>));
+            }
+
+            public override void LoadChainId(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(CHAINID_INDEX);
+            }
+
+            public override void LoadCodeInfoRepository(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
+            }
+
+            public override void LoadCurrStackHead(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                //il.LoadLocal(locals.stackHeadIdx);
+                il.LoadArgument(REF_CURR_STACK_HEAD_INDEX);
+            }
+
+            public override void LoadEnv(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_ENV_INDEX);
+            }
+
+            public void LoadEnvByRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+            }
+
+            public override void LoadGasAvailable(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                //il.LoadLocal(locals.gasAvailable);
+                il.LoadArgument(GAS_AVAILABLE_INDEX);
+            }
+
+            public void LoadGasAvailableByRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(GAS_AVAILABLE_INDEX, typeof(long));
+            }
+
+            public override void LoadImmediatesData(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(IMMEDIATES_DATA_INDEX);
+            }
+
+            public override void LoadMachineCode(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(MACHINE_CODE_INDEX);
+            }
+
+            public override void LoadMemory(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_MEMORY_INDEX);
+            }
+
+            public override void LoadProgramCounter(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(PROGRAM_COUNTER_INDEX);
+            }
+
+            public void LoadProgramCounterByRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(PROGRAM_COUNTER_INDEX, typeof(int));
+            }
+
+            public override void LoadResult(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_RESULT_INDEX);
+            }
+
+            public void LoadResultByRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(REF_RESULT_INDEX, typeof(ILChunkExecutionState));
+            }
+
+            public override void LoadSpec(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(SPEC_INDEX);
+            }
+
+            public override void LoadStackHead(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                //il.LoadLocal(locals.stackHeadIdx);
+                il.LoadArgument(STACK_HEAD_INDEX);
+            }
+
+            public void LoadStackHeadByRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(STACK_HEAD_INDEX, typeof(int));
+            }
+
+            public void LoadStackHeadRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_CURR_STACK_HEAD_INDEX);
+            }
+
+            public override void LoadTxContext(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_TXCTX_INDEX);
+            }
+
+            public override void LoadTxTracer(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(TXTRACER_INDEX);
+            }
+
+            public override void LoadVmState(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(REF_VMSTATE_INDEX);
+            }
+
+            public void LoadVmStateByRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
+            }
+
+            public override void LoadWorldState(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals)
+            {
+                il.LoadArgument(WORLD_STATE_INDEX);
+            }
+        }
 
         public static PrecompiledChunk CompileSegment(string segmentName, ContractMetadata metadata, int segmentIndex, IVMConfig config, out int[] localJumpdests)
         {
-            // code is optimistic assumes stackHeadRef underflow and stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
+            // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
             // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
             Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
@@ -156,47 +301,8 @@ internal static class ILCompiler
         private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, ContractMetadata contractMetadata, int segmentIndex, bool bakeInTracerCalls)
         {
             var segmentMetadata = contractMetadata.Segments[segmentIndex];
-
-            using Local jmpDestination = method.DeclareLocal(typeof(int));
-
-            using Local address = method.DeclareLocal(typeof(Address));
-
-            using Local hash256 = method.DeclareLocal(typeof(Hash256));
-
-            using Local wordRef256A = method.DeclareLocal(typeof(Word).MakeByRefType());
-            using Local wordRef256B = method.DeclareLocal(typeof(Word).MakeByRefType());
-            using Local wordRef256C = method.DeclareLocal(typeof(Word).MakeByRefType());
-
-            using Local uint256A = method.DeclareLocal(typeof(UInt256));
-            using Local uint256B = method.DeclareLocal(typeof(UInt256));
-            using Local uint256C = method.DeclareLocal(typeof(UInt256));
-            using Local uint256R = method.DeclareLocal(typeof(UInt256));
-
-            using Local localReadOnlyMemory = method.DeclareLocal(typeof(ReadOnlyMemory<byte>));
-            using Local localReadonOnlySpan = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
-            using Local localZeroPaddedSpan = method.DeclareLocal(typeof(ZeroPaddedSpan));
-            using Local localSpan = method.DeclareLocal(typeof(Span<byte>));
-            using Local localMemory = method.DeclareLocal(typeof(Memory<byte>));
-            using Local localArray = method.DeclareLocal(typeof(byte[]));
-            using Local uint64A = method.DeclareLocal(typeof(ulong));
-
-            using Local uint32A = method.DeclareLocal(typeof(uint));
-            using Local uint32B = method.DeclareLocal(typeof(uint));
-            using Local int64A = method.DeclareLocal(typeof(long));
-            using Local int64B = method.DeclareLocal(typeof(long));
-            using Local byte8A = method.DeclareLocal(typeof(byte));
-            using Local lbool = method.DeclareLocal(typeof(bool));
-            using Local byte8B = method.DeclareLocal(typeof(byte));
-
-            using Local storageCell = method.DeclareLocal(typeof(StorageCell));
-
-            using Local gasAvailable = method.DeclareLocal(typeof(long));
-            using Local programCounter = method.DeclareLocal(typeof(int));
-
-            using Local stackHeadRef = method.DeclareLocal(typeof(Word).MakeByRefType());
-            using Local stackHeadIdx = method.DeclareLocal(typeof(int));
-
-            using Local header = method.DeclareLocal(typeof(BlockHeader));
+            var envLoader = new PartialAotEnvLoader();
+            using var locals = new Locals<ExecuteSegment>(method);
 
             Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
@@ -205,22 +311,22 @@ internal static class ILCompiler
             Label isContinuation = method.DefineLabel(); // jump table
             Label ret = method.DefineLabel();
 
-            method.LoadRefArgument(STACK_HEAD_INDEX, typeof(int));
-            method.StoreLocal(stackHeadIdx);
+            envLoader.LoadStackHeadByRef(method, locals);
+            method.StoreLocal(locals.stackHeadIdx);
 
-            method.LoadArgument(REF_CURR_STACK_HEAD_INDEX);
-            method.StoreLocal(stackHeadRef);
+            envLoader.LoadStackHeadRef(method, locals);
+            method.StoreLocal(locals.stackHeadRef);
 
             // set gas to local
-            method.LoadRefArgument(GAS_AVAILABLE_INDEX, typeof(long));
-            method.StoreLocal(gasAvailable);
+            envLoader.LoadGasAvailableByRef(method, locals);
+            method.StoreLocal(locals.gasAvailable);
 
             // set pc to local
-            method.LoadRefArgument(PROGRAM_COUNTER_INDEX, typeof(int));
-            method.StoreLocal(programCounter);
+            envLoader.LoadProgramCounterByRef(method, locals);
+            method.StoreLocal(locals.programCounter);
 
             // if last ilvmstate was a jump
-            method.LoadArgument(REF_RESULT_INDEX);
+            envLoader.LoadResult(method, locals);
             method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldJump)));
             method.BranchIfTrue(isContinuation);
 
@@ -244,7 +350,7 @@ internal static class ILCompiler
                 {
                     currentSegment = segmentMetadata.SubSegments[i];
                 }
-                    // if tracing mode is off, 
+                // if tracing mode is off, 
                 if (!bakeInTracerCalls)
                 {
                     // we skip compiling unreachable code
@@ -268,18 +374,18 @@ internal static class ILCompiler
                     // mark the jump destination
                     method.MarkLabel(jumpDestinations[op.ProgramCounter] = method.DefineLabel());
                     method.LoadConstant(op.ProgramCounter);
-                    method.StoreLocal(programCounter);
+                    method.StoreLocal(locals.programCounter);
                 }
 
                 if (bakeInTracerCalls)
                 {
-                    EmitCallToStartInstructionTrace(method, gasAvailable, stackHeadIdx, op);
+                    EmitCallToStartInstructionTrace(method, locals.gasAvailable, locals.stackHeadIdx, op, envLoader, locals);
                 }
 
                 // check if opcode is activated in current spec, we skip this check for opcodes that are always enabled
                 if (op.Operation.RequiresAvailabilityCheck())
                 {
-                    method.LoadArgument(SPEC_INDEX);
+                    envLoader.LoadSpec(method, locals);
                     method.LoadConstant((byte)op.Operation);
                     method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
                     method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
@@ -290,11 +396,11 @@ internal static class ILCompiler
                 {
                     if (currentSegment.StaticGasSubSegmentes.TryGetValue(i, out long gasCost) && gasCost > 0)
                     {
-                        method.LoadLocal(gasAvailable);
+                        method.LoadLocal(locals.gasAvailable);
                         method.LoadConstant(gasCost);
                         method.Subtract();
                         method.Duplicate();
-                        method.StoreLocal(gasAvailable);
+                        method.StoreLocal(locals.gasAvailable);
                         method.LoadConstant((long)0);
                         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
                     }
@@ -302,11 +408,11 @@ internal static class ILCompiler
                 else
                 {
                     // otherwise we update the gas after each instruction
-                    method.LoadLocal(gasAvailable);
+                    method.LoadLocal(locals.gasAvailable);
                     method.LoadConstant(op.Metadata.GasCost);
                     method.Subtract();
                     method.Duplicate();
-                    method.StoreLocal(gasAvailable);
+                    method.StoreLocal(locals.gasAvailable);
                     method.LoadConstant((long)0);
                     method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
                 }
@@ -317,31 +423,31 @@ internal static class ILCompiler
                     if (i == segmentMetadata.Segment.Length - 1 || op.IsTerminating)
                     {
                         method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
-                        method.StoreLocal(programCounter);
+                        method.StoreLocal(locals.programCounter);
                     }
                 }
                 else
                 {
                     // otherwise we update the pc after each instruction
                     method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
-                    method.StoreLocal(programCounter);
+                    method.StoreLocal(locals.programCounter);
                 }
 
-                // if tracing is off, we check the stackHeadRef requirement of the full jumpless segment at once
+                // if tracing is off, we check the locals.stackHeadRef requirement of the full jumpless segment at once
                 if (!bakeInTracerCalls)
                 {
-                        // we check if stackHeadRef underflow can occur
+                    // we check if locals.stackHeadRef underflow can occur
                     if (currentSegment.RequiredStack != 0)
                     {
-                        method.LoadLocal(stackHeadIdx);
+                        method.LoadLocal(locals.stackHeadIdx);
                         method.LoadConstant(currentSegment.RequiredStack);
                         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
                     }
 
-                    // we check if stackHeadRef overflow can occur
+                    // we check if locals.stackHeadRef overflow can occur
                     if (currentSegment.MaxStack != 0)
                     {
-                        method.LoadLocal(stackHeadIdx);
+                        method.LoadLocal(locals.stackHeadIdx);
                         method.LoadConstant(currentSegment.MaxStack);
                         method.Add();
                         method.LoadConstant(EvmStack.MaxStackSize);
@@ -350,13 +456,13 @@ internal static class ILCompiler
                 }
                 else
                 {
-                    // otherwise we check the stackHeadRef requirement of each instruction
-                    method.LoadLocal(stackHeadIdx);
+                    // otherwise we check the locals.stackHeadRef requirement of each instruction
+                    method.LoadLocal(locals.stackHeadIdx);
                     method.LoadConstant(op.Metadata.StackBehaviorPop);
                     method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
 
                     int delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
-                    method.LoadLocal(stackHeadIdx);
+                    method.LoadLocal(locals.stackHeadIdx);
                     method.LoadConstant(delta);
                     method.Add();
                     method.LoadConstant(EvmStack.MaxStackSize);
@@ -371,7 +477,7 @@ internal static class ILCompiler
                         break;
                     case Instruction.STOP:
                         {
-                            method.LoadArgument(REF_RESULT_INDEX);
+                            envLoader.LoadResult(method, locals);
                             method.LoadConstant(true);
                             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
                             method.FakeBranch(ret);
@@ -379,8 +485,8 @@ internal static class ILCompiler
                         break;
                     case Instruction.CHAINID:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(CHAINID_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadChainId(method, locals);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         }
                         break;
@@ -393,7 +499,7 @@ internal static class ILCompiler
                                 .GetMethod(nameof(Vector256.OnesComplement), BindingFlags.Public | BindingFlags.Static)!
                                 .MakeGenericMethod(typeof(byte));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(refWordToRefByteMethod);
                             method.Duplicate();
                             method.Call(readVector256Method);
@@ -404,17 +510,17 @@ internal static class ILCompiler
                     case Instruction.JUMP:
                         {
                             // we jump into the jump table
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
 
                             if (bakeInTracerCalls)
                             {
-                                UpdateStackHeadIdxAndPushRefOpcodeMode(method, stackHeadRef, stackHeadIdx, op);
-                                EmitCallToEndInstructionTrace(method, gasAvailable);
+                                UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                                EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                             }
                             else
                             {
-                                UpdateStackHeadAndPushRerSegmentMode(method, stackHeadRef, stackHeadIdx, i, currentSegment);
+                                UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
                             }
                             method.FakeBranch(jumpTable);
                         }
@@ -422,24 +528,24 @@ internal static class ILCompiler
                     case Instruction.JUMPI:
                         {// consume the jump condition
                             Label noJump = method.DefineLabel();
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.EmitIsZeroCheck();
                             // if the jump condition is false, we do not jump
                             method.BranchIfTrue(noJump);
 
                             // we jump into the jump table
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
 
                             if (bakeInTracerCalls)
                             {
-                                UpdateStackHeadIdxAndPushRefOpcodeMode(method, stackHeadRef, stackHeadIdx, op);
-                                EmitCallToEndInstructionTrace(method, gasAvailable);
+                                UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                                EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                             }
                             else
                             {
-                                UpdateStackHeadAndPushRerSegmentMode(method, stackHeadRef, stackHeadIdx, i, currentSegment);
+                                UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
                             }
                             method.Branch(jumpTable);
 
@@ -448,7 +554,7 @@ internal static class ILCompiler
                         break;
                     case Instruction.PUSH0:
                         {
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                         }
                         break;
                     case Instruction.PUSH1:
@@ -460,7 +566,7 @@ internal static class ILCompiler
                     case Instruction.PUSH7:
                     case Instruction.PUSH8:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.SpecialPushOpcode(op, contractMetadata.EmbeddedData);
                         }
                         break;
@@ -488,15 +594,15 @@ internal static class ILCompiler
                     case Instruction.PUSH30:
                     case Instruction.PUSH31:
                     case Instruction.PUSH32:
-                        {// we load the stackHeadRef
+                        {// we load the locals.stackHeadRef
                             if (contractMetadata.EmbeddedData[op.Arguments.Value].IsZero())
                             {
-                                method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                                method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             }
                             else
                             {
-                                method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                                method.LoadArgument(IMMEDIATES_DATA_INDEX);
+                                method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                                envLoader.LoadImmediatesData(method, locals);
                                 method.LoadConstant(op.Arguments.Value);
                                 method.LoadElement<byte[]>();
                                 method.Call(Word.SetArray);
@@ -508,32 +614,32 @@ internal static class ILCompiler
 
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
                             method.Add();
-                            method.StoreLocal(uint64A);
+                            method.StoreLocal(locals.uint64A);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint64A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint64A);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitBinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
@@ -544,59 +650,59 @@ internal static class ILCompiler
                             // b - a a::b
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the stackHeadRef
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            // we the two uint256 from the locals.stackHeadRef
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(pushItemA);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(pushNegItemB);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
                             method.BranchIfLess(fallbackToUInt256Call);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
                             method.Subtract();
-                            method.StoreLocal(uint64A);
+                            method.StoreLocal(locals.uint64A);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint64A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint64A);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushItemA);
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(wordRef256A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushNegItemB);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.ToNegative);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitBinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
@@ -607,65 +713,65 @@ internal static class ILCompiler
                             Label pushItemB = method.DefineLabel();
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the stackHeadRef
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            // we the two uint256 from the locals.stackHeadRef
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.LoadLocal(wordRef256B);
+                            method.StoreLocal(locals.uint256A);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(push0Zero);
 
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(endofOpcode);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsOneCheck();
                             method.BranchIfTrue(endofOpcode);
 
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsOneCheck();
                             method.BranchIfTrue(pushItemA);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
                             method.Multiply();
-                            method.StoreLocal(uint64A);
+                            method.StoreLocal(locals.uint64A);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint64A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint64A);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitBinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(push0Zero);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushItemA);
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(wordRef256A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
 
@@ -678,40 +784,40 @@ internal static class ILCompiler
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroOrOneCheck();
                             method.BranchIfTrue(pushZeroLabel);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallBackToOldBehavior);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetIsUint32);
                             method.BranchIfFalse(fallBackToOldBehavior);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
                             method.Remainder();
-                            method.StoreLocal(uint64A);
+                            method.StoreLocal(locals.uint64A);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint64A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint64A);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
@@ -720,19 +826,19 @@ internal static class ILCompiler
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
                             // if b is 1 or 0 result is always 0
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroOrOneCheck();
                             method.BranchIfFalse(fallBackToOldBehavior);
 
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
@@ -743,37 +849,37 @@ internal static class ILCompiler
                             Label pushALabel = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
                             // if a or b are 0 result is directly 0
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(pushZeroLabel);
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(pushZeroLabel);
 
                             // if b is 1 result is by default a
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsOneCheck();
                             method.BranchIfTrue(pushALabel);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushALabel);
-                            method.LoadLocal(wordRef256B);
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256B);
+                            method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
 
                             method.MarkLabel(endofOpcode);
                         }
@@ -785,48 +891,48 @@ internal static class ILCompiler
                             Label pushALabel = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
                             // if b is 0 or a is 0 then the result is 0
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(pushZeroLabel);
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsZeroCheck();
                             method.BranchIfTrue(pushZeroLabel);
 
                             // if b is 1 in all cases the result is a
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsOneCheck();
                             method.BranchIfTrue(pushALabel);
 
                             // if b is -1 and a is 2^255 then the result is 2^255
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsMinusOneCheck();
                             method.BranchIfFalse(fallBackToOldBehavior);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsP255Check();
                             method.BranchIfFalse(fallBackToOldBehavior);
 
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(pushALabel);
-                            method.LoadLocal(wordRef256B);
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256B);
+                            method.LoadLocal(locals.wordRef256A);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallBackToOldBehavior);
-                            EmitBinaryInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, uint256A, uint256B);
+                            EmitBinaryInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
 
                             method.MarkLabel(endofOpcode);
                         }
@@ -837,19 +943,19 @@ internal static class ILCompiler
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
-                            method.StoreLocal(wordRef256C);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StoreLocal(locals.wordRef256C);
 
                             // if c is 1 or 0 result is 0
-                            method.LoadLocal(wordRef256C);
+                            method.LoadLocal(locals.wordRef256C);
                             method.EmitIsZeroOrOneCheck();
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitTrinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B, uint256C);
+                            EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
@@ -858,64 +964,64 @@ internal static class ILCompiler
                             Label push0Zero = method.DefineLabel();
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the stackHeadRef
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
-                            method.StoreLocal(wordRef256C);
+                            // we the two uint256 from the locals.stackHeadRef
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StoreLocal(locals.wordRef256C);
 
                             // since (a * b) % c 
                             // if a or b are 0 then the result is 0
                             // if c is 0 or 1 then the result is 0
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.EmitIsZeroCheck();
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.EmitIsZeroCheck();
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256C);
+                            method.LoadLocal(locals.wordRef256C);
                             method.EmitIsZeroOrOneCheck();
                             method.BranchIfFalse(fallbackToUInt256Call);
 
                             // since (a * b) % c == (a % c * b % c) % c
                             // if a or b are equal to c, then the result is 0
-                            method.LoadLocal(wordRef256A);
-                            method.LoadLocal(wordRef256C);
+                            method.LoadLocal(locals.wordRef256A);
+                            method.LoadLocal(locals.wordRef256C);
                             method.Call(Word.AreEqual);
                             method.BranchIfTrue(push0Zero);
-                            method.LoadLocal(wordRef256B);
-                            method.LoadLocal(wordRef256C);
+                            method.LoadLocal(locals.wordRef256B);
+                            method.LoadLocal(locals.wordRef256C);
                             method.Call(Word.AreEqual);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
                             method.MarkLabel(push0Zero);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitTrinaryUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B, uint256C);
+                            EmitTrinaryUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
                     case Instruction.SHL:
-                        EmitShiftUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: true, evmExceptionLabels, uint256A, uint256B);
+                        EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                         break;
                     case Instruction.SHR:
-                        EmitShiftUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: false, evmExceptionLabels, uint256A, uint256B);
+                        EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                         break;
                     case Instruction.SAR:
-                        EmitShiftInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), evmExceptionLabels, uint256A, uint256B);
+                        EmitShiftInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), evmExceptionLabels, locals.uint256A, locals.uint256B);
                         break;
                     case Instruction.AND:
-                        EmitBitwiseUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                         break;
                     case Instruction.OR:
-                        EmitBitwiseUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                         break;
                     case Instruction.XOR:
-                        EmitBitwiseUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                        EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                         break;
                     case Instruction.EXP:
                         {
@@ -923,58 +1029,58 @@ internal static class ILCompiler
                             Label baseIsOneOrZero = method.DefineLabel();
                             Label endOfExpImpl = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Duplicate();
                             method.Call(Word.LeadingZeroProp);
-                            method.StoreLocal(uint64A);
+                            method.StoreLocal(locals.uint64A);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.LoadLocalAddress(uint256B);
+                            method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(powerIsZero);
 
                             // load spec
-                            method.LoadLocal(gasAvailable);
-                            method.LoadArgument(SPEC_INDEX);
+                            method.LoadLocal(locals.gasAvailable);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExpByteCost)));
                             method.LoadConstant((long)32);
-                            method.LoadLocal(uint64A);
+                            method.LoadLocal(locals.uint64A);
                             method.Subtract();
                             method.Multiply();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZeroOrOne)).GetMethod!);
                             method.BranchIfTrue(baseIsOneOrZero);
 
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocalAddress(uint256R);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocalAddress(locals.uint256R);
                             method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint256R);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint256R);
                             method.Call(Word.SetUInt256);
 
                             method.Branch(endOfExpImpl);
 
                             method.MarkLabel(powerIsZero);
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.LoadConstant(1);
                             method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                             method.Branch(endOfExpImpl);
 
                             method.MarkLabel(baseIsOneOrZero);
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint256A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint256A);
                             method.Call(Word.SetUInt256);
                             method.Branch(endOfExpImpl);
 
@@ -985,33 +1091,33 @@ internal static class ILCompiler
                         {
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the stackHeadRef
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            // we the two uint256 from the locals.stackHeadRef
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint64);
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetIsUint64);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
                             method.CompareLessThan();
-                            method.StoreLocal(byte8B);
+                            method.StoreLocal(locals.byte8B);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(byte8B);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.byte8B);
                             method.CallSetter(Word.SetByte0, BitConverter.IsLittleEndian);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitComparaisonUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, uint256A, uint256B);
+                            EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         }
 
@@ -1020,41 +1126,41 @@ internal static class ILCompiler
                         {
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
-                            // we the two uint256 from the stackHeadRef
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            // we the two uint256 from the locals.stackHeadRef
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint64);
                             method.BranchIfFalse(fallbackToUInt256Call);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetIsUint64);
                             method.BranchIfFalse(fallbackToUInt256Call);
 
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
-                            method.LoadLocal(wordRef256B);
+                            method.LoadLocal(locals.wordRef256B);
                             method.CallGetter(Word.GetULong0, BitConverter.IsLittleEndian);
                             method.CompareGreaterThan();
-                            method.StoreLocal(byte8B);
+                            method.StoreLocal(locals.byte8B);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(byte8B);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.byte8B);
                             method.CallSetter(Word.SetByte0, BitConverter.IsLittleEndian);
                             method.Branch(endofOpcode);
 
                             method.MarkLabel(fallbackToUInt256Call);
-                            EmitComparaisonUInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, uint256A, uint256B);
+                            EmitComparaisonUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
                             method.MarkLabel(endofOpcode);
                         }
                         break;
                     case Instruction.SLT:
-                        EmitComparaisonInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, uint256A, uint256B);
+                        EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                         break;
                     case Instruction.SGT:
-                        EmitComparaisonInt256Method(method, uint256R, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, uint256A, uint256B);
+                        EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                         break;
                     case Instruction.EQ:
                         {
@@ -1063,31 +1169,31 @@ internal static class ILCompiler
                             MethodInfo writeVector256Method = UnsafeEmit.GetWriteUnalignedMethodInfo<Vector256<byte>>();
                             MethodInfo operationUnegenerified = typeof(Vector256).GetMethod(nameof(Vector256.EqualsAll), BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(typeof(byte));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(refWordToRefByteMethod);
                             method.Call(readVector256Method);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(refWordToRefByteMethod);
                             method.Call(readVector256Method);
 
                             method.Call(operationUnegenerified);
-                            method.StoreLocal(lbool);
+                            method.StoreLocal(locals.lbool);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(lbool);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.lbool);
                             method.Convert<uint>();
                             method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                         }
                         break;
                     case Instruction.ISZERO:
-                        {// we load the stackHeadRef
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                        {// we load the locals.stackHeadRef
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Duplicate();
                             method.Duplicate();
                             method.EmitIsZeroCheck();
-                            method.StoreLocal(lbool);
+                            method.StoreLocal(locals.lbool);
                             method.Call(Word.SetToZero);
-                            method.LoadLocal(lbool);
+                            method.LoadLocal(locals.lbool);
                             method.CallSetter(Word.SetByte0, BitConverter.IsLittleEndian);
                         }
                         break;
@@ -1114,8 +1220,8 @@ internal static class ILCompiler
                     case Instruction.DUP16:
                         {
                             int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], count);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
                         }
@@ -1139,40 +1245,40 @@ internal static class ILCompiler
                         {
                             int count = (int)op.Operation - (int)Instruction.SWAP1 + 1;
 
-                            method.LoadLocalAddress(uint256R);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.LoadLocalAddress(locals.uint256R);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], count + 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count + 1);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], count + 1);
-                            method.LoadLocalAddress(uint256R);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count + 1);
+                            method.LoadLocalAddress(locals.uint256R);
                             method.LoadObject(typeof(Word));
                             method.StoreObject(typeof(Word));
                         }
                         break;
                     case Instruction.CODESIZE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         }
                         break;
                     case Instruction.PC:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.LoadConstant(op.ProgramCounter);
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         }
                         break;
                     case Instruction.COINBASE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary), false, out _));
@@ -1181,8 +1287,8 @@ internal static class ILCompiler
                         break;
                     case Instruction.TIMESTAMP:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
@@ -1191,8 +1297,8 @@ internal static class ILCompiler
                         break;
                     case Instruction.NUMBER:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
@@ -1201,8 +1307,8 @@ internal static class ILCompiler
                         break;
                     case Instruction.GASLIMIT:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
@@ -1211,40 +1317,40 @@ internal static class ILCompiler
                         break;
                     case Instruction.CALLER:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
                             method.Call(Word.SetAddress);
                         }
                         break;
                     case Instruction.ADDRESS:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.Call(Word.SetAddress);
                         }
                         break;
                     case Instruction.ORIGIN:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_TXCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadTxContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
                             method.Call(Word.SetAddress);
                         }
                         break;
                     case Instruction.CALLVALUE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
                             method.Call(Word.SetUInt256);
                         }
                         break;
                     case Instruction.GASPRICE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_TXCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadTxContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
                             method.Call(Word.SetUInt256);
                         }
@@ -1253,51 +1359,51 @@ internal static class ILCompiler
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StoreLocal(locals.uint256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256C);
+                            method.StoreLocal(locals.uint256C);
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadLocalAddress(uint256C);
-                            method.LoadLocalAddress(lbool);
+                            method.LoadLocal(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256C);
+                            method.LoadLocalAddress(locals.lbool);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
                             method.LoadConstant(GasCostOf.Memory);
                             method.Multiply();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256C);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadRefArgument(REF_CALLDATA_INDEX, typeof(ReadOnlyMemory<byte>));
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocal(uint256C);
+                            envLoader.LoadCalldataRef(method, locals);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocal(locals.uint256C);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                             method.Convert<int>();
                             method.LoadConstant((int)PadDirection.Right);
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
-                            method.StoreLocal(localZeroPaddedSpan);
+                            method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(localZeroPaddedSpan);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.CallVirtual(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
 
                             method.MarkLabel(endOfOpcode);
@@ -1305,14 +1411,14 @@ internal static class ILCompiler
                         break;
                     case Instruction.CALLDATALOAD:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
 
-                            method.LoadRefArgument(REF_CALLDATA_INDEX, typeof(ReadOnlyMemory<byte>));
-                            method.LoadLocalAddress(uint256A);
+                            envLoader.LoadCalldataRef(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(Word.Size);
                             method.LoadConstant((int)PadDirection.Right);
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
@@ -1321,138 +1427,138 @@ internal static class ILCompiler
                         break;
                     case Instruction.CALLDATASIZE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_CALLDATA_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadCalldata(method, locals);
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         }
                         break;
                     case Instruction.MSIZE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
+                            envLoader.LoadMemory(method, locals);
                             method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         }
                         break;
                     case Instruction.MSTORE:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.StoreLocal(wordRef256B);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.wordRef256B);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(Word.Size);
                             method.Call(ConvertionExplicit<UInt256, int>());
-                            method.StoreLocal(uint256C);
-                            method.LoadLocalAddress(uint256C);
+                            method.StoreLocal(locals.uint256C);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocal(wordRef256B);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetMutableSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.SaveWord)));
                         }
                         break;
                     case Instruction.MSTORE8:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.CallGetter(Word.GetByte0, BitConverter.IsLittleEndian);
-                            method.StoreLocal(byte8A);
+                            method.StoreLocal(locals.byte8A);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(1);
                             method.Call(ConvertionExplicit<UInt256, int>());
-                            method.StoreLocal(uint256C);
-                            method.LoadLocalAddress(uint256C);
+                            method.StoreLocal(locals.uint256C);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocal(byte8A);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocal(locals.byte8A);
 
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.SaveByte)));
                         }
                         break;
                     case Instruction.MLOAD:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.LoadFieldAddress(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType()]));
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                            method.StoreLocal(localReadonOnlySpan);
+                            method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadLocal(localReadonOnlySpan);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.LoadLocal(locals.localReadonOnlySpan);
                             method.Call(Word.SetReadOnlySpan);
                         }
                         break;
                     case Instruction.MCOPY:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256C);
+                            method.StoreLocal(locals.uint256C);
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadLocalAddress(uint256C);
-                            method.LoadLocalAddress(lbool);
+                            method.LoadLocal(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256C);
+                            method.LoadLocalAddress(locals.lbool);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
                             method.LoadConstant(GasCostOf.VeryLow);
                             method.Multiply();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256B);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Max)));
-                            method.StoreLocal(uint256R);
-                            method.LoadLocalAddress(uint256R);
-                            method.LoadLocalAddress(uint256C);
+                            method.StoreLocal(locals.uint256R);
+                            method.LoadLocalAddress(locals.uint256R);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocalAddress(uint256C);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(Span<byte>)]));
                         }
@@ -1461,81 +1567,81 @@ internal static class ILCompiler
                         {
                             MethodInfo refWordToRefValueHashMethod = UnsafeEmit.GetAsMethodInfo<Word, ValueHash256>();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocalAddress(lbool);
+                            method.LoadLocal(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocalAddress(locals.lbool);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
                             method.LoadConstant(GasCostOf.Sha3Word);
                             method.Multiply();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256B);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256B);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(refWordToRefValueHashMethod);
                             method.Call(typeof(KeccakCache).GetMethod(nameof(KeccakCache.ComputeTo), [typeof(ReadOnlySpan<byte>), typeof(ValueHash256).MakeByRefType()]));
                         }
                         break;
                     case Instruction.BYTE:
                         {// load a
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Duplicate();
                             method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
-                            method.StoreLocal(uint32A);
-                            method.StoreLocal(wordRef256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint32A);
+                            method.StoreLocal(locals.wordRef256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetReadOnlySpan);
-                            method.StoreLocal(localReadonOnlySpan);
+                            method.StoreLocal(locals.localReadonOnlySpan);
 
                             Label pushZeroLabel = method.DefineLabel();
                             Label endOfInstructionImpl = method.DefineLabel();
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.Call(Word.GetIsUint16);
                             method.BranchIfFalse(pushZeroLabel);
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
                             method.LoadConstant(Word.Size);
                             method.BranchIfGreaterOrEqual(pushZeroLabel);
-                            method.LoadLocal(wordRef256A);
+                            method.LoadLocal(locals.wordRef256A);
                             method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
                             method.LoadConstant(0);
                             method.BranchIfLess(pushZeroLabel);
 
-                            method.LoadLocalAddress(localReadonOnlySpan);
-                            method.LoadLocal(uint32A);
+                            method.LoadLocalAddress(locals.localReadonOnlySpan);
+                            method.LoadLocal(locals.uint32A);
                             method.Call(typeof(ReadOnlySpan<byte>).GetMethod("get_Item"));
                             method.LoadIndirect<byte>();
                             method.Convert<uint>();
-                            method.StoreLocal(uint32A);
+                            method.StoreLocal(locals.uint32A);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.LoadLocal(uint32A);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.LoadLocal(locals.uint32A);
                             method.CallSetter(Word.SetUInt0, BitConverter.IsLittleEndian);
                             method.Branch(endOfInstructionImpl);
 
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.MarkLabel(endOfInstructionImpl);
                         }
                         break;
@@ -1543,55 +1649,55 @@ internal static class ILCompiler
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256C);
+                            method.StoreLocal(locals.uint256C);
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadLocalAddress(uint256C);
-                            method.LoadLocalAddress(lbool);
+                            method.LoadLocal(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256C);
+                            method.LoadLocalAddress(locals.lbool);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
                             method.LoadConstant(GasCostOf.Memory);
                             method.Multiply();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256C);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(MACHINE_CODE_INDEX);
-                            method.StoreLocal(localReadOnlyMemory);
+                            envLoader.LoadMachineCode(method, locals);
+                            method.StoreLocal(locals.localReadOnlyMemory);
 
-                            method.LoadLocal(localReadOnlyMemory);
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocal(locals.localReadOnlyMemory);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                             method.Convert<int>();
                             method.LoadConstant((int)PadDirection.Right);
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
-                            method.StoreLocal(localZeroPaddedSpan);
+                            method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(localZeroPaddedSpan);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
 
                             method.MarkLabel(endOfOpcode);
@@ -1599,15 +1705,15 @@ internal static class ILCompiler
                         break;
                     case Instruction.GAS:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadLocal(gasAvailable);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.LoadLocal(locals.gasAvailable);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         }
                         break;
                     case Instruction.RETURNDATASIZE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_RESULT_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadResult(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
@@ -1619,66 +1725,66 @@ internal static class ILCompiler
                             using Local tempResult = method.DeclareLocal(typeof(UInt256));
 
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StoreLocal(locals.uint256B);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256C);
+                            method.StoreLocal(locals.uint256C);
 
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.LoadLocalAddress(tempResult);
                             method.Call(typeof(UInt256).GetMethod(nameof(UInt256.AddOverflow)));
                             method.LoadLocalAddress(tempResult);
-                            method.LoadRefArgument(REF_RESULT_INDEX, typeof(ILChunkExecutionState));
+                            envLoader.LoadResult(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
                             method.Call(typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Length)).GetMethod!);
                             method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
                             method.Or();
                             method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.AccessViolation));
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadLocalAddress(uint256C);
-                            method.LoadLocalAddress(lbool);
+                            method.LoadLocal(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256C);
+                            method.LoadLocalAddress(locals.lbool);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
                             method.LoadConstant(GasCostOf.Memory);
                             method.Multiply();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             // Note : check if c + b > returnData.Size
 
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256C);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(REF_RESULT_INDEX);
+                            envLoader.LoadResult(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
                             method.LoadObject(typeof(ReadOnlyMemory<byte>));
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(MethodInfo<UInt256>("op_Explicit", typeof(Int32), new[] { typeof(UInt256).MakeByRefType() }));
                             method.LoadConstant((int)PadDirection.Right);
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
-                            method.StoreLocal(localZeroPaddedSpan);
+                            method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(localZeroPaddedSpan);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
 
                             method.MarkLabel(endOfOpcode);
@@ -1686,29 +1792,29 @@ internal static class ILCompiler
                         break;
                     case Instruction.RETURN or Instruction.REVERT:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256B);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadRefArgument(REF_RESULT_INDEX, typeof(ILChunkExecutionState));
+                            envLoader.LoadResultByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256B);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                             method.StoreObject<ReadOnlyMemory<byte>>();
 
-                            method.LoadArgument(REF_RESULT_INDEX);
+                            envLoader.LoadResult(method, locals);
                             method.LoadConstant(true);
                             switch (op.Operation)
                             {
@@ -1724,8 +1830,8 @@ internal static class ILCompiler
                         break;
                     case Instruction.BASEFEE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
@@ -1735,8 +1841,8 @@ internal static class ILCompiler
                     case Instruction.BLOBBASEFEE:
                         {
                             using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?));
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
                             method.StoreLocal(uint256Nullable);
                             method.LoadLocalAddress(uint256Nullable);
@@ -1748,9 +1854,9 @@ internal static class ILCompiler
                         {
                             Label isPostMergeBranch = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
 
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Duplicate();
@@ -1775,7 +1881,7 @@ internal static class ILCompiler
                             Label endOfOpcode = method.DefineLabel();
                             using Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
 
-                            method.LoadArgument(REF_TXCTX_INDEX);
+                            envLoader.LoadTxContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
                             method.StoreLocal(byteMatrix);
 
@@ -1783,31 +1889,31 @@ internal static class ILCompiler
                             method.LoadNull();
                             method.BranchIfEqual(blobVersionedHashNotFound);
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocal(byteMatrix);
                             method.Call(GetPropertyInfo(typeof(byte[][]), nameof(Array.Length), false, out _));
                             method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
                             method.BranchIfFalse(indexTooLarge);
 
                             method.LoadLocal(byteMatrix);
-                            method.LoadLocal(uint256A);
+                            method.LoadLocal(locals.uint256A);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                             method.Convert<int>();
                             method.LoadElement<Byte[]>();
-                            method.StoreLocal(localArray);
+                            method.StoreLocal(locals.localArray);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadLocal(localArray);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.LoadLocal(locals.localArray);
                             method.Call(Word.SetArray);
                             method.Branch(endOfOpcode);
 
                             method.MarkLabel(blobVersionedHashNotFound);
                             method.MarkLabel(indexTooLarge);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.MarkLabel(endOfOpcode);
                         }
                         break;
@@ -1816,28 +1922,28 @@ internal static class ILCompiler
                             Label blockHashReturnedNull = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
-                            method.StoreLocal(int64A);
+                            method.StoreLocal(locals.int64A);
 
-                            method.LoadArgument(BLOCKHASH_PROVIDER_INDEX);
-                            method.LoadArgument(REF_BLKCTX_INDEX);
+                            envLoader.LoadBlockhashProvider(method, locals);
+                            envLoader.LoadBlockContext(method, locals);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
-                            method.LoadLocalAddress(int64A);
+                            method.LoadLocalAddress(locals.int64A);
                             method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
                             method.Duplicate();
-                            method.StoreLocal(hash256);
+                            method.StoreLocal(locals.hash256);
                             method.LoadNull();
                             method.BranchIfEqual(blockHashReturnedNull);
 
                             // not equal
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadLocal(hash256);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.LoadLocal(locals.hash256);
                             method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
                             method.Call(Word.SetReadOnlySpan);
@@ -1845,7 +1951,7 @@ internal static class ILCompiler
                             // equal to null
 
                             method.MarkLabel(blockHashReturnedNull);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
 
                             method.MarkLabel(endOfOpcode);
                         }
@@ -1857,28 +1963,28 @@ internal static class ILCompiler
                             Label argumentGt32 = method.DefineLabel();
                             using Local wordSpan = method.DeclareLocal(typeof(Span<byte>));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Duplicate();
                             method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
-                            method.StoreLocal(uint32A);
+                            method.StoreLocal(locals.uint32A);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(32);
                             method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
                             method.BranchIfFalse(argumentGt32);
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetMutableSpan);
                             method.StoreLocal(wordSpan);
 
                             method.LoadConstant((uint)31);
-                            method.LoadLocal(uint32A);
+                            method.LoadLocal(locals.uint32A);
                             method.Subtract();
-                            method.StoreLocal(uint32A);
+                            method.StoreLocal(locals.uint32A);
 
-                            method.LoadItemFromSpan<ExecuteSegment, byte>(wordSpan, uint32A);
+                            method.LoadItemFromSpan<ExecuteSegment, byte>(wordSpan, locals.uint32A);
                             method.LoadIndirect<byte>();
                             method.Convert<sbyte>();
                             method.LoadConstant((sbyte)0);
@@ -1892,14 +1998,14 @@ internal static class ILCompiler
 
                             method.MarkLabel(endOfOpcodeHandling);
                             method.LoadConstant(0);
-                            method.LoadLocal(uint32A);
+                            method.LoadLocal(locals.uint32A);
                             method.EmitAsSpan();
-                            method.StoreLocal(localSpan);
+                            method.StoreLocal(locals.localSpan);
 
-                            method.LoadLocalAddress(localSpan);
+                            method.LoadLocalAddress(locals.localSpan);
                             method.LoadLocalAddress(wordSpan);
                             method.LoadConstant(0);
-                            method.LoadLocal(uint32A);
+                            method.LoadLocal(locals.uint32A);
                             method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.Slice), [typeof(int), typeof(int)]));
                             method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
 
@@ -1914,77 +2020,77 @@ internal static class ILCompiler
                         {
                             sbyte topicsCount = (sbyte)(op.Operation - Instruction.LOG0);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
+                            envLoader.LoadVmStateByRef(method, locals);
                             method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                             method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
 
-                            EmitLogMethod(method, (stackHeadRef, stackHeadIdx, segmentMetadata.StackOffsets[i]), topicsCount, evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
+                            EmitLogMethod(method, envLoader, locals, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), topicsCount, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.int64A, locals.gasAvailable, locals.hash256, locals.localReadOnlyMemory);
                         }
                         break;
                     case Instruction.TSTORE:
                         {
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
+                            envLoader.LoadVmStateByRef(method, locals);
                             method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                             method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetArray);
-                            method.StoreLocal(localArray);
+                            method.StoreLocal(locals.localArray);
 
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
-                            method.StoreLocal(storageCell);
+                            method.StoreLocal(locals.storageCell);
 
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocalAddress(storageCell);
-                            method.LoadLocal(localArray);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocalAddress(locals.storageCell);
+                            method.LoadLocal(locals.localArray);
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
                         }
                         break;
                     case Instruction.TLOAD:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
-                            method.StoreLocal(storageCell);
+                            method.StoreLocal(locals.storageCell);
 
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocalAddress(storageCell);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocalAddress(locals.storageCell);
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
-                            method.StoreLocal(localReadonOnlySpan);
+                            method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadLocal(localReadonOnlySpan);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.LoadLocal(locals.localReadonOnlySpan);
                             method.Call(Word.SetReadOnlySpan);
                         }
                         break;
                     case Instruction.SSTORE:
                         {
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetReadOnlySpan);
-                            method.StoreLocal(localReadonOnlySpan);
+                            method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(localReadonOnlySpan);
-                            method.LoadArgument(SPEC_INDEX);
-                            method.LoadArgument(TXTRACER_INDEX);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.localReadonOnlySpan);
+                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadTxTracer(method, locals);
 
                             MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
                                         .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
@@ -2002,7 +2108,7 @@ internal static class ILCompiler
                             {
                                 Label callNonTracingMode = method.DefineLabel();
                                 Label skipBeyondCalls = method.DefineLabel();
-                                method.LoadArgument(TXTRACER_INDEX);
+                                envLoader.LoadTxTracer(method, locals);
                                 method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
                                 method.BranchIfFalse(callNonTracingMode);
                                 method.Call(tracingSStoreMethod);
@@ -2014,16 +2120,16 @@ internal static class ILCompiler
 
                             Label endOfOpcode = method.DefineLabel();
                             method.Duplicate();
-                            method.StoreLocal(uint32A);
+                            method.StoreLocal(locals.uint32A);
                             method.LoadConstant((int)EvmExceptionType.None);
                             method.BranchIfEqual(endOfOpcode);
 
-                            method.LoadArgument(REF_RESULT_INDEX);
-                            method.LoadLocal(uint32A);
+                            envLoader.LoadResult(method, locals);
+                            method.LoadLocal(locals.uint32A);
                             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
 
-                            method.LoadArgument(GAS_AVAILABLE_INDEX);
-                            method.LoadLocal(gasAvailable);
+                            envLoader.LoadGasAvailable(method, locals);
+                            method.LoadLocal(locals.gasAvailable);
                             method.StoreIndirect<long>();
                             method.Branch(exit);
 
@@ -2032,80 +2138,80 @@ internal static class ILCompiler
                         break;
                     case Instruction.SLOAD:
                         {
-                            method.LoadLocal(gasAvailable);
-                            method.LoadArgument(SPEC_INDEX);
+                            method.LoadLocal(locals.gasAvailable);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetSLoadCost)));
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
+                            method.StoreLocal(locals.uint256A);
 
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
-                            method.LoadLocalAddress(uint256A);
+                            method.LoadLocalAddress(locals.uint256A);
                             method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
-                            method.StoreLocal(storageCell);
+                            method.StoreLocal(locals.storageCell);
 
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(storageCell);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.storageCell);
                             method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.StorageAccessType.SLOAD);
-                            method.LoadArgument(SPEC_INDEX);
-                            method.LoadArgument(TXTRACER_INDEX);
+                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadTxTracer(method, locals);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocalAddress(storageCell);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocalAddress(locals.storageCell);
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
-                            method.StoreLocal(localReadonOnlySpan);
+                            method.StoreLocal(locals.localReadonOnlySpan);
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadLocal(localReadonOnlySpan);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.LoadLocal(locals.localReadonOnlySpan);
                             method.Call(Word.SetReadOnlySpan);
                         }
                         break;
                     case Instruction.EXTCODESIZE:
                         {
-                            method.LoadLocal(gasAvailable);
-                            method.LoadArgument(SPEC_INDEX);
+                            method.LoadLocal(locals.gasAvailable);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetAddress);
-                            method.StoreLocal(address);
+                            method.StoreLocal(locals.address);
 
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocal(address);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocal(locals.address);
                             method.LoadConstant(true);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadArgument(SPEC_INDEX);
-                            method.LoadArgument(TXTRACER_INDEX);
+                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadTxTracer(method, locals);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
 
-                            method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
-                            method.LoadArgument(SPEC_INDEX);
+                            envLoader.LoadCodeInfoRepository(method, locals);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
-                            method.StoreLocal(localReadOnlyMemory);
-                            method.LoadLocalAddress(localReadOnlyMemory);
+                            method.StoreLocal(locals.localReadOnlyMemory);
+                            method.LoadLocalAddress(locals.localReadOnlyMemory);
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
 
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
@@ -2115,75 +2221,75 @@ internal static class ILCompiler
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 4);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 4);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256C);
+                            method.StoreLocal(locals.uint256C);
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadArgument(SPEC_INDEX);
+                            method.LoadLocal(locals.gasAvailable);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
-                            method.LoadLocalAddress(uint256C);
-                            method.LoadLocalAddress(lbool);
+                            method.LoadLocalAddress(locals.uint256C);
+                            method.LoadLocalAddress(locals.lbool);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
                             method.LoadConstant(GasCostOf.Memory);
                             method.Multiply();
                             method.Add();
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetAddress);
-                            method.StoreLocal(address);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 2);
+                            method.StoreLocal(locals.address);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256A);
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 3);
+                            method.StoreLocal(locals.uint256A);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 3);
                             method.Call(Word.GetUInt256);
-                            method.StoreLocal(uint256B);
+                            method.StoreLocal(locals.uint256B);
 
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocal(address);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocal(locals.address);
                             method.LoadConstant(true);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadArgument(SPEC_INDEX);
-                            method.LoadArgument(TXTRACER_INDEX);
+                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadTxTracer(method, locals);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadLocalAddress(uint256C);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(uint256C);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
-                            method.LoadArgument(SPEC_INDEX);
+                            envLoader.LoadCodeInfoRepository(method, locals);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 
-                            method.LoadLocalAddress(uint256B);
-                            method.LoadLocal(uint256C);
+                            method.LoadLocalAddress(locals.uint256B);
+                            method.LoadLocal(locals.uint256C);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                             method.Convert<int>();
                             method.LoadConstant((int)PadDirection.Right);
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
-                            method.StoreLocal(localZeroPaddedSpan);
+                            method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            method.LoadArgument(REF_MEMORY_INDEX);
-                            method.LoadLocalAddress(uint256A);
-                            method.LoadLocalAddress(localZeroPaddedSpan);
+                            envLoader.LoadMemory(method, locals);
+                            method.LoadLocalAddress(locals.uint256A);
+                            method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
 
                             method.MarkLabel(endOfOpcode);
@@ -2193,26 +2299,26 @@ internal static class ILCompiler
                         {
                             Label endOfOpcode = method.DefineLabel();
 
-                            method.LoadLocal(gasAvailable);
-                            method.LoadArgument(SPEC_INDEX);
+                            method.LoadLocal(locals.gasAvailable);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetAddress);
-                            method.StoreLocal(address);
+                            method.StoreLocal(locals.address);
 
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocal(address);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocal(locals.address);
                             method.LoadConstant(true);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadArgument(SPEC_INDEX);
-                            method.LoadArgument(TXTRACER_INDEX);
+                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadTxTracer(method, locals);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -2221,55 +2327,55 @@ internal static class ILCompiler
                             Label pushhashcodeLabel = method.DefineLabel();
 
                             // account exists
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
                             method.BranchIfFalse(pushZeroLabel);
 
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
                             method.BranchIfTrue(pushZeroLabel);
 
                             using Local delegateAddress = method.DeclareLocal<Address>();
-                            method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
+                            envLoader.LoadCodeInfoRepository(method, locals);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
                             method.LoadLocalAddress(delegateAddress);
                             method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.TryGetDelegation), [typeof(IWorldState), typeof(Address), typeof(Address).MakeByRefType()]));
                             method.BranchIfFalse(pushhashcodeLabel);
 
-                            method.LoadArgument(WORLD_STATE_INDEX);
+                            envLoader.LoadWorldState(method, locals);
                             method.LoadLocal(delegateAddress);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
                             method.BranchIfFalse(pushZeroLabel);
 
-                            method.LoadArgument(WORLD_STATE_INDEX);
+                            envLoader.LoadWorldState(method, locals);
                             method.LoadLocal(delegateAddress);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
                             method.BranchIfTrue(pushZeroLabel);
 
                             method.MarkLabel(pushhashcodeLabel);
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            envLoader.LoadCodeInfoRepository(method, locals);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
                             method.Call(Word.SetKeccak);
                             method.Branch(endOfOpcode);
 
                             // Push 0
                             method.MarkLabel(pushZeroLabel);
-                            method.CleanWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
 
                             method.MarkLabel(endOfOpcode);
                         }
                         break;
                     case Instruction.SELFBALANCE:
                         {
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadRefArgument(REF_ENV_INDEX, typeof(ExecutionEnvironment));
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
+                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadEnvByRef(method, locals);
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                             method.Call(Word.SetUInt256);
@@ -2277,33 +2383,33 @@ internal static class ILCompiler
                         break;
                     case Instruction.BALANCE:
                         {
-                            method.LoadLocal(gasAvailable);
-                            method.LoadArgument(SPEC_INDEX);
+                            method.LoadLocal(locals.gasAvailable);
+                            envLoader.LoadSpec(method, locals);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
                             method.Subtract();
                             method.Duplicate();
-                            method.StoreLocal(gasAvailable);
+                            method.StoreLocal(locals.gasAvailable);
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.StackLoadPrevious(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetAddress);
-                            method.StoreLocal(address);
+                            method.StoreLocal(locals.address);
 
-                            method.LoadLocalAddress(gasAvailable);
-                            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
-                            method.LoadLocal(address);
+                            method.LoadLocalAddress(locals.gasAvailable);
+                            envLoader.LoadVmStateByRef(method, locals);
+                            method.LoadLocal(locals.address);
                             method.LoadConstant(false);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadArgument(SPEC_INDEX);
-                            method.LoadArgument(TXTRACER_INDEX);
+                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadTxTracer(method, locals);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            method.CleanAndLoadWord(stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.LoadArgument(WORLD_STATE_INDEX);
-                            method.LoadLocal(address);
+                            method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                            envLoader.LoadWorldState(method, locals);
+                            method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                             method.Call(Word.SetUInt256);
                         }
@@ -2318,12 +2424,12 @@ internal static class ILCompiler
 
                 if (bakeInTracerCalls)
                 {
-                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, stackHeadRef, stackHeadIdx, op);
-                    EmitCallToEndInstructionTrace(method, gasAvailable);
+                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
                 }
                 else
                 {
-                    UpdateStackHeadAndPushRerSegmentMode(method, stackHeadRef, stackHeadIdx, i, currentSegment);
+                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
                 }
             }
 
@@ -2334,22 +2440,22 @@ internal static class ILCompiler
             // prepare ILEvmState
             // check if returnState is null
             method.MarkLabel(ret);
-            // we get stackHeadRef size
-            method.LoadArgument(STACK_HEAD_INDEX);
-            method.LoadLocal(stackHeadIdx);
+            // we get locals.stackHeadRef size
+            envLoader.LoadStackHead(method, locals);
+            method.LoadLocal(locals.stackHeadIdx);
             method.StoreIndirect<int>();
 
             // set gas available
-            method.LoadArgument(GAS_AVAILABLE_INDEX);
-            method.LoadLocal(gasAvailable);
+            envLoader.LoadGasAvailable(method, locals);
+            method.LoadLocal(locals.gasAvailable);
             method.StoreIndirect<long>();
 
             // set program counter
             method.LoadLocal(isEphemeralJump);
             method.BranchIfTrue(skipProgramCounterSetting);
 
-            method.LoadArgument(PROGRAM_COUNTER_INDEX);
-            method.LoadLocal(programCounter);
+            envLoader.LoadProgramCounter(method, locals);
+            method.LoadLocal(locals.programCounter);
             method.LoadConstant(1);
             method.Add();
             method.StoreIndirect<int>();
@@ -2362,54 +2468,40 @@ internal static class ILCompiler
 
             // isContinuation
             method.MarkLabel(isContinuation);
-            method.LoadLocal(programCounter);
-            method.StoreLocal(jmpDestination);
-            method.LoadArgument(REF_RESULT_INDEX);
+            method.LoadLocal(locals.programCounter);
+            method.StoreLocal(locals.jmpDestination);
+            envLoader.LoadResult(method, locals);
             method.LoadConstant(false);
             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldJump)));
             method.Branch(jumpIsLocal);
 
             // jump table
             method.MarkLabel(jumpTable);
-            method.LoadLocal(wordRef256A);
+            method.LoadLocal(locals.wordRef256A);
 
             method.Duplicate();
             method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
-            method.StoreLocal(jmpDestination);
+            method.StoreLocal(locals.jmpDestination);
 
             method.Call(Word.GetIsUint16);
             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
             // if (jumpDest <= maxJump)
-            method.LoadLocal(jmpDestination);
+            method.LoadLocal(locals.jmpDestination);
             method.LoadConstant(segmentMetadata.Boundaries.End.Value);
             method.BranchIfGreater(jumpIsNotLocal);
 
             // if (jumpDest >= minJump)
-            method.LoadLocal(jmpDestination);
+            method.LoadLocal(locals.jmpDestination);
             method.LoadConstant(segmentMetadata.Boundaries.Start.Value);
             method.BranchIfLess(jumpIsNotLocal);
 
-            method.Branch(jumpIsLocal);
-
-            method.MarkLabel(jumpIsNotLocal);
-            method.LoadArgument(REF_RESULT_INDEX);
-            method.LoadConstant(true);
-            method.Duplicate();
-            method.StoreLocal(isEphemeralJump);
-            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldJump)));
-            method.LoadArgument(PROGRAM_COUNTER_INDEX);
-            method.LoadLocal(jmpDestination);
-            method.StoreIndirect<int>();
-            method.Branch(ret);
-
             method.MarkLabel(jumpIsLocal);
-
             if (jumpDestinations.Count < 64)
             {
                 foreach (KeyValuePair<int, Label> jumpdest in jumpDestinations)
                 {
-                    method.LoadLocal(jmpDestination);
+                    method.LoadLocal(locals.jmpDestination);
                     method.LoadConstant(jumpdest.Key);
                     method.BranchIfEqual(jumpdest.Value);
                 }
@@ -2417,18 +2509,31 @@ internal static class ILCompiler
             }
             else
             {
-                method.FindCorrectBranchAndJump(jmpDestination, jumpDestinations, evmExceptionLabels);
+                method.FindCorrectBranchAndJump(locals.jmpDestination, jumpDestinations, evmExceptionLabels);
             }
+
+            method.MarkLabel(jumpIsNotLocal);
+            envLoader.LoadResult(method, locals);
+            method.LoadConstant(true);
+            method.Duplicate();
+            method.StoreLocal(isEphemeralJump);
+            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldJump)));
+
+            envLoader.LoadProgramCounter(method, locals);
+            method.LoadLocal(locals.jmpDestination);
+            method.StoreIndirect<int>();
+            method.Branch(ret);
+
 
             foreach (KeyValuePair<EvmExceptionType, Label> kvp in evmExceptionLabels)
             {
                 method.MarkLabel(kvp.Value);
                 if (bakeInTracerCalls)
                 {
-                    EmitCallToErrorTrace(method, gasAvailable, kvp);
+                    EmitCallToErrorTrace(method, locals.gasAvailable, kvp, envLoader, locals);
                 }
 
-                method.LoadArgument(REF_RESULT_INDEX);
+                envLoader.LoadResult(method, locals);
                 method.LoadConstant((int)kvp.Key);
                 method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
                 method.Branch(exit);
@@ -2460,45 +2565,45 @@ internal static class ILCompiler
             method.StackSetHead(stackHeadRef, delta);
         }
 
-        private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
+        private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, PartialAotEnvLoader envLoader, Locals<ExecuteSegment> locals)
         {
             Label skipTracing = method.DefineLabel();
-            method.LoadArgument(TXTRACER_INDEX);
+            envLoader.LoadTxTracer(method, locals);
             method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
             method.BranchIfFalse(skipTracing);
 
-            method.LoadArgument(TXTRACER_INDEX);
+            envLoader.LoadTxTracer(method, locals);
             method.LoadLocal(gasAvailable);
             method.LoadConstant((int)kvp.Key);
             method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
 
             method.MarkLabel(skipTracing);
         }
-        private static void EmitCallToEndInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable)
+        private static void EmitCallToEndInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, PartialAotEnvLoader envLoader, Locals<ExecuteSegment> locals)
         {
             Label skipTracing = method.DefineLabel();
-            method.LoadArgument(TXTRACER_INDEX);
+            envLoader.LoadTxTracer(method, locals);
             method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
             method.BranchIfFalse(skipTracing);
 
-            method.LoadArgument(TXTRACER_INDEX);
+            envLoader.LoadTxTracer(method, locals);
             method.LoadLocal(gasAvailable);
-            method.LoadArgument(REF_MEMORY_INDEX);
+            envLoader.LoadMemory(method, locals);
             method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
             method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
 
             method.MarkLabel(skipTracing);
         }
-        private static void EmitCallToStartInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, Local head, OpcodeInfo op)
+        private static void EmitCallToStartInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, Local head, OpcodeInfo op, PartialAotEnvLoader envLoader, Locals<ExecuteSegment> locals)
         {
             Label skipTracing = method.DefineLabel();
-            method.LoadArgument(TXTRACER_INDEX);
+            envLoader.LoadTxTracer(method, locals);
             method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
             method.BranchIfFalse(skipTracing);
 
-            method.LoadArgument(TXTRACER_INDEX);
+            envLoader.LoadTxTracer(method, locals);
             method.LoadConstant((int)op.Operation);
-            method.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
+            envLoader.LoadVmStateByRef(method, locals);
             method.LoadLocal(gasAvailable);
             method.LoadConstant(op.ProgramCounter);
             method.LoadLocal(head);
@@ -2513,7 +2618,7 @@ internal static class ILCompiler
             Label endOfOpcode = il.DefineLabel();
 
             // Note: Use Vector256 directoly if UInt256 does not use it internally
-            // we the two uint256 from the stackHeadRef
+            // we the two uint256 from the locals.stackHeadRef
             Local shiftBit = il.DeclareLocal<uint>();
 
             il.StackLoadPrevious(stack.headRef, stack.offset, 1);
@@ -2558,7 +2663,7 @@ internal static class ILCompiler
             Label endOfOpcode = il.DefineLabel();
 
             // Note: Use Vector256 directoly if UInt256 does not use it internally
-            // we the two uint256 from the stackHeadRef
+            // we the two uint256 from the locals.stackHeadRef
             il.StackLoadPrevious(stack.headRef, stack.offset, 1);
             il.Call(Word.GetUInt256);
             il.StoreLocal(locals[0]);
@@ -2766,7 +2871,7 @@ internal static class ILCompiler
         {
             Label label = il.DefineLabel();
 
-            // we the two uint256 from the stackHeadRef
+            // we the two uint256 from the locals.stackHeadRef
             il.StackLoadPrevious(stack.headRef, stack.offset, 1);
             il.Call(Word.GetUInt256);
             il.StoreLocal(locals[0]);
@@ -2797,7 +2902,7 @@ internal static class ILCompiler
         }
 
         private static void EmitLogMethod<T>(
-            Emit<T> il,
+            Emit<T> il, EnvLoader<T> envLoader, Locals<T> locals,
             (Local headRef, Local headIdx, int offset) stack,
             sbyte topicsCount,
             Dictionary<EvmExceptionType, Label> exceptions,
@@ -2813,7 +2918,9 @@ internal static class ILCompiler
             il.Call(Word.GetUInt256);
             il.StoreLocal(uint256Length); // length
                                           // UpdateMemoryCost
-            il.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
+            envLoader.LoadVmState(il, locals);
+            il.LoadIndirect(typeof(EvmState));
+
             il.LoadLocalAddress(gasAvailable);
             il.LoadLocalAddress(uint256Position); // position
             il.LoadLocalAddress(uint256Length); // length
@@ -2824,7 +2931,7 @@ internal static class ILCompiler
             );
             il.BranchIfFalse(il.AddExceptionLabel(exceptions, EvmExceptionType.OutOfGas));
 
-            // update gasAvailable
+            // update locals.gasAvailable
             il.LoadLocal(gasAvailable);
             il.LoadConstant(topicsCount * GasCostOf.LogTopic);
             il.Convert<ulong>();
@@ -2836,11 +2943,11 @@ internal static class ILCompiler
             il.Add();
             il.Subtract();
             il.Duplicate();
-            il.StoreLocal(gasAvailable); // gasAvailable -= gasCost
+            il.StoreLocal(gasAvailable); // locals.gasAvailable -= gasCost
             il.LoadConstant((ulong)0);
             il.BranchIfLess(il.AddExceptionLabel(exceptions, EvmExceptionType.OutOfGas));
 
-            il.LoadArgument(REF_ENV_INDEX);
+            envLoader.LoadEnv(il, locals);
             il.LoadField(
                 GetFieldInfo(
                     typeof(ExecutionEnvironment),
@@ -2848,7 +2955,7 @@ internal static class ILCompiler
                 )
             );
 
-            il.LoadArgument(REF_MEMORY_INDEX);
+            envLoader.LoadMemory(il, locals);
             il.LoadLocalAddress(uint256Position); // position
             il.LoadLocalAddress(uint256Length); // length
             il.Call(
@@ -2881,7 +2988,9 @@ internal static class ILCompiler
             il.NewObject(typeof(LogEntry), typeof(Address), typeof(byte[]), typeof(Hash256[]));
             il.StoreLocal(logEntry);
 
-            il.LoadRefArgument(REF_VMSTATE_INDEX, typeof(EvmState));
+            envLoader.LoadVmState(il, locals);
+            il.LoadIndirect(typeof(EvmState));
+
             il.LoadFieldAddress(typeof(EvmState).GetField("_accessTracker", BindingFlags.Instance | BindingFlags.NonPublic));
             il.CallVirtual(GetPropertyInfo(typeof(StackAccessTracker), nameof(StackAccessTracker.Logs), getSetter: false, out _));
             il.LoadLocal(logEntry);

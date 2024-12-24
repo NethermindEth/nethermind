@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Int256;
@@ -19,8 +20,99 @@ using System.Runtime.CompilerServices;
 using static Nethermind.Evm.IL.EmitExtensions;
 
 namespace Nethermind.Evm.IL;
+public abstract class EnvLoader<T>
+{
+    public abstract void LoadChainId(Emit<T> il, Locals<T> locals);
+    public abstract void LoadVmState(Emit<T> il, Locals<T> locals);
+    public abstract void LoadEnv(Emit<T> il, Locals<T> locals);
+    public abstract void LoadTxContext(Emit<T> il, Locals<T> locals);
+    public abstract void LoadBlockContext(Emit<T> il, Locals<T> locals);
+    public abstract void LoadMemory(Emit<T> il, Locals<T> locals);
+    public abstract void LoadCurrStackHead(Emit<T> il, Locals<T> locals);
+    public abstract void LoadStackHead(Emit<T> il, Locals<T> locals);
+    public abstract void LoadBlockhashProvider(Emit<T> il, Locals<T> locals);
+    public abstract void LoadWorldState(Emit<T> il, Locals<T> locals);
+    public abstract void LoadCodeInfoRepository(Emit<T> il, Locals<T> locals);
+    public abstract void LoadSpec(Emit<T> il, Locals<T> locals);
+    public abstract void LoadTxTracer(Emit<T> il, Locals<T> locals);
+    public abstract void LoadProgramCounter(Emit<T> il, Locals<T> locals);
+    public abstract void LoadGasAvailable(Emit<T> il, Locals<T> locals);
+    public abstract void LoadMachineCode(Emit<T> il, Locals<T> locals);
+    public abstract void LoadCalldata(Emit<T> il, Locals<T> locals);
+    public abstract void LoadImmediatesData(Emit<T> il, Locals<T> locals);
+    public abstract void LoadResult(Emit<T> il, Locals<T> locals);
+}
+public class Locals<T>(Emit<T> method) : IDisposable
+{
+    public Local jmpDestination = method.DeclareLocal(typeof(int));
+    public Local address = method.DeclareLocal(typeof(Address));
+    public Local hash256 = method.DeclareLocal(typeof(Hash256));
+    public Local wordRef256A = method.DeclareLocal(typeof(Word).MakeByRefType());
+    public Local wordRef256B = method.DeclareLocal(typeof(Word).MakeByRefType());
+    public Local wordRef256C = method.DeclareLocal(typeof(Word).MakeByRefType());
+    public Local uint256A = method.DeclareLocal(typeof(UInt256));
+    public Local uint256B = method.DeclareLocal(typeof(UInt256));
+    public Local uint256C = method.DeclareLocal(typeof(UInt256));
+    public Local uint256R = method.DeclareLocal(typeof(UInt256));
+    public Local localReadOnlyMemory = method.DeclareLocal(typeof(ReadOnlyMemory<byte>));
+    public Local localReadonOnlySpan = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
+    public Local localZeroPaddedSpan = method.DeclareLocal(typeof(ZeroPaddedSpan));
+    public Local localSpan = method.DeclareLocal(typeof(Span<byte>));
+    public Local localMemory = method.DeclareLocal(typeof(Memory<byte>));
+    public Local localArray = method.DeclareLocal(typeof(byte[]));
+    public Local uint64A = method.DeclareLocal(typeof(ulong));
+    public Local uint32A = method.DeclareLocal(typeof(uint));
+    public Local uint32B = method.DeclareLocal(typeof(uint));
+    public Local int64A = method.DeclareLocal(typeof(long));
+    public Local int64B = method.DeclareLocal(typeof(long));
+    public Local byte8A = method.DeclareLocal(typeof(byte));
+    public Local lbool = method.DeclareLocal(typeof(bool));
+    public Local byte8B = method.DeclareLocal(typeof(byte));
+    public Local storageCell = method.DeclareLocal(typeof(StorageCell));
+    public Local gasAvailable = method.DeclareLocal(typeof(long));
+    public Local programCounter = method.DeclareLocal(typeof(int));
+    public Local stackHeadRef = method.DeclareLocal(typeof(Word).MakeByRefType());
+    public Local stackHeadIdx = method.DeclareLocal(typeof(int));
+    public Local header = method.DeclareLocal(typeof(BlockHeader));
+
+    public void Dispose()
+    {
+        jmpDestination.Dispose();
+        address.Dispose();
+        hash256.Dispose();
+        wordRef256A.Dispose();
+        wordRef256B.Dispose();
+        wordRef256C.Dispose();
+        uint256A.Dispose();
+        uint256B.Dispose();
+        uint256C.Dispose();
+        uint256R.Dispose();
+        localReadOnlyMemory.Dispose();
+        localReadonOnlySpan.Dispose();
+        localZeroPaddedSpan.Dispose();
+        localSpan.Dispose();
+        localMemory.Dispose();
+        localArray.Dispose();
+        uint64A.Dispose();
+        uint32A.Dispose();
+        uint32B.Dispose();
+        int64A.Dispose();
+        int64B.Dispose();
+        byte8A.Dispose();
+        lbool.Dispose();
+        byte8B.Dispose();
+        storageCell.Dispose();
+        gasAvailable.Dispose();
+        programCounter.Dispose();
+        stackHeadRef.Dispose();
+        stackHeadIdx.Dispose();
+        header.Dispose();
+    }
+
+}
 public static class TypeEmit
 {
+    public static string MangleName(string cleanName) => $"<{cleanName}>k__BackingField<ilevm>";
     public static FieldBuilder EmitField<TField>(this TypeBuilder typeBuilder, string fieldName, bool isPublic)
         where TField : allows ref struct
     {
@@ -33,7 +125,7 @@ public static class TypeEmit
     {
         if (field is null)
         {
-            field = typeBuilder.EmitField<TProperty>(PropertyName, isPublic: true);
+            field = typeBuilder.EmitField<TProperty>(MangleName(PropertyName), isPublic: true);
         }
 
         PropertyBuilder propertyBuilder = typeBuilder.DefineProperty(PropertyName, PropertyAttributes.None, typeof(ILChunkExecutionState), Type.EmptyTypes);
@@ -169,7 +261,8 @@ public static class WordEmit
         {
             MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneLittleEndian)).GetMethod;
             il.Call(methodInfo);
-        } else
+        }
+        else
         {
             MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsOneBigEndian)).GetMethod;
             il.Call(methodInfo);
@@ -200,7 +293,7 @@ public static class WordEmit
 
     public static void EmitIsZeroOrOneCheck<T>(this Emit<T> il, Local? word = null)
     {
-        if(word is not null)
+        if (word is not null)
         {
             il.LoadLocalAddress(word);
         }
@@ -307,7 +400,7 @@ public static class UnsafeEmit
 /// </summary>
 static class EmitExtensions
 {
-    
+
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
     public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
     public static MethodInfo ConvertionExplicit<TFrom, TTo>() => ConvertionExplicit(typeof(TFrom), typeof(TTo));
@@ -324,9 +417,6 @@ static class EmitExtensions
         propInfo = flags is null ? typeInstance.GetProperty(name) : typeInstance.GetProperty(name, flags.Value);
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
-
-    public static void LoadRefArgument<T, U>(this Emit<T> il, ushort index)
-        => il.LoadRefArgument(index, typeof(U));
 
     public static void LoadRefArgument<T>(this Emit<T> il, ushort index, Type targetType)
     {
@@ -363,7 +453,7 @@ static class EmitExtensions
         il.StoreLocal(local);
         il.Print(local);
     }
-    
+
 
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
@@ -533,7 +623,8 @@ static class EmitExtensions
 
     public static Sigil.Label AddExceptionLabel<T>(this Emit<T> il, Dictionary<EvmExceptionType, Sigil.Label> dict, EvmExceptionType evmExceptionType)
     {
-        if(!dict.ContainsKey(evmExceptionType)) {
+        if (!dict.ContainsKey(evmExceptionType))
+        {
             dict[evmExceptionType] = il.DefineLabel();
         }
         return dict[evmExceptionType];

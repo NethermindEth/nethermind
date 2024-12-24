@@ -60,7 +60,7 @@ internal struct Word
 
     public bool IsZero => (_ulong0 | _ulong1 | _ulong2 | _ulong3) == 0;
     public bool IsOneLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && _ulong0 == 1;
-    public bool IsOneBigEndian => (_ulong1 | _ulong2 | _ulong0 ) == 0 && _ulong3 == (1ul << 63);
+    public bool IsOneBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && _ulong3 == (1ul << 63);
     public bool IsMinusOne => _ulong1 == ulong.MaxValue || _ulong2 == ulong.MaxValue || _ulong3 == ulong.MaxValue && _ulong0 == ulong.MaxValue;
     public bool IsP255LittleEndian => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong3 == (1ul << 63));
     public bool IsP255BigEndian => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong0 == 1);
@@ -87,12 +87,12 @@ internal struct Word
 
         }
         ulong carry = 0;
-        if(AddWithCarry(_ulong0, 1, ref carry, out _ulong0))
-        if(AddWithCarry(_ulong1, carry, ref carry, out _ulong1))
-        if(AddWithCarry(_ulong2, carry, ref carry, out _ulong2))
-            AddWithCarry(_ulong3, carry, ref carry, out _ulong3);
+        if (AddWithCarry(_ulong0, 1, ref carry, out _ulong0))
+            if (AddWithCarry(_ulong1, carry, ref carry, out _ulong1))
+                if (AddWithCarry(_ulong2, carry, ref carry, out _ulong2))
+                    AddWithCarry(_ulong3, carry, ref carry, out _ulong3);
 
-        if(BitConverter.IsLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             _ulong0 = BinaryPrimitives.ReverseEndianness(_ulong0);
             _ulong1 = BinaryPrimitives.ReverseEndianness(_ulong1);
@@ -309,7 +309,7 @@ internal struct Word
         }
     }
 
-    public bool IsUint16 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0 && (BitConverter.IsLittleEndian ? (BinaryPrimitives.ReverseEndianness(_ulong0) <= ushort.MaxValue) : (_ulong0 <= ushort.MaxValue ));
+    public bool IsUint16 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0 && (BitConverter.IsLittleEndian ? (BinaryPrimitives.ReverseEndianness(_ulong0) <= ushort.MaxValue) : (_ulong0 <= ushort.MaxValue));
     public bool IsUint32 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0 && (BitConverter.IsLittleEndian ? (BinaryPrimitives.ReverseEndianness(_ulong0) <= uint.MaxValue) : (_ulong0 <= uint.MaxValue));
     public bool IsUint64 => _ulong1 == 0 && _ulong2 == 0 && _ulong3 == 0;
 

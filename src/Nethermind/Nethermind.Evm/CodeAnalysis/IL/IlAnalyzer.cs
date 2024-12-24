@@ -14,8 +14,8 @@ using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using IlevmMode = int;
 
-[assembly : InternalsVisibleTo("Nethermind.Evm.Tests")]
-[assembly : InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Tests")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 /// <summary>
@@ -33,7 +33,7 @@ public static class IlAnalyzer
     public static void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
     {
         _queue.Enqueue(new AnalysisWork(codeInfo, mode));
-        if(config.AnalysisQueueMaxSize <= _queue.Count)
+        if (config.AnalysisQueueMaxSize <= _queue.Count)
         {
             Task.Run(() => AnalyzeQueue(config, logger));
         }
@@ -207,7 +207,7 @@ public static class IlAnalyzer
             }
         }
 
-        if(startSegment < codeData.Item1.Length)
+        if (startSegment < codeData.Item1.Length)
         {
             segments.Add(AnalyzeSegment(codeData.Item1, startSegment..));
         }
@@ -326,7 +326,7 @@ public static class IlAnalyzer
                     subSegment.LeftOutStack = currentStackSize;
                     if (op.IsTerminating || op.IsJump || op.Operation is Instruction.GAS)
                     {
-                        if(op.Operation is not Instruction.GAS)
+                        if (op.Operation is not Instruction.GAS)
                         {
                             subSegment.Start = subsegmentStart;
                             subSegment.RequiredStack = -subSegment.RequiredStack;
@@ -345,7 +345,8 @@ public static class IlAnalyzer
                             hasInvalidOpcode = false;
                             costStart = pc + 1;             // start with the next again
                             coststack = 0;
-                        } else
+                        }
+                        else
                         {
                             subSegment.StaticGasSubSegmentes[costStart] = coststack; // remember the stackHeadRef chain of opcodes
                             costStart = pc + 1;             // start with the next again

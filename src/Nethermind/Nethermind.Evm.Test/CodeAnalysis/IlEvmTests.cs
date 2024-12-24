@@ -157,7 +157,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
             }
 
-            if(mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
+            if (mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
             {
                 IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             }
@@ -1928,8 +1928,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
 
-            var actual = standardChain.StateRoot;
-            var expected = enhancedChain.StateRoot;
+            var actual = enhancedChain.StateRoot;
+            var expected = standardChain.StateRoot;
 
             var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
             var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
@@ -2159,8 +2159,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
 
-            var actual = standardChain.StateRoot;
-            var expected = enhancedChain.StateRoot;
+            var actual = enhancedChain.StateRoot;
+            var expected = standardChain.StateRoot;
 
             var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
             var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
@@ -2237,8 +2237,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
 
-            var actual = standardChain.StateRoot;
-            var expected = enhancedChain.StateRoot;
+            var actual = enhancedChain.StateRoot;
+            var expected = standardChain.StateRoot;
 
             var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
             var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
@@ -2391,7 +2391,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
-           state.Dispose();
+            state.Dispose();
             Assert.That(iLChunkExecutionResult.ExceptionType == testcase.exceptionType);
         }
 
