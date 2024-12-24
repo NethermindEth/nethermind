@@ -40,7 +40,7 @@ public class RlpDerivedTest
     public void RecordWithList()
     {
         var player = new PlayerWithFriends(Id: 42, Username: "SuperUser", Friends: ["ana", "bob"]);
-        ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(player));
+        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithFriends player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithFriends());
         decoded.Should().BeEquivalentTo(player);
@@ -54,7 +54,7 @@ public class RlpDerivedTest
             { "foo", 42 },
             { "bar", 1337 }
         });
-        ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(player));
+        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithScores player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithScores());
         decoded.Should().BeEquivalentTo(player);
@@ -70,7 +70,7 @@ public class RlpDerivedTest
             new Tree("qux",
                 [new Tree("cat", [])])
         ]);
-        ReadOnlySpan<byte> rlp = Rlp.Write((ref RlpWriter w) => w.Write(tree));
+        ReadOnlySpan<byte> rlp = Rlp.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
         decoded.Should().BeEquivalentTo(tree);
