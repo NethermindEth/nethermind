@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
                 IReleaseSpec spec = _specProvider.GetSpec(b.Header);
                 var maxBlobGasPerBlob = spec.IsEip7840Enabled
-                    ? spec.MaxBlobCount
+                    ? spec.MaxBlobCount * Eip4844Constants.GasPerBlob
                     : Eip4844Constants.MaxBlobGasPerBlock;
 
                 return new(
