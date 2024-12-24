@@ -11,7 +11,7 @@ using Nethermind.State;
 namespace Nethermind.Taiko;
 
 public class TaikoReadOnlyTxProcessingEnv(
-  OverridableWorldStateManager worldStateManager,
+  IOverridableWorldScope worldStateManager,
   IReadOnlyBlockTree readOnlyBlockTree,
   ISpecProvider specProvider,
   ILogManager logManager) : OverridableTxProcessingEnv(

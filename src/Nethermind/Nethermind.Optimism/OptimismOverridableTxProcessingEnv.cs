@@ -13,7 +13,7 @@ using Nethermind.State;
 namespace Nethermind.Optimism;
 
 public class OptimismOverridableTxProcessingEnv(
-    OverridableWorldStateManager worldStateManager,
+    IOverridableWorldScope worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
     ILogManager logManager,

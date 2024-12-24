@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
-        public OverridableWorldStateManager OverridableWorldStateManager { get; private set; } = null!;
+        public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -150,9 +150,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider, WorldStateManager.TrieStore, LogManager);
+            IOverridableWorldScope overridableWorldStateManager = WorldStateManager.CreateOverridableWorldScope();
             OverridableTxProcessingEnv processingEnv = new(
-                overridableWorldStateManager,
+                WorldStateManager.CreateOverridableWorldScope(),
                 roBlockTree,
                 SpecProvider,
                 LimboLogs.Instance);

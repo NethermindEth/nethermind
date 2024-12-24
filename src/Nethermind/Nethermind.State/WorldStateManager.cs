@@ -15,6 +15,14 @@ public class WorldStateManager(
     ILogManager logManager)
     : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
 {
+    public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
+    {
+        ITrieStore trieStore = new TrieStore(dbProvider.StateDb, logManager);
+        IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
+
+        return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
+    }
+
     public override IWorldState GlobalWorldState => worldState;
 
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
