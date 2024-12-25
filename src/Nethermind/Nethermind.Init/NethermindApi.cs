@@ -6,5 +6,6 @@ public class NethermindApi
 
         // Register etha protocol factory
         services.AddSingleton<EthaProtocolFactory>();
+        services.AddSingleton<IProtocolFactory>(sp => sp.GetRequiredService<EthaProtocolFactory>());
     }
-}
+} 
