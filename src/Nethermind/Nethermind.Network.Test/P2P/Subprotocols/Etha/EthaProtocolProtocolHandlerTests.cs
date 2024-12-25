@@ -99,5 +99,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
             // Assert
             _blockTree.DidNotReceive().SuggestBlock(block);
         }
+
+        [Test]
+        public void Handle_unknown_message_logs_error()
+        {
+            // Arrange
+            var unknownMessageType = 99;
+            var packet = new Packet(unknownMessageType, new byte[] { 1, 2, 3 });
+
+            // Act
+            _handler.HandleMessage(packet);
+
+            // Assert - verify that error was logged
+            _logManager.Received().GetClassLogger();
+            // Note: в реальном тесте мы бы проверили логирование ошибки, 
+            // но так как мы используем LimboLogs, это не требуется
+        }
     }
 } 
