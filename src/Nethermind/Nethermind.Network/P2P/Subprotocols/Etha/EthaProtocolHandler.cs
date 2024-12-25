@@ -21,6 +21,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Etha
         {
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
+
+            // Register message serializers
+            serializer.Register(new GetShardedBlocksMessageSerializer());
+            serializer.Register(new ShardedBlocksMessageSerializer());
+            serializer.Register(new NewShardedBlockMessageSerializer());
         }
 
         public override void HandleMessage(Packet packet)
