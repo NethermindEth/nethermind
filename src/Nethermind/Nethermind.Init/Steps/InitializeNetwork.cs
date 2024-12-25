@@ -66,13 +66,23 @@ public class InitializeNetwork : IStep
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     protected readonly ISyncConfig _syncConfig;
+    private readonly IProtocolsManager _protocolsManager;
+    private readonly IProtocolValidator _protocolValidator;
+    private readonly EthaProtocolFactory _ethaProtocolFactory;
 
-    public InitializeNetwork(INethermindApi api)
+    public InitializeNetwork(
+        INethermindApi api,
+        IProtocolsManager protocolsManager,
+        IProtocolValidator protocolValidator,
+        EthaProtocolFactory ethaProtocolFactory)
     {
         _api = api;
         _logger = _api.LogManager.GetClassLogger();
         _networkConfig = _api.Config<INetworkConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
+        _protocolsManager = protocolsManager;
+        _protocolValidator = protocolValidator;
+        _ethaProtocolFactory = ethaProtocolFactory;
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -209,6 +219,9 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+
+        // Register etha protocol
+        _protocolsManager.AddProtocol(_ethaProtocolFactory);
     }
 
     private Task StartDiscovery()
