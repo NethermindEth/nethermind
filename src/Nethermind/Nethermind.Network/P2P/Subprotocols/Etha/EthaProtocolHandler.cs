@@ -1,7 +1,9 @@
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Etha.Messages;
 using Nethermind.Stats;
+using System.Linq;
 
 namespace Nethermind.Network.P2P.Subprotocols.Etha
 {
@@ -42,17 +44,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Etha
 
         private void Handle(GetShardedBlocksMessage message)
         {
-            // Implementation will be added in next step
+            Block[] blocks = message.BlockHashes
+                .Select(hash => _blockTree.FindBlock(hash))
+                .Where(block => block != null)
+                .ToArray();
+
+            Send(new ShardedBlocksMessage(blocks));
         }
 
         private void Handle(ShardedBlocksMessage message)
         {
-            // Implementation will be added in next step
+            foreach (Block block in message.Blocks)
+            {
+                if (_blockTree.IsKnown(block.Hash))
+                {
+                    continue;
+                }
+
+                // Process and suggest the new block to the block tree
+                _blockTree.SuggestBlock(block);
+            }
         }
 
         private void Handle(NewShardedBlockMessage message)
         {
-            // Implementation will be added in next step
+            if (!_blockTree.IsKnown(message.Block.Hash))
+            {
+                _blockTree.SuggestBlock(message.Block);
+            }
         }
     }
-}
+} 
