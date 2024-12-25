@@ -51,5 +51,53 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
             _serializationService.Received().Serialize(Arg.Is<ShardedBlocksMessage>(m => 
                 m.Blocks.Length == 1 && m.Blocks[0] == block));
         }
+
+        [Test]
+        public void Handle_ShardedBlocks_suggests_new_blocks()
+        {
+            // Arrange
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            _blockTree.IsKnown(block.Hash).Returns(false);
+            
+            var message = new ShardedBlocksMessage(new[] { block });
+
+            // Act
+            _handler.HandleMessage(new Packet(EthaMessageCode.ShardedBlocks, _serializationService.Serialize(message)));
+
+            // Assert
+            _blockTree.Received().SuggestBlock(block);
+        }
+
+        [Test]
+        public void Handle_NewShardedBlock_suggests_block_if_unknown()
+        {
+            // Arrange
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            _blockTree.IsKnown(block.Hash).Returns(false);
+            
+            var message = new NewShardedBlockMessage(block);
+
+            // Act
+            _handler.HandleMessage(new Packet(EthaMessageCode.NewShardedBlock, _serializationService.Serialize(message)));
+
+            // Assert
+            _blockTree.Received().SuggestBlock(block);
+        }
+
+        [Test]
+        public void Handle_NewShardedBlock_ignores_known_block()
+        {
+            // Arrange
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            _blockTree.IsKnown(block.Hash).Returns(true);
+            
+            var message = new NewShardedBlockMessage(block);
+
+            // Act
+            _handler.HandleMessage(new Packet(EthaMessageCode.NewShardedBlock, _serializationService.Serialize(message)));
+
+            // Assert
+            _blockTree.DidNotReceive().SuggestBlock(block);
+        }
     }
-}
+} 
