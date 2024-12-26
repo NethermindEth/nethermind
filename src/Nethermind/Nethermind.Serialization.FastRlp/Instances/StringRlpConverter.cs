@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Text;
 
 namespace Nethermind.Serialization.FastRlp.Instances;
 
 public abstract class StringRlpConverter : IRlpConverter<string>
 {
+    private const int MaxStackSize = 256;
+    private static readonly Encoding Encoding = Encoding.UTF8;
+
     public static string Read(ref RlpReader reader)
     {
         ReadOnlySpan<byte> obj = reader.ReadBytes();
@@ -16,8 +20,24 @@ public abstract class StringRlpConverter : IRlpConverter<string>
 
     public static void Write(ref RlpWriter writer, string value)
     {
-        ReadOnlySpan<byte> bytes = Encoding.UTF8.GetBytes(value);
-        writer.Write(bytes);
+        ReadOnlySpan<char> charSpan = value.AsSpan();
+        var valueByteLength = Encoding.GetMaxByteCount(charSpan.Length);
+
+        byte[]? sharedBuffer = null;
+        try
+        {
+            Span<byte> buffer = valueByteLength <= MaxStackSize
+                ? stackalloc byte[valueByteLength]
+                : sharedBuffer = ArrayPool<byte>.Shared.Rent(valueByteLength);
+
+            var bytes = Encoding.GetBytes(charSpan, buffer);
+
+            writer.Write(buffer[..bytes]);
+        }
+        finally
+        {
+            if (sharedBuffer is not null) ArrayPool<byte>.Shared.Return(sharedBuffer);
+        }
     }
 }
 

@@ -9,6 +9,20 @@ namespace Nethermind.Serialization.FastRlp.Test;
 public class RlpReadWriteTest
 {
     [Test]
+    public void LongString()
+    {
+        var rlp = Rlp.Write(static (ref RlpWriter w) =>
+        {
+            var str = new string('A', 2000);
+            w.Write(str);
+        });
+
+        var decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadString());
+
+        decoded.Should().Be(new string('A', 2000));
+    }
+
+    [Test]
     public void HeterogeneousList()
     {
         var rlp = Rlp.Write(static (ref RlpWriter w) =>
