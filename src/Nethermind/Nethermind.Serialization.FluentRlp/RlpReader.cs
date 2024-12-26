@@ -9,8 +9,6 @@ namespace Nethermind.Serialization.FluentRlp;
 
 public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg) where TResult : allows ref struct;
 
-public delegate void RefRlpReaderAction(ref RlpReader arg);
-
 public class RlpReaderException(string message) : Exception(message);
 
 public ref struct RlpReader
