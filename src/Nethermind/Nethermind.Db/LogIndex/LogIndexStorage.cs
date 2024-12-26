@@ -61,7 +61,8 @@ namespace Nethermind.Db
             IDb tempPagesDb = columnsDb.GetColumnDb(LogIndexColumns.Default);
             _tempPagesPool = new AsyncFilePagesPool(TempFilePath, tempPagesDb, PageSize)
             {
-                ReturnedPagesPoolSize = int.MaxValue // TODO: limit pool size!
+                AllocatedPagesPoolSize = 2048,
+                ReturnedPagesPoolSize = 2048
             };
         }
 

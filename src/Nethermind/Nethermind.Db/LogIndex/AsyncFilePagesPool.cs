@@ -33,6 +33,8 @@ public interface IAsyncFilePagesPool : IAsyncDisposable
 
 public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
 {
+    private const int MaxAllocateAtOnceSize = 10 * 1024 * 1024; // 10MB
+
     private static readonly byte[] StoreKey = "FreePages"u8.ToArray();
     private readonly string _filePath;
     private readonly IKeyValueStore _store;
@@ -162,18 +164,25 @@ public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
             }
             else
             {
-                // TODO: try to allocate in batches
-                await _allocatedPool.Writer.WriteAsync(AllocatePage(_fileStream), CancellationToken);
-                _pagesAllocated++;
+                var missingCount = AllocatedPagesPoolSize - _allocatedPool.Reader.Count;
+                var allocateCount = Math.Max(1, Math.Min(missingCount / 2, MaxAllocateAtOnceSize / PageSize));
+
+                foreach (var page in AllocatePages(_fileStream, allocateCount))
+                    await _allocatedPool.Writer.WriteAsync(page, CancellationToken.None);
             }
         }
     }
 
-    private long AllocatePage(FileStream fileStream)
+    private IEnumerable<long> AllocatePages(FileStream fileStream, int count)
     {
         long originalSize = fileStream.Length;
-        fileStream.SetLength(originalSize + PageSize);
-        return originalSize;
+        long newSize = originalSize + PageSize * count;
+
+        fileStream.SetLength(newSize);
+        _pagesAllocated += count;
+
+        for (var page = originalSize; page < newSize; page += PageSize)
+            yield return page;
     }
 
     private IEnumerable<long> EnumeratePagesFromStore(byte[]? bytes)
