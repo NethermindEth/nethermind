@@ -94,7 +94,7 @@ public ref struct RlpWriter
         }
     }
 
-    public void Write(ReadOnlySpan<byte> value)
+    public void Write(scoped ReadOnlySpan<byte> value)
     {
         switch (_mode)
         {
