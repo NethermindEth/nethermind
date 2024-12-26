@@ -16,7 +16,7 @@ public class AverageStats
         Interlocked.Increment(ref _count);
     }
 
-    public double Average => (double)_total / _count;
+    public double Average => _count == 0 ? 0 : (double)_total / _count;
 
     public override string ToString() => $"{Average:F2} ({_count})";
 

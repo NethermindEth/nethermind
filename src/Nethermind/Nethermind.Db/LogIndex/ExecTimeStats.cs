@@ -20,7 +20,7 @@ public class ExecTimeStats
 
     public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromMicroseconds((double)_totalMicroseconds / _count);
 
-    public override string ToString() => $"{Average.TotalMicroseconds:F1}ms ({_count})";
+    public override string ToString() => $"{Average.TotalMicroseconds:F1}μs ({_count})";
 
     public void Combine(ExecTimeStats stats)
     {

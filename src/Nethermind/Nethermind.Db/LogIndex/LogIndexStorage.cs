@@ -207,7 +207,7 @@ namespace Nethermind.Db
                 }
             }
 
-            stats.KeysCount = blockNumsByKey.Count;
+            stats.KeysCount.Include(blockNumsByKey.Count);
             return blockNumsByKey;
         }
 
@@ -226,7 +226,7 @@ namespace Nethermind.Db
             var stats = new SetReceiptsStats();
 
             var watch = Stopwatch.StartNew();
-            if (BuildProcessingDictionary(batch, stats, cancellationToken) is not {} dictionary)
+            if (BuildProcessingDictionary(batch, stats, cancellationToken) is not { } dictionary)
                 return stats;
             stats.BuildingDictionary.Include(watch.Elapsed);
 

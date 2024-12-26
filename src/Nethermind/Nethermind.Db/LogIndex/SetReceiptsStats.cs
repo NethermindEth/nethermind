@@ -9,12 +9,12 @@ public class SetReceiptsStats
     public long TxAdded { get; set; }
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
-    public long KeysCount { get; set; }
 
     public ExecTimeStats SeekForPrevHit { get; set; } = new();
     public ExecTimeStats SeekForPrevMiss { get; set; } = new();
     public ExecTimeStats BuildingDictionary { get; set; } = new();
     public ExecTimeStats WaitingForFinalization { get; set; } = new();
+    public AverageStats KeysCount { get; set; } = new();
     public AverageStats BytesWritten { get; set; } = new();
 
     public void Combine(SetReceiptsStats other)
@@ -23,12 +23,12 @@ public class SetReceiptsStats
         TxAdded += other.TxAdded;
         LogsAdded += other.LogsAdded;
         TopicsAdded += other.TopicsAdded;
-        KeysCount += other.KeysCount; // very-very rough estimation
 
         SeekForPrevHit.Combine(other.SeekForPrevHit);
         SeekForPrevMiss.Combine(other.SeekForPrevMiss);
         BuildingDictionary.Combine(other.BuildingDictionary);
         WaitingForFinalization.Combine(other.WaitingForFinalization);
+        KeysCount.Combine(other.KeysCount);
         BytesWritten.Combine(other.BytesWritten);
     }
 }
