@@ -12,8 +12,24 @@ using System.Text;
 
 namespace Nethermind.Serialization.FluentRlp.Generator;
 
+public enum RlpRepresentation : byte
+{
+    /// <summary>
+    /// The RLP encoding will be a sequence of RLP objects for each property.
+    /// </summary>
+    Record = 0,
+
+    /// <summary>
+    /// The RLP encoding will be equivalent to the only underlying property.
+    /// </summary>
+    Newtype = 1,
+}
+
 [AttributeUsage(AttributeTargets.Class)]
-public sealed class RlpSerializable : Attribute;
+public sealed class RlpSerializable(RlpRepresentation representation = RlpRepresentation.Record) : Attribute
+{
+    public RlpRepresentation Representation { get; } = representation;
+}
 
 /// <summary>
 /// A source generator that finds all records with [RlpSerializable] and
@@ -49,14 +65,14 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             ISymbol? symbol = semanticModel.GetDeclaredSymbol(recordDecl);
             if (symbol is null) continue;
 
-            // If not, skip the record
-            var attributes = symbol.GetAttributes();
-            if (!attributes.Any(a =>
+            AttributeData? rlpSerializableAttribute = symbol
+                .GetAttributes()
+                .FirstOrDefault(a =>
                     a.AttributeClass?.Name == nameof(RlpSerializable) ||
-                    a.AttributeClass?.ToDisplayString() == nameof(RlpSerializable)))
-            {
-                continue;
-            }
+                    a.AttributeClass?.ToDisplayString() == nameof(RlpSerializable));
+
+            // If not, skip the record
+            if (rlpSerializableAttribute is null) continue;
 
             // Extract the fully qualified record name with its namespace
             var recordName = symbol.Name;
@@ -64,12 +80,27 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             // TODO: Deal with missing and nested namespaces
             var @namespace = symbol.ContainingNamespace?.ToDisplayString();
 
+            var representation = (RlpRepresentation)(rlpSerializableAttribute.ConstructorArguments[0].Value ?? 0);
+
             // Gather recursively all members that are fields or primary constructor parameters
             // so we can read them in the same order they are declared.
             var parameters = GetRecordParameters(recordDecl);
 
+            // Ensure `Newtype` is only used in single-property records
+            if (representation == RlpRepresentation.Newtype && parameters.Count != 1)
+            {
+                var descriptor = new DiagnosticDescriptor(
+                    "RLP0001",
+                    $"Invalid {nameof(RlpRepresentation)}",
+                    $"'{nameof(RlpRepresentation.Newtype)}' representation is only allowed for records with a single property",
+                    "", DiagnosticSeverity.Error, true);
+                context.ReportDiagnostic(Diagnostic.Create(descriptor: descriptor, recordDecl.GetLocation()));
+
+                return;
+            }
+
             // Build the converter class source
-            var generatedCode = GenerateConverterClass(@namespace, fullTypeName, recordName, parameters);
+            var generatedCode = GenerateConverterClass(@namespace, fullTypeName, recordName, parameters, representation);
 
             // Add to the compilation
             context.AddSource($"{recordName}RlpConverter.g.cs", SourceText.From(generatedCode, Encoding.UTF8));
@@ -103,7 +134,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         string? @namespace,
         string fullTypeName,
         string recordName,
-        List<(string Name, TypeSyntax TypeName)> parameters)
+        List<(string Name, TypeSyntax TypeName)> parameters,
+        RlpRepresentation representation)
     {
         var sb = new StringBuilder();
 
@@ -123,8 +155,11 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // `Write` method
         sb.AppendLine($"public static void Write(ref RlpWriter w, {fullTypeName} value)");
         sb.AppendLine("{");
-        sb.AppendLine($"w.WriteSequence(value, static (ref RlpWriter w, {fullTypeName} value) => ");
-        sb.AppendLine("{");
+        if (representation == RlpRepresentation.Record)
+        {
+            sb.AppendLine($"w.WriteSequence(value, static (ref RlpWriter w, {fullTypeName} value) => ");
+            sb.AppendLine("{");
+        }
 
         foreach (var (name, typeName) in parameters)
         {
@@ -132,14 +167,21 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             sb.AppendLine($"w.{writeCall};");
         }
 
-        sb.AppendLine("});");
+        if (representation == RlpRepresentation.Record)
+        {
+            sb.AppendLine("});");
+        }
+
         sb.AppendLine("}");
 
         // `Read` method
         sb.AppendLine($"public static {fullTypeName} Read(ref RlpReader r)");
         sb.AppendLine("{");
-        sb.AppendLine("return r.ReadSequence(static (scoped ref RlpReader r) =>");
-        sb.AppendLine("{");
+        if (representation == RlpRepresentation.Record)
+        {
+            sb.AppendLine("return r.ReadSequence(static (scoped ref RlpReader r) =>");
+            sb.AppendLine("{");
+        }
 
         foreach (var (name, typeName) in parameters)
         {
@@ -156,7 +198,11 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         sb.AppendLine(");");
 
-        sb.AppendLine("});");
+        if (representation == RlpRepresentation.Record)
+        {
+            sb.AppendLine("});");
+        }
+
         sb.AppendLine("}");
         sb.AppendLine("}");
 
