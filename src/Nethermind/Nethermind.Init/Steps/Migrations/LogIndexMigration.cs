@@ -206,9 +206,9 @@ namespace Nethermind.Init.Steps.Migrations
             try
             {
                 //foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000))
-                foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000 + 180_000))
+                //foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000 + 180_000)) // Very log-dense blocks
                 //foreach (Block block in GetBlocksForMigration(token, startFrom: 750_000)) // Where slowdown starts
-                //foreach (Block block in GetBlocksForMigration(token, startFrom: 0))
+                foreach (Block block in GetBlocksForMigration(token, startFrom: 0))
                 {
                     TxReceipt[] receipts = _receiptStorage.Get(block, false);
 
