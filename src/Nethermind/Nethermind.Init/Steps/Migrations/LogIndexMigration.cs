@@ -154,11 +154,15 @@ namespace Nethermind.Init.Steps.Migrations
                 _lastStats = new();
 
                 _logger.Info($"LogIndexMigration" +
-                    $"\n\t\tBlocks: {total.BlocksAdded:N0} / {_totalBlocks:N0} ( {(decimal)total.BlocksAdded / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
+                    $"\n\t\tBlocks: {total.BlocksAdded:N0} / {_totalBlocks:N0} ( {(decimal)total.BlocksAdded / _totalBlocks * BatchSize:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
+                    $"\n\t\tDistinct keys: {last.KeysCount}" +
                     $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
+                    $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average)" +
+                    $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average)" +
+                    $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average)" +
                     $"\n\t\tPages total: {pagesStats.PagesAllocated} allocated, {pagesStats.PagesTaken} taken, {pagesStats.PagesReturned} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending");
             }
         }
@@ -201,7 +205,8 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000))
+                //foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000))
+                foreach (Block block in GetBlocksForMigration(token, startFrom: 2_000_000 + 180_000))
                 //foreach (Block block in GetBlocksForMigration(token, startFrom: 750_000)) // Where slowdown starts
                 //foreach (Block block in GetBlocksForMigration(token, startFrom: 0))
                 {

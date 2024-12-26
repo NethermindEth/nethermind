@@ -207,6 +207,7 @@ namespace Nethermind.Db
                 }
             }
 
+            stats.KeysCount = blockNumsByKey.Count;
             return blockNumsByKey;
         }
 
@@ -223,8 +224,11 @@ namespace Nethermind.Db
             await _tempPagesPool.StartAsync();
 
             var stats = new SetReceiptsStats();
+
+            var watch = Stopwatch.StartNew();
             if (BuildProcessingDictionary(batch, stats, cancellationToken) is not {} dictionary)
                 return stats;
+            stats.BuildingDictionary.Include(watch.Elapsed);
 
             var finalizeQueue = Channel.CreateUnbounded<IndexInfo>();
             Task finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, cancellationToken);
@@ -242,16 +246,25 @@ namespace Nethermind.Db
                         var size => throw new($"Unexpected key of {size} bytes.") // Should never happen
                     };
 
-                    IndexInfo? indexInfo = null;
-                    Span<byte> blockNumberBytes = stackalloc byte[4];
+                    IndexInfo? indexInfo = GetOrCreateTempIndex(db, key, blockNums[0], stats);
+                    byte[] bytesBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
+                    Span<byte> bytes = Span<byte>.Empty;
 
-                    // TODO: batch writing block numbers
                     foreach (var blockNum in blockNums)
                     {
-                        indexInfo ??= GetOrCreateTempIndex(db, key, blockNum, stats);
+                        indexInfo ??= CreateTempIndex(key);
 
-                        if (WriteBlockNumber(indexInfo, blockNum, blockNumberBytes) && indexInfo.IsReadyToFinalize())
+                        if (blockNum <= indexInfo.LastBlockNumber)
+                            continue;
+
+                        bytes = bytesBuffer.AsSpan(0, bytes.Length + sizeof(int));
+                        BinaryPrimitives.WriteInt32LittleEndian(bytes[^sizeof(int)..], blockNum);
+
+                        if (indexInfo.ByteLengthRemaining == bytes.Length)
                         {
+                            WriteBytes(indexInfo, bytes, stats);
+                            bytes = Span<byte>.Empty;
+
                             finalizeQueue.Writer.TryWrite(indexInfo);
                             indexInfo = null;
                         }
@@ -259,7 +272,8 @@ namespace Nethermind.Db
 
                     if (indexInfo != null)
                     {
-                        SaveIndex(db, indexInfo, blockNumberBytes);
+                        WriteBytes(indexInfo, bytes, stats);
+                        SaveIndex(db, indexInfo);
                     }
                 });
 
@@ -272,7 +286,10 @@ namespace Nethermind.Db
             finally
             {
                 finalizeQueue.Writer.Complete();
+
+                watch = Stopwatch.StartNew();
                 await finalizingTask;
+                stats.WaitingForFinalization.Include(watch.Elapsed);
             }
 
             return stats;
@@ -311,33 +328,33 @@ namespace Nethermind.Db
             }
         }
 
-        private bool WriteBlockNumber(IndexInfo indexInfo, int blockNumber, Span<byte> blockNumberBytes)
+        private bool WriteBytes(IndexInfo indexInfo, Span<byte> bytes, SetReceiptsStats stats)
         {
-            if (blockNumber <= indexInfo.LastBlockNumber)
-                return false;
-
             long position = indexInfo.Position;
-            BinaryPrimitives.WriteInt32LittleEndian(blockNumberBytes, blockNumber);
-            RandomAccess.Write(TempFileHandle, blockNumberBytes, position);
-            indexInfo.Length++;
-            indexInfo.LastBlockNumber = blockNumber;
+            RandomAccess.Write(TempFileHandle, bytes, position);
+            indexInfo.Length += bytes.Length / sizeof(int);
+            indexInfo.LastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(bytes[^sizeof(int)..]);
+
+            stats.BytesWritten.Include(bytes.Length);
 
             return true;
         }
 
-        // private void WriteNumbersUnsafe(IndexInfo indexInfo, Span<byte> numbers)
-        // {
-        //     long position = indexInfo.Position;
-        //     RandomAccess.Write(TempFileHandle, numbers, position);
-        //     indexInfo.Length += numbers.Length / 4;
-        //     indexInfo.LastBlockNumber = blockNumber;
-        // }
-
-        private void SaveIndex(IDb db, IndexInfo indexInfo, Span<byte> blockNumberBytes)
+        private void SaveIndex(IDb db, IndexInfo indexInfo)
         {
+            Span<byte> blockNumberBytes = stackalloc byte[sizeof(int)];
             Span<byte> dbKey = stackalloc byte[indexInfo.Key.Length + sizeof(int)];
             CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(TempFileHandle, blockNumberBytes), dbKey);
             db.PutSpan(dbKey, CreateIndexValue(indexInfo.Offset, indexInfo.Length, indexInfo.IsTemp, indexInfo.LastBlockNumber));
+        }
+
+        private IndexInfo CreateTempIndex(byte[] keyPrefix)
+        {
+            // TODO: improve awaiting
+            long freePage = _tempPagesPool.TakePageAsync().WaitResult();
+
+            // TODO: Save index offset to DB immediately after obtaining the page
+            return new(keyPrefix, freePage, 0, true, -1);
         }
 
         private IndexInfo GetOrCreateTempIndex(IDb db, byte[] keyPrefix, int blockNumber, SetReceiptsStats stats)
@@ -371,11 +388,7 @@ namespace Nethermind.Db
                 stats.SeekForPrevMiss.Include(watch.Elapsed);
             }
 
-            // TODO: improve awaiting
-            long freePage = _tempPagesPool.TakePageAsync().WaitResult();
-
-            // TODO: Save index offset to DB immediately after obtaining the page
-            return new(keyPrefix, freePage, 0, true, 0);
+            return CreateTempIndex(keyPrefix);
         }
 
         /// <summary>
