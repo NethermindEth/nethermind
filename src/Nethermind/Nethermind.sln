@@ -226,11 +226,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter", "Nethe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter.Test", "Nethermind.Shutter.Test\Nethermind.Shutter.Test.csproj", "{CEA1C413-A96C-4339-AC1C-839B603DECC8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FastRlp.Test", "Nethermind.Serialization.FastRlp.Test\Nethermind.Serialization.FastRlp.Test.csproj", "{C8A91B54-F9CA-4211-BE16-F7A0B38223EB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FluentRlp.Test", "Nethermind.Serialization.FluentRlp.Test\Nethermind.Serialization.FluentRlp.Test.csproj", "{C8A91B54-F9CA-4211-BE16-F7A0B38223EB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FastRlp", "Nethermind.Serialization.FastRlp\Nethermind.Serialization.FastRlp.csproj", "{3D358FD8-E047-4770-BCDF-8FBBBBDDE03A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FluentRlp", "Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj", "{3D358FD8-E047-4770-BCDF-8FBBBBDDE03A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FastRlp.Generator", "Nethermind.Serialization.FastRlp.Generator\Nethermind.Serialization.FastRlp.Generator.csproj", "{838687B6-9915-4BD2-98CC-79A4130B89B0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FluentRlp.Generator", "Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj", "{838687B6-9915-4BD2-98CC-79A4130B89B0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

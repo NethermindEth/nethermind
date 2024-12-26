@@ -5,7 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.Serialization.FastRlp;
+namespace Nethermind.Serialization.FluentRlp;
 
 public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg) where TResult : allows ref struct;
 

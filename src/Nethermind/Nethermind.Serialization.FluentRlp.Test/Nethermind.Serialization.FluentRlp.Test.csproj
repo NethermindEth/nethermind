@@ -22,8 +22,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Serialization.FastRlp\Nethermind.Serialization.FastRlp.csproj" />
-      <ProjectReference Include="..\Nethermind.Serialization.FastRlp.Generator\Nethermind.Serialization.FastRlp.Generator.csproj" OutputItemType="Analyzer" />
+      <ProjectReference Include="..\Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj" />
+      <ProjectReference Include="..\Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj" OutputItemType="Analyzer" />
     </ItemGroup>
 
 </Project>

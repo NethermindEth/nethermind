@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
 
-namespace Nethermind.Serialization.FastRlp.Generator;
+namespace Nethermind.Serialization.FluentRlp.Generator;
 
 [AttributeUsage(AttributeTargets.Class)]
 public sealed class RlpSerializable : Attribute;
@@ -111,8 +111,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.CodeDom.Compiler;");
-        sb.AppendLine("using Nethermind.Serialization.FastRlp;");
-        sb.AppendLine("using Nethermind.Serialization.FastRlp.Instances;");
+        sb.AppendLine("using Nethermind.Serialization.FluentRlp;");
+        sb.AppendLine("using Nethermind.Serialization.FluentRlp.Instances;");
         sb.AppendLine();
         if (@namespace is not null) sb.AppendLine($"namespace {@namespace};");
         sb.AppendLine("");

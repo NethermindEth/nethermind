@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Serialization.FastRlp.Instances;
+namespace Nethermind.Serialization.FluentRlp.Instances;
 
 public abstract class Int16RlpConverter : IRlpConverter<Int16>
 {

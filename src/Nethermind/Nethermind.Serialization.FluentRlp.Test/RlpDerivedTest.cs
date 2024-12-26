@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Serialization.FastRlp.Generator;
+using Nethermind.Serialization.FluentRlp.Generator;
 
-namespace Nethermind.Serialization.FastRlp.Test;
+namespace Nethermind.Serialization.FluentRlp.Test;
 
 [RlpSerializable]
 public record Player(int Id, string Username);
