@@ -77,7 +77,8 @@ public ref struct RlpReader
     public T ReadSequence<T>(RefRlpReaderFunc<T> func)
         => ReadSequence(func, static (scoped ref RlpReader reader, RefRlpReaderFunc<T> func) => func(ref reader));
 
-    public T ReadSequence<T, TContext>(TContext ctx, RefRlpReaderFunc<T, TContext> func) {
+    public T ReadSequence<T, TContext>(TContext ctx, RefRlpReaderFunc<T, TContext> func)
+    {
         T result;
         var header = _buffer[_position++];
         if (header < 0xC0)

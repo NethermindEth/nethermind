@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
@@ -35,7 +35,7 @@ public class RlpWriterTest
             w.Write("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
         });
 
-        byte[] expected = [0xb8, 0x38, .."Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
+        byte[] expected = [0xb8, 0x38, .. "Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
         serialized.Should().BeEquivalentTo(expected);
     }
 

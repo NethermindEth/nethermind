@@ -29,7 +29,7 @@ public class RlpReaderTest
     [Test]
     public void ReadLongString()
     {
-        byte[] source = [0xb8, 0x38, .."Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
+        byte[] source = [0xb8, 0x38, .. "Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
         string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
 
         actual.Should().Be("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
@@ -64,7 +64,7 @@ public class RlpReaderTest
     [Test]
     public void ReadStringList()
     {
-        byte[] source = [0xc8, 0x83, .."cat"u8, 0x83, .."dog"u8];
+        byte[] source = [0xc8, 0x83, .. "cat"u8, 0x83, .. "dog"u8];
         var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>

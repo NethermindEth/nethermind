@@ -205,7 +205,7 @@ public class RlpReadWriteTest
         var intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
         var wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); }));
 
-        foreach (var rlp in (byte[][]) [intRlp, wrappedIntRlp])
+        foreach (var rlp in (byte[][])[intRlp, wrappedIntRlp])
         {
             int decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(wrappedReader, intReader));
 
@@ -376,7 +376,7 @@ public class RlpReadWriteTest
 
         var rlpExplicit = Rlp.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
         {
-            w.WriteSequence(dictionary, static (ref RlpWriter w,Dictionary<int, string> dictionary) =>
+            w.WriteSequence(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
             {
                 foreach (var tuple in dictionary)
                 {
