@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Serialization.FluentRlp.Generator;
+using Nethermind.Serialization.FluentRlp.Instances;
 
 namespace Nethermind.Serialization.FluentRlp.Test;
 
@@ -29,6 +30,9 @@ public record Integers(short A, int B, long C, Int128 D);
 
 [RlpSerializable]
 public record IntegerTuple((int, long) Values);
+
+[RlpSerializable(RlpRepresentation.Newtype)]
+public record Address(string HexString);
 
 public class RlpDerivedTest
 {
@@ -100,5 +104,23 @@ public class RlpDerivedTest
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
         decoded.Should().BeEquivalentTo(tree);
+    }
+
+    [Test]
+    public void NewtypeRecords()
+    {
+        var address = new Address("0x1234567890ABCDEF");
+
+        var rlp = Rlp.Write(address, static (ref RlpWriter writer, Address address)
+            => writer.Write(address));
+
+        var rlpExplicit = Rlp.Write(address, (ref RlpWriter writer, Address value)
+            => writer.Write(value.HexString));
+
+        rlp.Should().BeEquivalentTo(rlpExplicit);
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAddress());
+
+        decoded.Should().BeEquivalentTo(address);
     }
 }
