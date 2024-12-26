@@ -39,11 +39,11 @@ public abstract class StudentRlpConverter : IRlpConverter<Student>
 
     public static void Write(ref RlpWriter writer, Student value)
     {
-        writer.WriteSequence((ref RlpWriter w) =>
+        writer.WriteSequence(value, static (ref RlpWriter w, Student value) =>
         {
             w.Write(value.Name);
             w.Write(value.Age);
-            w.WriteSequence((ref RlpWriter w) =>
+            w.WriteSequence(value, (ref RlpWriter w, Student value) =>
             {
                 foreach (var (subject, score) in value.Scores)
                 {
