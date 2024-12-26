@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 using Nethermind.Config;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -79,6 +80,8 @@ namespace Nethermind.Blockchain.Synchronization
         /// pivot) and synced state block, to assume that state is synced and node can start processing blocks
         /// </summary>
         public int HeaderStateDistance { get; set; } = 0;
+
+        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
 
         public override string ToString()
         {
