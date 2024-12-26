@@ -7,7 +7,11 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.FluentRlp;
 
-public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg) where TResult : allows ref struct;
+public delegate TResult RefRlpReaderFunc<out TResult, in TContext>(scoped ref RlpReader arg, TContext value)
+    where TResult : allows ref struct;
+
+public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg)
+    where TResult : allows ref struct;
 
 public class RlpReaderException(string message) : Exception(message);
 
@@ -71,7 +75,9 @@ public ref struct RlpReader
     }
 
     public T ReadSequence<T>(RefRlpReaderFunc<T> func)
-    {
+        => ReadSequence(func, static (scoped ref RlpReader reader, RefRlpReaderFunc<T> func) => func(ref reader));
+
+    public T ReadSequence<T, TContext>(TContext ctx, RefRlpReaderFunc<T, TContext> func) {
         T result;
         var header = _buffer[_position++];
         if (header < 0xC0)
@@ -83,7 +89,7 @@ public ref struct RlpReader
         {
             var length = header - 0xC0;
             var reader = new RlpReader(_buffer.Slice(_position, length));
-            result = func(ref reader);
+            result = func(ref reader, ctx);
             _position += length;
         }
         else
@@ -93,7 +99,7 @@ public ref struct RlpReader
             _position += lengthOfLength;
             int length = Int32Primitive.Read(binaryLength);
             var reader = new RlpReader(_buffer.Slice(_position, length));
-            result = func(ref reader);
+            result = func(ref reader, ctx);
             _position += length;
         }
 
