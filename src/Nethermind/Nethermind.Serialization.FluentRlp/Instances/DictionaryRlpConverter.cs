@@ -10,13 +10,16 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 {
     public static Dictionary<TKey, TValue> Read(ref RlpReader reader, RefRlpReaderFunc<TKey> readKey, RefRlpReaderFunc<TValue> readValue)
     {
-        return reader.ReadSequence((scoped ref RlpReader r) =>
+        var ctx = ValueTuple.Create(readKey, readValue);
+        return reader.ReadSequence(ctx, static (scoped ref RlpReader r, (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx) =>
         {
             Dictionary<TKey, TValue> result = [];
             while (r.HasNext)
             {
-                (TKey key, TValue value) = r.ReadSequence((scoped ref RlpReader r) =>
+
+                (TKey key, TValue value) = r.ReadSequence(ctx, static (scoped ref RlpReader r, (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx) =>
                 {
+                    var (readKey, readValue) = ctx;
                     TKey key = readKey(ref r);
                     TValue value = readValue(ref r);
 
