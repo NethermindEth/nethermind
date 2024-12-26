@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Serialization.FluentRlp;
 
 public delegate void RefRlpWriterAction<in TContext>(ref RlpWriter arg, TContext value)
-    where TContext: allows ref struct;
+    where TContext : allows ref struct;
 
 public delegate void RefRlpWriterAction(ref RlpWriter arg);
 
@@ -65,7 +65,8 @@ public ref struct RlpWriter
         if (bigEndian.Length == 0)
         {
             Length++;
-        } else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
+        }
+        else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
         {
             Length++;
         }
@@ -85,7 +86,8 @@ public ref struct RlpWriter
         if (bigEndian.Length == 0)
         {
             _buffer[_position++] = 0;
-        } else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
+        }
+        else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
         {
             _buffer[_position++] = bigEndian[0];
         }
