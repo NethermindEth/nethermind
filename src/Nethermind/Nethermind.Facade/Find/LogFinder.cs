@@ -363,7 +363,6 @@ namespace Nethermind.Facade.Find
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
-                                    logsIterator.Index,
                                     receipt.BlockNumber,
                                     receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
@@ -447,7 +446,7 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(log))
                             {
                                 RecoverReceiptsData(blockHash, receipts);
-                                yield return new FilterLog(logIndexInBlock, j, receipt, log);
+                                yield return new FilterLog(logIndexInBlock, receipt, log);
                             }
 
                             logIndexInBlock++;

@@ -89,8 +89,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksBodies.Reset(0);
-            _syncReport.BodiesInQueue.Reset(0);
+            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
         }
 
         private void ResetSyncStatusList()
@@ -125,8 +124,6 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
-            _syncReport.BodiesInQueue.Update(0);
-            _syncReport.BodiesInQueue.MarkEnd();
             Flush();
         }
 
@@ -136,7 +133,12 @@ namespace Nethermind.Synchronization.FastBlocks
             if (ShouldBuildANewBatch())
             {
                 BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockTree.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) =>
+                       {
+                           bool hasBlock = _blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                           if (hasBlock) _syncReport.FastBlocksBodies.IncrementSkipped();
+                           return hasBlock;
+                       }, out infos))
                 {
                     token.ThrowIfCancellationRequested();
 
@@ -289,7 +291,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void UpdateSyncReport()
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
-            _syncReport.BodiesInQueue.Update(_syncStatusList.QueueSize);
+            _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
         }
 
         private void AdjustRequestSizes(BodiesSyncBatch batch, int validResponsesCount)

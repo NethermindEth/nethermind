@@ -58,7 +58,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ISpecProvider specProvider,
         ILogManager? logManager = null,
         bool validate = false)
-        : base(worldStateManager, blockTree, specProvider, logManager)
+        : base(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), blockTree, specProvider, logManager)
     {
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;

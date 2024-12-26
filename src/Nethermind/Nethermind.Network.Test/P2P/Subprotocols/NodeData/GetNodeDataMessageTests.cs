@@ -21,7 +21,7 @@ public class GetNodeDataMessageTests
     public void Sets_values_from_constructor_argument()
     {
         Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
-        GetNodeDataMessage message = new(keys.ToPooledList());
+        using GetNodeDataMessage message = new(keys.ToPooledList());
         keys.Should().BeEquivalentTo(message.Hashes);
     }
 
@@ -34,7 +34,7 @@ public class GetNodeDataMessageTests
     [Test]
     public void To_string()
     {
-        GetNodeDataMessage message = new(ArrayPoolList<Hash256>.Empty());
+        using GetNodeDataMessage message = new(ArrayPoolList<Hash256>.Empty());
         _ = message.ToString();
     }
 
@@ -42,7 +42,7 @@ public class GetNodeDataMessageTests
     public void Packet_type_and_protocol_are_correct()
     {
         Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
-        GetNodeDataMessage message = new(keys.ToPooledList());
+        using GetNodeDataMessage message = new(keys.ToPooledList());
 
         message.PacketType.Should().Be(NodeDataMessageCode.GetNodeData);
         message.Protocol.Should().Be(Protocol.NodeData);

@@ -35,7 +35,6 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
     /// </remarks>
     public byte[]? EIP1559Params { get; set; }
-    private const int EIP1559ParamsLength = 8;
 
     private int TransactionsLength => Transactions?.Length ?? 0;
 
@@ -121,9 +120,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && EIP1559Params?.Length != EIP1559ParamsLength)
+        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out var decodeError))
         {
-            error = $"{nameof(EIP1559Params)} should be {EIP1559ParamsLength} bytes long";
+            error = decodeError;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
