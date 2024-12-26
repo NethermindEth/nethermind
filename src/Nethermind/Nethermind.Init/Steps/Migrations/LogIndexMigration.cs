@@ -149,7 +149,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (_logger.IsInfo)
             {
-                (SetReceiptsStats last, SetReceiptsStats total) = (_lastStats, _totalStats);
+                (SetReceiptsStats last, SetReceiptsStats total, PagesStats pagesStats) = (_lastStats, _totalStats, _logIndexStorage.PagesStats);
                 _lastStats = new();
 
                 _logger.Info($"LogIndexMigration" +
@@ -158,7 +158,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
                     $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
-                    $"\n\t\tPages: {_logIndexStorage.PagesAllocatedCount} allocated total, {last.PagesTaken} taken, {_logIndexStorage.PagesFreeCount} pending, {last.PagesReturned} returned");
+                    $"\n\t\tPages total: {pagesStats.PagesAllocated} allocated, {pagesStats.PagesTaken} taken, {pagesStats.PagesReturned} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending");
             }
         }
 
@@ -182,7 +182,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
             finally
             {
-                _logIndexStorage.Dispose();
+                await _logIndexStorage.DisposeAsync();
                 _progress.MarkEnd();
                 _stopwatch!.Stop();
                 timer.Stop();
@@ -235,14 +235,11 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     await Parallel.ForEachAsync(
                         reader.ReadAllAsync(token),
-                        new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = parallelism },
-                        (batch, _) =>
+                        new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = parallelism }, async (batch, _) =>
                         {
-                            SetReceiptsStats runStats = _logIndexStorage.SetReceipts(batch, isBackwardSync: false, token);
-                            _lastStats.Add(runStats);
-                            _totalStats.Add(runStats);
-
-                            return ValueTask.CompletedTask;
+                            SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
+                            _lastStats.Combine(runStats);
+                            _totalStats.Combine(runStats);
                         }
                     );
                 }
@@ -253,9 +250,9 @@ namespace Nethermind.Init.Steps.Migrations
                         if (token.IsCancellationRequested)
                             return;
 
-                        SetReceiptsStats runStats = _logIndexStorage.SetReceipts(batch, isBackwardSync: false, token);
-                        _lastStats.Add(runStats);
-                        _totalStats.Add(runStats);
+                        SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
+                        _lastStats.Combine(runStats);
+                        _totalStats.Combine(runStats);
                     }
                 }
             }

@@ -1,6 +1,8 @@
 ﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+
 namespace Nethermind.Db;
 
 public class SetReceiptsStats
@@ -13,25 +15,14 @@ public class SetReceiptsStats
     public ExecTimeStats SeekForPrevHit { get; set; } = new();
     public ExecTimeStats SeekForPrevMiss { get; set; } = new();
 
-    public long PagesTaken { get; set; }
-    public long PagesReturned { get; set; }
-
-    public void Add(SetReceiptsStats other)
+    public void Combine(SetReceiptsStats other)
     {
         BlocksAdded += other.BlocksAdded;
         TxAdded += other.TxAdded;
         LogsAdded += other.LogsAdded;
         TopicsAdded += other.TopicsAdded;
 
-        SeekForPrevHit.Add(other.SeekForPrevHit);
-        SeekForPrevMiss.Add(other.SeekForPrevMiss);
-
-        PagesTaken += other.PagesTaken;
-        PagesReturned += other.PagesReturned;
+        SeekForPrevHit.Combine(other.SeekForPrevHit);
+        SeekForPrevMiss.Combine(other.SeekForPrevMiss);
     }
-}
-
-public class PagesStats
-{
-    public long PagesAllocated { get; set; }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq.Expressions;
@@ -49,6 +50,23 @@ namespace Nethermind.Core.Collections
             ClearCache<TKey, TValue>.Clear(dictionary);
             return true;
         }
+
+        public static TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key, Func<TKey, TValue> factory)
+            where TKey : notnull
+        {
+            if (dictionary.TryGetValue(key, out TValue? value))
+            {
+                return value;
+            }
+            else
+            {
+                value = factory(key);
+                dictionary.Add(key, value);
+                return value;
+            }
+        }
+
+        public static Span<T> RentSpan<T>(this ArrayPool<T> pool, int length) => pool.Rent(length).AsSpan(length);
 
         private static class ClearCache<TKey, TValue> where TKey : notnull
         {

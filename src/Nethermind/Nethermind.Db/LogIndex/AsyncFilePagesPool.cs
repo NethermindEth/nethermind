@@ -1,0 +1,226 @@
+﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+
+namespace Nethermind.Db;
+
+public interface IAsyncFilePagesPool : IAsyncDisposable
+{
+    int PageSize { get; }
+    SafeFileHandle FileHandle { get; }
+
+    PagesStats Stats { get; }
+
+    ValueTask StartAsync();
+    ValueTask StopAsync();
+
+    ValueTask<long> TakePageAsync();
+    ValueTask ReturnPageAsync(long offset);
+}
+
+public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
+{
+    private static readonly byte[] StoreKey = "FreePages"u8.ToArray();
+    private readonly string _filePath;
+    private readonly IKeyValueStore _store;
+
+    private readonly CancellationTokenSource _cancellationSource = new();
+    private CancellationToken CancellationToken => _cancellationSource.Token;
+
+    private readonly Lazy<int> _lazyStart;
+
+    private SafeFileHandle? _fileHandle;
+    private FileStream? _fileStream;
+    private Task? _allocatePagesTask;
+
+    private Channel<long>? _allocatedPool;
+    private Channel<long>? _returnedPool;
+
+    private long _pagesAllocated;
+    private long _pagesTaken;
+    private long _pagesReturned;
+    private long _pagesReused;
+
+    // Stats values are fetched in non-atomic way
+    public PagesStats Stats => new()
+    {
+        PagesAllocated = _pagesAllocated,
+        PagesTaken = _pagesTaken,
+        PagesReturned = _pagesReturned,
+        PagesReused = _pagesReused,
+        AllocatedPagesPending = _allocatedPool?.Reader.Count ?? 0,
+        ReturnedPagesPending = _returnedPool?.Reader.Count ?? 0
+    };
+
+    public int PageSize { get; }
+
+    public SafeFileHandle FileHandle => _fileHandle ?? throw ThrowNotStarted();
+
+    /// <summary>
+    /// Size of the pool of pre-allocated free pages.
+    /// </summary>
+    public int AllocatedPagesPoolSize { get; init; } = 1024;
+
+    /// <summary>
+    /// Size of the pool of returned pages.
+    /// </summary>
+    public int ReturnedPagesPoolSize { get; init; } = 1024;
+
+    public AsyncFilePagesPool(string filePath, IKeyValueStore store, int pageSize)
+    {
+        _filePath = filePath;
+        _store = store;
+        _lazyStart = new(StartOnce);
+
+        PageSize = pageSize;
+    }
+
+    public ValueTask StartAsync()
+    {
+        _ = _lazyStart.Value;
+        return ValueTask.CompletedTask;
+    }
+
+    // TODO: make thread-safe
+    public async ValueTask StopAsync()
+    {
+        if (_allocatePagesTask == null || _allocatedPool == null || _returnedPool == null)
+            ThrowNotStarted();
+
+        await _cancellationSource.CancelAsync();
+        await _allocatePagesTask.IgnoreException();
+
+        _allocatedPool.Writer.Complete();
+        _returnedPool.Writer.Complete();
+
+        StorePooledPages();
+    }
+
+    public async ValueTask<long> TakePageAsync()
+    {
+        if (_allocatedPool == null)
+            ThrowNotStarted();
+
+        var page = await _allocatedPool.Reader.ReadAsync(CancellationToken);
+        Interlocked.Increment(ref _pagesTaken);
+        return page;
+    }
+
+    public ValueTask ReturnPageAsync(long offset)
+    {
+        if (_returnedPool == null)
+            ThrowNotStarted();
+
+        Interlocked.Increment(ref _pagesReturned);
+        return _returnedPool.Writer.WriteAsync(offset, CancellationToken);
+    }
+
+    private int StartOnce()
+    {
+        _fileHandle = File.OpenHandle(_filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+        _fileStream = new(_fileHandle, FileAccess.ReadWrite);
+
+        _allocatedPool = Channel.CreateBounded<long>(AllocatedPagesPoolSize);
+        _returnedPool = Channel.CreateBounded<long>(ReturnedPagesPoolSize);
+
+        _allocatePagesTask = Task.Run(KeepAllocatingPages, CancellationToken);
+
+        return 0;
+    }
+
+    // TODO: handle exception
+    private async Task KeepAllocatingPages()
+    {
+        if (_allocatedPool == null || _returnedPool == null || _fileStream == null)
+            ThrowNotStarted();
+
+        byte[] freePages = _store.Get(StoreKey);
+        _store.Remove(StoreKey);
+
+        foreach (var page in EnumeratePagesFromStore(freePages))
+            await _allocatedPool.Writer.WriteAsync(page, CancellationToken);
+
+        while (!CancellationToken.IsCancellationRequested)
+        {
+            if (_returnedPool.Reader.TryRead(out long freePage))
+            {
+                await _allocatedPool.Writer.WriteAsync(freePage, CancellationToken);
+                _pagesReused++;
+            }
+            else
+            {
+                // TODO: try to allocate in batches
+                await _allocatedPool.Writer.WriteAsync(AllocatePage(_fileStream), CancellationToken);
+                _pagesAllocated++;
+            }
+        }
+    }
+
+    private long AllocatePage(FileStream fileStream)
+    {
+        long originalSize = fileStream.Length;
+        fileStream.SetLength(originalSize + PageSize);
+        return originalSize;
+    }
+
+    private IEnumerable<long> EnumeratePagesFromStore(byte[]? bytes)
+    {
+        if (bytes == null)
+            yield break;
+
+        for (var i = bytes.Length; i > 0; i -= sizeof(long))
+        {
+            var page = BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(i - sizeof(long)));
+            yield return page;
+        }
+    }
+
+    private byte[] GetPooledPagesBytes()
+    {
+        if (_allocatedPool == null || _returnedPool == null)
+            ThrowNotStarted();
+
+        var pages = new byte[(_allocatedPool.Reader.Count + _returnedPool.Reader.Count) * sizeof(long)];
+
+        var i = -sizeof(long);
+
+        while (_allocatedPool.Reader.TryRead(out var page))
+            BinaryPrimitives.WriteInt64BigEndian(pages.AsSpan(i += sizeof(long)), page);
+
+        while (_returnedPool.Reader.TryRead(out var page))
+            BinaryPrimitives.WriteInt64BigEndian(pages.AsSpan(i += sizeof(long)), page);
+
+        return pages;
+    }
+
+    private void StorePooledPages()
+    {
+        var bytes = GetPooledPagesBytes();
+        _store.Set(StoreKey, bytes);
+    }
+
+    [DoesNotReturn]
+    private static Exception ThrowNotStarted() => throw new InvalidOperationException("File pages pool has not started.");
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        _allocatePagesTask?.Dispose();
+        _cancellationSource.Dispose();
+
+        await (_fileStream?.DisposeAsync() ?? ValueTask.CompletedTask);
+        _fileHandle?.Dispose();
+    }
+}
