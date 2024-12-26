@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Serialization.FastRlp;
+namespace Nethermind.Serialization.FluentRlp;
 
 public static class Rlp
 {

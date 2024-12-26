@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Serialization.FastRlp.Instances;
+using Nethermind.Serialization.FluentRlp.Instances;
 
-namespace Nethermind.Serialization.FastRlp.Test;
+namespace Nethermind.Serialization.FluentRlp.Test;
 
 public class RlpReadWriteTest
 {

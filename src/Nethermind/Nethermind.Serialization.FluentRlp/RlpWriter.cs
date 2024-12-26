@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.Serialization.FastRlp;
+namespace Nethermind.Serialization.FluentRlp;
 
 public delegate void RefRlpWriterAction<in T>(ref RlpWriter arg, T value) where T: allows ref struct;
 

@@ -4,7 +4,7 @@
 using System;
 using System.Buffers.Binary;
 
-namespace Nethermind.Serialization.FastRlp;
+namespace Nethermind.Serialization.FluentRlp;
 
 internal static class Int32Primitive
 {

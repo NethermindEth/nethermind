@@ -5,7 +5,7 @@ using System;
 using System.Buffers;
 using System.Text;
 
-namespace Nethermind.Serialization.FastRlp.Instances;
+namespace Nethermind.Serialization.FluentRlp.Instances;
 
 public abstract class StringRlpConverter : IRlpConverter<string>
 {

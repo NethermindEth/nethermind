@@ -1,4 +1,4 @@
-# FastRlp
+# FluentRlp
 
 Declarative RLP encoding a decoding with support for extensibility through manually written `IRlpConverter`s and automatically generated through attributes.
 

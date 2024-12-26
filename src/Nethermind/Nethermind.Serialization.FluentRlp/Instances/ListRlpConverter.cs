@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.Serialization.FastRlp.Instances;
+namespace Nethermind.Serialization.FluentRlp.Instances;
 
 public abstract class ListRlpConverter<T>
 {
