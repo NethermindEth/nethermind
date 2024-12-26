@@ -395,4 +395,26 @@ public class RlpReadWriteTest
 
         decoded.Should().BeEquivalentTo(dictionary);
     }
+
+    [Test]
+    public void TupleCollection()
+    {
+        var tuple = (42, 1337);
+
+        var rlp = Rlp.Write(tuple, static (ref RlpWriter w, (int, int) tuple)
+            => w.Write(tuple, Int32RlpConverter.Write, Int32RlpConverter.Write));
+
+        var rlpExplicit = Rlp.Write(tuple, static (ref RlpWriter w, (int, int) tuple) =>
+        {
+            w.Write(tuple.Item1);
+            w.Write(tuple.Item2);
+        });
+
+        rlp.Should().BeEquivalentTo(rlpExplicit);
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+            r.ReadTuple(Int32RlpConverter.Read, Int32RlpConverter.Read));
+
+        decoded.Should().BeEquivalentTo(tuple);
+    }
 }
