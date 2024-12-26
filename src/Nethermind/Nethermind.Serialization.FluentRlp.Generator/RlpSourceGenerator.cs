@@ -196,10 +196,21 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         }
 
         // Generics
-        if (syntax is GenericNameSyntax generic)
+        if (syntax is GenericNameSyntax or TupleTypeSyntax)
         {
-            var typeConstructor = generic.Identifier.ToString();
-            var typeParameters = generic.TypeArgumentList.Arguments;
+            var typeConstructor = syntax switch
+            {
+                GenericNameSyntax generic => generic.Identifier.ToString(),
+                TupleTypeSyntax _ => "Tuple",
+                _ => throw new ArgumentOutOfRangeException(nameof(syntax))
+            };
+
+            var typeParameters = syntax switch
+            {
+                GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
+                TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
+                _ => throw new ArgumentOutOfRangeException(nameof(syntax))
+            };
 
             var sb = new StringBuilder("Read");
             sb.Append(typeConstructor.Capitalize());
@@ -239,14 +250,20 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 case "byte" or "Byte" or "System.Byte":
                     return $"Write(value.{name})";
                 default:
-                    return $"Write(value.{name}, static (ref RlpWriter w, {elementType.ToString()} value) => w.Write(value))";
+                    return
+                        $"Write(value.{name}, static (ref RlpWriter w, {elementType.ToString()} value) => w.Write(value))";
             }
         }
 
-        // Generics
-        if (syntax is GenericNameSyntax generic)
+        // Generics and Tuples
+        if (syntax is GenericNameSyntax or TupleTypeSyntax)
         {
-            var typeParameters = generic.TypeArgumentList.Arguments;
+            var typeParameters = syntax switch
+            {
+                GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
+                TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
+                _ => throw new ArgumentOutOfRangeException(nameof(syntax))
+            };
 
             var sb = new StringBuilder("Write");
             sb.AppendLine("(");

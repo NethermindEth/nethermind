@@ -27,6 +27,9 @@ public record RawData(int Tag, byte[] Data);
 [RlpSerializable]
 public record Integers(short A, int B, long C, Int128 D);
 
+[RlpSerializable]
+public record IntegerTuple((int, long) Values);
+
 public class RlpDerivedTest
 {
     [Test]
@@ -71,6 +74,16 @@ public class RlpDerivedTest
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithScores());
         decoded.Should().BeEquivalentTo(player);
+    }
+
+    [Test]
+    public void RecordWithTuple()
+    {
+        var integerTuple = new IntegerTuple((42, 1337));
+        ReadOnlySpan<byte> rlp = Rlp.Write(integerTuple, static (ref RlpWriter w, IntegerTuple tuple) => w.Write(tuple));
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuple());
+        decoded.Should().BeEquivalentTo(integerTuple);
     }
 
     [Test]
