@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Serialization.FluentRlp.Instances;
@@ -9,7 +10,7 @@ public abstract class ListRlpConverter<T>
 {
     public static List<T> Read(ref RlpReader reader, RefRlpReaderFunc<T> func)
     {
-        return reader.ReadSequence((scoped ref RlpReader r) =>
+        return reader.ReadSequence(func, static (scoped ref RlpReader r, RefRlpReaderFunc<T> func) =>
         {
             List<T> result = [];
             while (r.HasNext)
@@ -23,8 +24,10 @@ public abstract class ListRlpConverter<T>
 
     public static void Write(ref RlpWriter writer, List<T> value, RefRlpWriterAction<T> action)
     {
-        writer.WriteSequence((ref RlpWriter w) =>
+        var ctx = ValueTuple.Create(value, action);
+        writer.WriteSequence(ctx, static (ref RlpWriter w, (List<T>, RefRlpWriterAction<T>) ctx) =>
         {
+            var (value, action) = ctx;
             foreach (T v in value)
             {
                 action(ref w, v);
