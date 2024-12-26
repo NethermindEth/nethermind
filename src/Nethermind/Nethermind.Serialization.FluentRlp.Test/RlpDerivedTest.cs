@@ -16,6 +16,9 @@ public record PlayerWithFriends(int Id, string Username, List<string> Friends);
 public record PlayerWithScores(int Id, string Username, Dictionary<string, int> Scores);
 
 [RlpSerializable]
+public record PlayerWithCodes(int Id, string Username, int[] Codes);
+
+[RlpSerializable]
 public record Tree(string Value, List<Tree> Children);
 
 [RlpSerializable]
@@ -43,6 +46,16 @@ public class RlpDerivedTest
         ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithFriends player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithFriends());
+        decoded.Should().BeEquivalentTo(player);
+    }
+
+    [Test]
+    public void RecordWithArray()
+    {
+        var player = new PlayerWithCodes(Id: 42, Username: "SuperUser", Codes: [2, 4, 8, 16, 32, 64]);
+        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithCodes player) => w.Write(player));
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithCodes());
         decoded.Should().BeEquivalentTo(player);
     }
 
