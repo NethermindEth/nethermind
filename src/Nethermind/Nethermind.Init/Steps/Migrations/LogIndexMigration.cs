@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps.Migrations
         internal Task? _migrationTask;
         private Stopwatch? _stopwatch;
 
-        private readonly MeasuredProgress _progress = new();
+        private readonly ProgressLogger _progress;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockTree _blockTree;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -88,6 +88,7 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
             });
+            _progress = new("Log-index Migration", logManager);
         }
 
         public async Task<bool> Run(long blockNumber)
