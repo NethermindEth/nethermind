@@ -66,7 +66,7 @@ The official Docker images of Nethermind are available on [Docker Hub](https://h
 
 ### Get the digest of the Docker image
 
-In case of any Docker image need to be updated in the repository, you can update the digest of these images as follows:
+In case any Docker image needs to be updated in the repository, you can update the digest of these images as follows:
 
 ```sh
 docker inspect --format='{{index .RepoDigests 0}}' <image_name>
