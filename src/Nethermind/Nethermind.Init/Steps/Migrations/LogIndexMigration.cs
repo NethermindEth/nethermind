@@ -42,7 +42,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IReceiptsRecovery _recovery;
         private readonly ILogIndexStorage _logIndexStorage;
         private readonly IInitConfig _initConfig;
-        private const int BatchSize = 100;
+        private const int BatchSize = 200;
         private readonly Channel<(int blockNumber, TxReceipt[] receipts)[]> _blocksChannel;
 
         private long _totalBlocks;
