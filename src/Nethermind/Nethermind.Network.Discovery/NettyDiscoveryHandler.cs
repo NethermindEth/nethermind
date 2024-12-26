@@ -97,14 +97,14 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
 
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
-
-        await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
+        try
         {
-            if (t.IsFaulted)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {t.Exception}");
-            }
-        });
+            await _channel.WriteAndFlushAsync(packet);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+        }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
     }

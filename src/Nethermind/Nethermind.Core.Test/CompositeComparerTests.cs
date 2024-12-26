@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(ComparersTestCases))]
         public IEnumerable<IComparer<int>> Composes_correctly(IEnumerable<IComparer<int>> comparers)
         {
-            CompositeComparer<int> comparer = (CompositeComparer<int>)comparers.Aggregate((c1, c2) => c1.ThenBy(c2));
+            CompositeComparer<int> comparer = (CompositeComparer<int>)comparers.Aggregate(static (c1, c2) => c1.ThenBy(c2));
             return comparer._comparers;
         }
     }

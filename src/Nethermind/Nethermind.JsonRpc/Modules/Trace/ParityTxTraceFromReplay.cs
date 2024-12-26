@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 JsonSerializer.Serialize(writer, value.Error, options);
             }
 
-            writer.WriteNumber("subtraces"u8, value.Subtraces.Count(s => s.IncludeInTrace));
+            writer.WriteNumber("subtraces"u8, value.Subtraces.Count(static s => s.IncludeInTrace));
 
             writer.WritePropertyName("traceAddress"u8);
             if (value.TraceAddress is null)
@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 addressBytes[1] = (byte)'x';
                 Span<byte> hex = addressBytes[2..];
 
-                foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(sc => sc.Key, AddressComparer.Instance))
+                foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(static sc => sc.Key, AddressComparer.Instance))
                 {
                     address.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
                     writer.WritePropertyName(addressBytes);

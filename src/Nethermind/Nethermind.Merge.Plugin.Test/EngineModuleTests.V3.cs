@@ -173,7 +173,7 @@ public partial class EngineModuleTests
         payload.TryGetBlock(out Block? b);
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -190,7 +190,7 @@ public partial class EngineModuleTests
         payload.TryGetBlock(out Block? b);
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -208,7 +208,7 @@ public partial class EngineModuleTests
         payload.TryGetBlock(out Block? b);
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -228,7 +228,7 @@ public partial class EngineModuleTests
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
 
-        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
@@ -300,7 +300,7 @@ public partial class EngineModuleTests
         }
 
         string[] props = serializer.Deserialize<JsonObject>(serializer.Serialize(new ExecutionPayload()))
-            .Select(prop => prop.Key).ToArray();
+            .Select(static prop => prop.Key).ToArray();
 
         foreach (string prop in props)
         {
@@ -581,8 +581,8 @@ public partial class EngineModuleTests
         ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        result.Data.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data.Select(static b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]

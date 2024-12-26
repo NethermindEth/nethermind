@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Tracing
 
         public static AlwaysCancelBlockTracer Instance
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new AlwaysCancelBlockTracer()); }
+            get { return LazyInitializer.EnsureInitialized(ref _instance, static () => new AlwaysCancelBlockTracer()); }
         }
 
         public override bool IsTracingRewards => true;

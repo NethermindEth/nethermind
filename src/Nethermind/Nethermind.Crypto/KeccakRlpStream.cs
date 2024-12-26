@@ -30,11 +30,6 @@ namespace Nethermind.Crypto
             _keccakHash.Update(bytesToWrite);
         }
 
-        public override void Write(IReadOnlyList<byte> bytesToWrite)
-        {
-            _keccakHash.Update(bytesToWrite.ToArray());
-        }
-
         public override void WriteByte(byte byteToWrite)
         {
             _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));

@@ -42,9 +42,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         stateProvider.StateRoot = parent.StateRoot!;
         stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
-        IEnumerable<Address> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? [];
-        IEnumerable<Address> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? [];
-        foreach (Address address in senders.Union(targets).Where(t => t is not null))
+        IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
+        IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
+        foreach (Address address in senders.Union(targets).Where(static t => t is not null))
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
