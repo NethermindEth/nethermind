@@ -188,6 +188,13 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 return "ReadBytes()";
         }
 
+        // Arrays
+        if (syntax is ArrayTypeSyntax array)
+        {
+            var elementType = array.ElementType;
+            return $"ReadArray(static (scoped ref RlpReader r) => r.{MapTypeToReadCall(elementType)})";
+        }
+
         // Generics
         if (syntax is GenericNameSyntax generic)
         {
@@ -222,6 +229,20 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     /// </summary>
     private static string MapTypeToWriteCall(string name, TypeSyntax syntax)
     {
+        // Arrays
+        if (syntax is ArrayTypeSyntax array)
+        {
+            var elementType = array.ElementType;
+
+            switch (elementType.ToString())
+            {
+                case "byte" or "Byte" or "System.Byte":
+                    return $"Write(value.{name})";
+                default:
+                    return $"Write(value.{name}, static (ref RlpWriter w, {elementType.ToString()} value) => w.Write(value))";
+            }
+        }
+
         // Generics
         if (syntax is GenericNameSyntax generic)
         {
