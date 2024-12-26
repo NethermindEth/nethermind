@@ -30,10 +30,4 @@ public static class Rlp
         // TODO: We might want to add an option to check for no trailing bytes.
         return result;
     }
-
-    public static void Read(ReadOnlySpan<byte> source, RefRlpReaderAction func)
-    {
-        var reader = new RlpReader(source);
-        func(ref reader);
-    }
 }
