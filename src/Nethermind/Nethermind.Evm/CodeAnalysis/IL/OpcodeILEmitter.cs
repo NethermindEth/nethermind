@@ -20,7 +20,6 @@ using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Sigil.NonGeneric;
-using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler.PartialAOT;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Ocsp;
 
@@ -68,11 +67,9 @@ internal abstract class OpcodeILEmitter<T>
         }
     }
 }
-
-
-internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
+internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 {
-    public DefaultOpcodeEmitter()
+    public PartialAotOpcodeEmitter()
     {
         Instruction[] instructions = (Instruction[])Enum.GetValues(typeof(Instruction));
 
@@ -90,7 +87,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadConstant(true);
                             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
                             method.FakeBranch(ret);
@@ -102,7 +99,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadChainId(method, locals);
+                            envLoader.LoadChainId(method, locals, false);
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         });
                     }
@@ -192,7 +189,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             else
                             {
                                 method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                                envLoader.LoadImmediatesData(method, locals);
+                                envLoader.LoadImmediatesData(method, locals, false);
                                 method.LoadConstant(opcodeMetadata.Arguments.Value);
                                 method.LoadElement<byte[]>();
                                 method.Call(Word.SetArray);
@@ -694,7 +691,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
 
                             // load spec
                             method.LoadLocal(locals.gasAvailable);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExpByteCost)));
                             method.LoadConstant((long)32);
                             method.LoadLocal(locals.uint64A);
@@ -958,7 +955,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary), false, out _));
@@ -971,7 +968,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
@@ -984,7 +981,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
@@ -997,7 +994,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
@@ -1010,8 +1007,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
                             method.Call(Word.SetAddress);
                         });
@@ -1022,8 +1019,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.Call(Word.SetAddress);
                         });
@@ -1034,7 +1031,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadTxContext(method, locals);
+                            envLoader.LoadTxContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
                             method.Call(Word.SetAddress);
                         });
@@ -1045,8 +1042,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
                             method.Call(Word.SetUInt256);
                         });
@@ -1057,7 +1054,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadTxContext(method, locals);
+                            envLoader.LoadTxContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
                             method.Call(Word.SetUInt256);
                         });
@@ -1095,16 +1092,15 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadCalldata(method, locals);
-                            method.LoadObject(typeof(ReadOnlyMemory<byte>));
+                            envLoader.LoadCalldata(method, locals, false);
                             method.LoadLocalAddress(locals.uint256B);
                             method.LoadLocal(locals.uint256C);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -1113,7 +1109,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                             method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.CallVirtual(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1132,8 +1128,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
 
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
 
-                            envLoader.LoadCalldata(method, locals);
-                            method.LoadObject(typeof(ReadOnlyMemory<byte>));
+                            envLoader.LoadCalldata(method, locals, false);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(Word.Size);
                             method.LoadConstant((int)PadDirection.Right);
@@ -1147,7 +1142,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadCalldata(method, locals);
+                            envLoader.LoadCalldata(method, locals, true);
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         });
@@ -1159,7 +1154,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
                             method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
                         });
@@ -1175,8 +1170,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
                             method.StoreLocal(locals.wordRef256B);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(Word.Size);
@@ -1186,7 +1181,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocal(locals.wordRef256B);
                             method.Call(Word.GetMutableSpan);
@@ -1205,8 +1200,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.CallGetter(Word.GetByte0, BitConverter.IsLittleEndian);
                             method.StoreLocal(locals.byte8A);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadConstant(1);
@@ -1216,7 +1211,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocal(locals.byte8A);
 
@@ -1232,15 +1227,15 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadFieldAddress(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType()]));
                             method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
@@ -1280,8 +1275,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
@@ -1292,9 +1287,9 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256B);
                             method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -1327,15 +1322,15 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.LoadConstant((long)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -1424,15 +1419,15 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadMachineCode(method, locals);
+                            envLoader.LoadMachineCode(method, locals, false);
                             method.StoreLocal(locals.localReadOnlyMemory);
 
                             method.LoadLocal(locals.localReadOnlyMemory);
@@ -1444,7 +1439,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                             method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1468,7 +1463,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
@@ -1498,7 +1493,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.LoadLocalAddress(tempResult);
                             method.Call(typeof(UInt256).GetMethod(nameof(UInt256.AddOverflow)));
                             method.LoadLocalAddress(tempResult);
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
                             method.Call(typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Length)).GetMethod!);
                             method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
@@ -1523,15 +1518,15 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
                             method.LoadObject(typeof(ReadOnlyMemory<byte>));
                             method.LoadLocalAddress(locals.uint256B);
@@ -1541,7 +1536,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                             method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1561,24 +1556,24 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadObject(typeof(ILChunkExecutionState));
                             method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                             method.StoreObject<ReadOnlyMemory<byte>>();
 
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadConstant(true);
                             switch (opcodeMetadata.Operation)
                             {
@@ -1598,7 +1593,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
@@ -1612,7 +1607,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         {
                             using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?));
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
                             method.StoreLocal(uint256Nullable);
                             method.LoadLocalAddress(uint256Nullable);
@@ -1629,7 +1624,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             Label endOfOpcode = method.DefineLabel();
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
 
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.Duplicate();
@@ -1657,7 +1652,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             Label endOfOpcode = method.DefineLabel();
                             using Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
 
-                            envLoader.LoadTxContext(method, locals);
+                            envLoader.LoadTxContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
                             method.StoreLocal(byteMatrix);
 
@@ -1709,8 +1704,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
                             method.StoreLocal(locals.int64A);
 
-                            envLoader.LoadBlockhashProvider(method, locals);
-                            envLoader.LoadBlockContext(method, locals);
+                            envLoader.LoadBlockhashProvider(method, locals, false);
+                            envLoader.LoadBlockContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
                             method.LoadLocalAddress(locals.int64A);
@@ -1805,8 +1800,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         {
                             sbyte topicsCount = (sbyte)(opcodeMetadata.Operation - Instruction.LOG0);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                             method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
 
@@ -1819,8 +1814,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256B); // length
                                                                 // UpdateMemoryCost
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect(typeof(EvmState));
+                            envLoader.LoadVmState(method, locals, false);
+                            
 
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A); // position
@@ -1848,7 +1843,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.LoadConstant((ulong)0);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadEnv(method, locals);
+                            envLoader.LoadEnv(method, locals, true);
                             method.LoadField(
                                 GetFieldInfo(
                                     typeof(ExecutionEnvironment),
@@ -1856,7 +1851,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                                 )
                             );
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A); // position
                             method.LoadLocalAddress(locals.uint256B); // length
                             method.Call(
@@ -1889,8 +1884,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.NewObject(typeof(LogEntry), typeof(Address), typeof(byte[]), typeof(Hash256[]));
                             method.StoreLocal(logEntry);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect(typeof(EvmState));
+                            envLoader.LoadVmState(method, locals, false);
+                            
 
                             method.LoadFieldAddress(typeof(EvmState).GetField("_accessTracker", BindingFlags.Instance | BindingFlags.NonPublic));
                             method.CallVirtual(GetPropertyInfo(typeof(StackAccessTracker), nameof(StackAccessTracker.Logs), getSetter: false, out _));
@@ -1905,8 +1900,8 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
                             method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
 
@@ -1918,14 +1913,14 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetArray);
                             method.StoreLocal(locals.localArray);
 
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.LoadLocalAddress(locals.uint256A);
                             method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
                             method.StoreLocal(locals.storageCell);
 
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocalAddress(locals.storageCell);
                             method.LoadLocal(locals.localArray);
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
@@ -1940,14 +1935,14 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.LoadLocalAddress(locals.uint256A);
                             method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
                             method.StoreLocal(locals.storageCell);
 
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocalAddress(locals.storageCell);
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
                             method.StoreLocal(locals.localReadonOnlySpan);
@@ -1969,14 +1964,14 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetReadOnlySpan);
                             method.StoreLocal(locals.localReadonOnlySpan);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadVmState(method, locals, false);
+                            
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.localReadonOnlySpan);
-                            envLoader.LoadSpec(method, locals);
-                            envLoader.LoadTxTracer(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
+                            envLoader.LoadTxTracer(method, locals, false);
 
                             MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
                                         .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
@@ -1994,7 +1989,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             {
                                 Label callNonTracingMode = method.DefineLabel();
                                 Label skipBeyondCalls = method.DefineLabel();
-                                envLoader.LoadTxTracer(method, locals);
+                                envLoader.LoadTxTracer(method, locals, false);
                                 method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
                                 method.BranchIfFalse(callNonTracingMode);
                                 method.Call(tracingSStoreMethod);
@@ -2010,11 +2005,11 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.LoadConstant((int)EvmExceptionType.None);
                             method.BranchIfEqual(endOfOpcode);
 
-                            envLoader.LoadResult(method, locals);
+                            envLoader.LoadResult(method, locals, true);
                             method.LoadLocal(locals.uint32A);
                             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
 
-                            envLoader.LoadGasAvailable(method, locals);
+                            envLoader.LoadGasAvailable(method, locals, true);
                             method.LoadLocal(locals.gasAvailable);
                             method.StoreIndirect<long>();
                             method.Return();
@@ -2028,7 +2023,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.LoadLocal(locals.gasAvailable);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetSLoadCost)));
                             method.Subtract();
                             method.Duplicate();
@@ -2040,24 +2035,24 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
 
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.LoadLocalAddress(locals.uint256A);
                             method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
                             method.StoreLocal(locals.storageCell);
 
                             method.LoadLocalAddress(locals.gasAvailable);
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.storageCell);
                             method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.StorageAccessType.SLOAD);
-                            envLoader.LoadSpec(method, locals);
-                            envLoader.LoadTxTracer(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
+                            envLoader.LoadTxTracer(method, locals, false);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocalAddress(locals.storageCell);
                             method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
                             method.StoreLocal(locals.localReadonOnlySpan);
@@ -2073,7 +2068,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.LoadLocal(locals.gasAvailable);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
                             method.Subtract();
                             method.Duplicate();
@@ -2086,23 +2081,23 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.StoreLocal(locals.address);
 
                             method.LoadLocalAddress(locals.gasAvailable);
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocal(locals.address);
                             method.LoadConstant(true);
-                            envLoader.LoadWorldState(method, locals);
-                            envLoader.LoadSpec(method, locals);
-                            envLoader.LoadTxTracer(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
+                            envLoader.LoadSpec(method, locals, false);
+                            envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
 
-                            envLoader.LoadCodeInfoRepository(method, locals);
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadCodeInfoRepository(method, locals, false);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
                             method.StoreLocal(locals.localReadOnlyMemory);
@@ -2124,7 +2119,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.StoreLocal(locals.uint256C);
 
                             method.LoadLocal(locals.gasAvailable);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
                             method.LoadLocalAddress(locals.uint256C);
                             method.LoadLocalAddress(locals.lbool);
@@ -2149,13 +2144,13 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.StoreLocal(locals.uint256B);
 
                             method.LoadLocalAddress(locals.gasAvailable);
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocal(locals.address);
                             method.LoadConstant(true);
-                            envLoader.LoadWorldState(method, locals);
-                            envLoader.LoadSpec(method, locals);
-                            envLoader.LoadTxTracer(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
+                            envLoader.LoadSpec(method, locals, false);
+                            envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -2164,18 +2159,18 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
                             method.BranchIfTrue(endOfOpcode);
 
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocalAddress(locals.gasAvailable);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256C);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadCodeInfoRepository(method, locals);
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadCodeInfoRepository(method, locals, false);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                             method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 
@@ -2187,7 +2182,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                             method.StoreLocal(locals.localZeroPaddedSpan);
 
-                            envLoader.LoadMemory(method, locals);
+                            envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.localZeroPaddedSpan);
                             method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -2203,7 +2198,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             Label endOfOpcode = method.DefineLabel();
 
                             method.LoadLocal(locals.gasAvailable);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
                             method.Subtract();
                             method.Duplicate();
@@ -2216,13 +2211,13 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.StoreLocal(locals.address);
 
                             method.LoadLocalAddress(locals.gasAvailable);
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocal(locals.address);
                             method.LoadConstant(true);
-                            envLoader.LoadWorldState(method, locals);
-                            envLoader.LoadSpec(method, locals);
-                            envLoader.LoadTxTracer(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
+                            envLoader.LoadSpec(method, locals, false);
+                            envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -2231,38 +2226,38 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             Label pushhashcodeLabel = method.DefineLabel();
 
                             // account exists
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
                             method.BranchIfFalse(pushZeroLabel);
 
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
                             method.BranchIfTrue(pushZeroLabel);
 
                             using Local delegateAddress = method.DeclareLocal<Address>();
-                            envLoader.LoadCodeInfoRepository(method, locals);
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadCodeInfoRepository(method, locals, false);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             method.LoadLocalAddress(delegateAddress);
                             method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.TryGetDelegation), [typeof(IWorldState), typeof(Address), typeof(Address).MakeByRefType()]));
                             method.BranchIfFalse(pushhashcodeLabel);
 
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(delegateAddress);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
                             method.BranchIfFalse(pushZeroLabel);
 
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(delegateAddress);
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
                             method.BranchIfTrue(pushZeroLabel);
 
                             method.MarkLabel(pushhashcodeLabel);
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            envLoader.LoadCodeInfoRepository(method, locals);
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadCodeInfoRepository(method, locals, false);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
                             method.Call(Word.SetKeccak);
@@ -2281,9 +2276,9 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadWorldState(method, locals);
-                            envLoader.LoadEnv(method, locals);
-                            method.LoadObject(typeof(ExecutionEnvironment));
+                            envLoader.LoadWorldState(method, locals, false);
+                            envLoader.LoadEnv(method, locals, false);
+                            
                             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                             method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                             method.Call(Word.SetUInt256);
@@ -2295,7 +2290,7 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
                         {
                             method.LoadLocal(locals.gasAvailable);
-                            envLoader.LoadSpec(method, locals);
+                            envLoader.LoadSpec(method, locals, false);
                             method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
                             method.Subtract();
                             method.Duplicate();
@@ -2308,24 +2303,96 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.StoreLocal(locals.address);
 
                             method.LoadLocalAddress(locals.gasAvailable);
-                            envLoader.LoadVmState(method, locals);
-                            method.LoadIndirect<EvmState>();
+                            envLoader.LoadVmState(method, locals, false);
+                            
                             method.LoadLocal(locals.address);
                             method.LoadConstant(false);
-                            envLoader.LoadWorldState(method, locals);
-                            envLoader.LoadSpec(method, locals);
-                            envLoader.LoadTxTracer(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
+                            envLoader.LoadSpec(method, locals, false);
+                            envLoader.LoadTxTracer(method, locals, false);
                             method.LoadConstant(true);
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.ChargeAccountAccessGas)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            envLoader.LoadWorldState(method, locals);
+                            envLoader.LoadWorldState(method, locals, false);
                             method.LoadLocal(locals.address);
                             method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                             method.Call(Word.SetUInt256);
                         });
                     }
+                    break;
+                case Instruction.SELFDESTRUCT:
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    {
+                        MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+
+                        MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+
+                        Label skipGasDeduction = method.DefineLabel();
+                        Label happyPath = method.DefineLabel();
+
+                        envLoader.LoadVmState(method, locals, false);
+                        
+                        method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
+                        method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
+
+                        envLoader.LoadSpec(method, locals, false);
+                        method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());
+                        method.BranchIfFalse(skipGasDeduction);
+
+                        method.LoadLocal(locals.gasAvailable);
+                        method.LoadConstant(GasCostOf.SelfDestructEip150);
+                        method.Subtract();
+                        method.Duplicate();
+                        method.StoreLocal(locals.gasAvailable);
+                        method.LoadConstant((long)0);
+                        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+
+                        method.MarkLabel(skipGasDeduction);
+
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
+                        method.Call(Word.GetAddress);
+                        method.StoreLocal(locals.address);
+
+                        envLoader.LoadVmState(method, locals, false);
+                        
+                        envLoader.LoadWorldState(method, locals, false);
+                        method.LoadLocal(locals.address);
+                        method.LoadLocalAddress(locals.gasAvailable);
+                        envLoader.LoadSpec(method, locals, false);
+                        envLoader.LoadTxTracer(method, locals, false);
+                        if(ilCompilerConfig.BakeInTracingInPartialAotMode)
+                        {
+                            method.Call(selfDestructTracing);
+                        } else
+                        {
+                            method.Call(selfDestructNotTracing);
+                        }
+                        method.StoreLocal(locals.uint32A);
+
+
+                        method.LoadLocal(locals.uint32A);
+                        method.LoadConstant((int)EvmExceptionType.None);
+                        method.BranchIfEqual(happyPath);
+
+                        envLoader.LoadResult(method, locals, true);
+                        method.LoadLocal(locals.uint32A);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+
+                        envLoader.LoadGasAvailable(method, locals, true);
+                        method.LoadLocal(locals.gasAvailable);
+                        method.StoreIndirect<long>();
+                        method.Return();
+
+                        method.MarkLabel(happyPath);
+                        envLoader.LoadResult(method, locals, true);
+                        method.LoadConstant(true);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
+                        method.FakeBranch(ret);
+                    });
                     break;
                 default:
                     {
@@ -2334,6 +2401,288 @@ internal class DefaultOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateTy
                             method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                         });
                     }
+                    break;
+            }
+        }
+    }
+}
+
+internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
+{
+    public FullAotOpcodeEmitter() {
+        // statefull opcode
+        Instruction[] statefullOpcodes = [
+            Instruction.CALL,
+            Instruction.CALLCODE,
+            Instruction.DELEGATECALL,
+            Instruction.STATICCALL,
+            Instruction.CREATE,
+            Instruction.CREATE2,
+            ];
+
+        foreach (Instruction instruction in statefullOpcodes)
+        {
+            switch(instruction)
+            {
+                case Instruction.CALL:
+                case Instruction.CALLCODE:
+                case Instruction.DELEGATECALL:
+                case Instruction.STATICCALL:
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    {
+                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.NonPublic)
+                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
+
+                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.NonPublic)
+                            .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+
+                        using Local toPushToStack = method.DeclareLocal(typeof(ReadOnlyMemory<byte>?));
+                        using Local newStateToExe = method.DeclareLocal<Object>();
+                        Label happyPath = method.DefineLabel();
+
+                        envLoader.LoadVmState(method, locals, false);
+                        
+
+                        envLoader.LoadWorldState(method, locals, false);
+                        method.LoadLocalAddress(locals.gasAvailable);
+                        envLoader.LoadSpec(method, locals, false);
+                        envLoader.LoadTxTracer(method, locals, false);
+                        envLoader.LoadLogger(method, locals, false);
+
+                        method.LoadConstant((int)instruction);
+
+                        int index = 1;
+                        // load gasLimit
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load codeSource
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetAddress);
+
+                        // load callvalue
+                        if (instruction is Instruction.CALL)
+                        {
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                            method.Call(Word.GetUInt256);
+                        }
+                        else
+                        {
+                            method.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
+                        }
+
+                        // load dataoffset
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load datalength
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load datasize
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load outputOffset
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load outputLength
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.Call(Word.GetUInt256);
+
+                        method.LoadLocalAddress(toPushToStack);
+
+                        method.LoadObject(typeof(ILChunkExecutionState));
+                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+
+                        method.LoadLocalAddress(newStateToExe);
+
+                        if (ilCompilerConfig.BakeInTracingInPartialAotMode)
+                        {
+                            method.Call(callMethodTracign);
+                        }
+                        else
+                        {
+                            method.Call(callMethodNotTracing);
+                        }
+                        method.StoreLocal(locals.uint32A);
+
+                        method.LoadLocal(locals.uint32A);
+                        method.LoadConstant((int)EvmExceptionType.None);
+                        method.BranchIfEqual(happyPath);
+
+                        envLoader.LoadResult(method, locals, true);
+                        method.LoadLocal(locals.uint32A);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+
+                        envLoader.LoadGasAvailable(method, locals, true);
+                        method.LoadLocal(locals.gasAvailable);
+                        method.StoreIndirect<long>();
+                        method.Return();
+
+                        method.MarkLabel(happyPath);
+
+                        Label skipStateMachineScheduling = method.DefineLabel();
+
+                        method.LoadLocal(newStateToExe);
+                        method.LoadNull();
+                        method.BranchIfEqual(skipStateMachineScheduling);
+
+                        method.LoadLocal(newStateToExe);
+                        method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
+                        method.Call(typeof(Object).GetMethod(nameof(Object.ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
+                        method.BranchIfTrue(skipStateMachineScheduling);
+
+                        // cast object to CallResult and store it in 
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(newStateToExe);
+                        method.CastClass(typeof(EvmState));
+                        method.NewObject(typeof(VirtualMachine.CallResult), typeof(EvmState));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+
+                        method.LoadConstant(true);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldContinue)));
+                        method.Branch(ret);
+
+                        method.MarkLabel(skipStateMachineScheduling);
+                        Label hasNoItemsToPush = method.DefineLabel();
+
+                        method.LoadLocal(toPushToStack);
+                        method.LoadNull();
+                        method.BranchIfEqual(hasNoItemsToPush);
+
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.LoadLocal(toPushToStack);
+                        method.Call(Word.SetReadOnlyMemory);
+
+                        method.MarkLabel(hasNoItemsToPush);
+                    });
+                    break;
+                case Instruction.CREATE:
+                case Instruction.CREATE2:
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    {
+                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.NonPublic)
+                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing));
+
+                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.NonPublic)
+                            .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
+
+                        using Local toPushToStack = method.DeclareLocal(typeof(ReadOnlyMemory<byte>?));
+                        using Local newStateToExe = method.DeclareLocal<Object>();
+                        Label happyPath = method.DefineLabel();
+
+                        envLoader.LoadVmState(method, locals, false);
+                        
+
+                        envLoader.LoadWorldState(method, locals, false);
+                        method.LoadLocalAddress(locals.gasAvailable);
+                        envLoader.LoadSpec(method, locals, false);
+                        envLoader.LoadTxTracer(method, locals, false);
+                        envLoader.LoadLogger(method, locals, false);
+
+                        method.LoadConstant((int)instruction);
+
+                        int index = 1;
+
+                        // load value
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load memory offset
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load initcode len
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load callvalue
+                        if (instruction is Instruction.CREATE2)
+                        {
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                            method.Call(Word.GetUInt256);
+                        }
+                        else
+                        {
+                            method.LoadConstant(0);
+                            method.InitializeObject(typeof(Span<byte>));
+                        }
+
+                        method.LoadLocalAddress(toPushToStack);
+
+                        method.LoadObject(typeof(ILChunkExecutionState));
+                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+
+                        method.LoadLocalAddress(newStateToExe);
+
+                        if (ilCompilerConfig.BakeInTracingInPartialAotMode)
+                        {
+                            method.Call(callMethodTracign);
+                        }
+                        else
+                        {
+                            method.Call(callMethodNotTracing);
+                        }
+                        method.StoreLocal(locals.uint32A);
+
+                        method.LoadLocal(locals.uint32A);
+                        method.LoadConstant((int)EvmExceptionType.None);
+                        method.BranchIfEqual(happyPath);
+
+                        envLoader.LoadResult(method, locals, true);
+                        method.LoadLocal(locals.uint32A);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+
+                        envLoader.LoadGasAvailable(method, locals, true);
+                        method.LoadLocal(locals.gasAvailable);
+                        method.StoreIndirect<long>();
+                        method.Return();
+
+                        method.MarkLabel(happyPath);
+
+                        Label skipStateMachineScheduling = method.DefineLabel();
+
+                        method.LoadLocal(newStateToExe);
+                        method.LoadNull();
+                        method.BranchIfEqual(skipStateMachineScheduling);
+
+                        method.LoadLocal(newStateToExe);
+                        method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
+                        method.Call(typeof(Object).GetMethod(nameof(Object.ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
+                        method.BranchIfTrue(skipStateMachineScheduling);
+
+                        // cast object to CallResult and store it in 
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(newStateToExe);
+                        method.CastClass(typeof(EvmState));
+                        method.NewObject(typeof(VirtualMachine.CallResult), typeof(EvmState));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+
+                        method.LoadConstant(true);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldContinue)));
+                        method.Branch(ret);
+
+                        method.MarkLabel(skipStateMachineScheduling);
+                        Label hasNoItemsToPush = method.DefineLabel();
+
+                        method.LoadLocal(toPushToStack);
+                        method.LoadNull();
+                        method.BranchIfEqual(hasNoItemsToPush);
+
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.LoadLocal(toPushToStack);
+                        method.Call(Word.SetUInt256);
+
+                        method.MarkLabel(hasNoItemsToPush);
+                    });
                     break;
             }
         }

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using System;
 using System.Runtime.CompilerServices;
-using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
@@ -29,7 +30,8 @@ internal class PrecompiledChunk : InstructionChunk
         ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<T> stack,
-        ITxTracer trace,
+        ITxTracer tracer,
+        ILogger logger,
         ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         PrecompiledSegment.Invoke(
@@ -47,7 +49,8 @@ internal class PrecompiledChunk : InstructionChunk
             worldState,
             codeInfoRepository,
             spec,
-            trace,
+            tracer,
+            logger,
 
             ref programCounter,
             ref gasAvailable,

@@ -140,6 +140,44 @@ internal struct Word
         }
     }
 
+    public unsafe ReadOnlyMemory<byte> ReadOnlyMemory
+    {
+        get
+        {
+            fixed (byte* src = _buffer)
+            {
+                byte[] array = new Span<byte>(src, 32).ToArray();
+                return new ReadOnlyMemory<byte>(array);
+            }
+        }
+        set
+        {
+            fixed (byte* src = Memory.Span, dest = _buffer)
+            {
+                Buffer.MemoryCopy(src, dest + (32 - value.Length), value.Length, value.Length);
+            }
+        }
+    }
+
+
+    public unsafe Memory<byte> Memory
+    {
+        get
+        {
+            fixed (byte* src = _buffer)
+            {
+                byte[] array = new Span<byte>(src, 32).ToArray();
+                return new Memory<byte>(array);
+            }
+        }
+        set
+        {
+            fixed (byte* src = Memory.Span, dest = _buffer)
+            {
+                Buffer.MemoryCopy(src, dest + (32 - value.Length), value.Length, value.Length);
+            }
+        }
+    }
     public unsafe ReadOnlySpan<byte> ReadOnlySpan
     {
         get
@@ -346,9 +384,13 @@ internal struct Word
 
     public static readonly MethodInfo GetMutableSpan = typeof(Word).GetProperty(nameof(Span))!.GetMethod;
     public static readonly MethodInfo SetMutableSpan = typeof(Word).GetProperty(nameof(Span))!.SetMethod;
+    public static readonly MethodInfo GetMutableMemory= typeof(Word).GetProperty(nameof(Memory))!.GetMethod;
+    public static readonly MethodInfo SetMutableMemory = typeof(Word).GetProperty(nameof(Memory))!.SetMethod;
     public static readonly MethodInfo GetReadOnlySpan = typeof(Word).GetProperty(nameof(ReadOnlySpan))!.GetMethod;
     public static readonly MethodInfo SetReadOnlySpan = typeof(Word).GetProperty(nameof(ReadOnlySpan))!.SetMethod;
     public static readonly MethodInfo SetZeroPaddedSpan = typeof(Word).GetProperty(nameof(ZeroPaddedSpan))!.SetMethod;
+    public static readonly MethodInfo GetReadOnlyMemory = typeof(Word).GetProperty(nameof(ReadOnlyMemory))!.GetMethod;
+    public static readonly MethodInfo SetReadOnlyMemory = typeof(Word).GetProperty(nameof(ReadOnlyMemory))!.SetMethod;
 
     public static readonly MethodInfo GetIsUint16 = typeof(Word).GetProperty(nameof(IsUint16))!.GetMethod;
     public static readonly MethodInfo GetIsUint32 = typeof(Word).GetProperty(nameof(IsUint32))!.GetMethod;

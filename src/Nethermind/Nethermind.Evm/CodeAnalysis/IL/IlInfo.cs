@@ -18,6 +18,7 @@ internal ref struct ILChunkExecutionState(ref ReadOnlyMemory<byte> output)
     public bool ShouldStop;
     public bool ShouldRevert;
     public bool ShouldReturn;
+    public bool ShouldContinue;
     public ref readonly ReadOnlyMemory<byte> ReturnData = ref output;
     public CallResult CallResult; // usually empty not used
     public EvmExceptionType ExceptionType;
@@ -99,7 +100,7 @@ internal class IlInfo
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, bytecodeChunkHandler);
 
-            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, tracer, ref result);
+            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, tracer, logger, ref result);
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
             return true;

@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return GasCostOf.JumpDest;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -1962,6 +1962,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.SELFDESTRUCT], Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(3)
+                    .MUL()
+                    .PushData(123)
+                    .SSTORE()
+                    .PushData(Address.Zero)
+                    .SELFDESTRUCT()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
                 yield return ([Instruction.INVALID], Prepare.EvmCode
                     .JUMPDEST()
                     .MUL(23, 3)
@@ -1987,6 +1997,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .MUL(23)
                     .JUMP(0)
                     .Done, EvmExceptionType.StackUnderflow, (turnOnAmortization, turnOnAggressiveMode));
+
+                
             }
 
             (bool, bool)[] combinations = new[]
@@ -2781,6 +2793,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 CodeInfoRepository,
                 Prague.Instance,
                 tracer,
+                NullLogger.Instance,
+
                 ref programCounter,
                 ref gasAvailable,
                 testcase.bytecode,
@@ -2855,6 +2869,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 CodeInfoRepository,
                 Prague.Instance,
                 tracer,
+                NullLogger.Instance,
+
                 ref programCounter,
                 ref gasAvailable,
                 testcase.bytecode,
@@ -2930,6 +2946,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 CodeInfoRepository,
                 Prague.Instance,
                 tracer,
+                NullLogger.Instance,
+
                 ref programCounter,
                 ref gasAvailable,
                 testcase.bytecode,

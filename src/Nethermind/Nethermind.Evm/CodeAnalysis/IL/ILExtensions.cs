@@ -17,33 +17,12 @@ using System.Numerics;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-public abstract class EnvLoader<T>
-{
-    public abstract void LoadChainId(Emit<T> il, Locals<T> locals);
-    public abstract void LoadVmState(Emit<T> il, Locals<T> locals);
-    public abstract void LoadEnv(Emit<T> il, Locals<T> locals);
-    public abstract void LoadTxContext(Emit<T> il, Locals<T> locals);
-    public abstract void LoadBlockContext(Emit<T> il, Locals<T> locals);
-    public abstract void LoadMemory(Emit<T> il, Locals<T> locals);
-    public abstract void LoadCurrStackHead(Emit<T> il, Locals<T> locals);
-    public abstract void LoadStackHead(Emit<T> il, Locals<T> locals);
-    public abstract void LoadBlockhashProvider(Emit<T> il, Locals<T> locals);
-    public abstract void LoadWorldState(Emit<T> il, Locals<T> locals);
-    public abstract void LoadCodeInfoRepository(Emit<T> il, Locals<T> locals);
-    public abstract void LoadSpec(Emit<T> il, Locals<T> locals);
-    public abstract void LoadTxTracer(Emit<T> il, Locals<T> locals);
-    public abstract void LoadProgramCounter(Emit<T> il, Locals<T> locals);
-    public abstract void LoadGasAvailable(Emit<T> il, Locals<T> locals);
-    public abstract void LoadMachineCode(Emit<T> il, Locals<T> locals);
-    public abstract void LoadCalldata(Emit<T> il, Locals<T> locals);
-    public abstract void LoadImmediatesData(Emit<T> il, Locals<T> locals);
-    public abstract void LoadResult(Emit<T> il, Locals<T> locals);
-}
 public class Locals<T>(Emit<T> method) : IDisposable
 {
     public Local jmpDestination = method.DeclareLocal(typeof(int));
@@ -77,6 +56,48 @@ public class Locals<T>(Emit<T> method) : IDisposable
     public Local stackHeadIdx = method.DeclareLocal(typeof(int));
     public Local header = method.DeclareLocal(typeof(BlockHeader));
 
+    public Dictionary<string, Local> AddtionalLocals = new();
+
+    public bool TryDeclareLocal(string name, Type type)
+    {
+        if (!AddtionalLocals.ContainsKey(name))
+        {
+            AddtionalLocals.Add(name, method.DeclareLocal(type));
+            return true;
+        }
+        return false;
+    }
+
+    public bool TryLoadLocal(string name)
+    {
+        if (AddtionalLocals.ContainsKey(name))
+        {
+            method.LoadLocal(AddtionalLocals[name]);
+            return true;
+        }
+        return false;
+    }
+
+    public bool TryLoadLocalAddress(string name)
+    {
+        if (AddtionalLocals.ContainsKey(name))
+        {
+            method.LoadLocalAddress(AddtionalLocals[name]);
+            return true;
+        }
+        return false;
+    }
+
+    public bool TryStoreLocal(string name)
+    {
+        if (AddtionalLocals.ContainsKey(name))
+        {
+            method.StoreLocal(AddtionalLocals[name]);
+            return true;
+        }
+        return false;
+    }
+
     public void Dispose()
     {
         jmpDestination.Dispose();
@@ -109,6 +130,11 @@ public class Locals<T>(Emit<T> method) : IDisposable
         stackHeadRef.Dispose();
         stackHeadIdx.Dispose();
         header.Dispose();
+
+        foreach (var local in AddtionalLocals)
+        {
+            local.Value.Dispose();
+        }
     }
 
 }

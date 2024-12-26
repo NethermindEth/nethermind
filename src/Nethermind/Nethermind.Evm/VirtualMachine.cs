@@ -1876,8 +1876,32 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        (exceptionType, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
+                        if (!stack.PopUInt256(out UInt256 value) ||
+                            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
+                            !stack.PopUInt256(out UInt256 initCodeLength))
+                            goto StackUnderflow;
+
+                        Span<byte> salt = default;
+                        if (instruction == Instruction.CREATE2)
+                        {
+                            salt = stack.PopWord256();
+                        }
+
+
+                        exceptionType = InstructionCreate<TTracingInstructions>(
+                            vmState, _state, ref gasAvailable, spec, _txTracer, _logger,
+                            instruction,
+                            value, memoryPositionOfInitCode, initCodeLength, salt,
+                            ref _returnDataBuffer,
+                            out UInt256? earlyStatusPush,
+                            out returnData);
+
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                        if (earlyStatusPush is not null)
+                        {
+                            stack.PushUInt256(earlyStatusPush.Value);
+                        }
 
                         if (returnData is null) break;
 
@@ -1925,7 +1949,8 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
 
                         exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(
-                            vmState, ref gasAvailable, spec, instruction,
+                            vmState, _state, ref gasAvailable, spec, _txTracer, _logger,
+                            instruction,
                             gasLimit,
                             codeSource,
                             callValue,
@@ -1933,12 +1958,13 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                             dataSize,
                             outputOffset,
                             outputSize,
-                            out ReadOnlyMemory<byte>? toPushToStack,
+                            out UInt256? toPushToStack,
+                            ref _returnDataBuffer,
                             out returnData);
 
                         if (toPushToStack is not null)
                         {
-                            stack.PushBytes(toPushToStack.Value.Span);
+                            stack.PushUInt256(toPushToStack.Value);
                         }
 
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
@@ -1980,7 +2006,10 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                             gasAvailable -= GasCostOf.SelfDestructEip150;
                         }
 
-                        exceptionType = InstructionSelfDestruct(vmState, ref stack, ref gasAvailable, spec);
+                        Address inheritor = stack.PopAddress();
+                        if (inheritor is null) goto StackUnderflow;
+
+                        exceptionType = InstructionSelfDestruct(vmState, _state, inheritor, ref gasAvailable, spec, _txTracer);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         goto EmptyReturn;
@@ -2235,7 +2264,8 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref long gasAvailable, IReleaseSpec spec,
+    public static EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(
+        EvmState vmState, IWorldState state, ref long gasAvailable, IReleaseSpec spec, ITxTracer tracer, ILogger logger,
         Instruction instruction,
         UInt256 gasLimit,
         Address codeSource,
@@ -2244,7 +2274,8 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         UInt256 dataLength,
         UInt256 outputOffset,
         UInt256 outputLength,
-        out ReadOnlyMemory<byte>? toPushInStack,
+        out UInt256? toPushInStack,
+        ref ReadOnlyMemory<byte> returnBuffer,
         out object returnData)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
@@ -2259,7 +2290,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, true, _state, spec, _txTracer)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, true, state, spec, tracer)) return EvmExceptionType.OutOfGas;
 
         UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
 
@@ -2283,11 +2314,11 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             gasExtra += GasCostOf.CallValue;
         }
 
-        if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
+        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
         {
             gasExtra += GasCostOf.NewAccount;
         }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
         {
             gasExtra += GasCostOf.NewAccount;
         }
@@ -2297,7 +2328,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
+        CodeInfo codeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         if (spec.Use63Over64Rule)
@@ -2312,39 +2343,39 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if (!transferValue.IsZero)
         {
-            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+            if (typeof(TTracingRefunds) == typeof(IsTracing)) tracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue))
+        if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
         {
-            _returnDataBuffer = Array.Empty<byte>();
-            toPushInStack = UInt256.Zero.PaddedBytes(32);
+            returnBuffer = Array.Empty<byte>();
+            toPushInStack = UInt256.Zero;
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                 ReadOnlyMemory<byte>? memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
-                _txTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
+                tracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
             }
 
-            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
-            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(gasAvailable);
-            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+            if (typeof(TLogger) == typeof(IsTracing)) logger.Trace("FAIL - call depth");
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) tracer.ReportOperationRemainingGas(gasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) tracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
 
             UpdateGasUp(gasLimitUl, ref gasAvailable);
-            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) tracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
             return EvmExceptionType.None;
         }
 
-        Snapshot snapshot = _state.TakeSnapshot();
-        _state.SubtractFromBalance(caller, transferValue, spec);
+        Snapshot snapshot = state.TakeSnapshot();
+        state.SubtractFromBalance(caller, transferValue, spec);
 
-        if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !tracer.IsTracingActions)
         {
             // Non contract call, no need to construct call frame can just credit balance and return gas
-            _returnDataBuffer = default;
-            toPushInStack = StatusCode.SuccessBytes;
+            returnBuffer = default;
+            toPushInStack = StatusCode.Success;
 
             UpdateGasUp(gasLimitUl, ref gasAvailable);
             return FastCall(spec, out returnData, in transferValue, target);
@@ -2363,7 +2394,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             inputData: callData,
             codeInfo: codeInfo
         );
-        if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
+        if (typeof(TLogger) == typeof(IsTracing)) logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
         {
             // TODO: when output length is 0 outputOffset can have any value really
@@ -2387,7 +2418,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         EvmExceptionType FastCall(IReleaseSpec spec, out object returnData, in UInt256 transferValue, Address target)
         {
-            _state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
             returnData = CallResult.BoxedEmpty;
@@ -2397,11 +2428,11 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
         {
-            _logger.Trace($"caller {caller}");
-            _logger.Trace($"code source {codeSource}");
-            _logger.Trace($"target {target}");
-            _logger.Trace($"value {callValue}");
-            _logger.Trace($"transfer value {transferValue}");
+            logger.Trace($"caller {caller}");
+            logger.Trace($"code source {codeSource}");
+            logger.Trace($"target {target}");
+            logger.Trace($"value {callValue}");
+            logger.Trace($"transfer value {transferValue}");
         }
     }
 
@@ -2445,28 +2476,25 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    private EvmExceptionType InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
-        where TTracing : struct, IIsTracing
+    public static  EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec, ITxTracer txTracer)
     {
         Metrics.IncrementSelfDestructs();
 
-        Address inheritor = stack.PopAddress();
-        if (inheritor is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, false, _state, spec, _txTracer, false)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, false, state, spec, txTracer, false)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
-        UInt256 result = _state.GetBalance(executingAccount);
-        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
+        UInt256 result = state.GetBalance(executingAccount);
+        if (txTracer.IsTracingActions) txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
+        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
         {
             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         }
 
-        bool inheritorAccountExists = _state.AccountExists(inheritor);
+        bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
@@ -2474,47 +2502,41 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if (!inheritorAccountExists)
         {
-            _state.CreateAccount(inheritor, result);
+            state.CreateAccount(inheritor, result);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            _state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, result, spec);
         }
 
         if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
             return EvmExceptionType.None; // don't burn eth when contract is not destroyed per EIP clarification
 
-        _state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, result, spec);
         return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private (EvmExceptionType exceptionType, EvmState? callState) InstructionCreate<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+    public static EvmExceptionType InstructionCreate<TTracing>(
+        EvmState vmState, IWorldState state, ref long gasAvailable, IReleaseSpec spec, ITxTracer tracer, ILogger logger, Instruction instruction,
+        UInt256 value, UInt256 memoryPositionOfInitCode, UInt256 initCodeLength, Span<byte> salt,
+        ref ReadOnlyMemory<byte> returnDataBuffer, out UInt256? statusReturn, out object callState)
         where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
+        callState = null;
+        statusReturn = null;
 
         // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
-        if (!_state.AccountExists(env.ExecutingAccount))
+        if (!state.AccountExists(env.ExecutingAccount))
         {
-            _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-        }
-
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
-            return (EvmExceptionType.StackUnderflow, null);
-
-        Span<byte> salt = default;
-        if (instruction == Instruction.CREATE2)
-        {
-            salt = stack.PopWord256();
+            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
         }
 
         //EIP-3860
         if (spec.IsEip3860Enabled)
         {
-            if (initCodeLength > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
+            if (initCodeLength > spec.MaxInitCodeSize) return EvmExceptionType.OutOfGas;
         }
 
         bool outOfGas = false;
@@ -2523,46 +2545,46 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                        (instruction == Instruction.CREATE2
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength, out outOfGas)
                            : 0);
-        if (outOfGas || !UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
+        if (outOfGas || !UpdateGas(gasCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) return (EvmExceptionType.OutOfGas, null);
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) return EvmExceptionType.OutOfGas;
 
         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
         {
             // TODO: need a test for this
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
+            returnDataBuffer = Array.Empty<byte>();
+            statusReturn = UInt256.Zero;
+            return EvmExceptionType.None;
         }
 
         ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
 
-        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+        UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
+            returnDataBuffer = Array.Empty<byte>();
+            statusReturn = UInt256.Zero;
+            return EvmExceptionType.None;
         }
 
-        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
+            returnDataBuffer = Array.Empty<byte>();
+            statusReturn = UInt256.Zero;
+            return EvmExceptionType.None;
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(_txTracer, gasAvailable, vmState.Memory.Size);
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(tracer, gasAvailable, vmState.Memory.Size);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
+        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         Address contractAddress = instruction == Instruction.CREATE
-            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (spec.UseHotAndColdStorage)
@@ -2571,27 +2593,27 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             vmState.AccessTracker.WarmUp(contractAddress);
         }
 
-        _state.IncrementNonce(env.ExecutingAccount);
+        state.IncrementNonce(env.ExecutingAccount);
 
-        Snapshot snapshot = _state.TakeSnapshot();
+        Snapshot snapshot = state.TakeSnapshot();
 
-        bool accountExists = _state.AccountExists(contractAddress);
+        bool accountExists = state.AccountExists(contractAddress);
 
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, env.TxExecutionContext.CodeInfoRepository, _state))
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, env.TxExecutionContext.CodeInfoRepository, state))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
+            if (typeof(TLogger) == typeof(IsTracing)) logger.Trace($"Contract collision at {contractAddress}");
+            returnDataBuffer = Array.Empty<byte>();
+            statusReturn = UInt256.Zero;
+            return EvmExceptionType.None;
         }
 
-        if (_state.IsDeadAccount(contractAddress))
+        if (state.IsDeadAccount(contractAddress))
         {
-            _state.ClearStorage(contractAddress);
+            state.ClearStorage(contractAddress);
         }
 
-        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
@@ -2611,7 +2633,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             transferValue: value,
             value: value
         );
-        EvmState callState = new(
+        callState = new EvmState(
             callGas,
             callEnv,
             instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
@@ -2622,7 +2644,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             vmState.AccessTracker,
             accountExists);
 
-        return (EvmExceptionType.None, callState);
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]

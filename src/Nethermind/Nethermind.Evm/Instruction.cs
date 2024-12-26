@@ -398,7 +398,6 @@ namespace Nethermind.Evm
         {
             Instruction.CREATE or Instruction.CREATE2 => true,
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
-            Instruction.SELFDESTRUCT => true,
             _ => false,
         };
         public static bool IsJump(this Instruction instruction) => instruction switch

@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using System;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
@@ -30,5 +31,6 @@ internal interface InstructionChunk
             ref long gasAvailable,
             ref EvmStack<T> stack,
             ITxTracer trace,
+            ILogger logger,
             ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing;
 }
