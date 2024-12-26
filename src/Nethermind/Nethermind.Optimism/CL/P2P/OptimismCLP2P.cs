@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -105,11 +106,11 @@ public class OptimismCLP2P : IDisposable
             return false;
         }
 
-        byte[] decompressed = new byte[length];
-        Snappy.Decompress(msg, decompressed);
+        using ArrayPoolList<byte> decompressed = new(length, length);
+        Snappy.Decompress(msg, decompressed.AsSpan());
 
-        byte[] signature = decompressed[0..65];
-        byte[] payloadData = decompressed[65..];
+        Span<byte> signature = decompressed.AsSpan()[..65];
+        ReadOnlySpan<byte> payloadData = decompressed.AsSpan()[65..];
 
         if (_blockValidator.ValidateSignature(payloadData, signature) != ValidityStatus.Valid)
         {

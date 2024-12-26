@@ -17,7 +17,7 @@ public class PayloadDecoder : IPayloadDecoder
     {
     }
 
-    public ExecutionPayloadV3 DecodePayload(byte[] data)
+    public ExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data)
     {
         ExecutionPayloadV3 payload = new();
 
@@ -72,7 +72,7 @@ public class PayloadDecoder : IPayloadDecoder
             throw new ArgumentException($"Invalid offsets. Data length: {data.Length}, extraData: {extraDataOffset}, transactions: {transactionsOffset}, withdrawals: {withdrawalsOffset}");
         }
 
-        payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset];
+        payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset].ToArray();
 
         payload.Transactions = DecodeTransactions(data[(int)transactionsOffset..(int)withdrawalsOffset]);
         payload.Withdrawals = Array.Empty<Withdrawal>();
@@ -80,7 +80,7 @@ public class PayloadDecoder : IPayloadDecoder
         return payload;
     }
 
-    byte[][] DecodeTransactions(byte[] data)
+    byte[][] DecodeTransactions(ReadOnlySpan<byte> data)
     {
         if (4 > data.Length) throw new ArgumentException("Invalid transaction data");
         UInt32 firstTxOffset = BitConverter.ToUInt32(data[..4]);
@@ -100,7 +100,7 @@ public class PayloadDecoder : IPayloadDecoder
                 next = data.Length;
             }
             if (previous >= next || next > data.Length) throw new ArgumentException("Invalid transaction offset");
-            txs[i] = data[previous..next];
+            txs[i] = data[previous..next].ToArray();
             previous = next;
         }
 
