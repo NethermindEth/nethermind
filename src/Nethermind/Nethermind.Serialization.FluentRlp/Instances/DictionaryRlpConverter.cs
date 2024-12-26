@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Serialization.FluentRlp.Instances;
@@ -31,12 +32,16 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 
     public static void Write(ref RlpWriter writer, Dictionary<TKey, TValue> value, RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue)
     {
-        writer.WriteSequence((ref RlpWriter w) =>
+        var ctx = ValueTuple.Create(value, writeKey, writeValue);
+        writer.WriteSequence(ctx, static (ref RlpWriter w, (Dictionary<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx) =>
         {
-            foreach ((TKey k, TValue v) in value)
+            var (dictionary, writeKey, writeValue) = ctx;
+            foreach (var kp in dictionary)
             {
-                w.WriteSequence((ref RlpWriter w) =>
+                var innerCtx = ValueTuple.Create(kp, writeKey, writeValue);
+                w.WriteSequence(innerCtx, static (ref RlpWriter w, (KeyValuePair<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx) =>
                 {
+                    var ((k, v), writeKey, writeValue) = ctx;
                     writeKey(ref w, k);
                     writeValue(ref w, v);
                 });
