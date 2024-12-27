@@ -1,33 +1,55 @@
 using Microsoft.CodeAnalysis;
-using System.Collections;
-using System.Runtime.InteropServices;
 
 class SszType
 {
-    private const string UnionSelectorPropertyName = "Selector";
-    private const string UnionNoneMemberName = "None";
-
     static SszType()
     {
-        Type[] intTypes = [typeof(byte), typeof(ushort), typeof(short), typeof(uint), typeof(int), typeof(ulong), typeof(long)];
-
-        foreach (Type type in intTypes)
+        BasicTypes.Add(new SszType
         {
-            BasicTypes.Add(new SszType
-            {
-                Namespace = type.Namespace,
-                Name = type.Name,
-                Kind = Kind.Basic,
-                StaticLength = Marshal.SizeOf(type),
-            });
-        }
+            Namespace = "System",
+            Name = "Byte",
+            Kind = Kind.Basic,
+            StaticLength = sizeof(byte),
+        });
 
         BasicTypes.Add(new SszType
         {
             Namespace = "System",
-            Name = "UInt128",
+            Name = "UInt16",
             Kind = Kind.Basic,
-            StaticLength = 16,
+            StaticLength = sizeof(ushort),
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "System",
+            Name = "Int32",
+            Kind = Kind.Basic,
+            StaticLength = sizeof(int),
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "System",
+            Name = "UInt32",
+            Kind = Kind.Basic,
+            StaticLength = sizeof(uint),
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "System",
+            Name = "Int64",
+            Kind = Kind.Basic,
+            StaticLength = sizeof(long),
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "System",
+            Name = "UInt64",
+            Kind = Kind.Basic,
+            StaticLength = sizeof(ulong),
         });
 
         BasicTypes.Add(new SszType
@@ -40,8 +62,16 @@ class SszType
 
         BasicTypes.Add(new SszType
         {
-            Namespace = typeof(BitArray).Namespace,
-            Name = nameof(BitArray),
+            Namespace = "System",
+            Name = "Boolean",
+            Kind = Kind.Basic,
+            StaticLength = 1,
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "System.Collections",
+            Name = "BitArray",
             Kind = Kind.Basic,
         });
     }
@@ -55,8 +85,8 @@ class SszType
     public bool IsStruct { get; set; }
 
     public bool HasNone { get; set; }
-    public IEnumerable<SszProperty>? UnionMembers { get => Kind == Kind.Union ? Members.Where(x => x.Name != UnionSelectorPropertyName) : null; }
-    public SszProperty? Selector { get => Members.FirstOrDefault(x => x.Name == UnionSelectorPropertyName); }
+    public IEnumerable<SszProperty>? UnionMembers { get => Kind == Kind.Union ? Members.Where(x => x.Name != "Selector") : null; }
+    public SszProperty? Selector { get => Members.FirstOrDefault(x => x.Name == "Selector"); }
 
     public Dictionary<string, object>? UnionValues { get; set; }
 
@@ -67,11 +97,13 @@ class SszType
 
     public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable);
 
+    public bool IsSszListItself { get; private set; }
+
+
     public const int PointerLength = 4;
 
     internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
     {
-
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
 
@@ -87,7 +119,7 @@ class SszType
         {
             Namespace = @namespace,
             Name = name,
-            Kind = type.GetMembers().OfType<IPropertySymbol>().Any(x => x.Name == UnionSelectorPropertyName && x.Type.TypeKind == TypeKind.Enum) ? Kind.Union : enumType is not null ? Kind.Basic : Kind.Container,
+            Kind = type.GetMembers().OfType<IPropertySymbol>().Any(x => x.Name == "Selector" && x.Type.TypeKind == TypeKind.Enum) ? Kind.Union : enumType is not null ? Kind.Basic : Kind.Container,
         };
         types.Add(result);
 
@@ -95,7 +127,7 @@ class SszType
         {
             result.EnumType = BasicTypes.First(x => x.Name == enumType.Name);
             result.StaticLength = result.EnumType.StaticLength;
-            result.HasNone = (type as INamedTypeSymbol)?.MemberNames.Contains(UnionNoneMemberName) == true;
+            result.HasNone = (type as INamedTypeSymbol)?.MemberNames.Contains("None") == true;
         }
 
         result.Members = result.Kind switch
@@ -108,13 +140,19 @@ class SszType
 
         if (result.Kind == Kind.Union)
         {
-            result.HasNone = result.Members.Any(x => x.Name == UnionSelectorPropertyName && x.Type.HasNone);
+            result.HasNone = result.Members.Any(x => x.Name == "Selector" && x.Type.HasNone);
         }
 
         if ((result.Kind & (Kind.Container | Kind.Union)) != Kind.None && type.TypeKind == TypeKind.Struct)
         {
             result.IsStruct = true;
         }
+
+        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List, HandledByStd: true })
+        {
+            result.IsSszListItself = GetIsCollectionItselfValue(type);
+        }
+
         return result;
     }
 
@@ -130,5 +168,14 @@ class SszType
     public override string ToString()
     {
         return $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
+    }
+
+    private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
+    {
+        object? attrValue = typeSymbol
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszSerializableAttribute")?
+            .ConstructorArguments.FirstOrDefault().Value;
+
+        return attrValue is not null && (bool)attrValue;
     }
 }

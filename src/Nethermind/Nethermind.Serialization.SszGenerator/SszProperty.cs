@@ -81,13 +81,16 @@ class SszProperty
             {
                 return 4;
             }
-
-            return Kind switch
+            try
             {
-                Kind.Vector => Length!.Value * Type.StaticLength,
-                Kind.BitVector => (Length!.Value + 7) / 8,
-                _ => Type.StaticLength,
-            };
+                return Kind switch
+                {
+                    Kind.Vector => Length!.Value * Type.StaticLength,
+                    Kind.BitVector => (Length!.Value + 7) / 8,
+                    _ => Type.StaticLength,
+                };
+            }
+            catch { throw; }
         }
     }
 
