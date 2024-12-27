@@ -32,7 +32,6 @@ public class PruningTrieStateFactory(
     IBlocksConfig blockConfig,
     IDbConfig dbConfig,
     IDbProvider dbProvider,
-    INodeStorageFactory nodeStorageFactory,
     IBlockTree blockTree,
     IFileSystem fileSystem,
     ITimerFactory timerFactory,
@@ -47,6 +46,9 @@ public class PruningTrieStateFactory(
     public (IWorldStateManager, INodeStorage, CompositePruningTrigger) Build()
     {
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
+
+        INodeStorageFactory nodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, logManager);
+        nodeStorageFactory.DetectCurrentKeySchemeFrom(dbProvider.StateDb);
 
         syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
             && nodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
@@ -182,6 +184,7 @@ public class PruningTrieStateFactory(
         InitializeFullPruning(
             stateManager.GlobalStateReader,
             mainNodeStorage,
+            nodeStorageFactory,
             trieStore,
             compositePruningTrigger
         );
@@ -192,6 +195,7 @@ public class PruningTrieStateFactory(
     private void InitializeFullPruning(
         IStateReader stateReader,
         INodeStorage mainNodeStorage,
+        INodeStorageFactory nodeStorageFactory,
         IPruningTrieStore trieStore,
         CompositePruningTrigger compositePruningTrigger)
     {

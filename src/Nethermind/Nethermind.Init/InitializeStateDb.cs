@@ -57,9 +57,6 @@ public class InitializeStateDb : IStep
         IBlocksConfig blockConfig = getApi.Config<IBlocksConfig>();
         IDbConfig dbConfig = getApi.Config<IDbConfig>();
 
-        var nodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, _api.LogManager);
-        nodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
-
         // This is probably the point where a different state implementation would switch.
         (IWorldStateManager stateManager, INodeStorage mainNodeStorage, CompositePruningTrigger pruningTrigger) = new PruningTrieStateFactory(
             syncConfig,
@@ -68,7 +65,6 @@ public class InitializeStateDb : IStep
             blockConfig,
             dbConfig,
             _api.DbProvider!,
-            nodeStorageFactory,
             _api.BlockTree!,
             _api.FileSystem,
             _api.TimerFactory,
@@ -82,6 +78,8 @@ public class InitializeStateDb : IStep
 
         // Used by state sync.
         setApi.MainNodeStorage = mainNodeStorage;
+
+        // Used by rpc to trigger pruning.
         setApi.PruningTrigger = pruningTrigger;
 
         // TODO: Don't forget this
