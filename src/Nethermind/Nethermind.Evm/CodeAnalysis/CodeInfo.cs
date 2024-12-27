@@ -18,7 +18,6 @@ namespace Nethermind.Evm.CodeAnalysis
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
 
-
         // IL-EVM
         private int _callCount;
 

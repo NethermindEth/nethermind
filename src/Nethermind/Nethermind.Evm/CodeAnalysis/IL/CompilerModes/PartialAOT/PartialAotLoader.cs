@@ -162,13 +162,6 @@ internal class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
             il.LoadObject<int>();
     }
 
-    public void LoadStackHeadRef(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals, bool loadAddress)
-    {
-        il.LoadArgument(REF_CURR_STACK_HEAD_INDEX);
-        if (!loadAddress)
-            il.LoadObject<Word>();
-    }
-
     public override void LoadTxContext(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals, bool loadAddress)
     {
         il.LoadArgument(REF_TXCTX_INDEX);

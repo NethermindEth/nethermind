@@ -1981,7 +1981,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                                         .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
                                         .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
-                            if (!ilCompilerConfig.BakeInTracingInPartialAotMode)
+                            if (!ilCompilerConfig.BakeInTracingInAotModes)
                             {
                                 method.Call(nonTracingSStoreMethod);
                             }
@@ -2364,7 +2364,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         method.LoadLocalAddress(locals.gasAvailable);
                         envLoader.LoadSpec(method, locals, false);
                         envLoader.LoadTxTracer(method, locals, false);
-                        if(ilCompilerConfig.BakeInTracingInPartialAotMode)
+                        if(ilCompilerConfig.BakeInTracingInAotModes)
                         {
                             method.Call(selfDestructTracing);
                         } else
@@ -2500,7 +2500,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.BakeInTracingInPartialAotMode)
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
                         {
                             method.Call(callMethodTracign);
                         }
@@ -2622,7 +2622,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.BakeInTracingInPartialAotMode)
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
                         {
                             method.Call(callMethodTracign);
                         }

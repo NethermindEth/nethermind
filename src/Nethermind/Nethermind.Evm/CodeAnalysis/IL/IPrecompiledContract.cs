@@ -25,12 +25,10 @@ public enum IContractState
 internal interface IPrecompiledContract
 {
     internal ILChunkExecutionState Current { get; set; }
-    internal IContractState State { get; set; }
     public EvmState EvmState { get; init; }
     public IWorldState WorldState { get; init; }
-    public ICodeInfoRepository CodeInfoRepository { get; init; }
-    public ISpecProvider SpecProvider { get; init; }
+    public IReleaseSpec Spec{ get; init; }
     public IBlockhashProvider BlockhashProvider { get; init; }
-    internal bool MoveNext(ref int GasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
+    internal bool MoveNext(ulong chainId, ref long GasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
 
 }

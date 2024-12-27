@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -11,7 +14,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using IlevmMode = int;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Tests")]
@@ -126,8 +128,12 @@ public static class IlAnalyzer
                 CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
             case ILMode.PARTIAL_AOT_MODE:
-                SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
+                compileSegments(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
                 break;
+            case ILMode.FULL_AOT_MODE:
+                compileSegments(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
+                break;
+
         }
     }
 
@@ -176,16 +182,13 @@ public static class IlAnalyzer
         Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
     }
 
-    internal static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
+    internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
     {
-        List<InstructionChunk> segmentsFound = new();
-        int offset = ilinfo.IlevmChunks?.Length ?? 0;
         if (codeData.Item1.Length == 0)
         {
-            return;
+            return null;
         }
 
-        string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
         List<SegmentMetadata> segments = new();
         List<int> jumpdests = new();
 
@@ -220,9 +223,31 @@ public static class IlAnalyzer
             EmbeddedData = codeData.Item2
         };
 
-        for (int i = 0; i < segments.Count; i++)
+        return contractMetadata;
+    }
+
+    internal static void compileContract(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
+    {
+        var contractMetadata = AnalyseContract(codeInfo, codeData, ilinfo);
+
+        var contractType = FullAOT.CompileContract(contractMetadata, vmConfig);
+
+        ilinfo.DynamicContractType = contractType;
+
+        Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
+    }
+
+    internal static void compileSegments(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
+    {
+        List<InstructionChunk> segmentsFound = new();
+        int offset = ilinfo.IlevmChunks?.Length ?? 0;
+        string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
+
+        var contractMetadata = AnalyseContract(codeInfo, codeData, ilinfo);
+
+        for (int i = 0; i < contractMetadata.Segments.Length; i++)
         {
-            string segmentName = GenerateName(segments[i].Boundaries);
+            string segmentName = GenerateName(contractMetadata.Segments[i].Boundaries);
             PrecompiledChunk segmentExecutionCtx = PartialAOT.CompileSegment(segmentName, contractMetadata, i, vmConfig, out var localJumpdests);
             ilinfo.AddMapping(contractMetadata.Segments[i].Segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
             if (vmConfig.AggressivePartialAotMode)

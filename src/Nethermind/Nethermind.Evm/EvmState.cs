@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.State;
 
 namespace Nethermind.Evm
@@ -144,7 +146,6 @@ namespace Nethermind.Evm
                 stateForAccessLists,
                 isCreateOnPreExistingAccount)
         {
-
         }
         private EvmState(
             long gasAvailable,
@@ -209,6 +210,7 @@ namespace Nethermind.Evm
 
         private EvmPooledMemory _memory;
         public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
+        internal IPrecompiledContract? ILedContract { get; set; }
 
         public void Dispose()
         {

@@ -689,6 +689,12 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         }
 
 
+        if (!env.CodeInfo.IlInfo.IsEmpty && env.CodeInfo.IlInfo.Mode.HasFlag(ILMode.FULL_AOT_MODE) && vmState.ILedContract is null)
+        {
+            vmState.ILedContract = (IPrecompiledContract)Activator.CreateInstance(env.CodeInfo.IlInfo.DynamicContractType, vmState, _state, spec, _blockhashProvider);
+        }
+
+
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
         long gasAvailable = vmState.GasAvailable;
@@ -708,6 +714,32 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             }
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
+        }
+
+        if (vmState.ILedContract is not null)
+        {
+            int programCounter = vmState.ProgramCounter;
+            if (vmState.ILedContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef)))
+            {
+                vmState.ProgramCounter = programCounter;
+                vmState.GasAvailable = gasAvailable;
+                vmState.DataStackHead = stack.Head;
+
+                if (vmState.ILedContract.Current.ShouldContinue)
+                {
+                    return vmState.ILedContract.Current.CallResult;
+                }
+            }
+
+            if (vmState.ILedContract.Current.ShouldFail)
+            {
+                return GetFailureReturn<TTracingInstructions>(gasAvailable, vmState.ILedContract.Current.ExceptionType);
+            }
+
+            if (vmState.ILedContract.Current.ShouldReturn || vmState.ILedContract.Current.ShouldRevert)
+            {
+                return new CallResult(vmState.ILedContract.Current.ReturnData.ToArray(), null, shouldRevert: vmState.ILedContract.Current.ShouldRevert);
+            }
         }
 
         // Struct generic parameter is used to burn out all the if statements

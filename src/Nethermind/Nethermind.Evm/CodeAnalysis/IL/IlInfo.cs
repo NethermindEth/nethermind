@@ -19,6 +19,7 @@ internal ref struct ILChunkExecutionState(ref ReadOnlyMemory<byte> output)
     public bool ShouldRevert;
     public bool ShouldReturn;
     public bool ShouldContinue;
+    public bool ShouldAbort => ShouldFail || ShouldReturn || ShouldStop || ShouldRevert;
     public ref readonly ReadOnlyMemory<byte> ReturnData = ref output;
     public CallResult CallResult; // usually empty not used
     public EvmExceptionType ExceptionType;
@@ -26,9 +27,10 @@ internal ref struct ILChunkExecutionState(ref ReadOnlyMemory<byte> output)
 
 public static class ILMode
 {
-    public const int NO_ILVM = 0b00000000;
+    public const int NO_ILVM            = 0b00000000;
     public const int PATTERN_BASED_MODE = 0b10000000;
-    public const int PARTIAL_AOT_MODE = 0b01000000;
+    public const int PARTIAL_AOT_MODE   = 0b01000000;
+    public const int FULL_AOT_MODE      = 0b00100000;
 }
 
 /// <summary>
@@ -60,6 +62,8 @@ internal class IlInfo
 
     // assumes small number of ILed
     public InstructionChunk[]? IlevmChunks { get; set; }
+
+    public Type? DynamicContractType;
 
     private byte[] _Mapping = null;
 

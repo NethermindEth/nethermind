@@ -16,6 +16,8 @@ public class VMConfig : IVMConfig
     public int PatternMatchingThreshold { get; set; } = 32;
     public int PartialAotThreshold { get; set; } = 128;
     public bool AggressivePartialAotMode { get; set; } = false;
-    public bool BakeInTracingInPartialAotMode { get; set; } = false;
+    public bool BakeInTracingInAotModes { get; set; } = false;
     public int AnalysisQueueMaxSize { get; set; } = 8;
+    public bool IsFullAotEnabled { get; set; } = false;
+    public int FullAotThreshold { get; set; } = 256;
 }

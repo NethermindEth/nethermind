@@ -12,6 +12,12 @@ namespace Nethermind.Evm.Config;
 public interface IVMConfig : IConfig
 {
     [ConfigItem(
+        Description = "Activates or Deactivates full contract AOT",
+        DefaultValue = "false")]
+    public bool IsFullAotEnabled { get; set; }
+
+
+    [ConfigItem(
         Description = "Activates or Deactivates n-gram pattern optimizations",
         DefaultValue = "false")]
     public bool IsPatternMatchingEnabled { get; set; }
@@ -27,6 +33,11 @@ public interface IVMConfig : IConfig
     public int PartialAotThreshold { get; set; }
 
     [ConfigItem(
+        Description = "Threshold for enabling JIT optimizations",
+        DefaultValue = "256")]
+    public int FullAotThreshold { get; set; }
+
+    [ConfigItem(
         Description = "Threshold for enabling n-gram pattern optimizations",
         DefaultValue = "32")]
     public int PatternMatchingThreshold { get; set; }
@@ -39,12 +50,12 @@ public interface IVMConfig : IConfig
     [ConfigItem(
         Description = "Activates or Deactivates traces in JIT optimizations",
         DefaultValue = "false")]
-    public bool BakeInTracingInPartialAotMode { get; set; }
+    public bool BakeInTracingInAotModes { get; set; }
 
     [ConfigItem(
         Description = "Sets Analysis Queue Max Size",
         DefaultValue = "8")]
     public int AnalysisQueueMaxSize { get; set; }
 
-    public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsPartialAotEnabled;
+    public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsPartialAotEnabled || IsFullAotEnabled;
 }

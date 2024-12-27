@@ -195,7 +195,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPartialAotEnabled = true,
                 IsPatternMatchingEnabled = true,
                 AggressivePartialAotMode = true,
-                BakeInTracingInPartialAotMode = true,
+                BakeInTracingInAotModes = true,
 
                 PatternMatchingThreshold = 4,
                 PartialAotThreshold = 256,
@@ -2211,7 +2211,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
-                BakeInTracingInPartialAotMode = !testcase.Item5.enableAmortization,
+                BakeInTracingInAotModes = !testcase.Item5.enableAmortization,
                 AggressivePartialAotMode = testcase.Item5.enableAggressiveMode,
                 PartialAotThreshold = 1,
                 AnalysisQueueMaxSize = 1,
@@ -2437,7 +2437,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PartialAotThreshold = 1,
                 IsPartialAotEnabled = true,
                 AggressivePartialAotMode = false,
-                BakeInTracingInPartialAotMode = true
+                BakeInTracingInAotModes = true
             });
 
             var aux = enhancedChain.InsertCode(Prepare.EvmCode
@@ -2831,7 +2831,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPartialAotEnabled = true,
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = false,
-                BakeInTracingInPartialAotMode = true,
+                BakeInTracingInAotModes = true,
                 AggressivePartialAotMode = true,
             };
 
@@ -2923,7 +2923,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPartialAotEnabled = true,
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = false,
-                BakeInTracingInPartialAotMode = false,
+                BakeInTracingInAotModes = false,
                 AggressivePartialAotMode = true,
             };
 

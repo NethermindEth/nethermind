@@ -12,7 +12,7 @@ using System.Reflection.Emit;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using static Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT.FullAOR;
+using static Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT.FullAOT;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
@@ -55,14 +55,12 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         PropertyBuilder worldStateProp = _contractDynamicType.EmitProperty<IWorldState>(PROP_WORLSTATE, true, false);
         // create a property IBlockhashProvider BlockhashProvider
         PropertyBuilder blockhashProviderProp = _contractDynamicType.EmitProperty<IBlockhashProvider>(PROP_BLOCKHASHPROVIDER, true, false);
-        // create a property ICodeInfoRepository CodeInfoRepository
-        PropertyBuilder codeInfoRepositoryProp = _contractDynamicType.EmitProperty<ICodeInfoRepository>(PROP_CODEINFOREPOSITORY, true, false);
 
         // create a constructor for the contract
         ConstructorBuilder constructor = _contractDynamicType.DefineDefaultConstructor(MethodAttributes.Public);
 
         // create a constructor for the contract that takes all the properties
-        ConstructorBuilder fullConstructor = _contractDynamicType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, new Type[] { typeof(EvmState), typeof(IWorldState), typeof(ICodeInfoRepository), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer), typeof(ILogger) });
+        ConstructorBuilder fullConstructor = _contractDynamicType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, new Type[] { typeof(EvmState), typeof(IWorldState), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer), typeof(ILogger) });
         ILGenerator fullConstructorIL = fullConstructor.GetILGenerator();
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
         fullConstructorIL.Emit(OpCodes.Ldarg_1);
@@ -70,9 +68,6 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
         fullConstructorIL.Emit(OpCodes.Ldarg_2);
         fullConstructorIL.Emit(OpCodes.Call, worldStateProp.GetSetMethod());
-        fullConstructorIL.Emit(OpCodes.Ldarg_0);
-        fullConstructorIL.Emit(OpCodes.Ldarg_3);
-        fullConstructorIL.Emit(OpCodes.Call, codeInfoRepositoryProp.GetSetMethod());
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
         fullConstructorIL.Emit(OpCodes.Ldarg_S, 4);
         fullConstructorIL.Emit(OpCodes.Call, specProp.GetSetMethod());
@@ -139,8 +134,19 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 
     public override void LoadCodeInfoRepository(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_CODEINFOREPOSITORY).GetGetMethod());
+        var codeInfoRepositoryVarName = "codeInfoRepository";
+        if (locals.TryDeclareLocal(codeInfoRepositoryVarName, typeof(ICodeInfoRepository)))
+        {
+            LoadTxContext(il, locals, false);
+            il.Call(typeof(TxExecutionContext).GetProperty(nameof(TxExecutionContext.CodeInfoRepository)).GetGetMethod());
+            locals.TryStoreLocal(codeInfoRepositoryVarName);
+        }
+
+        if (loadAddress)
+            locals.TryLoadLocalAddress(codeInfoRepositoryVarName);
+        else
+            locals.TryLoadLocal(codeInfoRepositoryVarName);
+
     }
 
     public override void LoadCurrStackHead(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)

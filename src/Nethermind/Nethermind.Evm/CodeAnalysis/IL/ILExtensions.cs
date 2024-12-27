@@ -5,6 +5,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Org.BouncyCastle.Tls;
 using Sigil;
@@ -19,6 +21,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using static Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT.PartialAOT;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 
@@ -719,7 +722,75 @@ public static class UnsafeEmit
 /// </summary>
 static class EmitExtensions
 {
+    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, int pc, SubSegmentMetadata stackMetadata)
+    {
+        if (stackMetadata.LeftOutStack != 0 && pc == stackMetadata.End)
+        {
+            method.StackSetHead(stackHeadRef, stackMetadata.LeftOutStack);
+            method.LoadLocal(stackHeadIdx);
+            method.LoadConstant(stackMetadata.LeftOutStack);
+            method.Add();
+            method.StoreLocal(stackHeadIdx);
+        }
+    }
 
+    public static void UpdateStackHeadIdxAndPushRefOpcodeMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, OpcodeInfo op)
+    {
+        var delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
+        method.LoadLocal(stackHeadIdx);
+        method.LoadConstant(delta);
+        method.Add();
+        method.StoreLocal(stackHeadIdx);
+
+        method.StackSetHead(stackHeadRef, delta);
+    }
+
+    public static void EmitCallToErrorTrace<T>(Emit<T> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, EnvLoader<T> envLoader, Locals<T> locals)
+    {
+        Label skipTracing = method.DefineLabel();
+        envLoader.LoadTxTracer(method, locals, false);
+        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+        method.BranchIfFalse(skipTracing);
+
+        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadLocal(gasAvailable);
+        method.LoadConstant((int)kvp.Key);
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
+
+        method.MarkLabel(skipTracing);
+    }
+    public static void EmitCallToEndInstructionTrace<T>(Emit<T> method, Local gasAvailable, EnvLoader<T> envLoader, Locals<T> locals)
+    {
+        Label skipTracing = method.DefineLabel();
+        envLoader.LoadTxTracer(method, locals, false);
+        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+        method.BranchIfFalse(skipTracing);
+
+        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadLocal(gasAvailable);
+        envLoader.LoadMemory(method, locals, true);
+        method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+
+        method.MarkLabel(skipTracing);
+    }
+    public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, OpcodeInfo op, EnvLoader<T> envLoader, Locals<T> locals)
+    {
+        Label skipTracing = method.DefineLabel();
+        envLoader.LoadTxTracer(method, locals, false);
+        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+        method.BranchIfFalse(skipTracing);
+
+        envLoader.LoadTxTracer(method, locals, false);
+        method.LoadConstant((int)op.Operation);
+        envLoader.LoadVmState(method, locals, false);
+        method.LoadLocal(gasAvailable);
+        method.LoadConstant(op.ProgramCounter);
+        method.LoadLocal(head);
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+
+        method.MarkLabel(skipTracing);
+    }
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
     public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
     public static MethodInfo ConvertionExplicit<TFrom, TTo>() => ConvertionExplicit(typeof(TFrom), typeof(TTo));

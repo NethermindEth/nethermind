@@ -70,7 +70,7 @@ internal static class PartialAOT
         var envLoader = new PartialAotEnvLoader();
         var opEmitter = new PartialAotOpcodeEmitter<ExecuteSegment>();
         using var locals = new Locals<ExecuteSegment>(method);
-        var bakeInTracerCalls = config.BakeInTracingInPartialAotMode;
+        var bakeInTracerCalls = config.BakeInTracingInAotModes;
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
@@ -82,7 +82,7 @@ internal static class PartialAOT
         envLoader.LoadStackHead(method, locals, false);
         method.StoreLocal(locals.stackHeadIdx);
 
-        envLoader.LoadStackHeadRef(method, locals, true);
+        envLoader.LoadCurrStackHead(method, locals, true);
         method.StoreLocal(locals.stackHeadRef);
 
         // set gas to local
@@ -406,75 +406,6 @@ internal static class PartialAOT
         return jumpDestinations.Keys.ToArray();
     }
 
-    private static void UpdateStackHeadAndPushRerSegmentMode(Emit<ExecuteSegment> method, Local stackHeadRef, Local stackHeadIdx, int pc, SubSegmentMetadata stackMetadata)
-    {
-        if (stackMetadata.LeftOutStack != 0 && pc == stackMetadata.End)
-        {
-            method.StackSetHead(stackHeadRef, stackMetadata.LeftOutStack);
-            method.LoadLocal(stackHeadIdx);
-            method.LoadConstant(stackMetadata.LeftOutStack);
-            method.Add();
-            method.StoreLocal(stackHeadIdx);
-        }
-    }
-
-    private static void UpdateStackHeadIdxAndPushRefOpcodeMode(Emit<ExecuteSegment> method, Local stackHeadRef, Local stackHeadIdx, OpcodeInfo op)
-    {
-        var delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
-        method.LoadLocal(stackHeadIdx);
-        method.LoadConstant(delta);
-        method.Add();
-        method.StoreLocal(stackHeadIdx);
-
-        method.StackSetHead(stackHeadRef, delta);
-    }
-
-    private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, PartialAotEnvLoader envLoader, Locals<ExecuteSegment> locals)
-    {
-        Label skipTracing = method.DefineLabel();
-        envLoader.LoadTxTracer(method, locals, false);
-        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-        method.BranchIfFalse(skipTracing);
-
-        envLoader.LoadTxTracer(method, locals, false);
-        method.LoadLocal(gasAvailable);
-        method.LoadConstant((int)kvp.Key);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
-
-        method.MarkLabel(skipTracing);
-    }
-    private static void EmitCallToEndInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, PartialAotEnvLoader envLoader, Locals<ExecuteSegment> locals)
-    {
-        Label skipTracing = method.DefineLabel();
-        envLoader.LoadTxTracer(method, locals, false);
-        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-        method.BranchIfFalse(skipTracing);
-
-        envLoader.LoadTxTracer(method, locals, false);
-        method.LoadLocal(gasAvailable);
-        envLoader.LoadMemory(method, locals, true);
-        method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
-
-        method.MarkLabel(skipTracing);
-    }
-    private static void EmitCallToStartInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, Local head, OpcodeInfo op, PartialAotEnvLoader envLoader, Locals<ExecuteSegment> locals)
-    {
-        Label skipTracing = method.DefineLabel();
-        envLoader.LoadTxTracer(method, locals, false);
-        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-        method.BranchIfFalse(skipTracing);
-
-        envLoader.LoadTxTracer(method, locals, false);
-        method.LoadConstant((int)op.Operation);
-        envLoader.LoadVmState(method, locals, false);
-        method.LoadLocal(gasAvailable);
-        method.LoadConstant(op.ProgramCounter);
-        method.LoadLocal(head);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
-
-        method.MarkLabel(skipTracing);
-    }
     private static void EmitGasAvailabilityCheck<T>(
         Emit<T> il,
         Local gasAvailable,
