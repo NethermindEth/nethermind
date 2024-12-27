@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -508,6 +509,11 @@ public class CompositeTxTracer : ITxTracer
                 innerTracer.ReportFees(fees, burntFees);
             }
         }
+    }
+
+    public void ReportTransaction(Transaction transaction)
+    {
+        _txTracers.ForEach(t => t.ReportTransaction(transaction));
     }
 
     public void Dispose()
