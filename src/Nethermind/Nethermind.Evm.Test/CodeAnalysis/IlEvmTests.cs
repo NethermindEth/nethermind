@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return GasCostOf.JumpDest;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -2772,7 +2772,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var outputBuffer = new byte[32];
             state.InitStacks();
 
-            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState(ref _returnBuffer);
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
 
             IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
@@ -2799,6 +2799,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ref gasAvailable,
                 testcase.bytecode,
                 in env.InputData,
+                ref _returnBuffer,
+
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
@@ -2848,7 +2850,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             state.InitStacks();
 
-            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState(ref _returnBuffer);
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
 
             IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
@@ -2875,6 +2877,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ref gasAvailable,
                 testcase.bytecode,
                 in env.InputData,
+                ref _returnBuffer,
+
                 ctx.Data,
                 ref iLChunkExecutionResult);
 
@@ -2915,7 +2919,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             state.InitStacks();
 
-            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState(ref _returnBuffer);
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
 
             var config = new VMConfig
             {
@@ -2952,8 +2956,81 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 ref gasAvailable,
                 testcase.bytecode,
                 in env.InputData,
+                ref _returnBuffer,
+
                 ctx.Data,
                 ref iLChunkExecutionResult);
+
+            state.Dispose();
+            var tracedOpcodes = tracer.BuildResult().Entries;
+
+            Assert.That(tracedOpcodes.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Just_Testing_Playground()
+        {
+            byte[] bytecode = Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .ADD()
+                .STOP()
+                .Done;
+
+            var codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
+            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
+            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
+            var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
+            Span<byte> stack = new byte[1024 * 32];
+            var stackhead = 0;
+            var inputBuffer = envExCtx.InputData;
+            _returnBuffer =
+                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
+                .Select(i => (byte)i).ToArray());
+
+            TestState.CreateAccount(Address.FromNumber(1), 1000000);
+            TestState.InsertCode(Address.FromNumber(1), bytecode, Prague.Instance);
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            long gasAvailable = 750_000;
+            int programCounter = 0;
+            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
+            var state = new EvmState(
+                gasAvailable,
+                env,
+                ExecutionType.CALL,
+                Snapshot.Empty);
+
+            var memory = state.Memory;
+
+            state.InitStacks();
+
+            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
+
+            var config = new VMConfig
+            {
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
+                PatternMatchingThreshold = 1,
+                IsPatternMatchingEnabled = false,
+                BakeInTracingInAotModes = false,
+                AggressivePartialAotMode = true,
+            };
+
+            IlAnalyzer.Analyse(codeInfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
+            var ctx = (IPrecompiledContract)env.CodeInfo.IlInfo.DynamicContractType
+                .GetConstructors().First(cons => cons.GetParameters().Length > 0)
+                .Invoke([state, TestState, Prague.Instance, _blockhashProvider, tracer, NullLogger.Instance, env.CodeInfo.IlInfo.ContractMetadata.EmbeddedData]);
+            ctx.Current = iLChunkExecutionResult;
+
+            ctx.MoveNext(
+                SpecProvider.ChainId,
+                ref gasAvailable,
+                ref programCounter,
+                ref stackhead,
+                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
+                ref _returnBuffer
+                );
 
             state.Dispose();
             var tracedOpcodes = tracer.BuildResult().Entries;

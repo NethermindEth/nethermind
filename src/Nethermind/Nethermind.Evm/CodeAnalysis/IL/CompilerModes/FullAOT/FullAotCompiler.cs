@@ -22,17 +22,21 @@ using DotNetty.Common.Utilities;
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
 internal static class FullAOT
 {
-    public delegate bool MoveNextDelegate(ulong chainId, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
+    public delegate bool MoveNextDelegate(ulong chainId, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
 
     
     public static Type CompileContract(ContractMetadata contractMetadata, IVMConfig vmConfig)
     {
-        var assemblyBuilder = new PersistedAssemblyBuilder(new AssemblyName("Nethermind.Evm.Precompiled.Live"), typeof(object).Assembly);
+        // need to use PersistedAssemblyBuilder to avoid the issue with the same assembly name
+        // var assemblyBuilder = new PersistedAssemblyBuilder(new AssemblyName("Nethermind.Evm.Precompiled.Live"), typeof(object).Assembly);
+        // temporary solution to avoid the issue with the same assembly name
+        var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Nethermind.Evm.Precompiled.Live"), AssemblyBuilderAccess.Run);
+
         ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("ContractsModule");
         TypeBuilder contractStructBuilder = moduleBuilder.DefineType($"{contractMetadata.TargetCodeInfo.Address}", TypeAttributes.Public |
             TypeAttributes.Sealed | TypeAttributes.SequentialLayout, typeof(ValueType), [typeof(IPrecompiledContract)]);
 
-        FullAotEnvLoader envLoader = new FullAotEnvLoader(contractStructBuilder);
+        FullAotEnvLoader envLoader = new FullAotEnvLoader(contractStructBuilder, contractMetadata);
 
         EmitMoveNext(contractStructBuilder, contractMetadata, envLoader, vmConfig);
 
@@ -48,6 +52,7 @@ internal static class FullAOT
 
         var locals = new Locals<MoveNextDelegate>(method);
         var opEmitter = new FullAotOpcodeEmitter<MoveNextDelegate>();
+
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
@@ -74,8 +79,6 @@ internal static class FullAOT
         method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldRevert)));
         method.BranchIfTrue(exit);*/
 
-
-
         envLoader.LoadStackHead(method, locals, false);
         method.StoreLocal(locals.stackHeadIdx);
 
@@ -96,7 +99,8 @@ internal static class FullAOT
 
         foreach (var segmentMetadata in contractMetadata.Segments)
         {
-            jumpDestinations.Add(segmentMetadata.Boundaries.Start.Value, method.DefineLabel());
+            method.MarkLabel(jumpDestinations[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
+
             if (config.BakeInTracingInAotModes)
                 segmentMetadata.StackOffsets.Fill(0);
 
@@ -279,7 +283,7 @@ internal static class FullAOT
                         }
                         break;
                     default:
-                        opEmitter.Emit(config, contractMetadata, segmentMetadata, i, op, method, locals, envLoader, evmExceptionLabels, ret);
+                        opEmitter.Emit(config, contractMetadata, segmentMetadata, i, op, method, locals, envLoader, evmExceptionLabels, (ret, exit));
                         break;
 
                 }
@@ -321,13 +325,12 @@ internal static class FullAOT
 
         method.MarkLabel(exit);
 
-        envLoader.LoadResult(method, locals, false);
+        envLoader.LoadResult(method, locals, true);
         method.Call(typeof(ILChunkExecutionState).GetProperty(nameof(ILChunkExecutionState.ShouldAbort)).GetMethod);
         method.BranchIfTrue(returnFalse);
 
-        envLoader.LoadResult(method, locals, false);
+        envLoader.LoadResult(method, locals, true);
         method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldContinue)));
-        method.LoadConstant(true);
         method.Return();
 
         method.MarkLabel(returnFalse);
@@ -382,6 +385,7 @@ internal static class FullAOT
             method.Branch(exit);
         }
 
+        method.CreateMethod();
     }
 }
 

@@ -122,26 +122,29 @@ public static class IlAnalyzer
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
+        codeInfo.IlInfo.ContractMetadata ??= AnalyseContract(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo) ?? throw new InvalidOperationException("Contract metadata is null");
+
         switch (mode)
         {
             case ILMode.PATTERN_BASED_MODE:
-                CheckPatterns(machineCode, codeInfo.IlInfo);
+                CheckPatterns(codeInfo.IlInfo.ContractMetadata, codeInfo.IlInfo);
                 break;
             case ILMode.PARTIAL_AOT_MODE:
-                compileSegments(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
+                CompileSegments(codeInfo, codeInfo.IlInfo.ContractMetadata, codeInfo.IlInfo, vmConfig);
                 break;
             case ILMode.FULL_AOT_MODE:
-                compileSegments(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
+                CompileContract(codeInfo, codeInfo.IlInfo.ContractMetadata, codeInfo.IlInfo, vmConfig);
                 break;
 
         }
     }
 
-    internal static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
+    internal static void CheckPatterns(ContractMetadata contractMetadata, IlInfo ilinfo)
     {
         List<InstructionChunk> patternsFound = new();
         int offset = ilinfo.IlevmChunks?.Length ?? 0;
-        var (strippedBytecode, data) = StripByteCode(machineCode.Span);
+        var strippedBytecode = contractMetadata.Opcodes;
+
         foreach ((Type _, IPatternChunk chunkHandler) in _patterns)
         {
             for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
@@ -182,7 +185,7 @@ public static class IlAnalyzer
         Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
     }
 
-    internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
+    internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo,  (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
     {
         if (codeData.Item1.Length == 0)
         {
@@ -218,6 +221,7 @@ public static class IlAnalyzer
         var contractMetadata = new ContractMetadata
         {
             TargetCodeInfo = codeInfo,
+            Opcodes = codeData.Item1,
             Segments = segments.ToArray(),
             Jumpdests = jumpdests.ToArray(),
             EmbeddedData = codeData.Item2
@@ -226,10 +230,8 @@ public static class IlAnalyzer
         return contractMetadata;
     }
 
-    internal static void compileContract(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
+    internal static void CompileContract(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
     {
-        var contractMetadata = AnalyseContract(codeInfo, codeData, ilinfo);
-
         var contractType = FullAOT.CompileContract(contractMetadata, vmConfig);
 
         ilinfo.DynamicContractType = contractType;
@@ -237,13 +239,12 @@ public static class IlAnalyzer
         Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 
-    internal static void compileSegments(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
+    internal static void CompileSegments(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
     {
         List<InstructionChunk> segmentsFound = new();
         int offset = ilinfo.IlevmChunks?.Length ?? 0;
         string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
 
-        var contractMetadata = AnalyseContract(codeInfo, codeData, ilinfo);
 
         for (int i = 0; i < contractMetadata.Segments.Length; i++)
         {

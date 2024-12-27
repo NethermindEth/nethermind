@@ -691,7 +691,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if (!env.CodeInfo.IlInfo.IsEmpty && env.CodeInfo.IlInfo.Mode.HasFlag(ILMode.FULL_AOT_MODE) && vmState.ILedContract is null)
         {
-            vmState.ILedContract = (IPrecompiledContract)Activator.CreateInstance(env.CodeInfo.IlInfo.DynamicContractType, vmState, _state, spec, _blockhashProvider);
+            vmState.ILedContract = (IPrecompiledContract)Activator.CreateInstance(env.CodeInfo.IlInfo.DynamicContractType, vmState, _state, spec, _blockhashProvider, _txTracer, _logger, env.CodeInfo.IlInfo.ContractMetadata.EmbeddedData);
         }
 
 
@@ -719,7 +719,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (vmState.ILedContract is not null)
         {
             int programCounter = vmState.ProgramCounter;
-            if (vmState.ILedContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef)))
+            if (vmState.ILedContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer))
             {
                 vmState.ProgramCounter = programCounter;
                 vmState.GasAvailable = gasAvailable;
@@ -727,7 +727,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                 if (vmState.ILedContract.Current.ShouldContinue)
                 {
-                    return vmState.ILedContract.Current.CallResult;
+                    return new CallResult(vmState.ILedContract.Current.CallResult);
                 }
             }
 
@@ -738,7 +738,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (vmState.ILedContract.Current.ShouldReturn || vmState.ILedContract.Current.ShouldRevert)
             {
-                return new CallResult(vmState.ILedContract.Current.ReturnData.ToArray(), null, shouldRevert: vmState.ILedContract.Current.ShouldRevert);
+                return new CallResult(_returnDataBuffer, null, shouldRevert: vmState.ILedContract.Current.ShouldRevert);
             }
         }
 
@@ -799,7 +799,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
-        var chunkExecutionResult = new ILChunkExecutionState(ref _returnDataBuffer);
+        var chunkExecutionResult = new ILChunkExecutionState();
         while ((uint)programCounter < codeLength)
         {
 
@@ -820,17 +820,20 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     ref programCounter,
                     ref gasAvailable,
                     ref stack,
+
+                    ref _returnDataBuffer,
+
                     ref chunkExecutionResult)))
                 {
                     if (chunkExecutionResult.ShouldReturn)
                     {
-                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.ReturnData).ToArray();
+                        returnData = ((ReadOnlyMemory<byte>)_returnDataBuffer).ToArray();
                         goto DataReturn;
                     }
                     if (chunkExecutionResult.ShouldRevert)
                     {
                         isRevert = true;
-                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.ReturnData).ToArray();
+                        returnData = ((ReadOnlyMemory<byte>)_returnDataBuffer).ToArray();
                         goto DataReturn;
                     }
                     if (chunkExecutionResult.ShouldStop)

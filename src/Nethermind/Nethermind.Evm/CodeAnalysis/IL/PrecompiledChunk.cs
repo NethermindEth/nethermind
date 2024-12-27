@@ -30,6 +30,7 @@ internal class PrecompiledChunk : InstructionChunk
         ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<T> stack,
+        ref ReadOnlyMemory<byte> returnDataBuffer,
         ITxTracer tracer,
         ILogger logger,
         ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
@@ -57,6 +58,7 @@ internal class PrecompiledChunk : InstructionChunk
 
             env.CodeInfo.MachineCode,
             in env.InputData,
+            ref returnDataBuffer,
             Data,
             ref result);
     }

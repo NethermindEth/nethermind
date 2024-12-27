@@ -22,13 +22,10 @@ public enum IContractState
     Finished,  // finished execution due to RETURN or REVERT opcode or STOP
     Failed // failed execution due to EvmException
 }
-internal interface IPrecompiledContract
+public interface IPrecompiledContract
 {
     internal ILChunkExecutionState Current { get; set; }
-    public EvmState EvmState { get; init; }
-    public IWorldState WorldState { get; init; }
-    public IReleaseSpec Spec{ get; init; }
-    public IBlockhashProvider BlockhashProvider { get; init; }
-    internal bool MoveNext(ulong chainId, ref long GasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
+    public EvmState EvmState { get; set; }
+    internal bool MoveNext(ulong chainId, ref long GasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
 
 }

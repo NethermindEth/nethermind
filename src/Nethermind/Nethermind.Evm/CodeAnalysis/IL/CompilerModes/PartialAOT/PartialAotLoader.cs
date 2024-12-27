@@ -30,8 +30,9 @@ internal class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
     private const int GAS_AVAILABLE_INDEX = 15;
     private const int REF_MACHINE_CODE_INDEX = 16;
     private const int REF_CALLDATA_INDEX = 17;
-    private const int IMMEDIATES_DATA_INDEX = 18;
-    private const int REF_RESULT_INDEX = 19;
+    private const int REF_OUTPUT_BUFFER_INDEX = 18;
+    private const int IMMEDIATES_DATA_INDEX = 19;
+    private const int REF_RESULT_INDEX = 20;
     public override void LoadBlockContext(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BLKCTX_INDEX);
@@ -143,6 +144,13 @@ internal class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
         il.LoadArgument(REF_RESULT_INDEX);
         if (!loadAddress)
             il.LoadObject(typeof(ILChunkExecutionState));
+    }
+
+    public override void LoadReturnDataBuffer(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals, bool loadAddress)
+    {
+        il.LoadArgument(REF_OUTPUT_BUFFER_INDEX);
+        if (!loadAddress)
+            il.LoadObject<ReadOnlyMemory<byte>>();
     }
 
     public override void LoadSpec(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals, bool loadAddress)

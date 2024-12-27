@@ -11,17 +11,18 @@ using static Nethermind.Evm.VirtualMachine;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal ref struct ILChunkExecutionState(ref ReadOnlyMemory<byte> output)
+public struct ILChunkExecutionState()
 {
+    public readonly bool ShouldAbort => ShouldFail || ShouldReturn || ShouldStop || ShouldRevert;
     public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
+
     public bool ShouldJump;
     public bool ShouldStop;
     public bool ShouldRevert;
     public bool ShouldReturn;
     public bool ShouldContinue;
-    public bool ShouldAbort => ShouldFail || ShouldReturn || ShouldStop || ShouldRevert;
-    public ref readonly ReadOnlyMemory<byte> ReturnData = ref output;
-    public CallResult CallResult; // usually empty not used
+
+    public EvmState CallResult;
     public EvmExceptionType ExceptionType;
 }
 
@@ -64,6 +65,7 @@ internal class IlInfo
     public InstructionChunk[]? IlevmChunks { get; set; }
 
     public Type? DynamicContractType;
+    public ContractMetadata? ContractMetadata;
 
     private byte[] _Mapping = null;
 
@@ -90,6 +92,7 @@ internal class IlInfo
         ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<TTracingInstructions> stack,
+        ref ReadOnlyMemory<byte> returnDataBuffer,
         ref ILChunkExecutionState result)
 
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
@@ -104,7 +107,7 @@ internal class IlInfo
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, bytecodeChunkHandler);
 
-            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, tracer, logger, ref result);
+            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref returnDataBuffer, tracer, logger, ref result);
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
             return true;

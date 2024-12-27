@@ -36,32 +36,48 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
     public const int REF_PROGRAMCOUNTER_INDEX = 3;
     public const int REF_STACKHEAD_INDEX = 4;
     public const int REF_STACKHEADREF_INDEX = 5;
+    public const int REF_RETURNDATABUFFER_INDEX = 6;
 
-    public FullAotEnvLoader(TypeBuilder contractDynamicType) 
+    public Dictionary<string, FieldBuilder> Fields { get; } = new();
+
+    public FullAotEnvLoader(TypeBuilder contractDynamicType, ContractMetadata contractMetadata) 
     {
         _contractDynamicType = contractDynamicType;
 
+        FieldBuilder fieldBuilder;
         // create a property ILChunkExecutionState Current
-        PropertyBuilder currentProp = _contractDynamicType.EmitProperty<ILChunkExecutionState>(PROP_CURRENT_STATE, true, true);
+        PropertyBuilder currentProp = _contractDynamicType.EmitProperty<ILChunkExecutionState>(PROP_CURRENT_STATE, true, true, out fieldBuilder);
+        Fields.Add(PROP_CURRENT_STATE, fieldBuilder);
         // create a property EvmState EvmState
-        PropertyBuilder evmStateProp = _contractDynamicType.EmitProperty<EvmState>(PROP_EVMSTATE, true, false);
+        PropertyBuilder evmStateProp = _contractDynamicType.EmitProperty<EvmState>(PROP_EVMSTATE, true, true, out fieldBuilder);
+        Fields.Add(PROP_EVMSTATE, fieldBuilder);
         // create a property ITxTracer Tracer
-        PropertyBuilder tracerProp = _contractDynamicType.EmitProperty<ITxTracer>(PROP_TRACER, true, false);
+        PropertyBuilder tracerProp = _contractDynamicType.EmitProperty<ITxTracer>(PROP_TRACER, true, true, out fieldBuilder);
+        Fields.Add(PROP_TRACER, fieldBuilder);
         // create a property ILogger Logger
-        PropertyBuilder loggerProp = _contractDynamicType.EmitProperty<ILogger>(PROP_LOGGER, true, false);
+        PropertyBuilder loggerProp = _contractDynamicType.EmitProperty<ILogger>(PROP_LOGGER, true, true, out fieldBuilder);
+        Fields.Add(PROP_LOGGER, fieldBuilder);
         // create a property IReleaseSpec Spec
-        PropertyBuilder specProp = _contractDynamicType.EmitProperty<IReleaseSpec>(PROP_SPEC, true, false);
+        PropertyBuilder specProp = _contractDynamicType.EmitProperty<IReleaseSpec>(PROP_SPEC, true, true, out fieldBuilder);
+        Fields.Add(PROP_SPEC, fieldBuilder);
         // create a property IWorldState WorldState
-        PropertyBuilder worldStateProp = _contractDynamicType.EmitProperty<IWorldState>(PROP_WORLSTATE, true, false);
+        PropertyBuilder worldStateProp = _contractDynamicType.EmitProperty<IWorldState>(PROP_WORLSTATE, true, true, out fieldBuilder);
+        Fields.Add(PROP_WORLSTATE, fieldBuilder);
         // create a property IBlockhashProvider BlockhashProvider
-        PropertyBuilder blockhashProviderProp = _contractDynamicType.EmitProperty<IBlockhashProvider>(PROP_BLOCKHASHPROVIDER, true, false);
+        PropertyBuilder blockhashProviderProp = _contractDynamicType.EmitProperty<IBlockhashProvider>(PROP_BLOCKHASHPROVIDER, true, true, out fieldBuilder);
+        Fields.Add(PROP_BLOCKHASHPROVIDER, fieldBuilder);
+        // create a property byte[][] ImmediatesData
+        PropertyBuilder immediatesDataProp = _contractDynamicType.EmitProperty<byte[][]>(PROP_IMMEDIATESDATA, true, true, out fieldBuilder);
+        Fields.Add(PROP_IMMEDIATESDATA, fieldBuilder);
 
         // create a constructor for the contract
         ConstructorBuilder constructor = _contractDynamicType.DefineDefaultConstructor(MethodAttributes.Public);
 
         // create a constructor for the contract that takes all the properties
-        ConstructorBuilder fullConstructor = _contractDynamicType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, new Type[] { typeof(EvmState), typeof(IWorldState), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer), typeof(ILogger) });
+        ConstructorBuilder fullConstructor = _contractDynamicType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, new Type[] { typeof(EvmState), typeof(IWorldState), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer), typeof(ILogger), typeof(byte[][]) });
         ILGenerator fullConstructorIL = fullConstructor.GetILGenerator();
+        fullConstructorIL.Emit(OpCodes.Ldarg_0);
+        fullConstructorIL.Emit(OpCodes.Call, constructor);
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
         fullConstructorIL.Emit(OpCodes.Ldarg_1);
         fullConstructorIL.Emit(OpCodes.Call, evmStateProp.GetSetMethod());
@@ -69,17 +85,20 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         fullConstructorIL.Emit(OpCodes.Ldarg_2);
         fullConstructorIL.Emit(OpCodes.Call, worldStateProp.GetSetMethod());
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
-        fullConstructorIL.Emit(OpCodes.Ldarg_S, 4);
+        fullConstructorIL.Emit(OpCodes.Ldarg_3);
         fullConstructorIL.Emit(OpCodes.Call, specProp.GetSetMethod());
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
-        fullConstructorIL.Emit(OpCodes.Ldarg_S, 5);
+        fullConstructorIL.Emit(OpCodes.Ldarg_S, 4);
         fullConstructorIL.Emit(OpCodes.Call, blockhashProviderProp.GetSetMethod());
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
-        fullConstructorIL.Emit(OpCodes.Ldarg_S, 6);
+        fullConstructorIL.Emit(OpCodes.Ldarg_S, 5);
         fullConstructorIL.Emit(OpCodes.Call, tracerProp.GetSetMethod());
         fullConstructorIL.Emit(OpCodes.Ldarg_0);
-        fullConstructorIL.Emit(OpCodes.Ldarg_S, 7);
+        fullConstructorIL.Emit(OpCodes.Ldarg_S, 6);
         fullConstructorIL.Emit(OpCodes.Call, loggerProp.GetSetMethod());
+        fullConstructorIL.Emit(OpCodes.Ldarg_0);
+        fullConstructorIL.Emit(OpCodes.Ldarg_S, 7);
+        fullConstructorIL.Emit(OpCodes.Call, immediatesDataProp.GetSetMethod());
         fullConstructorIL.Emit(OpCodes.Ret);
 
     }
@@ -103,7 +122,10 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
     public override void LoadBlockhashProvider(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_BLOCKHASHPROVIDER).GetGetMethod());
+        if(loadAddress)
+            il.LoadFieldAddress(Fields[PROP_BLOCKHASHPROVIDER]);
+        else
+            il.LoadField(Fields[PROP_BLOCKHASHPROVIDER]);
     }
 
     public override void LoadCalldata(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -151,9 +173,9 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 
     public override void LoadCurrStackHead(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_STACKHEAD_INDEX);
+        il.LoadArgument(REF_STACKHEADREF_INDEX);
         if (!loadAddress)
-            il.LoadObject<int>();
+            il.LoadObject<Word>();
     }
 
     public override void LoadEnv(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -175,19 +197,25 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
     {
         il.LoadArgument(REF_GASAVAILABLE_INDEX);
         if (!loadAddress)
-            il.LoadObject<int>();
+            il.LoadObject<long>();
     }
 
     public override void LoadImmediatesData(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_IMMEDIATESDATA).GetGetMethod());
+        if (loadAddress)
+            il.LoadFieldAddress(Fields[PROP_IMMEDIATESDATA]);
+        else
+            il.LoadField(Fields[PROP_IMMEDIATESDATA]);
     }
 
     public override void LoadLogger(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_LOGGER).GetGetMethod());
+        if (loadAddress)
+            il.LoadFieldAddress(Fields[PROP_LOGGER]);
+        else
+            il.LoadField(Fields[PROP_LOGGER]);
     }
 
     public override void LoadMachineCode(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -231,13 +259,19 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
     public override void LoadResult(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_CURRENT_STATE).GetGetMethod());
+        if(loadAddress)
+            il.LoadFieldAddress(Fields[PROP_CURRENT_STATE]);
+        else
+            il.LoadField(Fields[PROP_CURRENT_STATE]);
     }
 
     public override void LoadSpec(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_SPEC).GetGetMethod());
+        if (loadAddress)
+            il.LoadFieldAddress(Fields[PROP_SPEC]);
+        else
+            il.LoadField(Fields[PROP_SPEC]);
     }
 
     public override void LoadStackHead(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -265,18 +299,36 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
     public override void LoadTxTracer(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_TRACER).GetGetMethod());
+        if (loadAddress)
+            il.LoadFieldAddress(Fields[PROP_TRACER]);
+        else
+            il.LoadField(Fields[PROP_TRACER]);
     }
 
     public override void LoadVmState(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_EVMSTATE).GetGetMethod());
+        if(loadAddress)
+            il.LoadFieldAddress(Fields[PROP_EVMSTATE]);
+        else
+            il.LoadField(Fields[PROP_EVMSTATE]);
     }
 
     public override void LoadWorldState(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.Call(_contractDynamicType.GetProperty(PROP_WORLSTATE).GetGetMethod());
+        if (loadAddress)
+            il.LoadFieldAddress(Fields[PROP_WORLSTATE]);
+        else
+            il.LoadField(Fields[PROP_WORLSTATE]);
+    }
+
+    public override void LoadReturnDataBuffer(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    {
+        il.LoadArgument(REF_RETURNDATABUFFER_INDEX);
+        if (!loadAddress)
+        {
+            il.LoadObject(typeof(ReadOnlyMemory<byte>));
+        }
     }
 }

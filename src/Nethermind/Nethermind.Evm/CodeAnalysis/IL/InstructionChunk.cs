@@ -30,6 +30,7 @@ internal interface InstructionChunk
             ref int programCounter,
             ref long gasAvailable,
             ref EvmStack<T> stack,
+            ref ReadOnlyMemory<byte> returnDataBuffer,
             ITxTracer trace,
             ILogger logger,
             ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing;

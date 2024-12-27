@@ -24,7 +24,7 @@ using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Ocsp;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal delegate void OpcodeILEmitterDelegate<T>(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method, Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, Label returnLabel);
+internal delegate void OpcodeILEmitterDelegate<T>(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method, Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label exitLabel) returnLabel);
 internal abstract class OpcodeILEmitter<T>
 {
     public Dictionary<Instruction, OpcodeILEmitterDelegate<T>> opcodeEmitters = new();
@@ -48,17 +48,17 @@ internal abstract class OpcodeILEmitter<T>
         opcodeEmitters.Remove(instruction);
     }
 
-    public void Emit(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method,  Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, Label returnLabel)
+    public void Emit(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method,  Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label exitLabel) exitLabels)
     {
         if (opcodeEmitters.TryGetValue(opcodeMetadata.Operation, out var emitter))
         {
-            emitter(ilCompilerConfig, contractMetadata, currentSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, returnLabel);
+            emitter(ilCompilerConfig, contractMetadata, currentSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
         }
         else
         {
             if(opcodeEmitters.TryGetValue(Instruction.INVALID, out var emitInvalidOpcode))
             {
-                emitInvalidOpcode(ilCompilerConfig, contractMetadata, currentSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, returnLabel);
+                emitInvalidOpcode(ilCompilerConfig, contractMetadata, currentSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
             }
             else
             {
@@ -78,25 +78,25 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
             switch (instruction)
             {
                 case Instruction.POP:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         // do nothing
                     });
                     break;
                 case Instruction.STOP:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             envLoader.LoadResult(method, locals, true);
                             method.LoadConstant(true);
                             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
-                            method.FakeBranch(ret);
+                            method.FakeBranch(escapeLabels.returnLabel);
                         });
                     }
                     break;
                 case Instruction.CHAINID:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadChainId(method, locals, false);
@@ -106,7 +106,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.NOT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             MethodInfo refWordToRefByteMethod = UnsafeEmit.GetAsMethodInfo<Word, byte>();
                             MethodInfo readVector256Method = UnsafeEmit.GetReadUnalignedMethodInfo<Vector256<byte>>();
@@ -126,7 +126,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.PUSH0:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                         });
@@ -141,7 +141,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                 case Instruction.PUSH7:
                 case Instruction.PUSH8:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             if (contractMetadata.EmbeddedData[opcodeMetadata.Arguments.Value].IsZero())
                             {
@@ -180,7 +180,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
                     {// we load the locals.stackHeadRef
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             if (contractMetadata.EmbeddedData[opcodeMetadata.Arguments.Value].IsZero())
                             {
@@ -199,7 +199,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.ADD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
@@ -235,7 +235,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SUB:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label pushNegItemB = method.DefineLabel();
                             Label pushItemA = method.DefineLabel();
@@ -301,7 +301,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MUL:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label push0Zero = method.DefineLabel();
                             Label pushItemA = method.DefineLabel();
@@ -376,7 +376,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label pushZeroLabel = method.DefineLabel();
                             Label fallBackToOldBehavior = method.DefineLabel();
@@ -423,7 +423,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SMOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
@@ -448,7 +448,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.DIV:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label pushZeroLabel = method.DefineLabel();
@@ -494,7 +494,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SDIV:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label fallBackToOldBehavior = method.DefineLabel();
                             Label pushZeroLabel = method.DefineLabel();
@@ -551,7 +551,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.ADDMOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label push0Zero = method.DefineLabel();
                             Label fallbackToUInt256Call = method.DefineLabel();
@@ -577,7 +577,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MULMOD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label push0Zero = method.DefineLabel();
                             Label fallbackToUInt256Call = method.DefineLabel();
@@ -626,42 +626,42 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     }
                     break;
                 case Instruction.SHL:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.SHR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitShiftUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.SAR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitShiftInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.AND:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     });
 
                     break;
                 case Instruction.OR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     });
 
                     break;
                 case Instruction.XOR:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitBitwiseUInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     });
@@ -669,7 +669,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.EXP:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label powerIsZero = method.DefineLabel();
                             Label baseIsOneOrZero = method.DefineLabel();
@@ -736,7 +736,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.LT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
@@ -774,7 +774,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.GT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label fallbackToUInt256Call = method.DefineLabel();
                             Label endofOpcode = method.DefineLabel();
@@ -810,14 +810,14 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     }
                     break;
                 case Instruction.SLT:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
 
                     break;
                 case Instruction.SGT:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         EmitComparaisonInt256Method(method, locals.uint256R, (locals.stackHeadRef, locals.stackHeadIdx, segmentMetadata.StackOffsets[i]), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
                     });
@@ -825,7 +825,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.EQ:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             MethodInfo refWordToRefByteMethod = UnsafeEmit.GetAsMethodInfo<Word, byte>();
                             MethodInfo readVector256Method = UnsafeEmit.GetReadUnalignedMethodInfo<Vector256<byte>>();
@@ -852,7 +852,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.ISZERO:
                     {// we load the locals.stackHeadRef
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Duplicate();
@@ -882,7 +882,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                 case Instruction.DUP15:
                 case Instruction.DUP16:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             int count = (int)opcodeMetadata.Operation - (int)Instruction.DUP1 + 1;
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
@@ -909,7 +909,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                 case Instruction.SWAP15:
                 case Instruction.SWAP16:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             int count = (int)opcodeMetadata.Operation - (int)Instruction.SWAP1 + 1;
 
@@ -932,7 +932,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CODESIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
@@ -942,7 +942,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.PC:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.LoadConstant(opcodeMetadata.ProgramCounter);
@@ -952,7 +952,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.COINBASE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadBlockContext(method, locals, true);
@@ -965,7 +965,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.TIMESTAMP:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadBlockContext(method, locals, true);
@@ -978,7 +978,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.NUMBER:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadBlockContext(method, locals, true);
@@ -991,7 +991,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.GASLIMIT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadBlockContext(method, locals, true);
@@ -1004,7 +1004,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CALLER:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadEnv(method, locals, false);
@@ -1016,7 +1016,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.ADDRESS:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadEnv(method, locals, false);
@@ -1028,7 +1028,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.ORIGIN:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadTxContext(method, locals, true);
@@ -1039,7 +1039,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CALLVALUE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadEnv(method, locals, false);
@@ -1051,7 +1051,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.GASPRICE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadTxContext(method, locals, true);
@@ -1062,7 +1062,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CALLDATACOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
@@ -1120,7 +1120,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CALLDATALOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1139,7 +1139,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CALLDATASIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadCalldata(method, locals, true);
@@ -1150,7 +1150,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MSIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
 
@@ -1162,7 +1162,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MSTORE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1191,7 +1191,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MSTORE8:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1221,7 +1221,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MLOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1249,7 +1249,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.MCOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1299,7 +1299,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.KECCAK256:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             MethodInfo refWordToRefValueHashMethod = UnsafeEmit.GetAsMethodInfo<Word, ValueHash256>();
 
@@ -1343,7 +1343,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.BYTE:
                     {// load a
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Duplicate();
@@ -1388,7 +1388,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.CODECOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
@@ -1450,7 +1450,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.GAS:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.LoadLocal(locals.gasAvailable);
@@ -1460,11 +1460,10 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.RETURNDATASIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            envLoader.LoadResult(method, locals, true);
-                            method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+                            envLoader.LoadReturnDataBuffer(method, locals, true);
                             method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                             method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
                         });
@@ -1472,7 +1471,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.RETURNDATACOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label endOfOpcode = method.DefineLabel();
                             using Local tempResult = method.DeclareLocal(typeof(UInt256));
@@ -1493,8 +1492,8 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.LoadLocalAddress(tempResult);
                             method.Call(typeof(UInt256).GetMethod(nameof(UInt256.AddOverflow)));
                             method.LoadLocalAddress(tempResult);
-                            envLoader.LoadResult(method, locals, true);
-                            method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+
+                            envLoader.LoadReturnDataBuffer(method, locals, true);
                             method.Call(typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Length)).GetMethod!);
                             method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
                             method.Or();
@@ -1526,9 +1525,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadResult(method, locals, true);
-                            method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
-                            method.LoadObject(typeof(ReadOnlyMemory<byte>));
+                            envLoader.LoadReturnDataBuffer(method, locals, false);
                             method.LoadLocalAddress(locals.uint256B);
                             method.LoadLocalAddress(locals.uint256C);
                             method.Call(MethodInfo<UInt256>("op_Explicit", typeof(Int32), new[] { typeof(UInt256).MakeByRefType() }));
@@ -1547,7 +1544,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.RETURN or Instruction.REVERT:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1564,9 +1561,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.UpdateMemoryCost)));
                             method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-                            envLoader.LoadResult(method, locals, true);
-                            method.LoadObject(typeof(ILChunkExecutionState));
-                            method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+                            envLoader.LoadReturnDataBuffer(method, locals, true);
                             envLoader.LoadMemory(method, locals, true);
                             method.LoadLocalAddress(locals.uint256A);
                             method.LoadLocalAddress(locals.uint256B);
@@ -1584,13 +1579,13 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                                     method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldReturn)));
                                     break;
                             }
-                            method.FakeBranch(ret);
+                            method.FakeBranch(escapeLabels.returnLabel);
                         });
                     }
                     break;
                 case Instruction.BASEFEE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadBlockContext(method, locals, true);
@@ -1603,7 +1598,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.BLOBBASEFEE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?));
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
@@ -1618,7 +1613,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.PREVRANDAO:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label isPostMergeBranch = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
@@ -1645,7 +1640,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.BLOBHASH:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label blobVersionedHashNotFound = method.DefineLabel();
                             Label indexTooLarge = method.DefineLabel();
@@ -1691,7 +1686,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.BLOCKHASH:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label blockHashReturnedNull = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
@@ -1733,7 +1728,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SIGNEXTEND:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label signIsNegative = method.DefineLabel();
                             Label endOfOpcodeHandling = method.DefineLabel();
@@ -1796,7 +1791,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                 case Instruction.LOG3:
                 case Instruction.LOG4:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             sbyte topicsCount = (sbyte)(opcodeMetadata.Operation - Instruction.LOG0);
 
@@ -1898,7 +1893,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.TSTORE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             envLoader.LoadVmState(method, locals, false);
                             
@@ -1929,7 +1924,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.TLOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -1955,7 +1950,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SSTORE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
@@ -2012,7 +2007,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             envLoader.LoadGasAvailable(method, locals, true);
                             method.LoadLocal(locals.gasAvailable);
                             method.StoreIndirect<long>();
-                            method.Return();
+                            method.FakeBranch(escapeLabels.exitLabel);;
 
                             method.MarkLabel(endOfOpcode);
                         });
@@ -2020,7 +2015,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SLOAD:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.LoadLocal(locals.gasAvailable);
                             envLoader.LoadSpec(method, locals, false);
@@ -2065,7 +2060,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.EXTCODESIZE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.LoadLocal(locals.gasAvailable);
                             envLoader.LoadSpec(method, locals, false);
@@ -2110,7 +2105,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.EXTCODECOPY:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
@@ -2193,7 +2188,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.EXTCODEHASH:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             Label endOfOpcode = method.DefineLabel();
 
@@ -2273,7 +2268,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.SELFBALANCE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             envLoader.LoadWorldState(method, locals, false);
@@ -2287,7 +2282,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     break;
                 case Instruction.BALANCE:
                     {
-                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.LoadLocal(locals.gasAvailable);
                             envLoader.LoadSpec(method, locals, false);
@@ -2323,7 +2318,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     }
                     break;
                 case Instruction.SELFDESTRUCT:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
                             .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
@@ -2385,18 +2380,18 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
                         method.StoreIndirect<long>();
-                        method.Return();
+                        method.FakeBranch(escapeLabels.exitLabel);;
 
                         method.MarkLabel(happyPath);
                         envLoader.LoadResult(method, locals, true);
                         method.LoadConstant(true);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
-                        method.FakeBranch(ret);
+                        method.FakeBranch(escapeLabels.returnLabel);
                     });
                     break;
                 default:
                     {
-                        AddEmitter(Instruction.INVALID, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                        AddEmitter(Instruction.INVALID, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                         });
@@ -2428,7 +2423,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                 case Instruction.CALLCODE:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
                             .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.NonPublic)
@@ -2495,8 +2490,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
 
                         method.LoadLocalAddress(toPushToStack);
 
-                        method.LoadObject(typeof(ILChunkExecutionState));
-                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+                        envLoader.LoadReturnDataBuffer(method, locals, true);
 
                         method.LoadLocalAddress(newStateToExe);
 
@@ -2521,7 +2515,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
                         method.StoreIndirect<long>();
-                        method.Return();
+                        method.FakeBranch(escapeLabels.exitLabel);;
 
                         method.MarkLabel(happyPath);
 
@@ -2546,7 +2540,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
 
                         method.LoadConstant(true);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldContinue)));
-                        method.Branch(ret);
+                        method.FakeBranch(escapeLabels.returnLabel);
 
                         method.MarkLabel(skipStateMachineScheduling);
                         Label hasNoItemsToPush = method.DefineLabel();
@@ -2564,7 +2558,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                     break;
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
-                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, ret) =>
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {
                         MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
                             .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.NonPublic)
@@ -2617,8 +2611,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
 
                         method.LoadLocalAddress(toPushToStack);
 
-                        method.LoadObject(typeof(ILChunkExecutionState));
-                        method.LoadField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
+                        envLoader.LoadReturnDataBuffer(method, locals, true);
 
                         method.LoadLocalAddress(newStateToExe);
 
@@ -2643,7 +2636,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
                         method.StoreIndirect<long>();
-                        method.Return();
+                        method.FakeBranch(escapeLabels.exitLabel);
 
                         method.MarkLabel(happyPath);
 
@@ -2668,7 +2661,7 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
 
                         method.LoadConstant(true);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldContinue)));
-                        method.Branch(ret);
+                        method.Branch(escapeLabels.returnLabel);
 
                         method.MarkLabel(skipStateMachineScheduling);
                         Label hasNoItemsToPush = method.DefineLabel();

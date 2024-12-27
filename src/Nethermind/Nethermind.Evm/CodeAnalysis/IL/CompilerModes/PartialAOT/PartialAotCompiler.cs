@@ -43,6 +43,7 @@ internal static class PartialAOT
 
     in ReadOnlyMemory<byte> machineCode,
     in ReadOnlyMemory<byte> calldata,
+    ref ReadOnlyMemory<byte> outputBuffer,
 
     byte[][] immediatesData,
 
@@ -283,7 +284,7 @@ internal static class PartialAOT
                     }
                     break;
                 default:
-                    opEmitter.Emit(config, contractMetadata, segmentMetadata, i, op, method, locals, envLoader, evmExceptionLabels, ret);
+                    opEmitter.Emit(config, contractMetadata, segmentMetadata, i, op, method, locals, envLoader, evmExceptionLabels, (ret, exit));
                     break;
 
             }

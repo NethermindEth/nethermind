@@ -143,36 +143,39 @@ public class Locals<T>(Emit<T> method) : IDisposable
 }
 public static class TypeEmit
 {
-    public static string MangleName(string cleanName) => $"<{cleanName}>k__BackingField<ilevm>";
+    public static string MangleName(this string cleanName) => $"<{cleanName}>k__BackingField<ilevm>";
     public static FieldBuilder EmitField<TField>(this TypeBuilder typeBuilder, string fieldName, bool isPublic)
-        where TField : allows ref struct
     {
         FieldBuilder fieldBuilder = typeBuilder.DefineField(fieldName, typeof(TField), isPublic ? FieldAttributes.Public : FieldAttributes.Private);
+
         return fieldBuilder;
     }
 
-    public static PropertyBuilder EmitProperty<TProperty>(this TypeBuilder typeBuilder, string PropertyName, bool hasGetter, bool hasSetter, FieldBuilder? field = null)
-        where TProperty : allows ref struct
+    public static PropertyBuilder EmitProperty<TProperty>(this TypeBuilder typeBuilder, string PropertyName, bool hasGetter, bool hasSetter, out FieldBuilder field)
     {
-        if (field is null)
+        field = typeBuilder.EmitField<TProperty>(MangleName(PropertyName), isPublic: true);
+
+        PropertyBuilder propertyBuilder = typeBuilder.DefineProperty(PropertyName, PropertyAttributes.None, typeof(TProperty), Type.EmptyTypes);
+        if (hasGetter)
         {
-            field = typeBuilder.EmitField<TProperty>(MangleName(PropertyName), isPublic: true);
+            MethodBuilder getMethod = typeBuilder.DefineMethod($"get_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot, typeof(TProperty), Type.EmptyTypes);
+            ILGenerator getMethodIL = getMethod.GetILGenerator();
+            getMethodIL.Emit(OpCodes.Ldarg_0);
+            getMethodIL.Emit(OpCodes.Ldfld, field);
+            getMethodIL.Emit(OpCodes.Ret);
+            propertyBuilder.SetGetMethod(getMethod);
         }
 
-        PropertyBuilder propertyBuilder = typeBuilder.DefineProperty(PropertyName, PropertyAttributes.None, typeof(ILChunkExecutionState), Type.EmptyTypes);
-        MethodBuilder getMethod = typeBuilder.DefineMethod($"get_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, typeof(ILChunkExecutionState), Type.EmptyTypes);
-        ILGenerator getMethodIL = getMethod.GetILGenerator();
-        getMethodIL.Emit(OpCodes.Ldarg_0);
-        getMethodIL.Emit(OpCodes.Ldfld, field);
-        getMethodIL.Emit(OpCodes.Ret);
-        propertyBuilder.SetGetMethod(getMethod);
-        MethodBuilder setMethod = typeBuilder.DefineMethod($"set_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, null, new Type[] { typeof(ILChunkExecutionState) });
-        ILGenerator setMethodIL = setMethod.GetILGenerator();
-        setMethodIL.Emit(OpCodes.Ldarg_0);
-        setMethodIL.Emit(OpCodes.Ldarg_1);
-        setMethodIL.Emit(OpCodes.Stfld, field);
-        setMethodIL.Emit(OpCodes.Ret);
-        propertyBuilder.SetSetMethod(setMethod);
+        if (hasSetter) {
+            MethodBuilder setMethod = typeBuilder.DefineMethod($"set_{PropertyName}", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot, null, new Type[] { typeof(TProperty) });
+            ILGenerator setMethodIL = setMethod.GetILGenerator();
+            setMethodIL.Emit(OpCodes.Ldarg_0);
+            setMethodIL.Emit(OpCodes.Ldarg_1);
+            setMethodIL.Emit(OpCodes.Stfld, field);
+            setMethodIL.Emit(OpCodes.Ret);
+            propertyBuilder.SetSetMethod(setMethod);
+        }
+
         return propertyBuilder;
     }
 }

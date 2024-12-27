@@ -11,6 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ContractMetadata
 {
     public CodeInfo TargetCodeInfo { get; set; }
+    public OpcodeInfo[] Opcodes { get; set; }
     public int[] Jumpdests { get; set; }
     public SegmentMetadata[] Segments { get; set; }
     public byte[][] EmbeddedData { get; set; }
