@@ -32,7 +32,6 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
     IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
-
     void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
 }
 

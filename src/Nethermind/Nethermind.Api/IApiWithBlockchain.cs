@@ -23,8 +23,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
@@ -58,7 +56,11 @@ namespace Nethermind.Api
         ISealEngine SealEngine { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
+
         IWorldStateManager? WorldStateManager { get; set; }
+        INodeStorage? MainNodeStorage { get; set; }
+        CompositePruningTrigger? PruningTrigger { get; set; }
+
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
@@ -87,10 +89,8 @@ namespace Nethermind.Api
 
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
-        CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        INodeStorageFactory NodeStorageFactory { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
@@ -98,7 +98,7 @@ namespace Nethermind.Api
         {
             return ConfigureContainerBuilderFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+                .AddSingleton<INodeStorage>(MainNodeStorage!);
         }
     }
 }

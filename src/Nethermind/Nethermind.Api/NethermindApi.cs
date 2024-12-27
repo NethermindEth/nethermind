@@ -199,6 +199,8 @@ namespace Nethermind.Api
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
+        public INodeStorage? MainNodeStorage { get; set; }
+        public CompositePruningTrigger? PruningTrigger { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
@@ -240,7 +242,6 @@ namespace Nethermind.Api
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
-        public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
 
