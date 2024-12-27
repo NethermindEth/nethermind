@@ -111,6 +111,10 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
                 CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
+                //Testing if geth hash is of base block
+                SimulateBlockResult current = simulateOutputTracer.Results.Last();
+                current.Hash = suggestedBlocks[0].Hash;
+
                 parent = processedBlock.Header;
             }
         }
@@ -153,12 +157,17 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
         ulong lastKnown = (ulong)latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
+        switch (checked(firstBlock?.BlockOverrides?.Number - 1))
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
-            if (searchResult is not null)
+            case > 0 when checked(firstBlock.BlockOverrides?.Number + 1) < lastKnown:
             {
-                parent = searchResult.Header;
+                Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number!-1);
+                if (searchResult is not null)
+                {
+                    parent = searchResult.Header;
+                }
+
+                break;
             }
         }
 
@@ -278,17 +287,22 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
             : new BlockHeader(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                parent.Number + 1,
+                parent.Beneficiary ?? Address.Zero,
+                parent.Difficulty == 0 ? 0 : parent.Difficulty + 1,
+                checked(parent.Number + 1),
                 parent.GasLimit,
-                parent.Timestamp + 1,
-                [])
+
+                checked(parent.Timestamp + 1),
+                Array.Empty<byte>())
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
-        result.Timestamp = parent.Timestamp + 1;
+
+        result.Timestamp = block.BlockOverrides is { Time: not null }
+            ? block.BlockOverrides.Time.Value
+            : checked(parent.Timestamp + 1);
+
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation
