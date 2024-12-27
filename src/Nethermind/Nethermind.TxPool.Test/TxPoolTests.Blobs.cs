@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
@@ -171,9 +172,9 @@ namespace Nethermind.TxPool.Test
             blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
             if (isPersistentStorage)
             {
-                blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, options => options
-                    .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                    .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
+                blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
+                    .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                    .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
             }
         }
 
@@ -293,9 +294,9 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingTransaction(oldTx.Hash!, out Transaction blobTxReturned).Should().BeTrue();
             blobTxReturned.Should().BeEquivalentTo(oldTx);
             blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress!, oldTx.Timestamp, out Transaction blobTxFromDb).Should().BeTrue();
-            blobTxFromDb.Should().BeEquivalentTo(oldTx, options => options
-                .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
+            blobTxFromDb.Should().BeEquivalentTo(oldTx, static options => options
+                .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
 
             _txPool.SubmitTx(newTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
@@ -303,9 +304,9 @@ namespace Nethermind.TxPool.Test
             blobTxReturned.Should().BeEquivalentTo(newTx);
             blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress, oldTx.Timestamp, out blobTxFromDb).Should().BeFalse();
             blobTxStorage.TryGet(newTx.Hash, newTx.SenderAddress!, newTx.Timestamp, out blobTxFromDb).Should().BeTrue();
-            blobTxFromDb.Should().BeEquivalentTo(newTx, options => options
-                .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
+            blobTxFromDb.Should().BeEquivalentTo(newTx, static options => options
+                .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
         }
 
         [Test]
@@ -346,7 +347,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            _headInfo.CurrentPricePerBlobGas = UInt256.MaxValue;
+            _headInfo.CurrentFeePerBlobGas = UInt256.MaxValue;
 
             Transaction tx = Build.A.Transaction
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
@@ -365,7 +366,7 @@ namespace Nethermind.TxPool.Test
                 _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
                 returned.GasBottleneck.Should().Be(UInt256.Zero);
                 returned.Should().BeEquivalentTo(isPersistentStorage ? new LightTransaction(tx) : tx,
-                    options => options.Excluding(t => t.GasBottleneck));
+                    static options => options.Excluding(static t => t.GasBottleneck));
                 returned.Should().NotBeEquivalentTo(isPersistentStorage ? tx : new LightTransaction(tx));
             }
             else
@@ -534,10 +535,10 @@ namespace Nethermind.TxPool.Test
 
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().BeTrue();
             returnedTxs.Length.Should().Be(txs.Length);
-            returnedTxs.Should().BeEquivalentTo(txs, options => options
-                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex)        // ...as well as PoolIndex
-                .Excluding(t => t.SenderAddress));  // sender is recovered later, it is not returned from db
+            returnedTxs.Should().BeEquivalentTo(txs, static options => options
+                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(static t => t.PoolIndex)        // ...as well as PoolIndex
+                .Excluding(static t => t.SenderAddress));  // sender is recovered later, it is not returned from db
 
             blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
@@ -586,23 +587,23 @@ namespace Nethermind.TxPool.Test
             // tx from block B should be removed from blob pool, but present in processed txs db
             _txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _).Should().BeFalse();
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] blockBTxs).Should().BeTrue();
-            txsB.Should().BeEquivalentTo(blockBTxs, options => options
-                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex)        // ...as well as PoolIndex
-                .Excluding(t => t.SenderAddress));  // sender is recovered later, it is not returned from db
+            txsB.Should().BeEquivalentTo(blockBTxs, static options => options
+                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(static t => t.PoolIndex)        // ...as well as PoolIndex
+                .Excluding(static t => t.SenderAddress));  // sender is recovered later, it is not returned from db
 
             // blob txs from reorganized blockA should be readded to blob pool
             _txPool.GetPendingBlobTransactionsCount().Should().Be(txsA.Length);
             _txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out Transaction tx1).Should().BeTrue();
             _txPool.TryGetPendingBlobTransaction(txsA[1].Hash!, out Transaction tx2).Should().BeTrue();
 
-            tx1.Should().BeEquivalentTo(txsA[0], options => options
-                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex));      // ...as well as PoolIndex
+            tx1.Should().BeEquivalentTo(txsA[0], static options => options
+                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
 
-            tx2.Should().BeEquivalentTo(txsA[1], options => options
-                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex));      // ...as well as PoolIndex
+            tx2.Should().BeEquivalentTo(txsA[1], static options => options
+                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
         }
 
         [Test]
@@ -677,6 +678,65 @@ namespace Nethermind.TxPool.Test
                     values.Contains(blobTxs[i].Hash).Should().Be(i >= poolSize);
                 }
             }
+        }
+
+        [Test]
+        [Repeat(3)]
+        public void should_handle_indexing_blobs_when_adding_txs_in_parallel([Values(true, false)] bool isPersistentStorage)
+        {
+            const int txsPerSender = 10;
+            int poolSize = TestItem.PrivateKeys.Length * txsPerSender;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                PersistentBlobStorageSize = isPersistentStorage ? poolSize : 0,
+                InMemoryBlobPoolSize = isPersistentStorage ? 0 : poolSize
+            };
+
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+
+            BlobTxDistinctSortedPool blobPool = isPersistentStorage
+                ? new PersistentBlobTxDistinctSortedPool(new BlobTxStorage(), txPoolConfig, comparer, LimboLogs.Instance)
+                : new BlobTxDistinctSortedPool(txPoolConfig.InMemoryBlobPoolSize, comparer, LimboLogs.Instance);
+
+            byte[] expectedBlobVersionedHash = null;
+
+            foreach (PrivateKey privateKey in TestItem.PrivateKeys)
+            {
+                EnsureSenderBalance(privateKey.Address, UInt256.MaxValue);
+            }
+
+            // adding, getting and removing txs in parallel
+            Parallel.ForEach(TestItem.PrivateKeys, privateKey =>
+            {
+                for (int i = 0; i < txsPerSender; i++)
+                {
+                    Transaction tx = Build.A.Transaction
+                        .WithNonce((UInt256)i)
+                        .WithShardBlobTxTypeAndFields()
+                        .WithMaxFeePerGas(1.GWei())
+                        .WithMaxPriorityFeePerGas(1.GWei())
+                        .WithMaxFeePerBlobGas(1000.Wei())
+                        .SignedAndResolved(_ethereumEcdsa, privateKey).TestObject;
+
+                    expectedBlobVersionedHash ??= tx.BlobVersionedHashes[0]!;
+
+                    blobPool.TryInsert(tx.Hash, tx, out _).Should().BeTrue();
+
+                    for (int j = 0; j < 100; j++)
+                    {
+                        blobPool.TryGetBlobAndProof(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
+                    }
+
+                    // removing 50% of txs
+                    if (i % 2 == 0) blobPool.TryRemove(tx.Hash, out _).Should().BeTrue();
+                }
+            });
+
+            // we expect index to have 1 key with poolSize/2 values (50% of txs were removed)
+            blobPool.BlobIndex.Count.Should().Be(1);
+            blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
+            values.Count.Should().Be(poolSize / 2);
         }
 
         private Transaction GetTx(PrivateKey sender)

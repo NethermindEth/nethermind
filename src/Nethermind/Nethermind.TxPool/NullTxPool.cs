@@ -16,11 +16,17 @@ namespace Nethermind.TxPool
 
         public static NullTxPool Instance { get; } = new();
 
+        public event EventHandler<Block>? TxPoolHeadChanged
+        {
+            add { }
+            remove { }
+        }
+
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
-        public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
+        public Transaction[] GetPendingTransactions() => [];
 
-        public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
+        public Transaction[] GetPendingTransactionsBySender(Address address) => [];
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
@@ -37,6 +43,10 @@ namespace Nethermind.TxPool
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
         public bool RemoveTransaction(Hash256? hash) => false;
+
+        public Transaction? GetBestTx() => null;
+
+        public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();
 
         public bool IsKnown(Hash256 hash) => false;
 
@@ -87,5 +97,6 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
+        public bool AcceptTxWhenNotSynced { get; set; }
     }
 }

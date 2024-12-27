@@ -5,16 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain.Find
+namespace Nethermind.Facade.Find
 {
     public class LogFinder : ILogFinder
     {
@@ -206,7 +208,7 @@ namespace Nethermind.Blockchain.Find
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
             filter.Matches(block.Bloom)
                 ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
-                : Enumerable.Empty<FilterLog>();
+                : [];
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
         {
@@ -249,7 +251,6 @@ namespace Nethermind.Blockchain.Find
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
-                                    logsIterator.Index,
                                     receipt.BlockNumber,
                                     receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
@@ -277,7 +278,7 @@ namespace Nethermind.Blockchain.Find
                 iterator.Dispose();
             }
 
-            return logList ?? (IEnumerable<FilterLog>)Array.Empty<FilterLog>();
+            return logList ?? (IEnumerable<FilterLog>)[];
         }
 
         private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
@@ -333,7 +334,7 @@ namespace Nethermind.Blockchain.Find
                             if (filter.Accepts(log))
                             {
                                 RecoverReceiptsData(blockHash, receipts);
-                                yield return new FilterLog(logIndexInBlock, j, receipt, log);
+                                yield return new FilterLog(logIndexInBlock, receipt, log);
                             }
 
                             logIndexInBlock++;

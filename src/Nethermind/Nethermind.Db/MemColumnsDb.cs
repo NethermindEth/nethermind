@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Db
 {
@@ -35,5 +34,7 @@ namespace Nethermind.Db
         {
             return new InMemoryColumnWriteBatch<TKey>(this);
         }
+        public void Dispose() { }
+        public void Flush(bool onlyWal = false) { }
     }
 }

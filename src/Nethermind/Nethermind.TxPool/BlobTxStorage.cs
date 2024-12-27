@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -16,7 +17,7 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : IBlobTxStorage
 {
-    private static readonly TxDecoder _txDecoder = new();
+    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
@@ -160,7 +161,7 @@ public class BlobTxStorage : IBlobTxStorage
             _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
         }
 
-        db.Set(blockNumber, byteBuffer.Array);
+        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), byteBuffer.AsSpan());
     }
 
     private int GetLength(IList<Transaction> blockBlobTransactions)
@@ -179,7 +180,7 @@ internal static class UInt256Extensions
 {
     public static void WriteBigEndian(in this UInt256 value, Span<byte> output)
     {
-        BinaryPrimitives.WriteUInt64BigEndian(output.Slice(0, 8), value.u3);
+        BinaryPrimitives.WriteUInt64BigEndian(output[..8], value.u3);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(8, 8), value.u2);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(16, 8), value.u1);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(24, 8), value.u0);

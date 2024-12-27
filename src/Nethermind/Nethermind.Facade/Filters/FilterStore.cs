@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Filters
     public class FilterStore : IFilterStore
     {
         private int _currentFilterId = -1;
-        private readonly object _locker = new object();
+        private readonly Lock _locker = new Lock();
 
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
 
@@ -32,13 +32,13 @@ namespace Nethermind.Blockchain.Filters
                 return FilterType.BlockFilter;
             }
 
-            switch (filter)
+            return filter switch
             {
-                case LogFilter _: return FilterType.LogFilter;
-                case BlockFilter _: return FilterType.BlockFilter;
-                case PendingTransactionFilter _: return FilterType.PendingTransactionFilter;
-                default: return FilterType.BlockFilter;
-            }
+                LogFilter _ => FilterType.LogFilter,
+                BlockFilter _ => FilterType.BlockFilter,
+                PendingTransactionFilter _ => FilterType.PendingTransactionFilter,
+                _ => FilterType.BlockFilter,
+            };
         }
 
         // Stop gap method to reduce allocations from non-struct enumerator
@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else if (filterTopic.Topics?.Length > 0)
             {
-                return new OrExpression(filterTopic.Topics.Select(t => new SpecificTopic(t)).ToArray<TopicExpression>());
+                return new OrExpression(filterTopic.Topics.Select(static t => new SpecificTopic(t)).ToArray<TopicExpression>());
             }
             else
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
 
             if (address is IEnumerable<string> e)
             {
-                return new AddressFilter(e.Select(a => new AddressAsKey(new Address(a))).ToHashSet());
+                return new AddressFilter(e.Select(static a => new AddressAsKey(new Address(a))).ToHashSet());
             }
 
             throw new InvalidDataException("Invalid address filter format");
@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain.Filters
             {
                 return new FilterTopic
                 {
-                    Topics = topics.Select(t => new Hash256(t)).ToArray()
+                    Topics = topics.Select(static t => new Hash256(t)).ToArray()
                 };
             }
         }

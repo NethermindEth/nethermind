@@ -30,25 +30,36 @@ namespace Nethermind.Consensus.Processing
         public IVirtualMachine Machine { get; }
 
         public ICodeInfoRepository CodeInfoRepository { get; }
+
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
-            IBlockTree blockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null)
-            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+            IReadOnlyBlockTree readOnlyBlockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            IWorldState worldStateToWarmUp
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null
-            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+            ISpecProvider specProvider,
+            ILogManager logManager
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), new CodeInfoRepository(), readOnlyBlockTree, specProvider, logManager)
         {
-            CodeInfoRepository = new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
+        }
+
+        private ReadOnlyTxProcessingEnv(
+            IStateReader stateReader,
+            IWorldState stateProvider,
+            ICodeInfoRepository codeInfoRepository,
+            IReadOnlyBlockTree readOnlyBlockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager
+            ) : base(stateReader, stateProvider, readOnlyBlockTree, specProvider, logManager)
+        {
+            CodeInfoRepository = codeInfoRepository;
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
@@ -56,10 +67,8 @@ namespace Nethermind.Consensus.Processing
             _logManager = logManager;
         }
 
-        protected virtual TransactionProcessor CreateTransactionProcessor()
-        {
-            return new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
-        }
+        protected virtual ITransactionProcessor CreateTransactionProcessor() =>
+            new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {

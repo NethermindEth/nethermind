@@ -17,47 +17,31 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
 
-public class BlockValidator : IBlockValidator
+public class BlockValidator(
+    ITxValidator? txValidator,
+    IHeaderValidator? headerValidator,
+    IUnclesValidator? unclesValidator,
+    ISpecProvider? specProvider,
+    ILogManager? logManager)
+    : IBlockValidator
 {
-    private readonly IHeaderValidator _headerValidator;
-    private readonly ITxValidator _txValidator;
-    private readonly IUnclesValidator _unclesValidator;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
+    private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+    private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
+    private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-    public BlockValidator(
-        ITxValidator? txValidator,
-        IHeaderValidator? headerValidator,
-        IUnclesValidator? unclesValidator,
-        ISpecProvider? specProvider,
-        ILogManager? logManager)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
-        _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
-    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle) =>
+        _headerValidator.Validate(header, parent, isUncle, out _);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
-    {
-        return _headerValidator.Validate(header, parent, isUncle, out _);
-    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) =>
+        _headerValidator.Validate(header, parent, isUncle, out error);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
-    {
-        return _headerValidator.Validate(header, parent, isUncle, out error);
-    }
+    public bool Validate(BlockHeader header, bool isUncle) =>
+        _headerValidator.Validate(header, isUncle, out _);
 
-    public bool Validate(BlockHeader header, bool isUncle)
-    {
-        return _headerValidator.Validate(header, isUncle, out _);
-    }
-
-    public bool Validate(BlockHeader header, bool isUncle, out string? error)
-    {
-        return _headerValidator.Validate(header, isUncle, out error);
-    }
+    public bool Validate(BlockHeader header, bool isUncle, out string? error) =>
+        _headerValidator.Validate(header, isUncle, out error);
 
     /// <summary>
     /// Applies to blocks without parent
@@ -84,10 +68,7 @@ public class BlockValidator : IBlockValidator
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block)
-    {
-        return ValidateSuggestedBlock(block, out _);
-    }
+    public bool ValidateSuggestedBlock(Block block) => ValidateSuggestedBlock(block, out _);
 
     /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
@@ -103,10 +84,14 @@ public class BlockValidator : IBlockValidator
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         if (!ValidateTransactions(block, spec, out errorMessage))
+        {
             return false;
+        }
 
         if (!ValidateEip4844Fields(block, spec, out errorMessage))
+        {
             return false;
+        }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
@@ -162,10 +147,8 @@ public class BlockValidator : IBlockValidator
     /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
-    }
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
+        ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
 
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).
@@ -178,56 +161,61 @@ public class BlockValidator : IBlockValidator
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
-        bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
-
-        if (isValid)
+        if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
             error = null;
             return true;
         }
+
         if (_logger.IsWarn) _logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
         if (_logger.IsWarn) _logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
         error = null;
         if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
         {
             if (_logger.IsWarn) _logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
-            error = error ?? BlockErrorMessages.HeaderGasUsedMismatch;
+            error ??= BlockErrorMessages.HeaderGasUsedMismatch;
         }
 
         if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
         {
             if (_logger.IsWarn) _logger.Warn($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
-            error = error ?? BlockErrorMessages.InvalidLogsBloom;
+            error ??= BlockErrorMessages.InvalidLogsBloom;
         }
 
         if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
         {
             if (_logger.IsWarn) _logger.Warn($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
-            error = error ?? BlockErrorMessages.InvalidReceiptsRoot;
+            error ??= BlockErrorMessages.InvalidReceiptsRoot;
         }
 
         if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
         {
             if (_logger.IsWarn) _logger.Warn($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
-            error = error ?? BlockErrorMessages.InvalidStateRoot;
+            error ??= BlockErrorMessages.InvalidStateRoot;
         }
 
         if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
         {
             if (_logger.IsWarn) _logger.Warn($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
-            error = error ?? BlockErrorMessages.HeaderBlobGasMismatch;
+            error ??= BlockErrorMessages.HeaderBlobGasMismatch;
         }
 
         if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
         {
             if (_logger.IsWarn) _logger.Warn($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
-            error = error ?? BlockErrorMessages.IncorrectExcessBlobGas;
+            error ??= BlockErrorMessages.IncorrectExcessBlobGas;
         }
 
         if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
         {
             if (_logger.IsWarn) _logger.Warn($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
-            error = error ?? BlockErrorMessages.InvalidParentBeaconBlockRoot;
+            error ??= BlockErrorMessages.InvalidParentBeaconBlockRoot;
+        }
+
+        if (processedBlock.Header.RequestsHash != suggestedBlock.Header.RequestsHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
+            error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
         for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -235,14 +223,16 @@ public class BlockValidator : IBlockValidator
             if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
             {
                 if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
-                error = error ?? BlockErrorMessages.InvalidTxInBlock(i);
+                error ??= BlockErrorMessages.InvalidTxInBlock(i);
             }
         }
+
         if (suggestedBlock.ExtraData is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
         }
-        return isValid;
+
+        return false;
     }
 
     public bool ValidateWithdrawals(Block block, out string? error) =>
@@ -284,7 +274,7 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
+    protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
 
@@ -292,9 +282,11 @@ public class BlockValidator : IBlockValidator
         {
             Transaction transaction = transactions[txIndex];
 
-            if (!_txValidator.IsWellFormed(transaction, spec, out errorMessage))
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
+            if (!isWellFormed)
             {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {errorMessage}");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
+                errorMessage = isWellFormed.Error;
                 return false;
             }
         }
@@ -302,7 +294,7 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
+    protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
         if (!spec.IsEip4844Enabled)
         {
@@ -311,7 +303,7 @@ public class BlockValidator : IBlockValidator
         }
 
         int blobsInBlock = 0;
-        UInt256 blobGasPrice = UInt256.Zero;
+        UInt256 feePerBlobGas = UInt256.Zero;
         Transaction[] transactions = block.Transactions;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
@@ -323,9 +315,9 @@ public class BlockValidator : IBlockValidator
                 continue;
             }
 
-            if (blobGasPrice.IsZero)
+            if (feePerBlobGas.IsZero)
             {
-                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out blobGasPrice))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas))
                 {
                     error = BlockErrorMessages.BlobGasPriceOverflow;
                     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
@@ -333,10 +325,10 @@ public class BlockValidator : IBlockValidator
                 }
             }
 
-            if (transaction.MaxFeePerBlobGas < blobGasPrice)
+            if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
                 error = BlockErrorMessages.InsufficientMaxFeePerBlobGas;
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}.");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
             }
 
@@ -364,46 +356,34 @@ public class BlockValidator : IBlockValidator
     }
 
     public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
-        ValidateTxRootMatchesTxs(header, toBeValidated, out _) &&
-            ValidateUnclesHashMatches(header, toBeValidated, out _) &&
-            ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
+        ValidateTxRootMatchesTxs(header, toBeValidated, out _)
+        && ValidateUnclesHashMatches(header, toBeValidated, out _)
+        && ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
 
-    public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot)
-    {
-        return ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
-    }
-    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot)
-    {
-        txRoot = TxTrie.CalculateRoot(body.Transactions);
-        return txRoot == header.TxRoot;
-    }
+    public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
+        ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
-    public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash)
-    {
-        return ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
-    }
+    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
+        (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
 
-    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash)
-    {
-        unclesHash = UnclesHash.Calculate(body.Uncles);
+    public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
+        ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
 
-        return header.UnclesHash == unclesHash;
-    }
+    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
+        (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
 
-    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot)
-    {
-        return ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
-    }
+    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
+        ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
 
     public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
-        withdrawalsRoot = null;
         if (body.Withdrawals is null)
+        {
+            withdrawalsRoot = null;
             return header.WithdrawalsRoot is null;
+        }
 
-        withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash;
-
-        return header.WithdrawalsRoot == withdrawalsRoot;
+        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
     private static string Invalid(Block block) =>

@@ -15,7 +15,7 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -34,7 +34,7 @@ public class MergePluginTests
     {
         _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
         BlocksConfig? miningConfig = new();
-        IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
+        IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
 
         _context = Build.ContextWithMocks();
         _context.SealEngineType = SealEngineType.Clique;
@@ -58,11 +58,9 @@ public class MergePluginTests
             _context.LogManager!);
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
-        _context.ChainSpec!.Clique = new CliqueParameters()
-        {
-            Epoch = CliqueConfig.Default.Epoch,
-            Period = CliqueConfig.Default.BlockPeriod
-        };
+        var chainSpecParametersProvider = new TestChainSpecParametersProvider(
+            new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
+        _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
         _plugin = new MergePlugin();
 
         _consensusPlugin = new();
@@ -75,7 +73,7 @@ public class MergePluginTests
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
 
-        JsonConfigSource? jsonSource = new("MisconfiguredConfig.cfg");
+        JsonConfigSource? jsonSource = new("MisconfiguredConfig.json");
         ConfigProvider? configProvider = new();
         configProvider.AddSource(jsonSource);
         configProvider.Initialize();
@@ -109,10 +107,10 @@ public class MergePluginTests
         await _plugin.InitSynchronization();
         await _plugin.InitNetworkProtocol();
         ISyncConfig syncConfig = _context.Config<ISyncConfig>();
-        Assert.IsTrue(syncConfig.NetworkingEnabled);
-        Assert.IsTrue(_context.GossipPolicy.CanGossipBlocks);
+        Assert.That(syncConfig.NetworkingEnabled, Is.True);
+        Assert.That(_context.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!, null);
-        Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
+        Assert.That(_context.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
         await _plugin.InitRpcModules();
         _context.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
         await _plugin.DisposeAsync();
@@ -163,7 +161,7 @@ public class MergePluginTests
         await _plugin.Init(_context);
 
         jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo(new string[] { });
+        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
         jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
         {
             "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"

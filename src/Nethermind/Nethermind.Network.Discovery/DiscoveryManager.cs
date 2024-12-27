@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,8 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly INetworkStorage _discoveryStorage;
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
+    private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
+    private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManagerPersisted;
     private IMsgSender? _msgSender;
 
     public DiscoveryManager(
@@ -41,6 +44,24 @@ public class DiscoveryManager : IDiscoveryManager
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _nodeLifecycleManagerFactory.DiscoveryManager = this;
         _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
+        _createNodeLifecycleManager = GetLifecycleManagerFunc(isPersisted: false);
+        _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
+    }
+
+    private Func<Hash256, Node, INodeLifecycleManager> GetLifecycleManagerFunc(bool isPersisted)
+    {
+        return (_, node) =>
+        {
+            Interlocked.Increment(ref _managersCreated);
+            INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+            manager.OnStateChanged += ManagerOnOnStateChanged;
+            if (!isPersisted)
+            {
+                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
+            }
+
+            return manager;
+        };
     }
 
     public IMsgSender MsgSender
@@ -120,18 +141,7 @@ public class DiscoveryManager : IDiscoveryManager
             return null;
         }
 
-        return _nodeLifecycleManagers.GetOrAdd(node.IdHash, _ =>
-        {
-            Interlocked.Increment(ref _managersCreated);
-            INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
-            manager.OnStateChanged += ManagerOnOnStateChanged;
-            if (!isPersisted)
-            {
-                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
-            }
-
-            return manager;
-        });
+        return _nodeLifecycleManagers.GetOrAdd(node.IdHash, isPersisted ? _createNodeLifecycleManagerPersisted : _createNodeLifecycleManager, node);
     }
 
     private void ManagerOnOnStateChanged(object? sender, NodeLifecycleState e)
@@ -168,7 +178,8 @@ public class DiscoveryManager : IDiscoveryManager
         }
     }
 
-    public async Task<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout)
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    public async ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout)
     {
         TaskCompletionSource<DiscoveryMsg> completionSource = GetCompletionSource(senderIdHash, (int)msgType);
         CancellationTokenSource delayCancellation = new();

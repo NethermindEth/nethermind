@@ -154,7 +154,7 @@ namespace Nethermind.TxPool.Collections
             using var lockRelease = Lock.Acquire();
 
             if (group is null) throw new ArgumentNullException(nameof(group));
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : [];
         }
 
         /// <summary>
@@ -193,6 +193,14 @@ namespace Nethermind.TxPool.Collections
             }
 
             return sortedValues;
+        }
+
+        /// <summary>
+        /// Returns best overall element as per supplied comparer order.
+        /// </summary>
+        public TValue? GetBest()
+        {
+            return GetFirsts().Min;
         }
 
         /// <summary>
@@ -307,7 +315,7 @@ namespace Nethermind.TxPool.Collections
 
                 return list ?? Enumerable.Empty<TValue>();
             }
-            return Enumerable.Empty<TValue>();
+            return [];
         }
 
         /// <summary>
@@ -328,12 +336,14 @@ namespace Nethermind.TxPool.Collections
         /// <param name="key">Key to be returned.</param>
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
-        public virtual bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
+        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
             using var lockRelease = Lock.Acquire();
 
-            return _cacheMap.TryGetValue(key, out value) && value is not null;
+            return TryGetValueNonLocked(key, out value);
         }
+
+        protected virtual bool TryGetValueNonLocked(TKey key, [NotNullWhen(true)] out TValue? value) => _cacheMap.TryGetValue(key, out value) && value is not null;
 
         /// <summary>
         /// Tries to insert element.
@@ -342,7 +352,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Element to insert.</param>
         /// <param name="removed">Element removed because of exceeding capacity</param>
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
-        public virtual bool TryInsert(TKey key, TValue value, out TValue? removed)
+        public bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
             using var lockRelease = Lock.Acquire();
 
@@ -352,7 +362,7 @@ namespace Nethermind.TxPool.Collections
 
                 if (group is not null)
                 {
-                    InsertCore(key, value, group);
+                    bool inserted = InsertCore(key, value, group);
 
                     if (_cacheMap.Count > _capacity)
                     {
@@ -364,11 +374,11 @@ namespace Nethermind.TxPool.Collections
                             RemoveLast(out removed);
                         }
 
-                        return true;
+                        return inserted;
                     }
 
                     removed = default;
-                    return true;
+                    return inserted;
                 }
             }
 
@@ -422,7 +432,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual insert mechanism.
         /// </summary>
-        protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey)
+        protected virtual bool InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
             if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
@@ -437,7 +447,10 @@ namespace Nethermind.TxPool.Collections
                 UpdateSortedValues(bucket, last);
                 _snapshot = null;
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value));
+                return true;
             }
+
+            return false;
         }
 
         private void UpdateSortedValues(EnhancedSortedSet<TValue> bucket, TValue? previousLast)
@@ -499,7 +512,7 @@ namespace Nethermind.TxPool.Collections
                 return true;
             }
 
-            items = Array.Empty<TValue>();
+            items = [];
             return false;
         }
 

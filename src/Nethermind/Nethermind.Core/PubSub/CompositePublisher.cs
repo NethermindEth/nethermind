@@ -1,33 +1,28 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.PubSub
 {
-    public class CompositePublisher : IPublisher
+    public class CompositePublisher(params IPublisher[] publishers) : IPublisher
     {
-        private readonly IPublisher[] _publishers;
-
-        public CompositePublisher(params IPublisher[] publishers)
-        {
-            _publishers = publishers;
-        }
-
         public async Task PublishAsync<T>(T data) where T : class
         {
-            Task[] tasks = new Task[_publishers.Length];
-            for (int i = 0; i < _publishers.Length; i++)
+            using ArrayPoolList<Task> tasks = new(publishers.Length);
+            for (int i = 0; i < publishers.Length; i++)
             {
-                tasks[i] = _publishers[i].PublishAsync(data);
+                tasks.Add(publishers[i].PublishAsync(data));
             }
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks.AsSpan());
         }
 
         public void Dispose()
         {
-            foreach (IPublisher publisher in _publishers)
+            foreach (IPublisher publisher in publishers)
             {
                 publisher.Dispose();
             }

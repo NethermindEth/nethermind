@@ -3,14 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Find
+namespace Nethermind.Facade.Find
 {
     public abstract class LogScanner<T>(ILogFinder logFinder, AddressFilter addressFilter, TopicsFilter topicsFilter, ILogManager logManager)
     {
@@ -20,46 +20,6 @@ namespace Nethermind.Blockchain.Find
 
         public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
         {
-            List<List<T>> eventBlocks = GetEventBlocks(headBlockNumber, shouldStopScanning);
-            for (int i = eventBlocks.Count - 1; i >= 0; i--)
-            {
-                foreach (T e in eventBlocks[i])
-                {
-                    yield return e;
-                }
-            }
-        }
-
-        public IEnumerable<T> ScanReceipts(long blockNumber, TxReceipt[] receipts)
-        {
-            int count = 0;
-
-            LogFilter filter = CreateFilter(blockNumber);
-            foreach (TxReceipt receipt in receipts)
-            {
-                foreach (LogEntry log in receipt.Logs!)
-                {
-                    if (filter.Accepts(log))
-                    {
-                        T e = ParseEvent(log);
-                        count++;
-                        yield return e;
-                    }
-                }
-            }
-
-            _logger.Debug($"{GetType().Name} found {count} events events in block {blockNumber}.");
-        }
-
-        public abstract T ParseEvent(ILogEntry log);
-
-        private LogFilter CreateFilter(long blockNumber)
-            => new(0, new(blockNumber), new(blockNumber), addressFilter, topicsFilter);
-
-        private List<List<T>> GetEventBlocks(long headBlockNumber, Predicate<T> shouldStopScanning)
-        {
-            List<List<T>> eventBlocks = [];
-
             BlockParameter end = new(headBlockNumber);
 
             for (int i = 0; i < LogScanCutoffChunks; i++)
@@ -75,45 +35,52 @@ namespace Nethermind.Blockchain.Find
                 BlockParameter start = new(startBlockNumber);
                 LogFilter logFilter = new(0, start, end, addressFilter, topicsFilter);
 
-                var logs = logFinder.FindLogs(logFilter).ToList();
-
-                List<T> events = EventsFromLogs(logs, start.BlockNumber!.Value, end.BlockNumber!.Value);
-                eventBlocks.Add(events);
-
-                if (atGenesis)
+                IEnumerable<FilterLog> logs = logFinder.FindLogs(logFilter);
+                int count = 0;
+                T first = default;
+                foreach (FilterLog log in logs)
                 {
-                    break;
+                    T @event = ParseEvent(log);
+                    if (count == 0)
+                    {
+                        first = @event;
+                    }
+
+                    yield return @event;
+                    count++;
                 }
 
-                if (events.Count > 0)
+                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} found {count} events from logs in block range {logFilter.FromBlock} - {logFilter.ToBlock}");
+
+                if (atGenesis || (count != 0 && shouldStopScanning(first)))
                 {
-                    T e = events.First();
-                    if (shouldStopScanning(e))
-                    {
-                        break;
-                    }
+                    yield break;
                 }
 
                 end = new BlockParameter(startBlockNumber - 1);
             }
-
-            return eventBlocks;
         }
 
-        private List<T> EventsFromLogs(List<FilterLog> logs, long startBlock, long endBlock)
+        public IEnumerable<T> ScanReceipts(long blockNumber, TxReceipt[] receipts)
         {
-            List<T> events = [];
-
             int count = 0;
-            foreach (FilterLog log in logs)
+
+            foreach (TxReceipt receipt in receipts)
             {
-                events.Add(ParseEvent(log));
-                count++;
+                foreach (LogEntry log in receipt.Logs!)
+                {
+                    if (addressFilter.Accepts(log.Address) && topicsFilter.Accepts(log))
+                    {
+                        T e = ParseEvent(log);
+                        count++;
+                        yield return e;
+                    }
+                }
             }
 
-            _logger.Debug($"{GetType().Name} found {count} events from logs in block range {startBlock} - {endBlock}");
-
-            return events;
+            if (_logger.IsDebug) _logger.Debug($"{GetType().Name} found {count} events events in block {blockNumber}.");
         }
+
+        protected abstract T ParseEvent(ILogEntry log);
     }
 }

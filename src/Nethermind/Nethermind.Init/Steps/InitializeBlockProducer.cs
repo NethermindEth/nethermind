@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -33,7 +32,7 @@ namespace Nethermind.Init.Steps
 
                 _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
 
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy(static (p) => p.Priority))
                 {
                     _api.BlockProducerRunner = wrapperPlugin.InitBlockProducerRunner(_api.BlockProducerRunner);
                 }
@@ -64,8 +63,7 @@ namespace Nethermind.Init.Steps
             {
                 IBlockProducerFactory blockProducerFactory = consensusPlugin;
 
-                ILogger logger = _api.LogManager!.GetClassLogger();
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy(static (p) => p.Priority))
                 {
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }

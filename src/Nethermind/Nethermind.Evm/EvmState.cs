@@ -2,14 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Eip2930;
-using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm
@@ -23,6 +19,11 @@ namespace Nethermind.Evm
         private class StackPool
         {
             private readonly int _maxCallStackDepth;
+            private readonly struct StackItem(byte[] dataStack, int[] returnStack)
+            {
+                public readonly byte[] DataStack = dataStack;
+                public readonly int[] ReturnStack = returnStack;
+            }
 
             // TODO: we have wrong call depth calculation somewhere
             public StackPool(int maxCallStackDepth = VirtualMachine.MaxCallDepth * 2)
@@ -30,11 +31,9 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly Stack<byte[]> _dataStackPool = new(32);
-            private readonly Stack<int[]> _returnStackPool = new(32);
+            private readonly Stack<StackItem> _stackPool = new(32);
 
-            private int _dataStackPoolDepth;
-            private int _returnStackPoolDepth;
+            private int _stackPoolDepth;
 
             /// <summary>
             /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
@@ -44,109 +43,110 @@ namespace Nethermind.Evm
             /// <param name="returnStack"></param>
             public void ReturnStacks(byte[] dataStack, int[] returnStack)
             {
-                _dataStackPool.Push(dataStack);
-                _returnStackPool.Push(returnStack);
-            }
-
-            private byte[] RentDataStack()
-            {
-                if (_dataStackPool.TryPop(out byte[] result))
-                {
-                    return result;
-                }
-
-                _dataStackPoolDepth++;
-                if (_dataStackPoolDepth > _maxCallStackDepth)
-                {
-                    EvmStack.ThrowEvmStackOverflowException();
-                }
-
-                return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
-            }
-
-            private int[] RentReturnStack()
-            {
-                if (_returnStackPool.TryPop(out int[] result))
-                {
-                    return result;
-                }
-
-                _returnStackPoolDepth++;
-                if (_returnStackPoolDepth > _maxCallStackDepth)
-                {
-                    EvmStack.ThrowEvmStackOverflowException();
-                }
-
-                return new int[EvmStack.ReturnStackSize];
+                _stackPool.Push(new(dataStack, returnStack));
             }
 
             public (byte[], int[]) RentStacks()
             {
-                return (RentDataStack(), RentReturnStack());
+                if (_stackPool.TryPop(out StackItem result))
+                {
+                    return (result.DataStack, result.ReturnStack);
+                }
+
+                _stackPoolDepth++;
+                if (_stackPoolDepth > _maxCallStackDepth)
+                {
+                    EvmStack.ThrowEvmStackOverflowException();
+                }
+
+                return
+                (
+                    new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
+                    new int[EvmStack.ReturnStackSize]
+                );
             }
         }
-        private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
+        private static readonly ThreadLocal<StackPool> _stackPool = new(static () => new StackPool());
 
         public byte[]? DataStack;
 
         public int[]? ReturnStack;
 
-        /// <summary>
-        /// EIP-2929 accessed addresses
-        /// </summary>
-        public IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
+        public StackAccessTracker AccessTracker => _accessTracker;
 
-        /// <summary>
-        /// EIP-2929 accessed storage keys
-        /// </summary>
-        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
-
-        // As we can add here from VM, we need it as ICollection
-        public ICollection<Address> DestroyList => _destroyList;
-        // As we can add here from VM, we need it as ICollection
-        public ICollection<AddressAsKey> CreateList => _createList;
-        // As we can add here from VM, we need it as ICollection
-        public ICollection<LogEntry> Logs => _logs;
-
-        private readonly JournalSet<Address> _accessedAddresses;
-        private readonly JournalSet<StorageCell> _accessedStorageCells;
-        private readonly JournalCollection<LogEntry> _logs;
-        private readonly JournalSet<Address> _destroyList;
-        private readonly HashSet<AddressAsKey> _createList;
-        private readonly int _accessedAddressesSnapshot;
-        private readonly int _accessedStorageKeysSnapshot;
-        private readonly int _destroyListSnapshot;
-        private readonly int _logsSnapshot;
+        private readonly StackAccessTracker _accessTracker;
 
         public int DataStackHead = 0;
 
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
-
+        /// <summary>
+        /// Contructor for a top level <see cref="EvmState"/>.
+        /// </summary>
         public EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
-            bool isTopLevel,
             Snapshot snapshot,
-            bool isContinuation)
-            : this(gasAvailable,
+            in StackAccessTracker accessedItems) : this(gasAvailable,
+                                    env,
+                                    executionType,
+                                    true,
+                                    snapshot,
+                                    0L,
+                                    0L,
+                                    false,
+                                    accessedItems,
+                                    false)
+        {
+        }
+        /// <summary>
+        /// Contructor for a top level <see cref="EvmState"/>.
+        /// </summary>
+        public EvmState(
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            Snapshot snapshot) : this(gasAvailable,
+                                    env,
+                                    executionType,
+                                    true,
+                                    snapshot,
+                                    0L,
+                                    0L,
+                                    false,
+                                    new StackAccessTracker(),
+                                    false)
+        {
+        }
+        /// <summary>
+        /// Contructor for a frame <see cref="EvmState"/> beneath top level.
+        /// </summary>
+        internal EvmState(
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            Snapshot snapshot,
+            long outputDestination,
+            long outputLength,
+            bool isStatic,
+            in StackAccessTracker stateForAccessLists,
+            bool isCreateOnPreExistingAccount) :
+            this(
+                gasAvailable,
                 env,
                 executionType,
-                isTopLevel,
-                snapshot,
-                0L,
-                0L,
                 false,
-                null,
-                isContinuation,
-                false)
+                snapshot,
+                outputDestination,
+                outputLength,
+                isStatic,
+                stateForAccessLists,
+                isCreateOnPreExistingAccount)
         {
-            GasAvailable = gasAvailable;
-            Env = env;
-        }
 
-        internal EvmState(
+        }
+        private EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
@@ -155,15 +155,9 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
-            EvmState? stateForAccessLists,
-            bool isContinuation,
+            in StackAccessTracker stateForAccessLists,
             bool isCreateOnPreExistingAccount)
         {
-            if (isTopLevel && isContinuation)
-            {
-                throw new InvalidOperationException("Top level continuations are not valid");
-            }
-
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
@@ -173,56 +167,26 @@ namespace Nethermind.Evm
             OutputDestination = outputDestination;
             OutputLength = outputLength;
             IsStatic = isStatic;
-            IsContinuation = isContinuation;
+            IsContinuation = false;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-            if (stateForAccessLists is not null)
-            {
-                // if we are sub-call, then we use the main collection for this transaction
-                _accessedAddresses = stateForAccessLists._accessedAddresses;
-                _accessedStorageCells = stateForAccessLists._accessedStorageCells;
-                _destroyList = stateForAccessLists._destroyList;
-                _createList = stateForAccessLists._createList;
-                _logs = stateForAccessLists._logs;
-            }
-            else
-            {
-                // if we are top level, then we need to create the collections
-                _accessedAddresses = new JournalSet<Address>();
-                _accessedStorageCells = new JournalSet<StorageCell>();
-                _destroyList = new JournalSet<Address>();
-                _createList = new HashSet<AddressAsKey>();
-                _logs = new JournalCollection<LogEntry>();
-            }
+            _accessTracker = new(stateForAccessLists);
             if (executionType.IsAnyCreate())
             {
-                _createList.Add(env.ExecutingAccount);
+                _accessTracker.WasCreated(env.ExecutingAccount);
             }
-
-            _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
-            _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
-            _destroyListSnapshot = _destroyList.TakeSnapshot();
-            _logsSnapshot = _logs.TakeSnapshot();
-
+            _accessTracker.TakeSnapshot();
         }
 
         public Address From
         {
             get
             {
-                switch (ExecutionType)
+                return ExecutionType switch
                 {
-                    case ExecutionType.STATICCALL:
-                    case ExecutionType.CALL:
-                    case ExecutionType.CALLCODE:
-                    case ExecutionType.CREATE:
-                    case ExecutionType.CREATE2:
-                    case ExecutionType.TRANSACTION:
-                        return Env.Caller;
-                    case ExecutionType.DELEGATECALL:
-                        return Env.ExecutingAccount;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                    ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+                    ExecutionType.DELEGATECALL => Env.ExecutingAccount,
+                    _ => throw new ArgumentOutOfRangeException(),
+                };
             }
         }
 
@@ -268,29 +232,6 @@ namespace Nethermind.Evm
             }
         }
 
-        public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
-
-        public bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
-
-        public void WarmUp(AccessList? accessList)
-        {
-            if (accessList?.IsEmpty == false)
-            {
-                foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
-                {
-                    WarmUp(address);
-                    foreach (UInt256 storage in storages)
-                    {
-                        WarmUp(new StorageCell(address, storage));
-                    }
-                }
-            }
-        }
-
-        public void WarmUp(Address address) => _accessedAddresses.Add(address);
-
-        public void WarmUp(in StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
-
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
@@ -301,10 +242,7 @@ namespace Nethermind.Evm
         {
             if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             {
-                _logs.Restore(_logsSnapshot);
-                _destroyList.Restore(_destroyListSnapshot);
-                _accessedAddresses.Restore(_accessedAddressesSnapshot);
-                _accessedStorageCells.Restore(_accessedStorageKeysSnapshot);
+                _accessTracker.Restore();
             }
         }
     }

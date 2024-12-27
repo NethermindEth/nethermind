@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
@@ -99,7 +98,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             GetTrieNodesMessageSerializer serializer = new();
 
-            GetTrieNodesMessage? msg = serializer.Deserialize(data);
+            using GetTrieNodesMessage? msg = serializer.Deserialize(data);
             byte[] recode = serializer.Serialize(msg);
 
             recode.Should().BeEquivalentTo(data);

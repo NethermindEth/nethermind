@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Tracing
 
         public CompositeBlockTracer()
         {
-            IsTracingRewards = _childTracers.Any(childTracer => childTracer.IsTracingRewards);
+            IsTracingRewards = _childTracers.Any(static childTracer => childTracer.IsTracingRewards);
         }
 
         public void EndTxTrace()
@@ -84,13 +84,13 @@ namespace Nethermind.Evm.Tracing
         public void AddRange(params IBlockTracer[] tracers)
         {
             _childTracers.AddRange(tracers);
-            IsTracingRewards |= tracers.Any(t => t.IsTracingRewards);
+            IsTracingRewards |= tracers.Any(static t => t.IsTracingRewards);
         }
 
         public void Remove(IBlockTracer tracer)
         {
             _childTracers.Remove(tracer);
-            IsTracingRewards = _childTracers.Any(t => t.IsTracingRewards);
+            IsTracingRewards = _childTracers.Any(static t => t.IsTracingRewards);
 
         }
 

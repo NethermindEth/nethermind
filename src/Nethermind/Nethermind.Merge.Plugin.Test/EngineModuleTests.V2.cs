@@ -110,8 +110,7 @@ public partial class EngineModuleTests
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
-            withdrawals
-        );
+            withdrawals);
         GetPayloadV2Result expectedPayload = new(block, UInt256.Zero);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
@@ -125,7 +124,7 @@ public partial class EngineModuleTests
         }));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
-            chain.JsonSerializer.Serialize(new ExecutionPayload(block)));
+            chain.JsonSerializer.Serialize(ExecutionPayload.Create(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -342,12 +341,12 @@ public partial class EngineModuleTests
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
         };
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
+            rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
 
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
@@ -373,7 +372,7 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
     }
 
     [Test]
@@ -383,7 +382,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
+        ExecutionPayloadBodyV1Result?[] expected = [];
 
         payloadBodies.Should().BeEquivalentTo(expected);
     }
@@ -463,7 +462,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(txsA, withdrawals)
             };
 
-            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+            payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
         }
 
         // Second branch
@@ -478,7 +477,7 @@ public partial class EngineModuleTests
                 .WithWithdrawals(withdrawals.ToArray())
                 .TestObject;
 
-            ResultWrapper<PayloadStatusV1> fcuResult = await rpc.engine_newPayloadV2(new ExecutionPayload(newBlock));
+            ResultWrapper<PayloadStatusV1> fcuResult = await rpc.engine_newPayloadV2(ExecutionPayload.Create(newBlock));
 
             fcuResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -492,7 +491,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(Array.Empty<Transaction>(), withdrawals)
             };
 
-            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+            payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
         }
     }
 
@@ -522,7 +521,7 @@ public partial class EngineModuleTests
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
         blockTree.FindBlock(Arg.Any<long>())
-            .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
+            .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
@@ -545,7 +544,7 @@ public partial class EngineModuleTests
             BaseFeePerGas = 0,
             BlockHash = Keccak.Zero,
             BlockNumber = 1,
-            ExtraData = Array.Empty<byte>(),
+            ExtraData = [],
             FeeRecipient = Address.Zero,
             GasLimit = 0,
             GasUsed = 0,
@@ -555,8 +554,8 @@ public partial class EngineModuleTests
             ReceiptsRoot = Keccak.Zero,
             StateRoot = Keccak.Zero,
             Timestamp = 0,
-            Transactions = Array.Empty<byte[]>(),
-            Withdrawals = Array.Empty<Withdrawal>()
+            Transactions = [],
+            Withdrawals = []
         };
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV1",
@@ -600,7 +599,7 @@ public partial class EngineModuleTests
             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
             StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
             Timestamp = timestamp,
-            Transactions = Array.Empty<byte[]>(),
+            Transactions = [],
             Withdrawals = input.Withdrawals
         };
 
@@ -799,7 +798,7 @@ public partial class EngineModuleTests
             {
                 new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, // 1st payload
                 new[] { TestItem.WithdrawalA_1Eth }, // 2nd payload
-                Array.Empty<Withdrawal>(), // 3rd payload
+                [], // 3rd payload
                 new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
                 new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
             },

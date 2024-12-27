@@ -16,6 +16,8 @@ namespace Nethermind.TxPool
         int GetPendingBlobTransactionsCount();
         Transaction[] GetPendingTransactions();
 
+        public event EventHandler<Block>? TxPoolHeadChanged;
+
         /// <summary>
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
@@ -38,6 +40,8 @@ namespace Nethermind.TxPool
         bool ContainsTx(Hash256 hash, TxType txType);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
+        Transaction? GetBestTx();
+        IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
@@ -49,5 +53,6 @@ namespace Nethermind.TxPool
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;
+        public bool AcceptTxWhenNotSynced { get; set; }
     }
 }

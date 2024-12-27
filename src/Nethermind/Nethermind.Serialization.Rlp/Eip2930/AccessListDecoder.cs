@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -12,6 +11,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
     public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
     {
         private const int IndexLength = 32;
+
+        public static readonly AccessListDecoder Instance = new();
 
         /// <summary>
         /// We pay a high code quality tax for the performance optimization on RLP.
@@ -36,12 +37,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 int accessListItemLength = rlpStream.ReadSequenceLength();
                 int accessListItemCheck = rlpStream.Position + accessListItemLength;
-                Address address = rlpStream.DecodeAddress();
-                if (address is null)
-                {
-                    throw new RlpException("Invalid tx access list format - address is null");
-                }
-
+                Address address = rlpStream.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
                 accessListBuilder.AddAddress(address);
 
                 if (rlpStream.Position < check)
@@ -101,12 +97,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 int accessListItemLength = decoderContext.ReadSequenceLength();
                 int accessListItemCheck = decoderContext.Position + accessListItemLength;
-                Address address = decoderContext.DecodeAddress();
-                if (address is null)
-                {
-                    throw new RlpException("Invalid tx access list format - address is null");
-                }
-
+                Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
                 accessListBuilder.AddAddress(address);
 
                 if (decoderContext.Position < check)
@@ -209,8 +200,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         private static int GetContentLength(AccessList accessList)
         {
             return accessList
-                .Select(entry => new AccessItemLengths(entry.StorageKeys.Count()))
-                .Sum(lengths => lengths.SequenceLength);
+                .Select(static entry => new AccessItemLengths(entry.StorageKeys.Count()))
+                .Sum(static lengths => lengths.SequenceLength);
         }
     }
 }

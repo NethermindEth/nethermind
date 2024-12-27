@@ -3,16 +3,15 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Multiformats.Address;
 using Nethermind.Consensus;
-using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
 public interface IShutterApi
 {
-    public ShutterTxSource TxSource { get; }
-    void StartP2P(CancellationTokenSource? cancellationTokenSource = null);
-    public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer);
-    public void NewHeadBlockHandler(object? sender, BlockEventArgs e);
-    public ValueTask DisposeAsync();
+    ShutterTxSource TxSource { get; }
+    Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null);
+    ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer);
+    ValueTask DisposeAsync();
 }

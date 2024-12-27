@@ -19,23 +19,12 @@ namespace Nethermind.Core.Extensions
         public static ArrayPoolList<T> ToPooledList<T>(this IEnumerable<T> enumerable, int count) => new(count, enumerable);
         public static ArrayPoolList<T> ToPooledList<T>(this IReadOnlyCollection<T> collection) => new(collection.Count, collection);
 
-        public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> enumerable)
+        public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> enumerable, Random rng, int maxSize = 100)
         {
-            return enumerable.Shuffle(new Random());
-        }
-
-        public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> enumerable, Random rng)
-        {
-            return enumerable.ShuffleIterator(rng);
-        }
-
-        private static IEnumerable<T> ShuffleIterator<T>(this IEnumerable<T> enumerable, Random rng)
-        {
-            int size = enumerable.Count();
-            List<T> buffer = enumerable.ToList();
-            for (int i = 0; i < size; i++)
+            using ArrayPoolList<T> buffer = new(maxSize, enumerable);
+            for (int i = 0; i < buffer.Count; i++)
             {
-                int j = rng.Next(i, size);
+                int j = rng.Next(i, buffer.Count);
                 yield return buffer[j];
 
                 buffer[j] = buffer[i];

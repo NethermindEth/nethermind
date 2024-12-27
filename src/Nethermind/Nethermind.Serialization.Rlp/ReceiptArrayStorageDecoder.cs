@@ -107,7 +107,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.NullObjectByte)
         {
-            return Array.Empty<TxReceipt>();
+            return [];
         }
 
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)

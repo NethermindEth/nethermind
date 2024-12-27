@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -31,7 +30,7 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
+            Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
@@ -41,7 +40,7 @@ namespace Nethermind.JsonRpc.Data
 
         public Hash256 TransactionHash { get; set; }
         public long TransactionIndex { get; set; }
-        public Hash256 BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
@@ -59,10 +58,10 @@ namespace Nethermind.JsonRpc.Data
         public Address To { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address ContractAddress { get; set; }
+        public Address? ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
-        public Hash256 Root { get; set; }
+        public Hash256? Root { get; set; }
         public long Status { get; set; }
         public string? Error { get; set; }
         public TxType Type { get; set; }
@@ -74,7 +73,7 @@ namespace Nethermind.JsonRpc.Data
                 Bloom = LogsBloom,
                 Error = Error,
                 Index = (int)TransactionIndex,
-                Logs = Logs.Select(l => l.ToLogEntry()).ToArray(),
+                Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
                 Recipient = To,
                 Sender = From,
                 BlockHash = BlockHash,

@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns></returns>
         public bool Equals(LogEntry logEntry, LogEntry searchedEntryTemplate)
         {
-            Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Hash256>();
+            Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? [];
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (
                 logEntry is not null
                 && logEntry.Address == searchedEntryTemplate?.Address
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Contracts
 
         public int GetHashCode(LogEntry obj)
         {
-            return obj.Topics.Aggregate(obj.Address.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+            return obj.Topics.Aggregate(obj.Address.GetHashCode(), static (i, keccak) => i ^ keccak.GetHashCode());
         }
     }
 }

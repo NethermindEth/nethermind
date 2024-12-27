@@ -15,9 +15,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
 namespace Nethermind.Runner.JsonRpc
 {
     public class JsonRpcIpcRunner : IDisposable
@@ -32,7 +29,6 @@ namespace Nethermind.Runner.JsonRpc
 
         private string _path;
         private Socket _server;
-        private readonly ManualResetEvent _resetEvent = new(false);
 
         public JsonRpcIpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
@@ -56,93 +52,62 @@ namespace Nethermind.Runner.JsonRpc
 
             if (!string.IsNullOrEmpty(_path))
             {
-                if (_logger.IsInfo) _logger.Info($"Starting IPC JSON RPC service over '{_path}'");
+                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path}");
 
-                Task.Factory.StartNew(_ => StartServer(_path), cancellationToken, TaskCreationOptions.LongRunning);
+                Task.Factory.StartNew(_ => StartServer(_path, cancellationToken), cancellationToken, TaskCreationOptions.LongRunning);
             }
         }
 
-        private void StartServer(string path)
+        private async Task StartServer(string path, CancellationToken cancellationToken)
         {
             try
             {
                 DeleteSocketFileIfExists(path);
 
-                var endPoint = new UnixDomainSocketEndPoint(path);
-
-                _server = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-
-                _server.Bind(endPoint);
+                _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                _server.Bind(new UnixDomainSocketEndPoint(path));
                 _server.Listen(0);
 
                 while (true)
                 {
-                    _resetEvent.Reset();
+                    if (_logger.IsInfo) _logger.Info("Waiting for an IPC connection...");
 
-                    if (_logger.IsInfo) _logger.Info("Waiting for a IPC connection...");
-                    _server.BeginAccept(AcceptCallback, null);
+                    Socket socket = await _server.AcceptAsync(cancellationToken);
 
-                    _resetEvent.WaitOne();
+                    socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
+                    socket.SendTimeout = _jsonRpcConfig.Timeout;
+
+                    using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
+                        string.Empty,
+                        new IpcSocketMessageStream(socket),
+                        RpcEndpoint.IPC,
+                        _jsonRpcProcessor,
+                        _jsonRpcLocalStats,
+                        _jsonSerializer,
+                        maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
+
+                    await socketsClient.ReceiveLoopAsync();
                 }
             }
-            catch (IOException exc) when (exc.InnerException is not null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
+            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
             {
-                LogDebug("Client disconnected.");
+                _logger.Debug("IPC client disconnected.");
             }
-            catch (SocketException exc) when (exc.SocketErrorCode == SocketError.ConnectionReset)
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == OperationCancelledError)
             {
-                LogDebug("Client disconnected.");
+                _logger.Debug("IPC client disconnected.");
             }
-            catch (SocketException exc)
+            catch (SocketException ex)
             {
-                if (_logger.IsError) _logger.Error($"Error ({exc.ErrorCode}) when starting IPC server over '{_path}' path.", exc);
+                if (_logger.IsError) _logger.Error($"IPC server error {ex.ErrorCode}:", ex);
             }
-            catch (Exception exc)
+            catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"Error when starting IPC server over '{_path}' path.", exc);
+                if (_logger.IsError) _logger.Error($"IPC server error:", ex);
             }
             finally
             {
                 Dispose();
-            }
-        }
-
-        private async void AcceptCallback(IAsyncResult ar)
-        {
-            try
-            {
-                Socket socket = _server.EndAccept(ar);
-                socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
-                socket.SendTimeout = _jsonRpcConfig.Timeout;
-
-                _resetEvent.Set();
-
-                using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
-                    string.Empty,
-                    new IpcSocketMessageStream(socket),
-                    RpcEndpoint.IPC,
-                    _jsonRpcProcessor,
-                    _jsonRpcLocalStats,
-                    _jsonSerializer,
-                    maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
-
-                await socketsClient.ReceiveLoopAsync();
-            }
-            catch (IOException exc) when (exc.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
-            {
-                LogDebug("Client disconnected.");
-            }
-            catch (SocketException exc) when (exc.SocketErrorCode == SocketError.ConnectionReset || exc.ErrorCode == OperationCancelledError)
-            {
-                LogDebug("Client disconnected.");
-            }
-            catch (SocketException exc)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Error {exc.ErrorCode}:{exc.Message}");
-            }
-            catch (Exception exc)
-            {
-                if (_logger.IsError) _logger.Error("Error when handling IPC communication with a client.", exc);
             }
         }
 
@@ -155,9 +120,9 @@ namespace Nethermind.Runner.JsonRpc
                     _fileSystem.File.Delete(path);
                 }
             }
-            catch (Exception exc)
+            catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot delete UNIX socket file:{path}. {exc.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Cannot delete Unix socket file at {path}. {ex.Message}");
             }
         }
 
@@ -166,11 +131,6 @@ namespace Nethermind.Runner.JsonRpc
             _server?.Dispose();
             DeleteSocketFileIfExists(_path);
             if (_logger.IsInfo) _logger.Info("IPC JSON RPC service stopped");
-        }
-
-        private void LogDebug(string msg)
-        {
-            if (_logger.IsDebug) _logger.Debug(msg);
         }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -21,7 +20,8 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(
-    IWorldStateManager worldStateManager,
+    IReadOnlyTrieStore trieStore,
+    IDbProvider dbProvider,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
     IBlockPreprocessorStep recoveryStep,
@@ -31,7 +31,7 @@ public class TraceModuleFactory(
     IPoSSwitcher poSSwitcher,
     ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected readonly IWorldStateManager _worldStateManager = worldStateManager;
+    protected readonly IReadOnlyTrieStore _trieStore = trieStore;
     protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
     protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
     protected readonly IReceiptStorage _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -41,9 +41,9 @@ public class TraceModuleFactory(
     protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
     protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
 
-    protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
+    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv(OverridableWorldStateManager worldStateManager) => new(worldStateManager, _blockTree, _specProvider, _logManager);
 
-    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
+    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(OverridableWorldStateManager worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
                 scope,
                 Always.Valid,
                 _recoveryStep,
@@ -51,13 +51,14 @@ public class TraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                _worldStateManager.GlobalStateReader,
+                worldStateManager.GlobalStateReader,
                 _logManager,
                 transactionsExecutor);
 
     public override ITraceRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
+        OverridableWorldStateManager worldStateManager = new(dbProvider, _trieStore, logManager);
+        OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv(worldStateManager);
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         IRewardCalculator rewardCalculator =
@@ -67,12 +68,12 @@ public class TraceModuleFactory(
         RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
         BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
 
-        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor, scope, rewardCalculator);
-        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor, scope, rewardCalculator);
+        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(worldStateManager, rpcBlockTransactionsExecutor, scope, rewardCalculator);
+        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(worldStateManager, executeBlockTransactionsExecutor, scope, rewardCalculator);
 
-        Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
+        Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor,
+            traceOptions: ProcessingOptions.TraceTransactions);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv);
     }
-
 }

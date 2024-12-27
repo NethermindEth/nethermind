@@ -30,9 +30,11 @@ public abstract class NettyDiscoveryBaseHandler : SimpleChannelInboundHandler<Da
 
     protected bool ValidatePacket(DatagramPacket packet)
     {
+        // Potential cases where this can happen:
+        // - Neighbors response containing 16+ nodes in a single packet
         if (packet.Content.ReadableBytes is 0 or > MaxPacketSize)
         {
-            if (_logger.IsWarn) _logger.Warn($"Skipping discovery packet of invalid size: {packet.Content.ReadableBytes}");
+            if (_logger.IsDebug) _logger.Debug($"Skipping discovery packet of invalid size: {packet.Content.ReadableBytes}");
             return false;
         }
 

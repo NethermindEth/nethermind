@@ -12,11 +12,10 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Proxy.Models;
+using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -60,7 +59,7 @@ public class EthSimulateTestsBlocksAndTransactions
                 new()
                 {
                     BlockOverrides = new BlockOverride { Number = 10 },
-                    Calls = [new TransactionForRpc(txToFail), new TransactionForRpc(tx)],
+                    Calls = [TransactionForRpc.FromTransaction(txToFail), TransactionForRpc.FromTransaction(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
@@ -82,7 +81,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data.Count, Is.EqualTo(7));
 
         SimulateBlockResult blockResult = data.Last();
-        blockResult.Calls.Select(c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
+        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
 
     }
 
@@ -118,7 +117,8 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB1), new TransactionForRpc(txAtoB2) }
+                    Calls = [TransactionForRpc.FromTransaction(txAtoB1), TransactionForRpc.FromTransaction(txAtoB2)
+                    ]
                 },
                 new()
                 {
@@ -130,7 +130,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB3), new TransactionForRpc(txAtoB4) }
+                    Calls = [TransactionForRpc.FromTransaction(txAtoB3), TransactionForRpc.FromTransaction(txAtoB4)]
                 }
             },
             TraceTransfers = true
@@ -140,7 +140,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 before = chain.State.GetBalance(TestItem.AddressA);
         await chain.AddBlock(true, txMainnetAtoB);
         UInt256 after = chain.State.GetBalance(TestItem.AddressA);
-        Assert.Less(after, before);
+        Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
@@ -157,9 +157,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data.Count, Is.EqualTo(9));
 
         SimulateBlockResult blockResult = data[0];
-        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
+        Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
         blockResult = data.Last();
-        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
+        Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
     }
 
     /// <summary>
@@ -181,8 +181,12 @@ public class EthSimulateTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
-        TransactionForRpc transactionForRpc = new(txAtoB2) { Nonce = null };
-        TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
+
+        LegacyTransactionForRpc transactionForRpc = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(txAtoB2);
+        transactionForRpc.Nonce = null;
+        LegacyTransactionForRpc transactionForRpc2 = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(txAtoB1);
+        transactionForRpc2.Nonce = null;
+
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
@@ -197,7 +201,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { transactionForRpc2 }
+                    Calls = [transactionForRpc2]
                 },
                 new()
                 {
@@ -220,7 +224,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 before = chain.State.GetBalance(TestItem.AddressA);
         await chain.AddBlock(true, txMainnetAtoB);
         UInt256 after = chain.State.GetBalance(TestItem.AddressA);
-        Assert.Less(after, before);
+        Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
@@ -233,7 +237,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.IsTrue(result.Result!.Error!.Contains("higher than sender balance"));
+        Assert.That(result.Result!.Error!.Contains("higher than sender balance"), Is.True);
     }
 
 

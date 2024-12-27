@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -41,5 +37,20 @@ public class WorldStateManagerTests
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
         gotEvent.Should().BeTrue();
+    }
+
+    [TestCase(INodeStorage.KeyScheme.Hash, true)]
+    [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
+    public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        ITrieStore trieStore = Substitute.For<ITrieStore>();
+        IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
+        trieStore.AsReadOnly().Returns(readOnlyTrieStore);
+        readOnlyTrieStore.Scheme.Returns(keyScheme);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+
+        worldStateManager.SupportHashLookup.Should().Be(hashSupported);
     }
 }

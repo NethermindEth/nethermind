@@ -7,33 +7,21 @@ namespace Nethermind.Core
 {
     public class Timestamper : ITimestamper
     {
-        private DateTime? _date;
+        private readonly DateTime? _constantDate;
 
-        public Timestamper(DateTime? date = null)
+        public Timestamper(DateTime? constantDate = null)
         {
-            _date = date;
+            _constantDate = constantDate;
         }
 
-        public Timestamper(long? timestamp)
-        {
-            if (timestamp is not null)
-            {
-                var blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp.Value);
-                _date = blockTime.UtcDateTime;
-            }
-        }
-
-        public DateTime UtcNow => _date ?? DateTime.UtcNow;
-
-        public static readonly ITimestamper Default = new Timestamper();
-
-        public void SetTimestamp(long timestamp)
+        public Timestamper(long timestamp)
         {
             var blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
-            SetDate(blockTime.UtcDateTime);
+            _constantDate = blockTime.UtcDateTime;
         }
 
-        public void SetDate(DateTime date)
-            => _date = date;
+        public DateTime UtcNow => _constantDate ?? DateTime.UtcNow;
+
+        public static readonly ITimestamper Default = new Timestamper();
     }
 }

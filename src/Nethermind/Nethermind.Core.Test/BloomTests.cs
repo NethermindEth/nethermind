@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void empty_doesnt_match_any_item()
         {
-            MatchingTest(Array.Empty<LogEntry>, addedEntries => GetLogEntries(100, 10), false);
+            MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
         }
 
         public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)
@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test
                     topics[j] = keccakGenerator[i + j];
                 }
 
-                entries[i - start] = new LogEntry(TestItem.Addresses[i], Array.Empty<byte>(), topics);
+                entries[i - start] = new LogEntry(TestItem.Addresses[i], [], topics);
             }
 
             return entries;

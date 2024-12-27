@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Facade.Find;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Shutter.Contracts;
@@ -27,7 +26,7 @@ public class ShutterLogScanner(
             logManager)
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override ISequencerContract.TransactionSubmitted ParseEvent(ILogEntry log)
+    protected override ISequencerContract.TransactionSubmitted ParseEvent(ILogEntry log)
     {
         object[] decodedEvent = abiEncoder.Decode(AbiEncodingStyle.None, sequencerContract.TransactionSubmittedAbi.Signature, log.Data);
         return new ISequencerContract.TransactionSubmitted

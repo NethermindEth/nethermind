@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Shutter.Contracts;
 
 namespace Nethermind.Shutter;
 
-public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
+public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 {
-    private readonly int _maxQueueSize = 10000;
-    private readonly ulong _encryptedGasLimit = encryptedeGasLimit;
-    private ulong _eon = ulong.MaxValue - 1;
+    private const int MaxQueueSize = 10000;
+    private ulong? _eon;
     private ulong? _txIndex;
     private ulong _nextEonTxIndex = 0;
     private Queue<ISequencerContract.TransactionSubmitted> _events = [];
@@ -22,56 +22,56 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
     public int Count { get => _events.Count; }
 
     public void EnqueueEvents(IEnumerable<ISequencerContract.TransactionSubmitted> events, ulong eon)
+        => events.ForEach(e => EnqueueEvent(e, eon));
+
+    public void EnqueueEvent(ISequencerContract.TransactionSubmitted e, ulong eon)
     {
-        if (eon != _eon)
+        if (_eon is null || eon > _eon)
         {
             SetEon(eon);
         }
 
-        foreach (ISequencerContract.TransactionSubmitted e in events)
+        if (e.Eon == _eon)
         {
-            if (e.Eon == _eon)
+            if (_logger.IsDebug && _txIndex is not null && e.TxIndex != _txIndex)
             {
-                if (_txIndex is not null && e.TxIndex != _txIndex)
-                {
-                    _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon}, expected {_txIndex}.");
-                }
-
-                _txIndex = e.TxIndex + 1;
-
-                if (_events.Count < _maxQueueSize)
-                {
-                    _events.Enqueue(e);
-                }
-                else
-                {
-                    _logger.Warn($"Shutter queue for eon {_eon} is full, cannot load events.");
-                    break;
-                }
+                _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon}, expected {_txIndex}.");
             }
-            else if (e.Eon == _eon + 1)
+
+            _txIndex = e.TxIndex + 1;
+
+            if (_events.Count < MaxQueueSize)
             {
-                if (e.TxIndex != _nextEonTxIndex)
-                {
-                    _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon + 1}, expected {_nextEonTxIndex}.");
-                }
-
-                _nextEonTxIndex = e.TxIndex + 1;
-
-                if (_nextEonEvents.Count < _maxQueueSize)
-                {
-                    _nextEonEvents.Enqueue(e);
-                }
-                else
-                {
-                    _logger.Warn($"Shutter queue for eon {_eon + 1} is full, cannot load events.");
-                    break;
-                }
+                _events.Enqueue(e);
             }
-            else if (_logger.IsDebug)
+            else
             {
-                _logger.Warn($"Ignoring Shutter event with future eon {e.Eon}.");
+                if (_logger.IsError) _logger.Error($"Shutter queue for eon {_eon} is full, cannot load events.");
+                return;
             }
+        }
+        else if (e.Eon == _eon + 1)
+        {
+            if (_logger.IsDebug && e.TxIndex != _nextEonTxIndex)
+            {
+                _logger.Warn($"Loading unexpected Shutter event with index {e.TxIndex} in eon {_eon + 1}, expected {_nextEonTxIndex}.");
+            }
+
+            _nextEonTxIndex = e.TxIndex + 1;
+
+            if (_nextEonEvents.Count < MaxQueueSize)
+            {
+                _nextEonEvents.Enqueue(e);
+            }
+            else
+            {
+                if (_logger.IsError) _logger.Error($"Shutter queue for eon {_eon + 1} is full, cannot load events.");
+                return;
+            }
+        }
+        else if (_logger.IsDebug)
+        {
+            _logger.Warn($"Ignoring Shutter event with future eon {e.Eon}.");
         }
     }
 
@@ -79,9 +79,14 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
     {
         UInt256 totalGas = 0;
 
+        if (_eon is null || eon > _eon)
+        {
+            SetEon(eon);
+        }
+
         if (eon != _eon)
         {
-            _logger.Error($"Cannot load Shutter transactions for eon {eon}, expected {_eon}.");
+            if (_logger.IsError) _logger.Error($"Cannot load Shutter transactions for eon {eon}, expected {_eon}.");
             yield break;
         }
 
@@ -94,10 +99,9 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
                 continue;
             }
 
-            if (totalGas + e.GasLimit > _encryptedGasLimit)
+            if (totalGas + e.GasLimit > encryptedGasLimit)
             {
-                Metrics.EncryptedGasUsed = (ulong)totalGas;
-                _logger.Debug("Shutter gas limit reached.");
+                if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
                 yield break;
             }
 
@@ -105,6 +109,8 @@ public class ShutterEventQueue(ulong encryptedeGasLimit, ILogManager logManager)
             totalGas += e.GasLimit;
             yield return e;
         }
+
+        Metrics.ShutterEncryptedGasUsed = (ulong)totalGas;
     }
 
     private void SetEon(ulong eon)

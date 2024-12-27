@@ -49,17 +49,9 @@ public class P2PProtocolHandler(
 
     protected override TimeSpan InitTimeout => Timeouts.P2PHello;
 
-    public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
-    {
-        new(Protocol.Eth, 66),
-        new(Protocol.Eth, 67),
-        new(Protocol.Eth, 68),
-        new(Protocol.NodeData, 1)
-    };
-
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = DefaultCapabilities.ToList();
+    private readonly List<Capability> _supportedCapabilities = new List<Capability>();
 
     public int ListenPort { get; } = session.LocalPort;
     public PublicKey LocalNodeId { get; } = localNodeId;
@@ -87,13 +79,7 @@ public class P2PProtocolHandler(
 
         // We are expecting to receive Hello message anytime from the handshake completion,
         // irrespective of sending Hello from our side
-        CheckProtocolInitTimeout().ContinueWith(x =>
-        {
-            if (x.IsFaulted && Logger.IsError)
-            {
-                Logger.Error("Error during p2pProtocol handler timeout logic", x.Exception);
-            }
-        });
+        _ = CheckProtocolInitTimeout();
     }
 
     public override void HandleMessage(Packet msg)
@@ -113,7 +99,7 @@ public class P2PProtocolHandler(
                     // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
                     // which are alphabetically before already initialized ones.
                     foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()).OrderBy(c => c.ProtocolCode))
+                        _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
                     {
                         if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
                         SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
@@ -127,13 +113,13 @@ public class P2PProtocolHandler(
                     ReportIn(disconnectMessage, size);
 
                     EthDisconnectReason disconnectReason =
-                        FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                        FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
                             ? (EthDisconnectReason)disconnectMessage.Reason
                             : EthDisconnectReason.Other;
 
                     if (Logger.IsTrace)
                     {
-                        Logger.Trace(!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                        Logger.Trace(!FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
                             ? $"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}"
                             : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
                     }
@@ -271,7 +257,7 @@ public class P2PProtocolHandler(
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
         Send(PingMessage.Instance);
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
 
         CancellationTokenSource delayCancellation = new();
         try
@@ -286,7 +272,7 @@ public class P2PProtocolHandler(
                 return false;
             }
 
-            long latency = stopwatch.ElapsedMilliseconds;
+            long latency = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
             _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
             return true;
         }
@@ -305,7 +291,7 @@ public class P2PProtocolHandler(
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
         Send(message);
-
+        Dispose();
     }
 
     private void SendHello()
@@ -337,6 +323,7 @@ public class P2PProtocolHandler(
 
     private void Close(EthDisconnectReason ethDisconnectReason)
     {
+        Dispose();
         if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
             ethDisconnectReason != EthDisconnectReason.Other &&
             ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
@@ -363,5 +350,8 @@ public class P2PProtocolHandler(
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
+        SubprotocolRequested = null;
     }
 }

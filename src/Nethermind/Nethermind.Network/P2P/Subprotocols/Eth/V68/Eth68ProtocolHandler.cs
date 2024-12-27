@@ -94,13 +94,11 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         AddNotifiedTransactions(message.Hashes);
 
-        Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
+        long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
 
         _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
 
-        stopwatch?.Stop();
-
-        if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
     protected override void SendNewTransactionCore(Transaction tx)

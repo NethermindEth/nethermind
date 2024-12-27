@@ -11,9 +11,11 @@ namespace Nethermind.Consensus.Validators;
 public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
 {
     private readonly bool _result;
+    private readonly ValidationResult _validationResult;
 
     private Always(bool result)
     {
+        _validationResult = result ? ValidationResult.Success : "Always invalid.";
         _result = result;
     }
 
@@ -21,13 +23,13 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     private static Always _valid;
 
     public static Always Valid
-        => LazyInitializer.EnsureInitialized(ref _valid, () => new Always(true));
+        => LazyInitializer.EnsureInitialized(ref _valid, static () => new Always(true));
 
     // ReSharper disable once NotNullMemberIsNotInitialized
     private static Always _invalid;
 
     public static Always Invalid
-        => LazyInitializer.EnsureInitialized(ref _invalid, () => new Always(false));
+        => LazyInitializer.EnsureInitialized(ref _invalid, static () => new Always(false));
 
     public bool ValidateHash(BlockHeader header)
     {
@@ -79,16 +81,10 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        return _result;
+        return _validationResult;
     }
-    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? errorMessage)
-    {
-        errorMessage = null;
-        return _result;
-    }
-
     public bool ValidateWithdrawals(Block block, out string? error)
     {
         error = null;

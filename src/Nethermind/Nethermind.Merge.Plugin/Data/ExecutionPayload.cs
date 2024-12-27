@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,43 +12,27 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
+using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
+
+public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutionPayload : ExecutionPayload
+{
+    static abstract TExecutionPayload Create(Block block);
+}
 
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
-    public ExecutionPayload() { } // Needed for tests
-
-    public ExecutionPayload(Block block)
-    {
-        BlockHash = block.Hash!;
-        ParentHash = block.ParentHash!;
-        FeeRecipient = block.Beneficiary!;
-        StateRoot = block.StateRoot!;
-        BlockNumber = block.Number;
-        GasLimit = block.GasLimit;
-        GasUsed = block.GasUsed;
-        ReceiptsRoot = block.ReceiptsRoot!;
-        LogsBloom = block.Bloom!;
-        PrevRandao = block.MixHash ?? Keccak.Zero;
-        ExtraData = block.ExtraData!;
-        Timestamp = block.Timestamp;
-        BaseFeePerGas = block.BaseFeePerGas;
-        Withdrawals = block.Withdrawals;
-
-        SetTransactions(block.Transactions);
-    }
-
     public UInt256 BaseFeePerGas { get; set; }
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
     public long BlockNumber { get; set; }
 
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
@@ -68,7 +52,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public ulong Timestamp { get; set; }
 
-    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+    protected byte[][] _encodedTransactions = [];
 
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
@@ -93,6 +77,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
 
     /// <summary>
+    /// Gets or sets a collection of <see cref="ExecutionRequest"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? ExecutionRequests { get; set; }
+
+
+    /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
@@ -113,18 +105,43 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
+
+    protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
+    {
+        TExecutionPayload executionPayload = new()
+        {
+            BlockHash = block.Hash!,
+            ParentHash = block.ParentHash!,
+            FeeRecipient = block.Beneficiary!,
+            StateRoot = block.StateRoot!,
+            BlockNumber = block.Number,
+            GasLimit = block.GasLimit,
+            GasUsed = block.GasUsed,
+            ReceiptsRoot = block.ReceiptsRoot!,
+            LogsBloom = block.Bloom!,
+            PrevRandao = block.MixHash ?? Keccak.Zero,
+            ExtraData = block.ExtraData!,
+            Timestamp = block.Timestamp,
+            BaseFeePerGas = block.BaseFeePerGas,
+            Withdrawals = block.Withdrawals,
+        };
+        executionPayload.SetTransactions(block.Transactions);
+        return executionPayload;
+    }
+
     /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
     {
         try
         {
-            var transactions = GetTransactions();
-            var header = new BlockHeader(
+            Transaction[] transactions = GetTransactions();
+            BlockHeader header = new(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
@@ -160,14 +177,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         }
     }
 
-    private Transaction[]? _transactions = null;
+    protected Transaction[]? _transactions = null;
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select((t, i) =>
+        .Select(static (t, i) =>
         {
             try
             {
@@ -186,7 +203,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
             .ToArray();
         _transactions = transactions;
     }
@@ -195,7 +212,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
 
-    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
         if (spec.IsEip4844Enabled)
         {
@@ -203,12 +220,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return ValidationResult.Fail;
         }
 
-        int actualVersion = this switch
-        {
-            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
-            { Withdrawals: not null } => 2,
-            _ => 1
-        };
+        int actualVersion = GetExecutionPayloadVersion();
 
         error = actualVersion switch
         {
@@ -219,6 +231,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
         return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
+
+    protected virtual int GetExecutionPayloadVersion() => this switch
+    {
+        { ExecutionRequests: not null } => 4,
+        { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+        { Withdrawals: not null } => 2,
+        _ => 1
+    };
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;

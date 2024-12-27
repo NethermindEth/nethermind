@@ -11,6 +11,7 @@ public interface IWorldStateManager
     IWorldState GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
     IReadOnlyTrieStore TrieStore { get; }
+    bool SupportHashLookup { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.

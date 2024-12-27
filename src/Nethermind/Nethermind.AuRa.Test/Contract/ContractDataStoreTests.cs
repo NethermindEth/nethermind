@@ -99,7 +99,7 @@ public class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
                 x[2] = expected;
@@ -135,7 +135,7 @@ public class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
                 x[2] = expected;
@@ -157,7 +157,7 @@ public class ContractDataStoreTests
         BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
                 x[2] = new[] { TestItem.AddressB };
@@ -182,8 +182,8 @@ public class ContractDataStoreTests
         BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA, TestItem.AddressC });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
-            .Returns(x =>
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
+            .Returns(static x =>
             {
                 x[2] = Array.Empty<Address>();
                 return false;
@@ -212,7 +212,7 @@ public class ContractDataStoreTests
             });
 
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()
+        testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, []
                 , out Arg.Any<IEnumerable<TxPriorityContract.Destination>>())
             .Returns(x =>
             {
@@ -249,7 +249,7 @@ public class ContractDataStoreTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptFinder receiptsFinder = Substitute.For<IReceiptFinder>();
-        receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
+        receiptsFinder.Get(Arg.Any<Block>()).Returns([]);
 
         return new TestCase<T>()
         {

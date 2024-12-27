@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -14,22 +15,21 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
     public class NethDevPlugin : IConsensusPlugin
     {
+        public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
-        public string Name => "NethDev";
+        public string Name => NethDev;
 
-        public string Description => "NethDev (Spaceneth)";
+        public string Description => $"{NethDev} (Spaceneth)";
 
         public string Author => "Nethermind";
 
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
+            if (_nethermindApi!.SealEngineType != SealEngineType)
             {
                 return null;
             }
@@ -81,6 +81,8 @@ namespace Nethermind.Consensus.Ethash
                 new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager);
 
@@ -105,7 +107,8 @@ namespace Nethermind.Consensus.Ethash
             return blockProducer;
         }
 
-        public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
+        public string SealEngineType => NethDev;
+
         public IBlockProducerRunner CreateBlockProducerRunner()
         {
             IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))

@@ -4,13 +4,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Find;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
@@ -29,7 +31,6 @@ class ShutterTestsCommon
     public const int ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = 1;
     public static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(5);
-    public static readonly TimeSpan BlockUpToDateCutoff = TimeSpan.FromSeconds(5);
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
     public static readonly IEthereumEcdsa Ecdsa = new EthereumEcdsa(ChainId);
     public static readonly ILogManager LogManager = LimboLogs.Instance;
@@ -45,24 +46,29 @@ class ShutterTestsCommon
         EncryptedGasLimit = 21000 * 20,
         Validator = true
     };
+    public static readonly TimeSpan BlockUpToDateCutoff = TimeSpan.FromMilliseconds(Cfg.BlockUpToDateCutoff);
 
-    public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null)
+    public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        IReadOnlyBlockTree readOnlyBlockTree = Substitute.For<IReadOnlyBlockTree>();
         ILogFinder logFinder = Substitute.For<ILogFinder>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         return new(
-            AbiEncoder, readOnlyBlockTree, Ecdsa, logFinder, receiptStorage,
+            eventSimulator ?? InitEventSimulator(rnd),
+            AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            worldStateManager, Cfg, [], rnd
+            worldStateManager, Substitute.For<IFileSystem>(),
+            Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
         );
     }
 
-    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null)
+    public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
         => new(
+            eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager, Cfg, [], rnd
+            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager,
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)

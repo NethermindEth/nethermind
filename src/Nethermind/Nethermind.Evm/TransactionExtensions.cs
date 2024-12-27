@@ -10,11 +10,9 @@ namespace Nethermind.Evm
     public static class TransactionExtensions
     {
         public static Address? GetRecipient(this Transaction tx, in UInt256 nonce) =>
-            tx.To is not null
-                ? tx.To
-                : tx.IsSystem()
-                    ? tx.SenderAddress
-                    : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce);
+            tx.To ?? (tx.IsSystem()
+                ? tx.SenderAddress
+                : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce));
 
         public static TxGasInfo GetGasInfo(this Transaction tx, bool is1559Enabled, BlockHeader header)
         {
@@ -27,13 +25,13 @@ namespace Nethermind.Evm
                     throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
                 }
 
-                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(header, out UInt256 blobGasPrice))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, out UInt256 feePerBlobGas))
                 {
                     throw new OverflowException("Blob gas price calculation led to overflow.");
                 }
                 ulong blobGas = BlobGasCalculator.CalculateBlobGas(tx);
 
-                return new(effectiveGasPrice, blobGasPrice, blobGas);
+                return new(effectiveGasPrice, feePerBlobGas, blobGas);
             }
 
             return new(effectiveGasPrice, null, null);
@@ -44,10 +42,10 @@ namespace Nethermind.Evm
     {
         public TxGasInfo() { }
 
-        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? blobGasPrice, ulong? blobGasUsed)
+        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? feePerBlobGas, ulong? blobGasUsed)
         {
             EffectiveGasPrice = effectiveGasPrice;
-            BlobGasPrice = blobGasPrice;
+            BlobGasPrice = feePerBlobGas;
             BlobGasUsed = blobGasUsed;
         }
 

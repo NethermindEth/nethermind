@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using Nethermind.Core;
@@ -179,10 +178,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        int revertedPrefixLength = TransactionSubstate.RevertedErrorMessagePrefix.Length;
-        if (errorType == EvmExceptionType.Revert && error.Length > revertedPrefixLength)
+        if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error[revertedPrefixLength..]);
+            firstCallFrame.RevertReason = ValidateRevertReason(error);
         }
 
         if (_config.WithLog)

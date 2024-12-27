@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -12,6 +15,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Facade.Find;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.State;
@@ -20,8 +25,9 @@ using NSubstitute;
 namespace Nethermind.Shutter.Test;
 
 public class ShutterApiSimulator(
+    ShutterEventSimulator eventSimulator,
     IAbiEncoder abiEncoder,
-    IReadOnlyBlockTree blockTree,
+    IBlockTree blockTree,
     IEthereumEcdsa ecdsa,
     ILogFinder logFinder,
     IReceiptStorage receiptStorage,
@@ -29,16 +35,12 @@ public class ShutterApiSimulator(
     ISpecProvider specProvider,
     ITimestamper timestamper,
     IWorldStateManager worldStateManager,
+    IFileSystem fileSystem,
+    IKeyStoreConfig keyStoreConfig,
     IShutterConfig cfg,
-    Dictionary<ulong, byte[]> validatorsInfo,
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, ShutterTestsCommon.SlotLength)
 {
-    public event EventHandler? EonUpdate;
-    private event EventHandler<IShutterKeyValidator.ValidatedKeyArgs>? KeysValidated;
-    private event EventHandler<Dto.DecryptionKeys>? KeysReceived;
-    private event EventHandler<BlockEventArgs>? NewHeadBlock;
     private readonly Random _rnd = rnd;
     private readonly IReceiptStorage _receiptStorage = receiptStorage;
     private ShutterEventSimulator? _eventSimulator;
@@ -50,9 +52,7 @@ public class ShutterApiSimulator(
 
     public (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount = null)
     {
-        (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) x = _eventSimulator!.AdvanceSlot(eventCount, keyCount);
         LogEntry[] logs = x.events.Select(e => e.LogEntry).ToArray();
-        InsertShutterReceipts(_blockTree.Head ?? Build.A.Block.TestObject, logs);
         TriggerKeysReceived(x.keys);
         return x;
     }
@@ -68,13 +68,11 @@ public class ShutterApiSimulator(
     }
 
     public void TriggerNewHeadBlock(BlockEventArgs e)
-    {
-        NewHeadBlock?.Invoke(this, e);
-    }
 
+    public void TriggerKeysReceived(Dto.DecryptionKeys keys)
+        => _ = OnKeysReceived(keys);
 
     public void NextEon()
-        => _eventSimulator!.NextEon();
 
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
@@ -95,26 +93,19 @@ public class ShutterApiSimulator(
         }
 
         _receiptStorage.Insert(block, receipts);
-        TxLoader.LoadFromReceipts(block, receipts, _eventSimulator!.GetCurrentEonInfo().Eon);
     }
 
-    // fake out P2P module
-    protected override void InitP2P(IShutterConfig cfg, ILogManager logManager)
-    {
-        KeysReceived += KeysReceivedHandler;
+        {
     }
 
     // fake out key validator
     // protected override void RegisterOnKeysValidated()
     // {
 
-    // }
 
     protected override IShutterEon InitEon()
     {
         IShutterEon eon = Substitute.For<IShutterEon>();
-        eon.GetCurrentEonInfo().Returns(_ => _eventSimulator!.GetCurrentEonInfo());
-        eon.When(x => x.Update(Arg.Any<BlockHeader>())).Do((_) => EonUpdate?.Invoke(this, new()));
         return eon;
     }
 

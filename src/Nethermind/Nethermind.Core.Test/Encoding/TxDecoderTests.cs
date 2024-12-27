@@ -7,13 +7,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Numeric;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -22,7 +21,7 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class TxDecoderTests
     {
-        private readonly TxDecoder _txDecoder = new();
+        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
         public static IEnumerable<(TransactionBuilder<Transaction>, string)> TestObjectsSource()
         {
@@ -64,31 +63,28 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         public static IEnumerable<(Transaction, string)> TestCaseSource()
-            => TestObjectsSource().Select(tos => (tos.Item1.TestObject, tos.Item2));
+            => TestObjectsSource().Select(static tos => (tos.Item1.TestObject, tos.Item2));
 
         [TestCaseSource(nameof(TestCaseSource))]
         [Repeat(10)] // Might wanna increase this to double check when changing logic as on lower value, it does not reproduce.
-        public void CanCorrectlyCalculateTxHash_when_called_concurrently((Transaction Tx, string Description) testCase)
+        public async Task CanCorrectlyCalculateTxHash_when_called_concurrently((Transaction Tx, string Description) testCase)
         {
             Transaction tx = testCase.Tx;
 
-            TxDecoder decoder = new TxDecoder();
-            Rlp rlp = decoder.Encode(tx);
+            Rlp rlp = _txDecoder.Encode(tx);
 
             Hash256 expectedHash = Keccak.Compute(rlp.Bytes);
 
-            Transaction decodedTx = decoder.Decode(new RlpStream(rlp.Bytes))!;
+            Transaction decodedTx = _txDecoder.Decode(new RlpStream(rlp.Bytes))!;
 
             decodedTx.SetPreHash(rlp.Bytes);
 
-            IEnumerable<Task<AndConstraint<ComparableTypeAssertions<Hash256>>>> tasks = Enumerable
+            using ArrayPoolList<Task<AndConstraint<ComparableTypeAssertions<Hash256>>>> tasks = Enumerable
                 .Range(0, 32)
-                .Select((_) =>
-                    Task.Factory
-                        .StartNew(() => decodedTx.Hash.Should().Be(expectedHash),
-                            TaskCreationOptions.RunContinuationsAsynchronously));
+                .Select(_ => Task.Factory.StartNew(() => decodedTx.Hash.Should().Be(expectedHash), TaskCreationOptions.RunContinuationsAsynchronously))
+                .ToPooledList(32);
 
-            Task.WaitAll(tasks.ToArray());
+            await Task.WhenAll<AndConstraint<ComparableTypeAssertions<Hash256>>>(tasks.AsSpan());
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

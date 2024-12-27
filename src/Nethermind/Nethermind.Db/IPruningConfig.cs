@@ -13,15 +13,7 @@ public interface IPruningConfig : IConfig
     [Obsolete]
     public bool Enabled { get; set; }
 
-    [ConfigItem(
-        Description = """
-            The pruning mode:
-
-            - `None`: No pruning (full archive)
-            - `Memory`: In-memory pruning
-            - `Full`: Full pruning
-            - `Hybrid`: Combined in-memory and full pruning
-            """, DefaultValue = "Hybrid")]
+    [ConfigItem(Description = "The pruning mode.", DefaultValue = "Hybrid")]
     PruningMode Mode { get; set; }
 
     [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "1024")]
@@ -38,25 +30,18 @@ public interface IPruningConfig : IConfig
     long FullPruningThresholdMb { get; set; }
 
     [ConfigItem(
-        Description = """
-            The full pruning trigger:
-
-            - `Manual`: Triggered manually.
-            - `StateDbSize`: Trigger when the state DB size is above the threshold.
-            - `VolumeFreeSpace`: Trigger when the free disk space where the state DB is stored is below the threshold.
-            """,
-        DefaultValue = "Manual")]
+        Description = "The full pruning trigger.", DefaultValue = "Manual")]
     FullPruningTrigger FullPruningTrigger { get; set; }
 
     [ConfigItem(
         Description = """
-            The max number of parallel tasks that can be used by full pruning:
+            The max number of parallel tasks that can be used by full pruning.
 
             Allowed values:
 
-            - `-1` to use the number of logical processors
-            - `0` to use 25% of logical processors
-            - `1` to run on single thread
+            - `-1`: Uses the number of logical processors.
+            - `0`: Uses 25% of logical processors.
+            - `1`: Runs on a single thread.
 
             The recommended value depends on the type of the node:
 
@@ -80,22 +65,15 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The minimum delay, in hours, between full pruning operations not to exhaust disk writes.", DefaultValue = "240")]
     int FullPruningMinimumDelayHours { get; set; }
 
-    [ConfigItem(Description = """
-            The behavior after pruning completion:
-
-            - `None`: Do nothing.
-            - `ShutdownOnSuccess`: Shut Nethermind down if pruning has succeeded but leave it running if failed.
-            - `AlwaysShutdown`: Shut Nethermind down when pruning completes, regardless of its status.
-            """,
-        DefaultValue = "None")]
+    [ConfigItem(Description = "The action to take on pruning completion.", DefaultValue = "None")]
     FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
 
     [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
     bool AvailableSpaceCheckEnabled { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Ratio of memory out of CacheMb to allocate for LRU used to track past keys for live pruning.", DefaultValue = "0.1")]
+    [ConfigItem(Description = "The ratio of memory out of `Pruning.CacheMb` to allocate for the LRU cache, used to track past keys for live pruning.", DefaultValue = "0.1")]
     double TrackedPastKeyCountMemoryRatio { get; set; }
 
-    [ConfigItem(Description = "Past N state before state gets pruned Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
 }

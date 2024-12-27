@@ -25,7 +25,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public static AlwaysCancelTxTracer Instance
     {
-        get { return LazyInitializer.EnsureInitialized(ref _instance, () => new AlwaysCancelTxTracer()); }
+        get { return LazyInitializer.EnsureInitialized(ref _instance, static () => new AlwaysCancelTxTracer()); }
     }
 
     public bool IsTracingReceipt => true;

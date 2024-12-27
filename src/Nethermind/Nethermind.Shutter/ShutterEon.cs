@@ -50,25 +50,24 @@ public class ShutterEon(
                     Address[] addresses = keyperSetContract.GetMembers(header);
 
                     KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress);
-                    byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
-                    Bls.P2 key = new(eonKeyBytes);
+                    byte[] eonKey = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
 
                     // update atomically
                     _currentInfo = new()
                     {
                         Eon = eon,
-                        Key = key,
+                        Key = eonKey,
                         Threshold = threshold,
                         Addresses = addresses
                     };
 
-                    Metrics.Eon = eon;
-                    Metrics.Threshold = (int)threshold;
-                    Metrics.Keypers = addresses.Length;
+                    Metrics.ShutterEon = eon;
+                    Metrics.ShutterThreshold = (int)threshold;
+                    Metrics.ShutterKeypers = addresses.Length;
 
-                    _logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
+                    if (_logger.IsInfo) _logger.Info($"Shutter eon={_currentInfo.Value.Eon} threshold={_currentInfo.Value.Threshold} #keypers={_currentInfo.Value.Addresses.Length}");
                 }
-                else
+                else if (_logger.IsError)
                 {
                     _logger.Error("Cannot use unfinalised Shutter keyper set contract.");
                 }
@@ -76,11 +75,11 @@ public class ShutterEon(
         }
         catch (AbiException e)
         {
-            _logger.Error($"Error when calling Shutter Keyper contracts.", e);
+            if (_logger.IsError) _logger.Error($"Error when calling Shutter Keyper contracts.", e);
         }
-        catch (Bls.Exception e)
+        catch (Bls.BlsException e)
         {
-            _logger.Error($"Invalid Shutter Eon key ", e);
+            if (_logger.IsError) _logger.Error($"Invalid Shutter Eon key ", e);
         }
     }
 }

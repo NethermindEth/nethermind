@@ -3,7 +3,9 @@
 
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -19,6 +21,8 @@ public class NodesLocator : INodesLocator
     private readonly IDiscoveryManager _discoveryManager;
     private readonly IDiscoveryConfig _discoveryConfig;
     private Node? _masterNode;
+
+    public bool ShouldThrottle { get; set; }
 
     public NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
     {
@@ -53,6 +57,7 @@ public class NodesLocator : INodesLocator
         Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
         for (int i = 0; i < _discoveryConfig.MaxDiscoveryRounds; i++)
         {
+            if (ShouldThrottle) await Task.Delay(TimeSpan.FromSeconds(1));
             Array.Clear(tryCandidates, 0, tryCandidates.Length);
             int candidatesCount;
 
@@ -125,8 +130,8 @@ public class NodesLocator : INodesLocator
                 int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                 IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
 
-                IEnumerable<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes);
-                Result?[] results = await Task.WhenAll(sendFindNodeTasks);
+                using ArrayPoolList<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes).ToPooledList(count);
+                Result[] results = await Task.WhenAll<Result>(sendFindNodeTasks.AsSpan());
 
                 if (results.Length == 0)
                 {
@@ -176,7 +181,7 @@ public class NodesLocator : INodesLocator
         IEnumerable<Node?> nodesToSend,
         ISet<Hash256> alreadyTriedNodes)
     {
-        foreach (Node? node in nodesToSend.Where(n => n is not null))
+        foreach (Node? node in nodesToSend.Where(static n => n is not null))
         {
             alreadyTriedNodes.Add(node!.IdHash);
             yield return SendFindNode(node, searchedNodeId);
@@ -200,7 +205,7 @@ public class NodesLocator : INodesLocator
 
     private void LogNodeTable()
     {
-        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.AnyBondedItems());
+        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(static x => x.AnyBondedItems());
         StringBuilder sb = new();
 
         int length = 0;

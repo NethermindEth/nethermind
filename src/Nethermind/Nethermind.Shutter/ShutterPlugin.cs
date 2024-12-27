@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Logging;
-using System.IO;
-using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Config;
+using Multiformats.Address;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Shutter;
 
@@ -45,7 +43,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
         _mergeConfig = _api.Config<IMergeConfig>();
         _shutterConfig = _api.Config<IShutterConfig>();
         _logger = _api.LogManager.GetClassLogger();
-        _logger.Info($"Initializing Shutter plugin.");
+        if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }
 
@@ -55,7 +53,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
         {
             if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
 
-            _logger.Info("Initializing Shutter block improvement.");
+            if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
             _api.BlockImprovementContextFactory = _shutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
         }
         return Task.CompletedTask;
@@ -71,24 +69,26 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
             if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
+            if (_api.IpResolver is null) throw new ArgumentNullException(nameof(_api.IpResolver));
 
-            _logger.Info("Initializing Shutter block producer.");
+            if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 
+            Multiaddress[] bootnodeP2PAddresses;
             try
             {
-                _shutterConfig!.Validate();
+                _shutterConfig!.Validate(out bootnodeP2PAddresses);
             }
             catch (ArgumentException e)
             {
                 throw new ShutterLoadingException("Invalid Shutter config", e);
             }
 
-            Dictionary<ulong, byte[]> validatorsInfo = [];
+            ShutterValidatorsInfo validatorsInfo = new();
             if (_shutterConfig!.ValidatorInfoFile is not null)
             {
                 try
                 {
-                    validatorsInfo = LoadValidatorInfo(_shutterConfig!.ValidatorInfoFile);
+                    validatorsInfo.Load(_shutterConfig!.ValidatorInfoFile);
                 }
                 catch (Exception e)
                 {
@@ -98,7 +98,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
             _shutterApi = new ShutterApi(
                 _api.AbiEncoder,
-                _api.BlockTree.AsReadOnly(),
+                _api.BlockTree,
                 _api.EthereumEcdsa,
                 _api.LogFinder,
                 _api.ReceiptFinder,
@@ -106,14 +106,15 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 _api.SpecProvider,
                 _api.Timestamper,
                 _api.WorldStateManager,
+                _api.FileSystem,
+                _api.Config<IKeyStoreConfig>(),
                 _shutterConfig,
                 validatorsInfo,
-                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
+                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
+                _api.IpResolver.ExternalIp
             );
 
-            _api.BlockTree!.NewHeadBlock += _shutterApi.NewHeadBlockHandler;
-
-            _shutterApi.StartP2P(_cts);
+            _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
         }
 
         return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
@@ -130,11 +131,5 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     {
         _cts.Dispose();
         await (_shutterApi?.DisposeAsync() ?? default);
-    }
-
-    private static Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
-    {
-        FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.None);
-        return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
     }
 }

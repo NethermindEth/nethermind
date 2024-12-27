@@ -6,8 +6,9 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -52,8 +53,9 @@ public class TraceStoreRpcModule : ITraceRpcModule
         _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
     }
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null) =>
-        _traceModule.trace_call(call, traceTypes, blockParameter);
+    public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null,
+        Dictionary<Address, AccountOverride>? stateOverride = null) =>
+        _traceModule.trace_call(call, traceTypes, blockParameter, stateOverride);
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
@@ -84,7 +86,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
             FilterTraces(traces, TraceRpcModule.GetParityTypes(traceTypes));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t, true)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t, true)));
         }
 
         return _traceModule.trace_replayBlockTransactions(blockParameter, traceTypes);
@@ -112,7 +114,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 if (blockSearch.IsError)
                 {
                     error = blockSearch;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
 
                 Block block = blockSearch.Object!;
@@ -123,7 +125,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 else
                 {
                     missingTraces = true;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
             });
 

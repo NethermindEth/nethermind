@@ -5,7 +5,9 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -15,9 +17,11 @@ namespace Nethermind.Optimism;
 
 public class OptimismPayloadPreparationService : PayloadPreparationService
 {
+    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
     public OptimismPayloadPreparationService(
+        ISpecProvider specProvider,
         PostMergeBlockProducer blockProducer,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
@@ -36,12 +40,37 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             improvementDelay,
             minTimeForProduction)
     {
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
         PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
     {
+        if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
+        {
+            var spec = _specProvider.GetSpec(currentBestBlock.Header);
+            if (spec.IsOpHoloceneEnabled)
+            {
+                // NOTE: This operation should never fail since headers should be valid at this point.
+                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
+                {
+                    throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
+                }
+
+                if (eip1559Parameters.IsZero())
+                {
+                    eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
+                }
+
+                currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
+                eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
+
+                // NOTE: Since we updated the `Header` we need to recalculate the hash.
+                currentBestBlock.Header.Hash = currentBestBlock.Header.CalculateHash();
+            }
+        }
+
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
             if (_logger.IsDebug)
@@ -51,6 +80,9 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             _payloadStorage.TryAdd(payloadId,
                 new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
         }
-        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+        else
+        {
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+        }
     }
 }

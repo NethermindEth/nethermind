@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Net;
-using System.Text.Json;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -38,6 +37,13 @@ namespace Nethermind.Core.Test.Builders
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
                 ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
+
+            byte[] r = new byte[32];
+            byte[] s = new byte[32];
+            r[1] = 1;
+            s[2] = 2;
+            RandomSignatureA = new Signature(r, s, 27);
+            RandomSignatureB = new Signature(r, s, 28);
         }
 
         public static Hash256 KeccakFromNumber(int i)
@@ -92,12 +98,27 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
 
+        public static readonly Signature RandomSignatureA;
+        public static readonly Signature RandomSignatureB;
+
         public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
         public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
         public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGwei = 3_000_000_000 };
         public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGwei = 4_000_000_000 };
         public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
         public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
+
+        public static byte[] SignatureBytes = [.. new Signature("0x9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac80388256084f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada1c").Bytes, .. KeccakA.Bytes];
+
+        public static TestExecutionRequest ExecutionRequestA = new() { RequestType = 0, RequestDataParts = [PublicKeyA.Bytes.Slice(0, 48), KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1_000_000_000), SignatureBytes, BitConverter.GetBytes((ulong)1)] };
+        public static TestExecutionRequest ExecutionRequestB = new() { RequestType = 0, RequestDataParts = [PublicKeyB.Bytes.Slice(0, 48), KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2_000_000_000), SignatureBytes, BitConverter.GetBytes((ulong)2)] };
+        public static TestExecutionRequest ExecutionRequestC = new() { RequestType = 0, RequestDataParts = [PublicKeyC.Bytes.Slice(0, 48), KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3_000_000_000), SignatureBytes, BitConverter.GetBytes((ulong)3)] };
+        public static TestExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestDataParts = [AddressA.Bytes, PublicKeyA.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)1_000_000_000)] };
+        public static TestExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestDataParts = [AddressB.Bytes, PublicKeyB.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)2_000_000_000)] };
+        public static TestExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestDataParts = [AddressC.Bytes, PublicKeyC.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)3_000_000_000)] };
+        public static TestExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestDataParts = [AddressA.Bytes, PublicKeyA.Bytes.Slice(0, 48), PublicKeyB.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestDataParts = [AddressB.Bytes, PublicKeyB.Bytes.Slice(0, 48), PublicKeyC.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestDataParts = [AddressC.Bytes, PublicKeyC.Bytes.Slice(0, 48), PublicKeyA.Bytes.Slice(0, 48)] };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
