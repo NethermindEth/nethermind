@@ -32,8 +32,8 @@ public sealed class RlpSerializable(RlpRepresentation representation = RlpRepres
 }
 
 /// <summary>
-/// A source generator that finds all records with [RlpSerializable] and
-/// generates an abstract RlpConverter class with a Read method.
+/// A source generator that finds all records with [RlpSerializable] attribute and
+/// generates an abstract `IRlpConverter` class with `Read` and `Write` methods.
 /// </summary>
 [Generator]
 public sealed class RlpSourceGenerator : IIncrementalGenerator
