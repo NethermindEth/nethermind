@@ -114,9 +114,10 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             locals.TryStoreLocal(blockContextVarName);
         }
 
-        locals.TryLoadLocal(blockContextVarName);
-        if (!loadAddress)
-            il.LoadObject<BlockExecutionContext>();
+        if (loadAddress)
+            locals.TryLoadLocalAddress(blockContextVarName);
+        else
+            locals.TryLoadLocal(blockContextVarName);
     }
 
     public override void LoadBlockhashProvider(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -159,7 +160,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         var codeInfoRepositoryVarName = "codeInfoRepository";
         if (locals.TryDeclareLocal(codeInfoRepositoryVarName, typeof(ICodeInfoRepository)))
         {
-            LoadTxContext(il, locals, false);
+            LoadTxContext(il, locals, true);
             il.Call(typeof(TxExecutionContext).GetProperty(nameof(TxExecutionContext.CodeInfoRepository)).GetGetMethod());
             locals.TryStoreLocal(codeInfoRepositoryVarName);
         }
@@ -183,14 +184,15 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         var envVarName = "env";
         if (locals.TryDeclareLocal(envVarName, typeof(ExecutionEnvironment)))
         {
-            LoadVmState(il, locals, true);
+            LoadVmState(il, locals, false);
             il.LoadField(typeof(EvmState).GetField(nameof(EvmState.Env)));
             locals.TryStoreLocal(envVarName);
         }
 
-        locals.TryLoadLocal(envVarName);
-        if (!loadAddress)
-            il.LoadObject<ExecutionEnvironment>();
+        if(loadAddress)
+            locals.TryLoadLocalAddress(envVarName);
+        else
+            locals.TryLoadLocal(envVarName);
     }
 
     public override void LoadGasAvailable(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -229,9 +231,10 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             locals.TryStoreLocal(machineCodeVarName);
         }
 
-        locals.TryLoadLocal(machineCodeVarName);
-        if (!loadAddress)
-            il.LoadObject<ReadOnlyMemory<byte>>();
+        if (loadAddress)
+            locals.TryLoadLocalAddress(machineCodeVarName);
+        else
+            locals.TryLoadLocal(machineCodeVarName);
     }
 
     public override void LoadMemory(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -239,14 +242,16 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         var memoryVarName = "memory";
         if (locals.TryDeclareLocal(memoryVarName, typeof(EvmPooledMemory)))
         {
-            LoadVmState(il, locals, true);
-            il.LoadField(typeof(EvmState).GetField(nameof(EvmState.Memory)));
+            LoadVmState(il, locals, false);
+            il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Memory)).GetMethod);
+            il.LoadObject<EvmPooledMemory>();
             locals.TryStoreLocal(memoryVarName);
         }
 
-        locals.TryLoadLocalAddress(memoryVarName);
-        if (!loadAddress)
-            il.LoadObject<EvmPooledMemory>();
+        if (loadAddress)
+            locals.TryLoadLocalAddress(memoryVarName);
+        else
+            locals.TryLoadLocal(memoryVarName);
     }
 
     public override void LoadProgramCounter(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
@@ -291,9 +296,14 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             locals.TryStoreLocal(txContextVarName);
         }
 
-        locals.TryLoadLocal(txContextVarName);
-        if (!loadAddress)
-            il.LoadObject<TxExecutionContext>();
+        if (loadAddress)
+        {
+            locals.TryLoadLocalAddress(txContextVarName);
+        }
+        else
+        {
+            locals.TryLoadLocal(txContextVarName);
+        }
     }
 
     public override void LoadTxTracer(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)

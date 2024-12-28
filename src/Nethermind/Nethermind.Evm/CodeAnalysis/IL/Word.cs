@@ -25,7 +25,7 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 [StructLayout(LayoutKind.Explicit, Size = 32)]
-internal struct Word
+public struct Word
 {
     public const int Size = 32;
     public const int FullSize = 256;

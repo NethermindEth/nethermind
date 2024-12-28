@@ -150,7 +150,7 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsOptimizing : IIsOptimizing { }
 }
 
-internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
+public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     where TLogger : struct, IIsTracing
     where TOptimizing : struct, IIsOptimizing
 {
@@ -561,13 +561,13 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         }
     }
 
-    internal enum StorageAccessType
+    public enum StorageAccessType
     {
         SLOAD,
         SSTORE
     }
 
-    static internal bool ChargeStorageAccessGas(
+    static public bool ChargeStorageAccessGas(
         ref long gasAvailable,
         EvmState vmState,
         in StorageCell storageCell,
@@ -2744,7 +2744,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    static internal EvmExceptionType InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ITxTracer txTracer)
+    static public EvmExceptionType InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ITxTracer txTracer)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing

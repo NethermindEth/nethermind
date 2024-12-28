@@ -363,7 +363,12 @@ public static class WordEmit
         // sign
         il.MarkLabel(signIsNeg);
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
-        il.LoadFieldAddress(GetFieldInfo(typeof(Int256.Int256), nameof(Int256.Int256.MinusOne)));
+
+        using Local minusOneLocal = il.DeclareLocal<Int256.Int256>();
+        il.LoadField(GetFieldInfo(typeof(Int256.Int256), nameof(Int256.Int256.MinusOne)));
+        il.StoreLocal(minusOneLocal);
+
+        il.LoadLocalAddress(minusOneLocal);
         il.Call(UnsafeEmit.GetAsMethodInfo<Int256.Int256, UInt256>());
         il.LoadObject<UInt256>();
         il.Call(Word.SetUInt256);

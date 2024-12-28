@@ -112,6 +112,8 @@ internal static class FullAOT
             {
                 OpcodeInfo op = segmentMetadata.Segment[i];
 
+                method.PrintString($"Opcode: {op.Operation}\n");
+
                 if (!config.BakeInTracingInAotModes && segmentMetadata.SubSegments.ContainsKey(i))
                     currentSegment = segmentMetadata.SubSegments[i];
                 // if tracing mode is off, 
@@ -349,13 +351,20 @@ internal static class FullAOT
 
         method.MarkLabel(jumpTable);
         method.LoadLocal(locals.wordRef256A);
-
-        method.Duplicate();
         method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
         method.StoreLocal(locals.jmpDestination);
 
+        method.LoadLocal(locals.wordRef256A);
         method.Call(Word.GetIsUint16);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
+
+        method.LoadLocal(locals.jmpDestination);
+        method.LoadConstant(0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
+
+        method.LoadLocal(locals.jmpDestination);
+        method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
+        method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         method.MarkLabel(skipJumpValidation);
         if (jumpDestinations.Count < 64)
