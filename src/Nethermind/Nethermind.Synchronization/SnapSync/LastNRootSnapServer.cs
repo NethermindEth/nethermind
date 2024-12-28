@@ -11,7 +11,7 @@ using Nethermind.State.SnapServer;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class LastNRootSnapServer(ISnapServer baseSnapServer, ILastNStateRootTracker stateRootTracker): ISnapServer
+public class LastNRootSnapServer(ISnapServer baseSnapServer, ILastNStateRootTracker stateRootTracker) : ISnapServer
 {
     private bool IsRootMissing(in ValueHash256 stateRoot)
     {
