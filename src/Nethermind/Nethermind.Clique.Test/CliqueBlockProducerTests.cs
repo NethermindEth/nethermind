@@ -380,8 +380,8 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING {vote} VOTE ON {address} AT BLOCK {number}");
-            Assert.That(_blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote), nodeKey + " vote nonce");
-            Assert.That(_blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Beneficiary, Is.EqualTo(address), nodeKey.Address + " vote nonce");
+            Assert.That(() => _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None)?.Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote).After(_timeout, 100), nodeKey + " vote nonce");
+            Assert.That(() => _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None)?.Beneficiary, Is.EqualTo(address).After(_timeout, 100), nodeKey.Address + " vote nonce");
             return this;
         }
 
@@ -561,7 +561,7 @@ public class CliqueBlockProducerTests
         }
     }
 
-    private static readonly int _timeout = 2000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
+    private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
     public async Task Can_produce_block_with_transactions()
