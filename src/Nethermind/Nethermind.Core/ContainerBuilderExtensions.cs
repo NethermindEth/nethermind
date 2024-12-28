@@ -145,6 +145,13 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddSource(this ContainerBuilder builder, IRegistrationSource registrationSource)
+    {
+        builder.RegisterSource(registrationSource);
+
+        return builder;
+    }
+
     public static ContainerBuilder Map<TFrom, TTo>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull where TTo : notnull
     {
         builder.Register(mapper)
