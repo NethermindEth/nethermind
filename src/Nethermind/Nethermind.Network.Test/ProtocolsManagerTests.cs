@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
-using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
@@ -181,12 +180,6 @@ public class ProtocolsManagerTests
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
             _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
-            return this;
-        }
-
-        public Context Wait(int i)
-        {
-            Thread.Sleep(i);
             return this;
         }
 
