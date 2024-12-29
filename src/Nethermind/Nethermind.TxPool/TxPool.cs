@@ -828,12 +828,19 @@ namespace Nethermind.TxPool
 
         private void IncrementDelegationCount(AddressAsKey key, UInt256 nonce, bool increment)
         {
+            //A nonce cannot exceed 2^64-1 and an address is 20 bytes, so we can pack them together in one u256
             UInt256 addressPlusNonce = new (key.Value.Bytes);
+            nonce <<= 64 * 3;
             addressPlusNonce += nonce;
-            
+                
             int value = increment ? 1 : -1;
             var lastCount = _pendingDelegations.AddOrUpdate(addressPlusNonce,
-                (k) => 1,
+                (k) =>
+                {
+                    if (increment)
+                        return 1;
+                    return 0;
+                },
                 (k, c) => c + value);
 
             if (lastCount == 0)
