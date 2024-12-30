@@ -216,7 +216,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
+            _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
@@ -287,8 +287,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         return new TraceModuleFactory(
-            _api.WorldStateManager.TrieStore,
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,
