@@ -67,11 +67,6 @@ namespace Nethermind.Core.Specs
 
 
         /// <summary>
-        /// Duration of each slot
-        /// </summary>
-        TimeSpan SlotLength { get; }
-
-        /// <summary>
         /// Original engine of the chain
         /// </summary>
         string SealEngine => SealEngineType.Ethash;
@@ -107,21 +102,5 @@ namespace Nethermind.Core.Specs
         /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
         /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
         public static IReleaseSpec GetFinalSpec(this ISpecProvider specProvider) => specProvider.GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
-
-        public static ulong CalculateSlot(this ISpecProvider specProvider, ulong timestamp)
-        {
-            if (specProvider.BeaconChainGenesisTimestamp is null)
-            {
-                throw new InvalidOperationException("BeaconChainGenesisTimestamp is not set.");
-            }
-
-            long timeSinceGenesis = (long)timestamp - (long)specProvider.BeaconChainGenesisTimestamp.Value;
-            if (timeSinceGenesis < 0)
-            {
-                throw new InvalidOperationException($"Timestamp {timestamp} is before genesis timestamp {specProvider.BeaconChainGenesisTimestamp.Value}.");
-            }
-
-            return (ulong)timeSinceGenesis / (ulong)specProvider.SlotLength.TotalSeconds;
-        }
     }
 }
