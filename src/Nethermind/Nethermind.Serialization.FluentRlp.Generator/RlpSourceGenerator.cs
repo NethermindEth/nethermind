@@ -175,22 +175,19 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
               {
                   public static void Write(ref RlpWriter w, {{fullTypeName}} value)
                   {
-                        {{
-                            (representation == RlpRepresentation.Record
+                        {{(representation == RlpRepresentation.Record
                                 ? $$"""
                                     w.WriteSequence(value, static (ref RlpWriter w, {{fullTypeName}} value) =>
                                     {
                                         {{writeCalls}}
                                     });
                                     """
-                                : writeCalls)
-                        }}
+                                : writeCalls)}}
                   }
 
                   public static {{fullTypeName}} Read(ref RlpReader r)
                   {
-                      {{
-                          (representation == RlpRepresentation.Record
+                      {{(representation == RlpRepresentation.Record
                               ? $$"""
                                   return r.ReadSequence(static (scoped ref RlpReader r) =>
                                   {
@@ -203,8 +200,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                                  {readCalls}
 
                                  return new {constructorCall}
-                                 """)
-                      }}
+                                 """)}}
                   }
               }
 
