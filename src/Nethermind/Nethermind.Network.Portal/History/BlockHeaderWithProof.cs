@@ -10,17 +10,17 @@ namespace Nethermind.Network.Portal.History;
 public class PortalBlockHeaderWithProof
 {
     [SszList(2048)]
-    public byte[] Header { get; set; } = Array.Empty<byte>();
+    public byte[] Header { get; set; } = [];
 
     [SszList(2048)]
-    public byte[] Proof { get; set; } = Array.Empty<byte>();
+    public byte[] Proof { get; set; } = [];
 }
 
 public class PortalBlockHeaderProof
 {
     public PortalBlockHeaderProofSelector Selector { get; set; }
 
-    [SszList(16)] public ValueHash256[] Accumulator { get; set; } = Array.Empty<ValueHash256>();
+    [SszList(16)] public ValueHash256[] Accumulator { get; set; } = [];
 }
 
 public enum PortalBlockHeaderProofSelector
@@ -33,44 +33,45 @@ public enum PortalBlockHeaderProofSelector
 public class PortalBlockBodyPreShanghai
 {
     [SszList(2 << 14)]
-    public SszTransaction[] Transactions { get; set; } = Array.Empty<SszTransaction>();
+    public SszTransaction[] Transactions { get; set; } = [];
 
     [SszList(2 << 17)]
-    public byte[] Uncles { get; set; } = Array.Empty<byte>();
+    public byte[] Uncles { get; set; } = [];
 }
 
 [SszSerializable]
 public class PortalBlockBodyPostShanghai
 {
     [SszList(2 << 14)]
-    public SszTransaction[] Transactions { get; set; } = Array.Empty<SszTransaction>();
+    public SszTransaction[] Transactions { get; set; } = [];
 
     [SszList(2 << 17)]
-    public byte[] Uncles { get; set; } = Array.Empty<byte>();
+    public byte[] Uncles { get; set; } = [];
 
     [SszList(16)]
-    public EncodedWidthrawals[] Withdrawals { get; set; } = Array.Empty<EncodedWidthrawals>();
+    public EncodedWidthrawals[] Withdrawals { get; set; } = [];
 }
 
 [SszSerializable(isCollectionItself: true)]
 public class SszTransaction
 {
     [SszList(2 << 24)]
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public byte[] Data { get; set; } = [];
 }
+
 
 [SszSerializable(isCollectionItself: true)]
 public class SszReceipt
 {
     [SszList(2 << 24)]
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public byte[] Data { get; set; } = [];
 }
 
 [SszSerializable(isCollectionItself: true)]
 public class EncodedWidthrawals
 {
     [SszList(64)]
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public byte[] Data { get; set; } = [];
 }
 
 [SszSerializable]
@@ -84,5 +85,5 @@ public class PortalReceiptsSSZ
 public class EncodedReceipts
 {
     [SszList(2 << 27)]
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public byte[] Data { get; set; } = [];
 }

@@ -101,14 +101,6 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 
         _logger.LogDebug("Successfully decrypted ORDINARY packet");
 
-        var replies = await _messageResponder.HandleMessageAsync(decryptedMessage, returnedResult.RemoteEndPoint);
-        if (replies != null && replies.Length != 0)
-        {
-            foreach (var reply in replies)
-            {
-                await SendResponseToOrdinaryPacketAsync(staticHeader, session, returnedResult.RemoteEndPoint, _udpConnection, reply);
-            }
-        }
 
         // This is actually, the only special handling needed.
         var messageType = (MessageType)decryptedMessage[0];
@@ -119,16 +111,28 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             if (reply != null)
                 await SendResponseToOrdinaryPacketAsync(staticHeader, session, returnedResult.RemoteEndPoint, _udpConnection, reply);
         }
+        else
+        {
+            var replies = await _messageResponder.HandleMessageAsync(decryptedMessage, returnedResult.RemoteEndPoint);
+            if (replies != null && replies.Length != 0)
+            {
+                foreach (var reply in replies)
+                {
+                    await SendResponseToOrdinaryPacketAsync(staticHeader, session, returnedResult.RemoteEndPoint, _udpConnection, reply);
+                }
+            }
+        }
     }
 
     private async Task<byte[]?> HandleTalkReqMessage(IEnr enr, byte[] message)
     {
-        _logger.LogInformation("Handling TalkReq from {enr}", MessageType.TalkReq);
         try
         {
             var decodedMessage = _messageDecoder.DecodeMessage(message);
             if (decodedMessage is TalkReqMessage talkReqMessage)
             {
+                _logger.LogInformation("Handling TalkReq from {enr}", MessageType.TalkReq);
+
                 var resp = await _rawTalkReqResponder.OnTalkReq(enr, talkReqMessage);
                 if (resp != null)
                     resp = new TalkRespMessage(talkReqMessage.RequestId, resp!).EncodeMessage();
@@ -136,6 +140,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             }
             else
             {
+                _logger.LogInformation("Handling TalkResp from {enr}", MessageType.TalkReq);
                 var talkResp = (TalkRespMessage)decodedMessage;
                 _rawTalkReqResponder.OnTalkResp(enr, talkResp);
 

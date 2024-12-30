@@ -25,16 +25,29 @@ public class HistoryNetworkEncoderDecoder
 
     public BlockBody DecodeBody(byte[] payload)
     {
-        // TODO: Need to know if post or pre shanghai.
-        // And for that need to get the header first.
-        SszEncoding.Decode(payload, out PortalBlockBodyPostShanghai body);
-        Transaction[] transactions = body.Transactions
-            .Select((tx) => _txDecoder.Decode(new RlpStream(tx.Data))!).ToArray();
-        // Does not work. Dont know why.
-        // BlockHeader[] uncles = Rlp.Decode<BlockHeader[]>(body.Uncles!);
+        try
+        {
+            // TODO: Need to know if post or pre shanghai.
+            // And for that need to get the header first.
+            SszEncoding.Decode(payload, out PortalBlockBodyPostShanghai body);
+            Transaction[] transactions = body.Transactions
+              .Select((tx) => _txDecoder.Decode(new RlpStream(tx.Data))!).ToArray();
+            BlockHeader[] uncles = new HeaderDecoder().DecodeArray(new RlpStream(body.Uncles));
 
-        // TODO: Widthrawals
-        return new BlockBody(transactions, Array.Empty<BlockHeader>());
+            Withdrawal[] withdrawals = body.Withdrawals
+              .Select((w) => new WithdrawalDecoder().Decode(new RlpStream(w.Data))!).ToArray();
+
+            return new BlockBody(transactions, uncles, withdrawals);
+        }
+        catch
+        {
+            SszEncoding.Decode(payload, out PortalBlockBodyPreShanghai body);
+            Transaction[] transactions = body.Transactions
+                         .Select((tx) => _txDecoder.Decode(new RlpStream(tx.Data))!).ToArray();
+            BlockHeader[] uncles = new HeaderDecoder().DecodeArray(new RlpStream(body.Uncles));
+
+            return new BlockBody(transactions, uncles);
+        }
     }
 
     public TxReceipt[] DecodeReceipt(byte[] payload)
@@ -66,6 +79,13 @@ public class HistoryNetworkEncoderDecoder
     {
         SszTransaction[] transactionBytes = blockBody.Transactions
             .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
+        //SszTransaction[] unclesBytes = blockBody.Transactions
+        //    .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
+        //ssz[] withdrawalBytes = blockBody.Transactions
+        //    .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
+
+        var rlp = new RlpStream(_txDecoder.GetLength(blockBody.Transactions, RlpBehaviors.None));
+        _txDecoder.Encode(rlp, blockBody.Transactions);
 
         // TODO: Uncles widthrawals
         return SszEncoding.Encode(new PortalBlockBodyPostShanghai()
