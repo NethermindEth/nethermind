@@ -27,10 +27,15 @@ using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Network.Discovery.Portal;
-using Nethermind.Network.Discovery.Portal.History;
-using Nethermind.Network.Discovery.Portal.History.Rpc;
-using Nethermind.Network.Discovery.Portal.LanternAdapter;
+using Nethermind.Network.Portal;
+using Nethermind.Network.Portal.History;
+using Nethermind.Network.Portal.LanternAdapter;
+using Nethermind.Network.Portal.History.Rpc;
+using Nethermind.Api;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Network.Kademlia;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -43,54 +48,61 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
-
+    private static readonly IPNetwork IpV4BlockLoopback = new(IPAddress.Parse("127.0.0.0"), 8);
     public DiscoveryV5App(
         IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        IReceiptFinder receiptFinder,
         IRpcModuleProvider rpcModuleProvider,
         SameKeyGenerator privateKeyProvider,
         IIPResolver? ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         IDb discoveryDb,
-        ILogManager logManager
+        ILogManager logManager,
+        INethermindApi api
     )
     {
-        ArgumentNullException.ThrowIfNull(ipResolver);
-
-        _logger = logManager.GetClassLogger();
-        _discoveryDb = discoveryDb;
-
-        IdentityVerifierV4 identityVerifier = new();
-
-        _sessionOptions = new()
+        try
         {
-            Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
-            Verifier = identityVerifier,
-            SessionKeys = new SessionKeys(privateKeyProvider.Generate().KeyBytes),
-        };
+            ArgumentNullException.ThrowIfNull(ipResolver);
 
-        string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
+            _logger = logManager.GetClassLogger();
+            _discoveryDb = discoveryDb;
 
-        IServiceCollection services = new ServiceCollection()
-           .AddSingleton<ILoggerFactory, NullLoggerFactory>()
-           .AddSingleton(blockTree)
-           .AddSingleton(logManager)
-           .AddSingleton(_sessionOptions.Verifier)
-           .AddSingleton(_sessionOptions.Signer);
+            IdentityVerifierV4 identityVerifier = new();
 
-        IEnrEntryRegistry registry = new EnrEntryRegistry();
-        registry.RegisterEntry("c", (b) => new RawEntry("c", b));
-        registry.RegisterEntry("quic", (b) => new RawEntry("quic", b));
-        registry.RegisterEntry("domaintype", (b) => new RawEntry("domaintype", b));
-        registry.RegisterEntry("subnets", (b) => new RawEntry("subnets", b));
-        registry.RegisterEntry("eth", (b) => new RawEntry("eth", b));
-        registry.RegisterEntry("v4", (b) => new RawEntry("v4", b));
-        registry.RegisterEntry("opstack", (b) => new RawEntry("opstack", b));
+            _sessionOptions = new()
+            {
+                Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
+                Verifier = identityVerifier,
+                SessionKeys = new SessionKeys(privateKeyProvider.Generate().KeyBytes),
+            };
 
-        EnrFactory enrFactory = new(registry);
+            string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
 
-        Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
+            IServiceCollection services = new ServiceCollection()
+               .AddSingleton<ILoggerFactory, NullLoggerFactory>()
+               .AddSingleton(blockTree)
+               .AddSingleton(receiptStorage)
+               .AddSingleton(receiptFinder)
+               .AddSingleton(logManager)
+               .AddSingleton(_sessionOptions.Verifier)
+               .AddSingleton(_sessionOptions.Signer);
+
+            IEnrEntryRegistry registry = new EnrEntryRegistry();
+            registry.RegisterEntry("c", (b) => new RawEntry("c", b));
+            registry.RegisterEntry("quic", (b) => new RawEntry("quic", b));
+            registry.RegisterEntry("domaintype", (b) => new RawEntry("domaintype", b));
+            registry.RegisterEntry("subnets", (b) => new RawEntry("subnets", b));
+            registry.RegisterEntry("eth", (b) => new RawEntry("eth", b));
+            registry.RegisterEntry("v4", (b) => new RawEntry("v4", b));
+            registry.RegisterEntry("opstack", (b) => new RawEntry("opstack", b));
+
+            EnrFactory enrFactory = new(registry);
+
+            Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
+                .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
                 .Select(e => new Enode(e))
                 .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
@@ -108,64 +120,190 @@ public class DiscoveryV5App : IDiscoveryApp
                     }
                 })
                 .Where(enr => enr != null)!
+                ];
+
+            IPAddress heh = NetworkInterface.GetAllNetworkInterfaces()!
+                     .Where(i => i.Name == "eth0" ||
+                        (i.OperationalStatus == OperationalStatus.Up &&
+                         i.NetworkInterfaceType == NetworkInterfaceType.Ethernet &&
+                         i.GetIPProperties().GatewayAddresses.Any())
+                     ).First()
+                     .GetIPProperties()
+                     .UnicastAddresses
+                     .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork).Select(a => a.Address).First();
+
+            IPAddress addr = IpV4BlockLoopback.Contains(ipResolver.ExternalIp) ? heh : ipResolver.ExternalIp;
+
+            _logger.Warn($"Discv5 IP address: {addr}");
+
+            EnrBuilder enrBuilder = new EnrBuilder()
+                .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+                .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+                .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
+                .WithEntry(EnrEntryKey.Ip, new EntryIp(addr))
+                .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
+                .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
+
+            IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
+                .WithConnectionOptions(new ConnectionOptions
+                {
+                    UdpPort = networkConfig.DiscoveryPort
+                })
+                .WithSessionOptions(_sessionOptions)
+                .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
+                .WithEnrBuilder(enrBuilder)
+                .WithEnrEntryRegistry(registry)
+                .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
+                .WithServices(s =>
+                {
+                    NettyDiscoveryV5Handler.Register(s);
+                    s
+                        .ConfigurePortalNetworkCommonServices()
+                        .ConfigureLanternPortalAdapter();
+                });
+
+            _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
+            _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
+
+            _serviceProvider = discv5Builder.GetServiceProvider();
+            _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
+
+            string[] bootNodesStr =
+            [
+                //Trin bootstrap nodes
+                "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+                "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
+                "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+
+                //Fluffy bootstrap nodes
+                "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+                "enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
+                "enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
+                "enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+
+                //Ultralight bootstrap nodes
+                "enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
+                "enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
+                "enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
+                "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
             ];
+            IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
 
-        EnrBuilder enrBuilder = new EnrBuilder()
-            .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
-            .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
-            .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
-            .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
+            IServiceProvider historyNetworkServiceProvider = _serviceProvider.CreateHistoryNetworkServiceProviderWithRpc(historyNetworkBootnodes);
+            _historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
 
-        IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
-            .WithConnectionOptions(new ConnectionOptions
+            Task.Delay(5000).ContinueWith((t) =>
             {
-                UdpPort = networkConfig.DiscoveryPort
-            })
-            .WithSessionOptions(_sessionOptions)
-            .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
-            .WithEnrBuilder(enrBuilder)
-            .WithEnrEntryRegistry(registry)
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .WithServices(s =>
-            {
-                NettyDiscoveryV5Handler.Register(s);
-                s
-                    .ConfigurePortalNetworkCommonServices()
-                    .ConfigureLanternPortalAdapter();
+                api.RpcModuleProvider!.RegisterSingle(historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>());
             });
 
-        _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
-        _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
+            var kad = historyNetworkServiceProvider.GetService<IKademlia<IEnr>>();
+            var net = historyNetworkServiceProvider.GetService<IPortalHistoryNetwork>()!;
+            List<BlockHeader?> blocks = new List<BlockHeader?>();
 
-        _serviceProvider = discv5Builder.GetServiceProvider();
-        _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
 
-        string[] bootNodesStr =
-        [
-             //Trin bootstrap nodes
-             "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
-             "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
-             "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+            _ = Task.Run(async () =>
+            {
+                for (var i = 1; i < 10; i++)
+                {
+                    blocks.Add(await net.LookupBlockHeader(1, default));
+                }
+                //async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
+                //{
+                //    Channel<Node> channel = Channel.CreateBounded<Node>(1);
 
-             //Fluffy bootstrap nodes
-             "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
-             "enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
-             "enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
-             "enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+                //    async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+                //    {
+                //        Queue<IEnr> nodesToCheck = new(startingNode);
+                //        HashSet<IEnr> checkedNodes = [];
 
-             //Ultralight bootstrap nodes
-             "enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
-             "enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
-             "enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
-             "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
-        ];
-        IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
+                //        while (!token.IsCancellationRequested)
+                //        {
+                //            if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+                //            {
+                //                return;
+                //            }
 
-        IServiceProvider historyNetworkServiceProvider = _serviceProvider.CreateHistoryNetworkServiceProvider(historyNetworkBootnodes);
-        _historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
-        rpcModuleProvider.RegisterSingle(historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>());
+                //            if (TryGetNodeFromEnr(newEntry, out Node? node2))
+                //            {
+                //                await channel.Writer.WriteAsync(node2!, token);
+                //                if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+                //                _discoveryReport?.NodeFound();
+                //            }
+
+                //            if (!checkedNodes.Add(newEntry))
+                //            {
+                //                continue;
+                //            }
+
+                //            IEnumerable<IEnr>? newNodesFound = (await kad.LookupNodesClosest(, token))?.Where(x => !checkedNodes.Contains(x));
+
+                //            if (newNodesFound is not null)
+                //            {
+                //                foreach (IEnr? node in newNodesFound)
+                //                {
+                //                    nodesToCheck.Enqueue(node);
+                //                }
+                //            }
+                //        }
+                //    }
+
+                //    IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
+                //    Random random = new();
+
+                //    const int RandomNodesToLookupCount = 3;
+
+                //    Task discoverTask = Task.Run(async () =>
+                //    {
+                //        byte[] randomNodeId = new byte[32];
+                //        while (!token.IsCancellationRequested)
+                //        {
+                //            try
+                //            {
+                //                List<Task> discoverTasks = new List<Task>();
+                //                discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+
+                //                for (int i = 0; i < RandomNodesToLookupCount; i++)
+                //                {
+                //                    random.NextBytes(randomNodeId);
+                //                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
+                //                }
+
+                //                await Task.WhenAll(discoverTasks);
+                //            }
+                //            catch (Exception ex)
+                //            {
+                //                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
+                //            }
+                //        }
+                //    });
+
+                //    try
+                //    {
+                //        await foreach (Node node in channel.Reader.ReadAllAsync(token))
+                //        {
+                //            yield return node;
+                //        }
+                //    }
+                //    finally
+                //    {
+                //        await discoverTask;
+                //    }
+                //}
+                var hash = Convert.FromHexString("88e96d4537bea4d9c05d12549907b32561d3bf31f45aae734cdc119f13406cb6");
+
+
+                while (true)
+                {
+                    _logger.Warn($"Kad: {kad}");
+                    await Task.Delay(5000);
+                }
+            });
+        }
+        catch
+        {
+            throw;
+        }
     }
 
     private IPortalHistoryNetwork _historyNetwork;
@@ -191,38 +329,38 @@ public class DiscoveryV5App : IDiscoveryApp
         }
 
         node = null;
-        if (!enr.HasKey(EnrEntryKey.Tcp))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, no TCP port.");
-            return false;
-        }
+        //if (!enr.HasKey(EnrEntryKey.Tcp))
+        //{
+        //    if (_logger.IsTrace) _logger.Trace($"Enr declined, no TCP port: {enr.ToString()}.");
+        //    return false;
+        //}
         if (!enr.HasKey(EnrEntryKey.Ip))
         {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, no IP.");
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, no IP: {enr.ToString()}.");
             return false;
         }
         if (!enr.HasKey(EnrEntryKey.Secp256K1))
         {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, no signature.");
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, no signature: {enr.ToString()}.");
             return false;
         }
         if (enr.HasKey(EnrEntryKey.Eth2))
         {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, ETH2 detected.");
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, ETH2 detected: {enr.ToString()}.");
             return false;
         }
 
         PublicKey? key = GetPublicKeyFromEnr(enr);
         if (key is null)
         {
-            if (_logger.IsTrace) _logger.Trace($"Enr declined, unable to extract public key.");
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, unable to extract public key: {enr.ToString()}.");
             return false;
         }
 
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
-        int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
+        int? tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp)?.Value;
 
-        node = new(key, ip.ToString(), tcpPort);
+        node = new(key, ip.ToString(), tcpPort ?? 0);
         return true;
     }
 
@@ -280,7 +418,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
-        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        Channel<Node> channel = Channel.CreateBounded<Node>(1);
 
         async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
         {
@@ -318,7 +456,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
                 if (TryGetNodeFromEnr(newEntry, out Node? node2))
                 {
-                    await ch.Writer.WriteAsync(node2!, token);
+                    await channel.Writer.WriteAsync(node2!, token);
                     if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
                     _discoveryReport?.NodeFound();
                 }
@@ -372,7 +510,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
         try
         {
-            await foreach (Node node in ch.Reader.ReadAllAsync(token))
+            await foreach (Node node in channel.Reader.ReadAllAsync(token))
             {
                 yield return node;
             }

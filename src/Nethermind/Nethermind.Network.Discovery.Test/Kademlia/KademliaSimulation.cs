@@ -11,8 +11,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Discovery.Kademlia.Content;
+using Nethermind.Network.Kademlia;
+using Nethermind.Network.Kademlia.Content;
 using NonBlocking;
 using NUnit.Framework;
 
@@ -128,7 +128,7 @@ public class KademliaSimulation
             .Select(n => n.Hash)
             .ToHashSet()
             .Should()
-            .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash });
+            .BeEquivalentTo(new HashSet<ValueHash256>() { node1Hash });
 
         Kademlia<TestNode> node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
@@ -142,7 +142,7 @@ public class KademliaSimulation
             .Select(n => n.Hash)
             .ToHashSet()
             .Should()
-            .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash, node2Hash, node3Hash });
+            .BeEquivalentTo(new HashSet<ValueHash256>() { node1Hash, node2Hash, node3Hash });
 
         (await node1.LookupNodesClosest(node3Hash, cts.Token, 1))
             .First().Hash
@@ -284,7 +284,7 @@ public class KademliaSimulation
         }
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode>, IContentHashProvider<ValueHash256>
+    private class ValueHashNodeHashProvider : INodeHashProvider<TestNode>, IContentHashProvider<ValueHash256>
     {
         public ValueHash256 GetHash(TestNode node)
         {

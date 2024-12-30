@@ -17,13 +17,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Portal;
-using Nethermind.Network.Discovery.Portal.History;
 using Nethermind.Network.Test;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Network.Portal;
+using Nethermind.Network.Portal.History;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 

@@ -230,11 +230,19 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.SszGenerator.Test", "Nethermind.Serialization.SszGenerator.Test\Nethermind.Serialization.SszGenerator.Test.csproj", "{56274E7F-567F-4C79-9746-F5C802A992A9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.WireProtocol", "L:\Lantern.Discv5\src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj", "{542E2982-09D8-436B-9ED2-4D381F86F128}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.WireProtocol", "..\..\Lantern.Discv5\src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj", "{542E2982-09D8-436B-9ED2-4D381F86F128}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Rlp", "L:\Lantern.Discv5\src\Lantern.Discv5.Rlp\Lantern.Discv5.Rlp.csproj", "{8DF4203A-607D-428C-8C88-A742C70F1E9D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Rlp", "..\..\Lantern.Discv5\src\Lantern.Discv5.Rlp\Lantern.Discv5.Rlp.csproj", "{8DF4203A-607D-428C-8C88-A742C70F1E9D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Enr", "L:\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj", "{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Enr", "..\..\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj", "{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Portal", "Nethermind.Network.Portal\Nethermind.Network.Portal.csproj", "{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Kademlia", "Nethermind.Network.Kademlia\Nethermind.Network.Kademlia.csproj", "{2FE1295B-B25B-4B6F-87A6-35674E7B5966}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Portal.Rpc", "Nethermind.Network.Portal.Rpc\Nethermind.Network.Portal.Rpc.csproj", "{FFD06E39-CDF7-47B5-80CA-9A45CCCD8F96}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Portal.Cli", "Nethermind.Network.Portal.Cli\Nethermind.Network.Portal.Cli.csproj", "{91446BB0-5F48-4C88-87A2-F4BCF0B6C91E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -654,6 +662,22 @@ Global
 		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2FE1295B-B25B-4B6F-87A6-35674E7B5966}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2FE1295B-B25B-4B6F-87A6-35674E7B5966}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2FE1295B-B25B-4B6F-87A6-35674E7B5966}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2FE1295B-B25B-4B6F-87A6-35674E7B5966}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFD06E39-CDF7-47B5-80CA-9A45CCCD8F96}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFD06E39-CDF7-47B5-80CA-9A45CCCD8F96}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFD06E39-CDF7-47B5-80CA-9A45CCCD8F96}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFD06E39-CDF7-47B5-80CA-9A45CCCD8F96}.Release|Any CPU.Build.0 = Release|Any CPU
+		{91446BB0-5F48-4C88-87A2-F4BCF0B6C91E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{91446BB0-5F48-4C88-87A2-F4BCF0B6C91E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{91446BB0-5F48-4C88-87A2-F4BCF0B6C91E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{91446BB0-5F48-4C88-87A2-F4BCF0B6C91E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -62,9 +62,13 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Waiting for Forkchoice message from Consensus Layer to update pivot block
         /// </summary>
         UpdatingPivot = 8192,
+        /// <summary>
+        /// Waiting for Forkchoice message from Consensus Layer to update pivot block
+        /// </summary>
+        PortalSync = 16384,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
+              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot | PortalSync,
     }
 
     public static class SyncModeExtensions

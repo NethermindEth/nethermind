@@ -11,9 +11,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Discovery.Portal;
-using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Network.Kademlia;
+using Nethermind.Network.Portal;
+using Nethermind.Network.Portal.Messages;
 using Nethermind.Serialization;
 using NSubstitute;
 using NUnit.Framework;
@@ -62,6 +62,29 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
         await _talkReqTransport.Received().CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Any<byte[]>(), default);
     }
 
+
+    [Test]
+    public void OnPing_ShouldSendTalkRe2q()
+    {
+        byte[] msg = Convert.FromHexString("0404000000025b4f90e3fb8d1123e2ea1e14f12fae6eb4a5656d9beca927785b9f9375f61503");
+
+        SszEncoding.Decode(msg, out MessageUnion messageUnion);
+
+        //byte[] resultBytes = SszEncoding.Encode(new MessageUnion()
+        //{
+        //    Selector = MessageType.Pong,
+        //    Pong = new Pong() { }
+        //});
+
+        //_talkReqTransport
+        //    .CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Any<byte[]>(), default)
+        //    .Returns(Task.FromResult(resultBytes));
+
+        //await _protocol.Ping(_testReceiverEnr, new Ping(), default);
+        //await _talkReqTransport.Received().CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Any<byte[]>(), default);
+    }
+
+
     [Test]
     public async Task OnFindValue_ShouldSendTalkReqAndParseResponseCorrectly()
     {
@@ -107,13 +130,13 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
             }
         });
 
-        Discovery.Portal.Messages.Enr[] resultEnrs = new IEnr[] {
+        Network.Portal.Messages.Enr[] resultEnrs = new IEnr[] {
             TestUtils.CreateEnr(TestItem.PrivateKeyA),
             TestUtils.CreateEnr(TestItem.PrivateKeyB),
             TestUtils.CreateEnr(TestItem.PrivateKeyC),
             TestUtils.CreateEnr(TestItem.PrivateKeyD),
             TestUtils.CreateEnr(TestItem.PrivateKeyE),
-        }.Select((enr) => new Discovery.Portal.Messages.Enr() { Data = enr.EncodeRecord() }).ToArray();
+        }.Select((enr) => new Network.Portal.Messages.Enr() { Data = enr.EncodeRecord() }).ToArray();
         byte[] resultBytes = SszEncoding.Encode(new MessageUnion()
         {
             Selector = MessageType.Nodes,

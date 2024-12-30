@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Autofac;
@@ -172,7 +171,11 @@ namespace Nethermind.Api
         {
             get => _rpcModuleProvider ??=
                 new RpcModuleProvider(FileSystem!, ConfigProvider!.GetConfig<IJsonRpcConfig>(), LogManager!);
-            set => _rpcModuleProvider = value;
+            set
+            {
+                var old = _rpcModuleProvider;
+                _rpcModuleProvider = value;
+            }
         }
 
         public IRpcAuthentication? RpcAuthentication { get; set; }

@@ -9,7 +9,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -76,7 +76,7 @@ public class KademliaTests
             Beta = 0,
         });
 
-        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XorUtils.GetRandomHashAtDistance( ValueKeccak.Zero, 250) ).ToArray();
+        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XorUtils.GetRandomHashAtDistance(ValueKeccak.Zero, 250)).ToArray();
         foreach (ValueHash256 valueHash256 in testHashes[..10])
         {
             kad.AddOrRefresh(valueHash256);
@@ -175,7 +175,7 @@ public class KademliaTests
         kad.GetAllAtDistance(250).ToHashSet().Should().BeEquivalentTo(testHashes[10..].ToHashSet());
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>
+    private class ValueHashNodeHashProvider : INodeHashProvider<ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {

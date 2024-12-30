@@ -16,6 +16,7 @@
     <PackageReference Include="Nethermind.DotNetty.Handlers" />
     <PackageReference Include="Snappier" />
     <PackageReference Include="System.Linq.Async" />
+    <PackageReference Include="BouncyCastle.Cryptography" Aliases="BouncyCastleCryptography" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />

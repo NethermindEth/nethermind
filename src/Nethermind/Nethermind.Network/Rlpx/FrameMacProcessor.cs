@@ -1,11 +1,13 @@
+extern alias BouncyCastleCryptography;
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
+using BouncyCastleCryptography::Org.BouncyCastle.Crypto;
+using IBlockCipher = BouncyCastleCryptography::Org.BouncyCastle.Crypto.IBlockCipher;
+using KeyParameter = BouncyCastleCryptography::Org.BouncyCastle.Crypto.Parameters.KeyParameter;
 using Nethermind.Core.Crypto;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nethermind.Network.Rlpx;
 

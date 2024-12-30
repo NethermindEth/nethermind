@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,133 +81,140 @@ public class InitializeNetwork : IStep
 
     private async Task Initialize(CancellationToken cancellationToken)
     {
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-        if (_networkConfig.DiagTracerEnabled)
-        {
-            NetworkDiagTracer.IsEnabled = true;
-        }
-
-        if (NetworkDiagTracer.IsEnabled)
-        {
-            NetworkDiagTracer.Start(_api.LogManager);
-        }
-
-        _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
-
-        int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-        Network.Metrics.PeerLimit = maxPeersCount;
-
-        IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
-        foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
-        {
-            await plugin.InitSynchronization();
-        }
-
-        _api.Pivot ??= new Pivot(_syncConfig);
-
-        if (_api.Synchronizer is null)
-        {
-            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
-                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
-
-            ContainerBuilder builder = new ContainerBuilder();
-            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
-            builder.RegisterModule(new SynchronizerModule(_syncConfig));
-            IContainer container = builder.Build();
-
-            _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Push((IAsyncDisposable)container);
-        }
-
-        if (_api.TrieStore is HealingTrieStore healingTrieStore)
-        {
-            healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
-        }
-
-        if (_api.WorldState is HealingWorldState healingWorldState)
-        {
-            healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
-        }
-
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
-        _ = _api.SyncServer; // Need to be resolved at least once before the peer pool is started.
-
-        InitDiscovery();
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        await InitPeer().ContinueWith(initPeerTask =>
-        {
-            if (initPeerTask.IsFaulted)
-            {
-                _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
-            }
-        });
-
-        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
-        {
-            SnapCapabilitySwitcher snapCapabilitySwitcher =
-                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-        }
-
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
-
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        await StartSync().ContinueWith(initNetTask =>
-        {
-            if (initNetTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
-            }
-        });
-
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        await StartDiscovery().ContinueWith(initDiscoveryTask =>
-        {
-            if (initDiscoveryTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
-            }
-        });
-
         try
         {
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+
+            if (_networkConfig.DiagTracerEnabled)
+            {
+                NetworkDiagTracer.IsEnabled = true;
+            }
+
+            if (NetworkDiagTracer.IsEnabled)
+            {
+                NetworkDiagTracer.Start(_api.LogManager);
+            }
+
+            _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
+
+            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
+            Network.Metrics.PeerLimit = maxPeersCount;
+
+            IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
+            foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
+            {
+                await plugin.InitSynchronization();
+            }
+
+            _api.Pivot ??= new Pivot(_syncConfig);
+
+            if (_api.Synchronizer is null)
+            {
+                if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
+                    _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+
+                ContainerBuilder builder = new ContainerBuilder();
+                _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
+                    .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
+                builder.RegisterModule(new SynchronizerModule(_syncConfig));
+                IContainer container = builder.Build();
+
+                _api.ApiWithNetworkServiceContainer = container;
+                _api.DisposeStack.Push((IAsyncDisposable)container);
+            }
+
+            if (_api.TrieStore is HealingTrieStore healingTrieStore)
+            {
+                healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+            }
+
+            if (_api.WorldState is HealingWorldState healingWorldState)
+            {
+                healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+            }
+
+            _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
+
+            _ = _api.SyncServer; // Need to be resolved at least once before the peer pool is started.
+
+            InitDiscovery();
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
-            StartPeer();
-        }
-        catch (Exception e)
-        {
-            _logger.Error("Unable to start the peer manager.", e);
-        }
+            await InitPeer().ContinueWith(initPeerTask =>
+            {
+                if (initPeerTask.IsFaulted)
+                {
+                    _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
+                }
+            });
 
-        if (_api.Enode is null)
-        {
-            throw new InvalidOperationException("Cannot initialize network without knowing own enode");
-        }
+            if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
+            {
+                SnapCapabilitySwitcher snapCapabilitySwitcher =
+                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
-        ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
-        ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+            else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await StartSync().ContinueWith(initNetTask =>
+            {
+                if (initNetTask.IsFaulted)
+                {
+                    _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
+                }
+            });
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await StartDiscovery().ContinueWith(initDiscoveryTask =>
+            {
+                if (initDiscoveryTask.IsFaulted)
+                {
+                    _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
+                }
+            });
+
+            try
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                StartPeer();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Unable to start the peer manager.", e);
+            }
+
+            if (_api.Enode is null)
+            {
+                throw new InvalidOperationException("Cannot initialize network without knowing own enode");
+            }
+
+            ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
+            ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
+            ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
+            ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+        }
+        catch
+        {
+            throw;
+        }
     }
 
     private Task StartDiscovery()
@@ -263,7 +269,7 @@ public class InitializeNetwork : IStep
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
-            _api.NodeStatsManager, _api.IpResolver
+            _api.NodeStatsManager, _api.IpResolver, (_api as INethermindApi)!
         );
 
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);

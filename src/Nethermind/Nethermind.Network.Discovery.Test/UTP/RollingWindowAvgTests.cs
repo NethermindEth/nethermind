@@ -1,4 +1,5 @@
 using System;
+using Nethermind.Network.Portal.UTP;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Tests;

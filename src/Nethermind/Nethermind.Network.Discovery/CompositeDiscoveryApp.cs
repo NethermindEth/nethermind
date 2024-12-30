@@ -8,6 +8,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -45,10 +46,11 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly IIPResolver _ipResolver;
     private readonly IConnectionsPool _connections;
-
+    private readonly IReceiptStorage _receiptStorage;
     private IDiscoveryApp? _v4;
     private IDiscoveryApp? _v5;
     private INodeSource _compositeNodeSource = null!;
+    private INethermindApi _api;
     private readonly IBlockTree _blockTree;
     private readonly IRpcModuleProvider _rpcModuleProvider;
 
@@ -59,9 +61,10 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, INethermindApi api
     )
     {
+        _api = api;
         _blockTree = blockTree;
         _rpcModuleProvider = rpcModuleProvider;
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
@@ -76,6 +79,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
+        _receiptStorage = api.ReceiptStorage ?? throw new ArgumentNullException(nameof(_receiptStorage));
     }
 
     public void Initialize(PublicKey masterPublicKey)
@@ -210,7 +214,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
             _logManager);
 
-        _v5 = new DiscoveryV5App(_blockTree, _rpcModuleProvider, privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
+        _v5 = new DiscoveryV5App(_blockTree, _receiptStorage, _api.ReceiptFinder!, _rpcModuleProvider, privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager, _api);
         _v5.Initialize(_nodeKey.PublicKey);
     }
 

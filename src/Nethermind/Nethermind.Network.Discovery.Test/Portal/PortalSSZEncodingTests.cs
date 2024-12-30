@@ -9,8 +9,9 @@ using Lantern.Discv5.Enr.Identity.V4;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 using Nethermind.Int256;
-using Nethermind.Network.Discovery.Portal.Messages;
 using Nethermind.Serialization;
+using Nethermind.Network.Portal.Messages;
+using System;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 
@@ -83,8 +84,8 @@ public class PortalSSZEncodingTests
                 {
                     Total = 1,
                     Enrs = [
-                        new Discovery.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QBzimRxkmT18hMKaAL3IcZF1UcfTMPyi3Q1pxwZZbcZVRI8DC5infUAB_UauARLOJtYTxaagKoGmIjzQxO2qUygBgmlkgnY0iXNlY3AyNTZrMaEDymNMrg1JrLQB2KTGtv6MVbcNEVv0AHacwUAPMljNMTg") },
-                        new Discovery.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QNfxw543Ypf4HXKXdYxkyzfcxcO-6p9X986WldfVpnVTQX1xlTnWrktEWUbeTZnmgOuAY_KUhbVV1Ft98WoYUBMBgmlkgnY0iXNlY3AyNTZrMaEDDiy3QkHAxPyOgWbxp5oF1bDdlYE6dLCUUp8xfVw50jU") },
+                        new Network.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QBzimRxkmT18hMKaAL3IcZF1UcfTMPyi3Q1pxwZZbcZVRI8DC5infUAB_UauARLOJtYTxaagKoGmIjzQxO2qUygBgmlkgnY0iXNlY3AyNTZrMaEDymNMrg1JrLQB2KTGtv6MVbcNEVv0AHacwUAPMljNMTg") },
+                        new Network.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QNfxw543Ypf4HXKXdYxkyzfcxcO-6p9X986WldfVpnVTQX1xlTnWrktEWUbeTZnmgOuAY_KUhbVV1Ft98WoYUBMBgmlkgnY0iXNlY3AyNTZrMaEDDiy3QkHAxPyOgWbxp5oF1bDdlYE6dLCUUp8xfVw50jU") },
                     ]
                 }
             };
@@ -142,8 +143,8 @@ public class PortalSSZEncodingTests
                 {
                     Selector = ContentType.Enrs,
                     Enrs = [
-                        new Discovery.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QBzimRxkmT18hMKaAL3IcZF1UcfTMPyi3Q1pxwZZbcZVRI8DC5infUAB_UauARLOJtYTxaagKoGmIjzQxO2qUygBgmlkgnY0iXNlY3AyNTZrMaEDymNMrg1JrLQB2KTGtv6MVbcNEVv0AHacwUAPMljNMTg") },
-                        new Discovery.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QNfxw543Ypf4HXKXdYxkyzfcxcO-6p9X986WldfVpnVTQX1xlTnWrktEWUbeTZnmgOuAY_KUhbVV1Ft98WoYUBMBgmlkgnY0iXNlY3AyNTZrMaEDDiy3QkHAxPyOgWbxp5oF1bDdlYE6dLCUUp8xfVw50jU") },
+                        new Network.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QBzimRxkmT18hMKaAL3IcZF1UcfTMPyi3Q1pxwZZbcZVRI8DC5infUAB_UauARLOJtYTxaagKoGmIjzQxO2qUygBgmlkgnY0iXNlY3AyNTZrMaEDymNMrg1JrLQB2KTGtv6MVbcNEVv0AHacwUAPMljNMTg") },
+                        new Network.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QNfxw543Ypf4HXKXdYxkyzfcxcO-6p9X986WldfVpnVTQX1xlTnWrktEWUbeTZnmgOuAY_KUhbVV1Ft98WoYUBMBgmlkgnY0iXNlY3AyNTZrMaEDDiy3QkHAxPyOgWbxp5oF1bDdlYE6dLCUUp8xfVw50jU") },
                     ],
                 }
             };
@@ -218,5 +219,14 @@ public class PortalSSZEncodingTests
     static byte[] RlpEncodeEnr(string enrString)
     {
         return EnrFactory.CreateFromString(enrString, IdentityVerifier).EncodeRecord();
+    }
+
+    [Test]
+    public void TestSSZEncodin2g()
+    {
+        byte[] response = Convert.FromHexString("0404000000019068acefea6dbabf091c10a10429ee6f7423beda11b7fe92f0487e2277f6aeed");
+        MessageUnion union;
+        //Content message;
+        SszEncoding.Decode(response, out union);
     }
 }
