@@ -38,8 +38,8 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, in blCtx, tracer, (opts != ExecutionOptions.Warmup && !opts.HasFlag(ExecutionOptions.NoValidation))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.NoValidation
+        return base.Execute(tx, in blCtx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.System))
+            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.System
             : opts);
     }
 
