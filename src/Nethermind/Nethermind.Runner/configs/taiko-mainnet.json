@@ -1,5 +1,5 @@
 {
-  "$schema": "/schema.json",
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/taiko-mainnet.json",
     "GenesisHash": "0x90bc60466882de9637e269e87abab53c9108cf9113188bc4f80bcfcb10e489b9",

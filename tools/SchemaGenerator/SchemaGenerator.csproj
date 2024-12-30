@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="update.ps1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="NJsonSchema" Version="11.0.2" />
   </ItemGroup>
 

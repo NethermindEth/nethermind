@@ -1,5 +1,5 @@
 {
-  "$schema": "/schema.json",
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/mekong.json",
     "GenesisHash": "0x13613aa073d32a70ebd3c9f952da2c0f956978b64c1b37c25641c6fecb024ade",
