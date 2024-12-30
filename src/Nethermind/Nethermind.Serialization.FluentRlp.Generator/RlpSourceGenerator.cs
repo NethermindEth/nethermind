@@ -39,7 +39,7 @@ public sealed class RlpSerializable(RlpRepresentation representation = RlpRepres
 public sealed class RlpSourceGenerator : IIncrementalGenerator
 {
     private const string Version = "0.1";
-    public const string GeneratedCodeAttribute = $"""[GeneratedCode("{nameof(RlpSourceGenerator)}", "{Version}")]""";
+    private const string GeneratedCodeAttribute = $"""[GeneratedCode("{nameof(RlpSourceGenerator)}", "{Version}")]""";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -232,20 +232,14 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 return "ReadBytes()";
         }
 
-        // Arrays
-        if (syntax is ArrayTypeSyntax array)
-        {
-            var elementType = array.ElementType;
-            return $"ReadArray(static (scoped ref RlpReader r) => r.{MapTypeToReadCall(elementType)})";
-        }
-
         // Generics
-        if (syntax is GenericNameSyntax or TupleTypeSyntax)
+        if (syntax is GenericNameSyntax or TupleTypeSyntax or ArrayTypeSyntax)
         {
             var typeConstructor = syntax switch
             {
                 GenericNameSyntax generic => generic.Identifier.ToString(),
                 TupleTypeSyntax _ => "Tuple",
+                ArrayTypeSyntax _ => "Array",
                 _ => throw new ArgumentOutOfRangeException(nameof(syntax))
             };
 
@@ -253,6 +247,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             {
                 GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
                 TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
+                ArrayTypeSyntax array => [array.ElementType],
                 _ => throw new ArgumentOutOfRangeException(nameof(syntax))
             };
 
@@ -278,28 +273,21 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     /// </summary>
     private static string MapTypeToWriteCall(string name, TypeSyntax syntax)
     {
-        // Arrays
-        if (syntax is ArrayTypeSyntax array)
+        // Hard-coded cases
+        switch (syntax.ToString())
         {
-            var elementType = array.ElementType;
-
-            switch (elementType.ToString())
-            {
-                case "byte" or "Byte" or "System.Byte":
-                    return $"Write(value.{name})";
-                default:
-                    return
-                        $"Write(value.{name}, static (ref RlpWriter w, {elementType} value) => w.Write(value))";
-            }
+            case "byte[]" or "Byte[]" or "System.Byte[]" or "Span<byte>" or "System.Span<byte>" or "ReadOnlySpan<byte>" or "System.ReadOnlySpan<byte>":
+                return $"Write(value.{name})";
         }
 
-        // Generics and Tuples
-        if (syntax is GenericNameSyntax or TupleTypeSyntax)
+        // Generics
+        if (syntax is GenericNameSyntax or TupleTypeSyntax or ArrayTypeSyntax)
         {
             var typeParameters = syntax switch
             {
                 GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
                 TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
+                ArrayTypeSyntax array => [array.ElementType],
                 _ => throw new ArgumentOutOfRangeException(nameof(syntax))
             };
 
