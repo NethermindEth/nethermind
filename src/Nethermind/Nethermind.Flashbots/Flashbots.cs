@@ -34,17 +34,10 @@ public class Flashbots : INethermindPlugin
             _api.LogManager
         );
 
-        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-            _api.WorldStateManager ?? throw new ArgumentNullException(nameof(_api.WorldStateManager)),
-            _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
-            _api.SpecProvider,
-            _api.LogManager
-        );
-
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
             _api.HeaderValidator ?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
+            _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
             _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
-            readOnlyTxProcessingEnv,
             readOnlyTxProcessingEnvFactory,
             _api.LogManager ?? throw new ArgumentNullException(nameof(_api.LogManager)),
             _api.SpecProvider ?? throw new ArgumentNullException(nameof(_api.SpecProvider)),

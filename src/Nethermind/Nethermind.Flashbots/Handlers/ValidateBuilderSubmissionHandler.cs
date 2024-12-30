@@ -35,7 +35,6 @@ public class ValidateSubmissionHandler
          | ProcessingOptions.IgnoreParentNotOnMainChain
          | ProcessingOptions.ForceProcessing
          | ProcessingOptions.StoreReceipts;
-    private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
 
     private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
 
@@ -53,8 +52,8 @@ public class ValidateSubmissionHandler
 
     public ValidateSubmissionHandler(
         IHeaderValidator headerValidator,
+        IBlockTree blockTree,
         IBlockValidator blockValidator,
-        ReadOnlyTxProcessingEnv txProcessingEnv,
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
         ILogManager logManager,
         ISpecProvider specProvider,
@@ -62,12 +61,11 @@ public class ValidateSubmissionHandler
     {
         _headerValidator = headerValidator;
         _blockValidator = blockValidator;
-        _txProcessingEnv = txProcessingEnv;
         _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
         _specProvider = specProvider;
         _logManager = logManager;
-        _blockTree = _txProcessingEnv.BlockTree;
-        _logger = txProcessingEnv.LogManager!.GetClassLogger();
+        _blockTree = blockTree;
+        _logger = logManager!.GetClassLogger();
         _flashbotsConfig = flashbotsConfig;
     }
 

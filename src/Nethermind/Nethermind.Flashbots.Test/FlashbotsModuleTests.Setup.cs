@@ -75,13 +75,16 @@ public partial class FlashbotsModuleTests
         ILogManager? logManager = null)
     => await CreateBaseBlockChain(flashbotsConfig ?? new FlashbotsConfig(), logManager).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    private IFlashbotsRpcModule CreateFlashbotsModule(MergeTestBlockChain chain, ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
+    private IFlashbotsRpcModule CreateFlashbotsModule(MergeTestBlockChain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
     {
         return new FlashbotsRpcModule(
             new ValidateSubmissionHandler(
                 chain.HeaderValidator,
+                chain.BlockTree,
                 chain.BlockValidator,
-                readOnlyTxProcessingEnv,
+                readOnlyTxProcessingEnvFactory,
+                chain.LogManager,
+                chain.SpecProvider,
                 chain.FlashbotsConfig
             )
         );
@@ -95,7 +98,7 @@ public partial class FlashbotsModuleTests
 
         public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
 
-        public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
+        public ReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; set; }
 
         public MergeTestBlockChain(IFlashbotsConfig flashbotsConfig, ILogManager? logManager = null)
         {
@@ -106,15 +109,15 @@ public partial class FlashbotsModuleTests
 
         public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
-        public ReadOnlyTxProcessingEnv CreateReadOnlyTxProcessingEnv()
+        public ReadOnlyTxProcessingEnvFactory CreateReadOnlyTxProcessingEnvFactory()
         {
-            ReadOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,
                 LogManager
             );
-            return ReadOnlyTxProcessingEnv;
+            return ReadOnlyTxProcessingEnvFactory;
         }
 
         protected override IBlockProcessor CreateBlockProcessor()
