@@ -3,10 +3,11 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Specs;
 
 namespace Nethermind.Shutter;
 
-public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
+public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff, ISpecProvider specProvider)
 {
     public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -21,22 +22,17 @@ public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, Tim
     public bool IsBlockUpToDate(Block head)
         => timestamper.UtcNowOffset.ToUnixTimeSeconds() - (long)head.Header.Timestamp < blockUpToDateCutoff.TotalSeconds;
 
-    public ulong GetSlot(ulong slotTimestampMs)
-    {
-        long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GenesisTimestampMs;
-        if (slotTimeSinceGenesis < 0)
-        {
-            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
-        }
-
-        return (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
-    }
-
     public (ulong slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs)
     {
-        ulong buildingSlot = GetSlot(slotTimestampMs);
-        long offset = GetCurrentOffsetMs(buildingSlot, slotTimestampMs);
-
-        return (buildingSlot, offset);
+        try
+        {
+            ulong buildingSlot = specProvider.CalculateSlot(slotTimestampMs / 1000);
+            long offset = GetCurrentOffsetMs(buildingSlot, slotTimestampMs);
+            return (buildingSlot, offset);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new ShutterSlotCalulationException($"Unable to calculate slot for timestamp {slotTimestampMs / 1000}s.", ex);
+        }
     }
 }

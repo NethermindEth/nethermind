@@ -23,7 +23,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x10);
+    public static Address Address { get; } = Address.FromNumber(0xe);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
@@ -36,7 +36,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     public const int ItemSize = 288;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext _)
     {
         Metrics.BlsG2MSMPrecompile++;
 

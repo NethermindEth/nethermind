@@ -418,6 +418,11 @@ namespace Nethermind.Core.Specs
 
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
+        /// <summary>
+        /// EIP-7843: Slot precompile
+        /// </summary>
+        bool IsEip7843Enabled { get; }
+
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }
