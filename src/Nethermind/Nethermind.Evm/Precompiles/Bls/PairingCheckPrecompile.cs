@@ -23,7 +23,7 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     private PairingCheckPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(0xf);
+    public static Address Address { get; } = Address.FromNumber(0x11);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
 

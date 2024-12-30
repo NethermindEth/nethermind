@@ -23,7 +23,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0xe);
+    public static Address Address { get; } = Address.FromNumber(0x10);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
