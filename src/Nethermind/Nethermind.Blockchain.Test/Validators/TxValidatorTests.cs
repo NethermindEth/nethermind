@@ -26,6 +26,9 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class TxValidatorTests
 {
+    private const int MaxBlobCount = 6;
+    private const int TargetBlobCount = 3;
+
     [SetUp]
     public void Setup()
     {
@@ -725,19 +728,19 @@ public class TxValidatorTests
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob - 1))
+            yield return new TestCaseData(MakeTestObject(MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob))
+            yield return new TestCaseData(MakeTestObject(MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob + 1))
+            yield return new TestCaseData(MakeTestObject(MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",

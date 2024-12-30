@@ -67,7 +67,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4895Enabled => spec.IsEip4895Enabled;
     public virtual bool IsEip4844Enabled => spec.IsEip4844Enabled;
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
-    public bool IsEip7840Enabled => spec.IsEip7840Enabled;
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
     public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;

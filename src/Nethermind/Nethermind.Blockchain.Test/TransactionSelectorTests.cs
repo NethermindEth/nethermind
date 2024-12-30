@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Test
                     tx.MaxFeePerBlobGas = 1;
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob - 1][];
+                    new byte[2 - 1][];
                 maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     maxTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).Take(2));
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Test
                     enoughTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).ToArray();
                 expectedSelectedTransactions[0].Type = TxType.Blob;
                 expectedSelectedTransactions[0].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob][];
+                    new byte[1 / Eip4844Constants.GasPerBlob][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];

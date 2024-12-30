@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -14,6 +15,9 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class BlobGasCalculatorTests
 {
+    private const int MaxBlobCount = 6;
+    private const int TargetBlobCount = 3;
+
     [TestCaseSource(nameof(ExcessBlobGasTestCaseSource))]
     public void Excess_blob_gas_is_calculated_properly((ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase)
     {
@@ -23,7 +27,13 @@ public class BlobGasCalculatorTests
                 .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
                 .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
 
-            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
+            OverridableReleaseSpec overridableReleaseSpec = new(spec)
+            {
+                MaxBlobCount = MaxBlobCount,
+                TargetBlobCount = TargetBlobCount,
+            };
+
+            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, overridableReleaseSpec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
         }
 
         Test(Homestead.Instance, false);
@@ -68,22 +78,22 @@ public class BlobGasCalculatorTests
     public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()
     {
         yield return (0, 0, 0);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob) - 1, 0);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob), 0);
-        yield return (100000, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob), 100000);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob) + 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 0, 0);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 2, Eip4844Constants.GasPerBlob * 2);
-        yield return (Eip4844Constants.MaxBlobGasPerBlock, 1, Eip4844Constants.TargetBlobGasPerBlock + Eip4844Constants.GasPerBlob * 1);
+        yield return (0, TargetBlobCount - 1, 0);
+        yield return (0, TargetBlobCount, 0);
+        yield return (100000, TargetBlobCount, 100000);
+        yield return (0, TargetBlobCount + 1, Eip4844Constants.GasPerBlob * 1);
+        yield return (TargetBlobCount * Eip4844Constants.GasPerBlob, 1, Eip4844Constants.GasPerBlob * 1);
+        yield return (TargetBlobCount * Eip4844Constants.GasPerBlob, 0, 0);
+        yield return (TargetBlobCount * Eip4844Constants.GasPerBlob, 2, Eip4844Constants.GasPerBlob * 2);
+        yield return (MaxBlobCount * Eip4844Constants.GasPerBlob, 1, (1 + TargetBlobCount) * Eip4844Constants.GasPerBlob);
         yield return (
-            Eip4844Constants.MaxBlobGasPerBlock,
-            (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob),
-            Eip4844Constants.MaxBlobGasPerBlock);
+            1,
+            TargetBlobCount,
+            1);
         yield return (
-            Eip4844Constants.MaxBlobGasPerBlock,
-            (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob),
-            Eip4844Constants.MaxBlobGasPerBlock * 2 - Eip4844Constants.TargetBlobGasPerBlock
+            MaxBlobCount * Eip4844Constants.GasPerBlob,
+            MaxBlobCount,
+            (MaxBlobCount * 2 - TargetBlobCount) * Eip4844Constants.GasPerBlob
             );
     }
 

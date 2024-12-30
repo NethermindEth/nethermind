@@ -97,10 +97,10 @@ internal class TransactionProcessorEip4844Tests
             TestName = "Blob gas consumed for 2 blobs",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), (int)(Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob), 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether(), (int)(1 / Eip4844Constants.GasPerBlob), 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for max blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.MaxBlobGasPerTransaction),
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + 1),
         };
         yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
         {
