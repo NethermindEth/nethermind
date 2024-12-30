@@ -27,7 +27,7 @@ public static class Rlp
     {
         var reader = new RlpReader(source);
         T result = func(ref reader);
-        // TODO: We might want to add an option to check for no trailing bytes.
+        if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
         return result;
     }
 }
