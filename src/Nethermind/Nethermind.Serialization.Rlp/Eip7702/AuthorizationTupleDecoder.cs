@@ -19,7 +19,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     {
         int length = stream.ReadSequenceLength();
         int check = length + stream.Position;
-        ulong chainId = stream.DecodeULong();
+        UInt256 chainId = stream.DecodeUInt256();
         Address? codeAddress = stream.DecodeAddress();
         ulong nonce = stream.DecodeULong();
         byte yParity = stream.DecodeByte();
@@ -43,7 +43,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     {
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
-        ulong chainId = decoderContext.DecodeULong();
+        UInt256 chainId = decoderContext.DecodeUInt256();
         Address? codeAddress = decoderContext.DecodeAddress();
         ulong nonce = decoderContext.DecodeULong();
         byte yParity = decoderContext.DecodeByte();
