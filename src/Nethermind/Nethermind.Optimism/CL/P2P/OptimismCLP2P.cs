@@ -202,7 +202,7 @@ public class OptimismCLP2P : IDisposable
         _ = _router.RunAsync(_localPeer, new Settings
         {
             DefaultSignaturePolicy = Settings.SignaturePolicy.StrictNoSign,
-            GetMessageId = (message => CalculateMessageId(message))
+            GetMessageId = CalculateMessageId
         }, token: _cancellationTokenSource.Token);
 
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.Data;
 
@@ -41,30 +42,30 @@ public class PayloadDecoder : IPayloadDecoder
         offset += 256;
         payload.PrevRandao = new(data[offset..(offset + 32)]);
         offset += 32;
-        payload.BlockNumber = (long)BitConverter.ToUInt64(data[offset..(offset + 8)]);
+        payload.BlockNumber = (long)BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
         offset += 8;
-        payload.GasLimit = (long)BitConverter.ToUInt64(data[offset..(offset + 8)]);
+        payload.GasLimit = (long)BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
         offset += 8;
-        payload.GasUsed = (long)BitConverter.ToUInt64(data[offset..(offset + 8)]);
+        payload.GasUsed = (long)BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
         offset += 8;
-        payload.Timestamp = BitConverter.ToUInt64(data[offset..(offset + 8)]);
+        payload.Timestamp = BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
         offset += 8;
 
-        UInt32 extraDataOffset = 32 + BitConverter.ToUInt32(data[offset..(offset + 4)]);
+        UInt32 extraDataOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(data[offset..(offset + 4)]);
         offset += 4;
         payload.BaseFeePerGas = new(data[offset..(offset + 32)]);
         offset += 32;
         payload.BlockHash = new(data[offset..(offset + 32)]);
         offset += 32;
 
-        UInt32 transactionsOffset = 32 + BitConverter.ToUInt32(data[offset..(offset + 4)]);
+        UInt32 transactionsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(data[offset..(offset + 4)]);
         offset += 4;
-        UInt32 withdrawalsOffset = 32 + BitConverter.ToUInt32(data[offset..(offset + 4)]);
+        UInt32 withdrawalsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(data[offset..(offset + 4)]);
         offset += 4;
 
-        payload.BlobGasUsed = BitConverter.ToUInt64(data[offset..(offset + 8)]);
+        payload.BlobGasUsed = BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
         offset += 8;
-        payload.ExcessBlobGas = BitConverter.ToUInt64(data[offset..(offset + 8)]);
+        payload.ExcessBlobGas = BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
         offset += 8;
 
         if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset > transactionsOffset || withdrawalsOffset != data.Length)
@@ -83,7 +84,7 @@ public class PayloadDecoder : IPayloadDecoder
     byte[][] DecodeTransactions(ReadOnlySpan<byte> data)
     {
         if (4 > data.Length) throw new ArgumentException("Invalid transaction data");
-        UInt32 firstTxOffset = BitConverter.ToUInt32(data[..4]);
+        UInt32 firstTxOffset = BinaryPrimitives.ReadUInt32LittleEndian(data[..4]);
         UInt32 txCount = firstTxOffset / 4;
         byte[][] txs = new byte[txCount][];
         int previous = (int)firstTxOffset;
@@ -93,7 +94,7 @@ public class PayloadDecoder : IPayloadDecoder
             if (i + 1 < txCount)
             {
                 if (i * 4 + 8 > data.Length) throw new ArgumentException("Invalid transaction data");
-                next = (int)BitConverter.ToUInt32(data[(i * 4 + 4)..(i * 4 + 8)]);
+                next = (int)BinaryPrimitives.ReadUInt32LittleEndian(data[(i * 4 + 4)..(i * 4 + 8)]);
             }
             else
             {
