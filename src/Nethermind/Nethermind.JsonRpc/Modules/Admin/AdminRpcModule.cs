@@ -146,13 +146,13 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block)
     {
-        SearchResult<BlockHeader> headerSearchResult = _blockTree.SearchForHeader(block);
-        if (headerSearchResult.Object is null)
+        BlockHeader? header = _blockTree.FindHeader(block);
+        if (header is null)
         {
             return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(headerSearchResult.Object));
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
     }
 
     public ResultWrapper<PruningStatus> admin_prune()
@@ -162,13 +162,13 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
     {
-        SearchResult<BlockHeader> headerSearchResult = _blockTree.SearchForHeader(block);
-        if (headerSearchResult.Object is null)
+        BlockHeader? header = _blockTree.FindHeader(block);
+        if (header is null)
         {
             return ResultWrapper<string>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        if (!_blockingVerifyTrie.TryStartVerifyTrie(headerSearchResult.Object))
+        if (!_blockingVerifyTrie.TryStartVerifyTrie(header))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
         }
