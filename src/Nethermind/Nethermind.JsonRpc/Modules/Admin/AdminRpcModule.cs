@@ -168,6 +168,11 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<string>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
+        if (!_stateReader.HasStateForBlock(header))
+        {
+            return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
+        }
+
         if (!_blockingVerifyTrie.TryStartVerifyTrie(header))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
