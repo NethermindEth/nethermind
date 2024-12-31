@@ -55,6 +55,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         {
             data.Event.Wait();
         }
+
+        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
     }
 
     /// <summary>
@@ -142,7 +144,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             int i = _data.Index.GetNext();
             while (i < _data.ToExclusive)
             {
-                _data.CancellationToken.ThrowIfCancellationRequested();
+                if (_data.CancellationToken.IsCancellationRequested) return;
                 _data.Action(i);
                 // Get the next index
                 i = _data.Index.GetNext();
@@ -277,6 +279,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             {
                 data.Event.Wait();
             }
+
+            parallelOptions.CancellationToken.ThrowIfCancellationRequested();
         }
 
         /// <summary>
@@ -296,7 +300,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 int i = _data.Index.GetNext();
                 while (i < _data.ToExclusive)
                 {
-                    _data.CancellationToken.ThrowIfCancellationRequested();
+                    if (_data.CancellationToken.IsCancellationRequested) return;
                     value = _data.Action(i, value);
                     i = _data.Index.GetNext();
                 }
