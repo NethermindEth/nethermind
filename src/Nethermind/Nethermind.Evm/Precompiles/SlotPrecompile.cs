@@ -7,7 +7,7 @@ namespace Nethermind.Evm.Precompiles
     public class SlotPrecompile : IPrecompile<SlotPrecompile>
     {
         public static SlotPrecompile Instance { get; } = new();
-        
+
         public static Address Address => new("0x0000000000000000000000000000000000000014");
 
         private SlotPrecompile() { }
@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Precompiles
             {
                 return IPrecompile.Failure;
             }
-            
+
             byte[] result = new byte[32];
             for (int i = 0; i < 8; i++)
             {
@@ -41,4 +41,4 @@ namespace Nethermind.Evm.Precompiles
             return (result, true);
         }
     }
-} 
+}
