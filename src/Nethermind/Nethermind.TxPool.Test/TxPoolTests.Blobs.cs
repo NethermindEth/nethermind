@@ -52,7 +52,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength(shouldCountBlobs: false) / 8 + (sizeExceeded ? -1 : 1) };
+            var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) - (sizeExceeded ? 1 : 0) };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
