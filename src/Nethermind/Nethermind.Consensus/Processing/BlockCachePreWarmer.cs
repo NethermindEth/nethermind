@@ -24,7 +24,6 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount * 4);
-    private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount * 4);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -135,7 +134,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             ParallelUnbalancedWork.For<BlockState>(0, block.Transactions.Length, parallelOptions, new(this, block, stateRoot, spec), static (i, state) =>
             {
                 IReadOnlyTxProcessorSource env = state.PreWarmer._envPool.Get();
-                SystemTransaction systemTransaction = state.PreWarmer._systemTransactionPool.Get();
                 Transaction? tx = null;
                 try
                 {
@@ -143,7 +141,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     if (state.Block.TransactionProcessed > i) return state;
 
                     tx = state.Block.Transactions[i];
-                    tx.CopyTo(systemTransaction);
                     using IReadOnlyTxProcessingScope scope = env.Build(state.StateRoot);
 
                     Address senderAddress = tx.SenderAddress!;
@@ -170,7 +167,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = scope.TransactionProcessor.Warmup(systemTransaction, new BlockExecutionContext(state.Block.Header.Clone()), NullTxTracer.Instance);
+                    TransactionResult result = scope.TransactionProcessor.Warmup(tx, new BlockExecutionContext(state.BlockHeader), NullTxTracer.Instance);
                     if (state.PreWarmer._logger.IsTrace) state.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
@@ -183,7 +180,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 }
                 finally
                 {
-                    state.PreWarmer._systemTransactionPool.Return(systemTransaction);
                     state.PreWarmer._envPool.Return(env);
                 }
 
@@ -308,12 +304,13 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private struct BlockState(BlockCachePreWarmer preWarmer, Block block, Hash256 stateRoot, IReleaseSpec spec)
+    private readonly struct BlockState(BlockCachePreWarmer preWarmer, Block block, Hash256 stateRoot, IReleaseSpec spec)
     {
-        public BlockCachePreWarmer PreWarmer = preWarmer;
-        public Block Block = block;
-        public Hash256 StateRoot = stateRoot;
-        public IReleaseSpec Spec = spec;
+        public readonly BlockCachePreWarmer PreWarmer = preWarmer;
+        public readonly Block Block = block;
+        public readonly Hash256 StateRoot = stateRoot;
+        public readonly IReleaseSpec Spec = spec;
+        public readonly BlockHeader BlockHeader => Block.Header;
     }
 }
 
