@@ -41,7 +41,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     {
         int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
 
-        Data data = new(threads, fromInclusive, toExclusive, action);
+        Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
         for (int i = 0; i < threads - 1; i++)
         {
@@ -137,16 +137,22 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// </summary>
     public void Execute()
     {
-        int i = _data.Index.GetNext();
-        while (i < _data.ToExclusive)
+        try
         {
-            _data.Action(i);
-            // Get the next index
-            i = _data.Index.GetNext();
+            int i = _data.Index.GetNext();
+            while (i < _data.ToExclusive)
+            {
+                _data.CancellationToken.ThrowIfCancellationRequested();
+                _data.Action(i);
+                // Get the next index
+                i = _data.Index.GetNext();
+            }
         }
-
-        // Signal that this thread has completed its work
-        _data.MarkThreadCompleted();
+        finally
+        {
+            // Signal that this thread has completed its work
+            _data.MarkThreadCompleted();
+        }
     }
 
     /// <summary>
@@ -173,7 +179,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <summary>
     /// Represents the base data shared among threads during parallel execution.
     /// </summary>
-    private class BaseData(int threads, int fromInclusive, int toExclusive)
+    private class BaseData(int threads, int fromInclusive, int toExclusive, CancellationToken token)
     {
         /// <summary>
         /// Gets the shared counter for indices.
@@ -181,6 +187,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
         public SemaphoreSlim Event { get; } = new(initialCount: 0);
         private int _activeThreads = threads;
+        public CancellationToken CancellationToken { get; } = token;
 
         /// <summary>
         /// Gets the exclusive upper bound of the range.
@@ -212,8 +219,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <summary>
     /// Represents the data shared among threads for the parallel action.
     /// </summary>
-    private class Data(int threads, int fromInclusive, int toExclusive, Action<int> action) :
-        BaseData(threads, fromInclusive, toExclusive)
+    private class Data(int threads, int fromInclusive, int toExclusive, Action<int> action, CancellationToken token) :
+        BaseData(threads, fromInclusive, toExclusive, token)
     {
         /// <summary>
         /// Gets the action to be executed for each iteration.
@@ -254,7 +261,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 : Environment.ProcessorCount;
 
             // Create shared data with thread-local initializers and finalizers
-            var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally);
+            var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
             // Queue work items to the thread pool for all threads except the current one
             for (int i = 0; i < threads - 1; i++)
@@ -284,16 +291,21 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public void Execute()
         {
             TLocal? value = _data.Init();
-            int i = _data.Index.GetNext();
-            while (i < _data.ToExclusive)
+            try
             {
-                value = _data.Action(i, value);
-                i = _data.Index.GetNext();
+                int i = _data.Index.GetNext();
+                while (i < _data.ToExclusive)
+                {
+                    _data.CancellationToken.ThrowIfCancellationRequested();
+                    value = _data.Action(i, value);
+                    i = _data.Index.GetNext();
+                }
             }
-
-            _data.Finally(value);
-
-            _data.MarkThreadCompleted();
+            finally
+            {
+                _data.Finally(value);
+                _data.MarkThreadCompleted();
+            }
         }
 
         /// <summary>
@@ -304,9 +316,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             int fromInclusive,
             int toExclusive,
             Func<int, TLocal, TLocal> action,
-            Func<TValue>? init = null,
-            TValue? initValue = default,
-            Action<TValue>? @finally = null) : BaseData(threads, fromInclusive, toExclusive)
+            Func<TValue>? init,
+            TValue? initValue,
+            Action<TValue>? @finally,
+            CancellationToken token) : BaseData(threads, fromInclusive, toExclusive, token)
         {
             /// <summary>
             /// Gets the action to be executed for each iteration.
