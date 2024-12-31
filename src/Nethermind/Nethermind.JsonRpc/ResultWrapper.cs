@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;
 
@@ -63,6 +64,11 @@ namespace Nethermind.JsonRpc
             {
                 disposable.Dispose();
             }
+        }
+
+        public static ResultWrapper<byte[]> Ok(Hash256 hash)
+        {
+            throw new NotImplementedException();
         }
     }
 }
