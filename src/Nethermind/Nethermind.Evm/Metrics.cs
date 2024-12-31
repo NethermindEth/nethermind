@@ -141,17 +141,79 @@ public class Metrics
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
-    internal static long Transactions { get; set; }
-    internal static float AveGasPrice { get; set; }
-    internal static float MinGasPrice { get; set; } = float.MaxValue;
-    internal static float MaxGasPrice { get; set; }
-    internal static float EstMedianGasPrice { get; set; }
-
     internal static long BlockTransactions { get; set; }
-    internal static float BlockAveGasPrice { get; set; }
-    internal static float BlockMinGasPrice { get; set; } = float.MaxValue;
-    internal static float BlockMaxGasPrice { get; set; }
-    internal static float BlockEstMedianGasPrice { get; set; }
+
+    private static float _blockAveGasPrice;
+    internal static float BlockAveGasPrice
+    {
+        get => _blockAveGasPrice;
+        set
+        {
+            _blockAveGasPrice = value;
+            if (value != 0)
+            {
+                GasPriceAve = value;
+            }
+        }
+    }
+
+    private static float _blockMinGasPrice = float.MaxValue;
+    internal static float BlockMinGasPrice
+    {
+        get => _blockMinGasPrice;
+        set
+        {
+            _blockMinGasPrice = value;
+            if (_blockMinGasPrice != float.MaxValue)
+            {
+                GasPriceMin = value;
+            }
+        }
+    }
+
+    private static float _blockMaxGasPrice;
+    internal static float BlockMaxGasPrice
+    {
+        get => _blockMaxGasPrice;
+        set
+        {
+            _blockMaxGasPrice = value;
+            if (value != 0)
+            {
+                GasPriceMax = value;
+            }
+        }
+    }
+
+    private static float _blockEstMedianGasPrice;
+    internal static float BlockEstMedianGasPrice
+    {
+        get => _blockEstMedianGasPrice;
+        set
+        {
+            _blockEstMedianGasPrice = value;
+            if (value != 0)
+            {
+                GasPriceMedian = value;
+            }
+        }
+    }
+
+    [GaugeMetric]
+    [Description("Minimum tx gas price in block")]
+    public static float GasPriceMin { get; private set; }
+
+    [GaugeMetric]
+    [Description("Median tx gas price in block")]
+    public static float GasPriceMedian { get; private set; }
+
+    [GaugeMetric]
+    [Description("Mean tx gas price in block")]
+    public static float GasPriceAve { get; private set; }
+
+    [GaugeMetric]
+    [Description("Maximum tx gas price in block")]
+    public static float GasPriceMax { get; private set; }
 
     public static void ResetBlockStats()
     {

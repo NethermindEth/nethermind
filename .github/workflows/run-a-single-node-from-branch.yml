@@ -290,6 +290,7 @@ jobs:
           echo "l2_cl_extra_flags=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_cl_extra_flags)" >> $GITHUB_OUTPUT
           echo "layer1_el_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
           echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
+          echo "NON_VALIDATOR_MODE=${{ inputs.non_validator_mode }}" >> $GITHUB_OUTPUT
 
       - name: Trigger Node creation Repo Action
         uses: benc-uk/workflow-dispatch@v1

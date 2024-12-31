@@ -69,7 +69,7 @@ namespace Nethermind.Abi
         private static Type GetCSharpType(AbiType[] elements)
         {
             Type genericType = Type.GetType("System.ValueTuple`" + elements.Length)!;
-            Type[] typeArguments = elements.Select(v => v.CSharpType).ToArray();
+            Type[] typeArguments = elements.Select(static v => v.CSharpType).ToArray();
             return genericType.MakeGenericType(typeArguments);
         }
     }
@@ -94,7 +94,7 @@ namespace Nethermind.Abi
             _properties = typeof(T).GetProperties();
             _elements = _properties.Select(GetAbiType).ToArray();
             Name = $"({string.Join(",", _elements.AsEnumerable())})";
-            IsDynamic = _elements.Any(p => p.IsDynamic);
+            IsDynamic = _elements.Any(static p => p.IsDynamic);
         }
 
         public override (object, int) Decode(byte[] data, int position, bool packed)

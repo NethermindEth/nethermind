@@ -17,10 +17,10 @@ public class AssertionsSetup
     [OneTimeSetUp]
     public void RunBeforeAnyTests()
     {
-        AssertionOptions.AssertEquivalencyUsing(options =>
+        AssertionOptions.AssertEquivalencyUsing(static options =>
             {
                 options
-                    .Using<Memory<byte>>(context =>
+                    .Using<Memory<byte>>(static context =>
                         context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
                     .WhenTypeIs<Memory<byte>>();
                 return options;

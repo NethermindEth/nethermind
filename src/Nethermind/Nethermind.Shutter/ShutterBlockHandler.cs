@@ -125,7 +125,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask =>
+        _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
         {
             waitTask.Value.CancellationRegistration.Dispose();
             waitTask.Value.TimeoutCancellationRegistration.Dispose();

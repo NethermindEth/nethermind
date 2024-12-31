@@ -214,7 +214,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
+                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
                 else
                 {
@@ -241,7 +241,7 @@ namespace Nethermind.Consensus.Processing
                         < 2000 => orangeText,
                         _ => redText
                     };
-                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
+                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
 
                 string mgasPerSecondColor = (mgasPerSecond / (block.GasLimit / 1_000_000.0)) switch
@@ -285,14 +285,14 @@ namespace Nethermind.Consensus.Processing
                 var recoveryQueue = Metrics.RecoveryQueueSize;
                 var processingQueue = Metrics.ProcessingQueueSize;
 
-                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0}  " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(_currentSelfDestructOps - _lastSelfDestructOps > 0 ? $"{darkGreyText}({-(_currentSelfDestructOps - _lastSelfDestructOps),3:N0}){resetColor}" : "")}");
+                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0}  " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(_currentSelfDestructOps - _lastSelfDestructOps > 0 ? $"{darkGreyText}({-(_currentSelfDestructOps - _lastSelfDestructOps),3:N0}){resetColor}" : "")}");
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,10:F2} Blk/s | recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,10:F2} Blk/s | exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
                 }
             }
 

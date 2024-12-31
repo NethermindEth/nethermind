@@ -17,7 +17,7 @@ namespace Nethermind.Db
 
         private static NullDb? _instance;
 
-        public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullDb());
+        public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new NullDb());
 
         public string Name { get; } = "NullDb";
 
@@ -31,7 +31,7 @@ namespace Nethermind.Db
             throw new NotSupportedException();
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(static k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
