@@ -268,7 +268,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     }
                 }
 
-                State baseState = new(envPool, block, StateRoot);
+                AddressWarmingState baseState = new(envPool, block, StateRoot);
 
                 ParallelUnbalancedWork.For(
                     0,
@@ -292,7 +292,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
                     return state;
                 },
-                State.FinallyAction);
+                AddressWarmingState.FinallyAction);
             }
             catch (OperationCanceledException)
             {
@@ -301,25 +301,26 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         }
     }
 
-    private class State(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, Hash256 stateRoot) : IDisposable
+    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, Hash256 stateRoot) : IDisposable
     {
-        public static Action<State> FinallyAction { get; } = DisposeThreadState;
+        public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
 
-        public ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        public Block Block = block;
-        public Hash256 StateRoot = stateRoot;
-        public IReadOnlyTxProcessorSource Env;
-        public IReadOnlyTxProcessingScope Scope;
+        public readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
+        public readonly Block Block = block;
+        public readonly Hash256 StateRoot = stateRoot;
+        public readonly IReadOnlyTxProcessorSource? Env;
+        public readonly IReadOnlyTxProcessingScope? Scope;
 
-        public State InitThreadState()
+        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, Hash256 stateRoot, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, stateRoot)
         {
-            State threadState = new(EnvPool, Block, StateRoot)
-            {
-                Env = EnvPool.Get()
-            };
-            threadState.Scope = threadState.Env.Build(StateRoot);
+            Env = env;
+            Scope = scope;
+        }
 
-            return threadState;
+        public AddressWarmingState InitThreadState()
+        {
+            IReadOnlyTxProcessorSource env = EnvPool.Get();
+            return new(EnvPool, Block, StateRoot, env, scope: env.Build(StateRoot));
         }
 
         public void Dispose()
@@ -328,7 +329,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             EnvPool.Return(Env);
         }
 
-        private static void DisposeThreadState(State state) => state.Dispose();
+        private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
     }
 
     private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
