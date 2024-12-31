@@ -288,5 +288,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
+
+        public BlockBuilder WithSlotNumber(ulong slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
     }
 }
