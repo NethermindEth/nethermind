@@ -304,13 +304,13 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private struct BlockState(BlockCachePreWarmer preWarmer, Block block, Hash256 stateRoot, IReleaseSpec spec)
+    private readonly struct BlockState(BlockCachePreWarmer preWarmer, Block block, Hash256 stateRoot, IReleaseSpec spec)
     {
-        public BlockCachePreWarmer PreWarmer = preWarmer;
-        public Block Block = block;
-        public Hash256 StateRoot = stateRoot;
-        public IReleaseSpec Spec = spec;
-        public BlockHeader BlockHeader => Block.Header;
+        public readonly BlockCachePreWarmer PreWarmer = preWarmer;
+        public readonly Block Block = block;
+        public readonly Hash256 StateRoot = stateRoot;
+        public readonly IReleaseSpec Spec = spec;
+        public readonly BlockHeader BlockHeader => Block.Header;
     }
 }
 
