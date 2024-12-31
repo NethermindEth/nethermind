@@ -24,7 +24,6 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount * 4);
-    private readonly ObjectPool<Transaction> _transactionPool = new DefaultObjectPool<Transaction>(new DefaultPooledObjectPolicy<Transaction>(), Environment.ProcessorCount * 4);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -135,7 +134,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             ParallelUnbalancedWork.For<BlockState>(0, block.Transactions.Length, parallelOptions, new(this, block, stateRoot, spec), static (i, state) =>
             {
                 IReadOnlyTxProcessorSource env = state.PreWarmer._envPool.Get();
-                Transaction txCopy = state.PreWarmer._transactionPool.Get();
                 Transaction? tx = null;
                 try
                 {
@@ -143,7 +141,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     if (state.Block.TransactionProcessed > i) return state;
 
                     tx = state.Block.Transactions[i];
-                    tx.CopyTo(txCopy);
                     using IReadOnlyTxProcessingScope scope = env.Build(state.StateRoot);
 
                     Address senderAddress = tx.SenderAddress!;
@@ -183,7 +180,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 }
                 finally
                 {
-                    state.PreWarmer._transactionPool.Return(txCopy);
                     state.PreWarmer._envPool.Return(env);
                 }
 
