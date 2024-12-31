@@ -19,8 +19,7 @@ public class ShutterBlockImprovementContextFactory(
     ShutterTxSource shutterTxSource,
     IShutterConfig shutterConfig,
     ShutterTime time,
-    ILogManager logManager,
-    TimeSpan slotLength) : IBlockImprovementContextFactory
+    ILogManager logManager) : IBlockImprovementContextFactory
 {
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
@@ -35,7 +34,6 @@ public class ShutterBlockImprovementContextFactory(
                                            parentHeader,
                                            payloadAttributes,
                                            startDateTime,
-                                           slotLength,
                                            logManager);
 }
 
@@ -58,8 +56,9 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     private readonly ShutterTime _time;
     private readonly BlockHeader _parentHeader;
     private readonly PayloadAttributes _payloadAttributes;
+    private readonly TimeSpan _keyWaitTimeout = TimeSpan.FromSeconds(10);
+    private readonly ulong _slotNumber;
     private readonly ulong _slotTimestampMs;
-    private readonly TimeSpan _slotLength;
 
     internal ShutterBlockImprovementContext(
         IBlockProducer blockProducer,
@@ -70,16 +69,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        TimeSpan slotLength,
         ILogManager logManager)
     {
-        if (slotLength == TimeSpan.Zero)
-        {
-            throw new ArgumentException("Cannot be zero.", nameof(slotLength));
-        }
-
-        _slotTimestampMs = payloadAttributes.Timestamp * 1000;
-
         _cancellationTokenSource = new CancellationTokenSource();
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
@@ -87,10 +78,11 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _blockProducer = blockProducer;
         _txSignal = shutterTxSignal;
         _shutterConfig = shutterConfig;
-        _time = time;
         _parentHeader = parentHeader;
         _payloadAttributes = payloadAttributes;
-        _slotLength = slotLength;
+        _time = time;
+        _slotNumber = payloadAttributes.SlotNumber ?? 0;
+        _slotTimestampMs = payloadAttributes.Timestamp * 1000;
 
         ImprovementTask = Task.Run(ImproveBlock);
     }
@@ -105,34 +97,22 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     {
         if (_logger.IsDebug) _logger.Debug("Running Shutter block improvement.");
 
-        ulong slot;
-        long offset;
-        try
-        {
-            (slot, offset) = _time.GetBuildingSlotAndOffset(_slotTimestampMs);
-        }
-        catch (ShutterTime.ShutterSlotCalulationException e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
-            await BuildBlock();
-            return CurrentBestBlock;
-        }
-
-        bool includedShutterTxs = await TryBuildShutterBlock(slot);
+        bool includedShutterTxs = await TryBuildShutterBlock(_slotNumber);
         if (includedShutterTxs)
         {
             return CurrentBestBlock;
         }
 
+        long offset = _time.GetCurrentOffsetMs(_slotNumber, _slotTimestampMs);
         long waitTime = _shutterConfig.MaxKeyDelay - offset;
         if (waitTime <= 0)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {_slotNumber}, offset of {offset}ms is too late.");
             return CurrentBestBlock;
         }
-        waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
+        waitTime = Math.Min(waitTime, (long)_keyWaitTimeout.TotalMilliseconds);
 
-        if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
+        if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {_slotNumber} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         ObjectDisposedException.ThrowIf(_cancellationTokenSource is null, this);
 
@@ -141,18 +121,18 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         try
         {
-            await _txSignal.WaitForTransactions(slot, source.Token);
+            await _txSignal.WaitForTransactions(_slotNumber, source.Token);
         }
         catch (OperationCanceledException)
         {
             Metrics.ShutterKeysMissed++;
-            if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
+            if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {_slotNumber}.");
 
             return CurrentBestBlock;
         }
 
         // should succeed after waiting for transactions
-        await TryBuildShutterBlock(slot);
+        await TryBuildShutterBlock(_slotNumber);
 
         return CurrentBestBlock;
     }

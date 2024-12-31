@@ -96,10 +96,9 @@ public class ShutterApi : IShutterApi
             TxLoader,
             Time,
             logManager,
-            _slotLength,
             BlockWaitCutoff);
 
-        TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
+        TxSource = new ShutterTxSource(TxLoader, _cfg, logManager);
 
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
@@ -116,8 +115,7 @@ public class ShutterApi : IShutterApi
             TxSource,
             _cfg,
             Time,
-            _logManager,
-            _slotLength
+            _logManager
         );
         return BlockImprovementContextFactory;
     }

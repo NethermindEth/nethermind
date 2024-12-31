@@ -12,6 +12,7 @@ public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, Tim
 
     public readonly ulong GenesisTimestampMs = genesisTimestampMs;
 
+    // n.b. cannot handle changes to slot length
     public ulong GetSlotTimestampMs(ulong slot)
         => GenesisTimestampMs + slot * (ulong)slotLength.TotalMilliseconds;
 
@@ -20,23 +21,4 @@ public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, Tim
 
     public bool IsBlockUpToDate(Block head)
         => timestamper.UtcNowOffset.ToUnixTimeSeconds() - (long)head.Header.Timestamp < blockUpToDateCutoff.TotalSeconds;
-
-    public ulong GetSlot(ulong slotTimestampMs)
-    {
-        long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GenesisTimestampMs;
-        if (slotTimeSinceGenesis < 0)
-        {
-            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
-        }
-
-        return (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
-    }
-
-    public (ulong slot, long slotOffset) GetBuildingSlotAndOffset(ulong slotTimestampMs)
-    {
-        ulong buildingSlot = GetSlot(slotTimestampMs);
-        long offset = GetCurrentOffsetMs(buildingSlot, slotTimestampMs);
-
-        return (buildingSlot, offset);
-    }
 }

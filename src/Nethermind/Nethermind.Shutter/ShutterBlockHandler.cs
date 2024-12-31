@@ -34,7 +34,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly ReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ulong _chainId;
     private readonly IShutterConfig _cfg;
-    private readonly TimeSpan _slotLength;
+    private readonly TimeSpan _maxWaitTime = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _blockWaitCutoff;
     private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
     private bool _haveCheckedRegistered = false;
@@ -55,7 +55,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         ShutterTxLoader txLoader,
         ShutterTime time,
         ILogManager logManager,
-        TimeSpan slotLength,
         TimeSpan blockWaitCutoff)
     {
         _chainId = chainId;
@@ -71,7 +70,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _abiEncoder = abiEncoder;
         _logManager = logManager;
         _envFactory = envFactory;
-        _slotLength = slotLength;
         _blockWaitCutoff = blockWaitCutoff;
 
         _blockTree.NewHeadBlock += OnNewHeadBlock;
@@ -91,6 +89,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
             tcs = new();
 
+            // n.b. this does not currently support changes to slot length
             long offset = _time.GetCurrentOffsetMs(slot);
             long waitTime = (long)_blockWaitCutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
@@ -98,7 +97,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
                 if (_logger.IsDebug) _logger.Debug($"Shutter no longer waiting for block in slot {slot}, offset of {offset}ms is after cutoff of {(int)_blockWaitCutoff.TotalMilliseconds}ms.");
                 return null;
             }
-            waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
+            waitTime = Math.Min(waitTime, (long)_maxWaitTime.TotalMilliseconds);
 
             ulong taskId = _blockWaitTaskId++;
             CancellationTokenSource timeoutSource = initTimeoutSource is null ? new CancellationTokenSource((int)waitTime) : initTimeoutSource((int)waitTime);
@@ -170,7 +169,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
             lock (_syncObject)
             {
-                ulong slot = _time.GetSlot(head.Timestamp * 1000);
+                ulong slot = head.SlotNumber ?? 0;
                 _slotToBlockHash.Set(slot, head.Hash);
 
                 if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))
