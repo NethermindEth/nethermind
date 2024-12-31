@@ -16,17 +16,9 @@ internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) :
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        bool maxTxSizeExceeded = false;
+        long maxSize = tx.SupportsBlobs ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
 
-        if (!tx.SupportsBlobs)
-        {
-            if (tx.GetLength() > _configuredMaxTxSize)
-                maxTxSizeExceeded = true;
-        }
-        else if (tx.GetLength(shouldCountBlobs: false) > _configuredMaxBlobTxSize)
-            maxTxSizeExceeded = true;
-
-        if (maxTxSizeExceeded)
+        if (tx.GetLength(shouldCountBlobs: false) > maxSize)
         {
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, max tx size exceeded.");
             return AcceptTxResult.MaxTxSizeExceeded;
