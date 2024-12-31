@@ -334,7 +334,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             /// Initializes the thread-local data.
             /// </summary>
             /// <returns>The initialized thread-local data.</returns>
-            public TValue Init() => initValue ?? (init is not null ? init.Invoke() : default)!;
+            public TValue Init() => init is not null ? init.Invoke() : initValue!;
 
             /// <summary>
             /// Finalizes the thread-local data.

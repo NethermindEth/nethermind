@@ -275,9 +275,8 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     block.Transactions.Length,
                     parallelOptions,
                     baseState.InitThreadState,
-                static (i, nullableState) =>
+                static (i, state) =>
                 {
-                    AddressWarmingState state = nullableState.GetValueOrDefault();
                     Transaction tx = state.Block.Transactions[i];
                     Address? sender = tx.SenderAddress;
 
@@ -304,7 +303,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
     private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, Hash256 stateRoot) : IDisposable
     {
-        public static Action<AddressWarmingState?> FinallyAction { get; } = DisposeThreadState;
+        public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
 
         public readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
         public readonly Block Block = block;
@@ -318,7 +317,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             Scope = scope;
         }
 
-        public AddressWarmingState? InitThreadState()
+        public AddressWarmingState InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
             return new(EnvPool, Block, StateRoot, env, scope: env.Build(StateRoot));
@@ -330,7 +329,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             EnvPool.Return(Env);
         }
 
-        private static void DisposeThreadState(AddressWarmingState? state) => state?.Dispose();
+        private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
     }
 
     private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
