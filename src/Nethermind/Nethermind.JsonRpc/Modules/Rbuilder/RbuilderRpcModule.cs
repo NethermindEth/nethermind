@@ -44,7 +44,10 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (accountChange.SelfDestructed)
                 {
                     worldState.DeleteAccount(address);
-                    if (accountChange.Balance is not null || accountChange.Nonce is not null || accountChange.ChangedSlots?.Count > 0) worldState.CreateAccountIfNotExists(address, 0, 0);
+                    if (accountChange.Balance is not null
+                        || accountChange.Nonce is not null
+                        || accountChange.Code is not null
+                        || accountChange.ChangedSlots?.Count > 0) worldState.CreateAccountIfNotExists(address, 0, 0);
                 }
 
                 // IWorldState does not actually have set nonce or set balance.
@@ -73,6 +76,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     {
                         worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
                     }
+                }
+
+                if (accountChange.Code is not null)
+                {
+                    worldState.InsertCode(address, accountChange.Code, releaseSpec);
                 }
 
                 if (accountChange.ChangedSlots is not null)
