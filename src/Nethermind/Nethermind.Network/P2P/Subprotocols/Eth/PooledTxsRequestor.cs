@@ -19,6 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITxPool _txPool;
         private readonly bool _blobSupportEnabled;
         private readonly long _configuredMaxTxSize;
+        private readonly long _configuredMaxBlobTxSize;
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
@@ -27,6 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _txPool = txPool;
             _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
             _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+            _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize ?? long.MaxValue;
         }
 
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Hash256> hashes)
@@ -72,7 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 TxType txType = (TxType)discoveredTxHashesAndSizes[i].Type;
 
                 if (txType != TxType.Blob && txSize > _configuredMaxTxSize
-                    || txType == TxType.Blob && txSize > _configuredMaxTxSize * 8 + (long)Eip4844Constants.MaxBlobGasPerBlock)
+                    || txType == TxType.Blob && txSize > _configuredMaxBlobTxSize + (long)Eip4844Constants.MaxBlobGasPerBlock)
                 {
                     continue;
                 }

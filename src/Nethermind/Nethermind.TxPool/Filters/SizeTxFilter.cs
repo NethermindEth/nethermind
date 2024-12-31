@@ -12,11 +12,13 @@ namespace Nethermind.TxPool.Filters;
 internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize ?? long.MaxValue;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        // for blob txs max size limit (excluding blobs) is 8 * maxTxSize
-        if (tx.GetLength(shouldCountBlobs: false) > _configuredMaxTxSize * (tx.SupportsBlobs ? 8 : 1))
+        // there are different max size limits for non-blob txs and blob txs (excluding blobs)
+        if(!tx.SupportsBlobs && tx.GetLength() > _configuredMaxTxSize
+           || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) > _configuredMaxBlobTxSize)
         {
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, max tx size exceeded.");
             return AcceptTxResult.MaxTxSizeExceeded;

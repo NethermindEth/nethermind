@@ -21,6 +21,7 @@ namespace Nethermind.TxPool
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
         public long? MaxTxSize { get; set; } = 128.KiB();
+        public long? MaxBlobTxSize { get; set; } = 1.MiB();
         public int? ReportMinutes { get; set; } = null;
     }
 }
