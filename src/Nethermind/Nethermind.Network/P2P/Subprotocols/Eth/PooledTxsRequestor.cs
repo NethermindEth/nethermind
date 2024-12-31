@@ -81,7 +81,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                         continue;
                 }
                 else if (txSize > _configuredMaxBlobTxSize + (long)Eip4844Constants.MaxBlobGasPerBlock)
-                        continue;
+                    continue;
 
                 if (txSize > packetSizeLeft && toRequestCount > 0)
                 {
