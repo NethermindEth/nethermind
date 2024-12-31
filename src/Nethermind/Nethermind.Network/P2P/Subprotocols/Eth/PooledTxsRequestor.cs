@@ -81,6 +81,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     continue;
                 }
 
+                if (!txType.SupportsBlobs())
+                {
+                    if (txSize > _configuredMaxTxSize)
+                        continue;
+                }
+                else if (txSize > _configuredMaxBlobTxSize + (long)Eip4844Constants.MaxBlobGasPerBlock)
+                        continue;
+
                 if (txSize > packetSizeLeft && toRequestCount > 0)
                 {
                     RequestPooledTransactionsEth66(send, hashesToRequest);
