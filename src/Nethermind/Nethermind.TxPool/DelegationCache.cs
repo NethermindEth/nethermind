@@ -1,0 +1,53 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Int256;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Nethermind.TxPool;
+internal sealed class DelegationCache
+{
+    private readonly ConcurrentDictionary<UInt256, int> _pendingDelegations = new();
+
+    public bool HasPending(AddressAsKey key, UInt256 nonce)
+    {
+        return _pendingDelegations.ContainsKey(KeyMask(key, nonce));
+    }
+
+    public void IncrementDelegationCount(AddressAsKey key, UInt256 nonce, bool increment)
+    {
+        UInt256 addressPlusNonce = KeyMask(key, nonce);
+
+        int value = increment ? 1 : -1;
+        var lastCount = _pendingDelegations.AddOrUpdate(addressPlusNonce,
+            (k) =>
+            {
+                if (increment)
+                    return 1;
+                return 0;
+            },
+            (k, c) => c + value);
+
+        if (lastCount == 0)
+        {
+            //Remove() is threadsafe and only removes if the count is the same as the updated one
+            ((ICollection<KeyValuePair<AddressAsKey, int>>)_pendingDelegations).Remove(
+                new KeyValuePair<AddressAsKey, int>(key, lastCount));
+        }
+    }
+
+    private static UInt256 KeyMask(AddressAsKey key, UInt256 nonce)
+    {
+        //A nonce cannot exceed 2^64-1 and an address is 20 bytes, so we can pack them together in one u256
+        UInt256 addressPlusNonce = new(key.Value.Bytes);
+        nonce <<= 64 * 3;
+        addressPlusNonce += nonce;
+        return addressPlusNonce;
+    }
+}

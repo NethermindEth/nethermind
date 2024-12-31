@@ -52,7 +52,7 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
-        private readonly ConcurrentDictionary<UInt256, int> _pendingDelegations = new();
+        private readonly DelegationCache _pendingDelegations = new();
 
 
         private readonly ILogger _logger;
@@ -150,7 +150,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new OnlyOneTxPerDelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository ),
+                new OnlyOneTxPerDelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -460,7 +460,7 @@ namespace Nethermind.TxPool
                     {
                         foreach (var auth in tx.AuthorizationList)
                         {
-                            IncrementDelegationCount(auth.Authority!, auth.Nonce, true);
+                            _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce, true);
                         }
                     }
                     // Clear proper snapshot
@@ -703,7 +703,7 @@ namespace Nethermind.TxPool
                 {
                     foreach (var auth in transaction.AuthorizationList)
                     {
-                        IncrementDelegationCount(auth.Authority!, auth.Nonce, false);
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce, false);
                     }
                 }
             }
@@ -826,30 +826,6 @@ namespace Nethermind.TxPool
             _accountCache.RemoveAccounts(arrayPoolList);
         }
 
-        private void IncrementDelegationCount(AddressAsKey key, UInt256 nonce, bool increment)
-        {
-            //A nonce cannot exceed 2^64-1 and an address is 20 bytes, so we can pack them together in one u256
-            UInt256 addressPlusNonce = new (key.Value.Bytes);
-            nonce <<= 64 * 3;
-            addressPlusNonce += nonce;
-                
-            int value = increment ? 1 : -1;
-            var lastCount = _pendingDelegations.AddOrUpdate(addressPlusNonce,
-                (k) =>
-                {
-                    if (increment)
-                        return 1;
-                    return 0;
-                },
-                (k, c) => c + value);
-
-            if (lastCount == 0)
-            {
-                //Remove() is threadsafe and only removes if the count is the same as the updated one
-                ((ICollection<KeyValuePair<AddressAsKey, int>>)_pendingDelegations).Remove(
-                    new KeyValuePair<AddressAsKey, int>(key, lastCount));
-            }
-        }
 
         private sealed class AccountCache : IAccountStateProvider
         {
