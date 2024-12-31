@@ -134,6 +134,7 @@ public class RegisterRpcModules : IStep
             _api.PeerPool,
             _api.StaticNodesManager,
             _api.BlockingVerifyTrie!,
+            _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,

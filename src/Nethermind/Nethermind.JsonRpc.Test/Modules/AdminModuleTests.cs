@@ -18,6 +18,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using NSubstitute;
@@ -34,6 +35,7 @@ public class AdminModuleTests
     private NetworkConfig _networkConfig = null!;
     private IBlockTree _blockTree = null!;
     private IBlockingVerifyTrie _blockingVerifyTrie = null!;
+    private IStateReader _stateReader = null!;
     private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
     private const string _exampleDataDir = "/example/dbdir";
 
@@ -42,6 +44,7 @@ public class AdminModuleTests
     {
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
         _blockingVerifyTrie = Substitute.For<IBlockingVerifyTrie>();
+        _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
@@ -61,6 +64,7 @@ public class AdminModuleTests
             peerPool,
             staticNodesManager,
             _blockingVerifyTrie,
+            _stateReader,
             enode,
             _exampleDataDir,
             new ManualPruningTrigger(),
@@ -117,9 +121,17 @@ public class AdminModuleTests
     [Test]
     public async Task Test_admin_verifyTrie()
     {
-        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie")).Should().Contain("Unable to start verify trie");
+        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Unable to start verify trie");
         _blockingVerifyTrie.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
-        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie")).Should().Contain("Starting");
+        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
+    }
+
+    [Test]
+    public async Task Test_hasStateForBlock()
+    {
+        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("false");
+        _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("true");
     }
 
     [Test]

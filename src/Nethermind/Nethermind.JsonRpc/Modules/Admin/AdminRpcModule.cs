@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -12,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 
@@ -28,6 +30,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
     private readonly IBlockingVerifyTrie _blockingVerifyTrie;
+    private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
 
     public AdminRpcModule(
@@ -36,6 +39,7 @@ public class AdminRpcModule : IAdminRpcModule
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
         IBlockingVerifyTrie blockingVerifyTrie,
+        IStateReader stateReader,
         IEnode enode,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
@@ -48,6 +52,7 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _blockingVerifyTrie = blockingVerifyTrie ?? throw new ArgumentNullException(nameof(blockingVerifyTrie));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
@@ -139,19 +144,31 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<bool>.Success(true);
     }
 
+    public ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block)
+    {
+        SearchResult<BlockHeader> headerSearchResult = _blockTree.SearchForHeader(block);
+        if (headerSearchResult.Object is null)
+        {
+            return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
+        }
+
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(headerSearchResult.Object));
+    }
+
     public ResultWrapper<PruningStatus> admin_prune()
     {
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
-    public ResultWrapper<string> admin_verifyTrie()
+    public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
     {
-        if (_blockTree.Head is null)
+        SearchResult<BlockHeader> headerSearchResult = _blockTree.SearchForHeader(block);
+        if (headerSearchResult.Object is null)
         {
-            return ResultWrapper<string>.Fail("Head is null. Unable to know state root to verify.");
+            return ResultWrapper<string>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        if (!_blockingVerifyTrie.TryStartVerifyTrie(_blockTree.Head!.Header))
+        if (!_blockingVerifyTrie.TryStartVerifyTrie(headerSearchResult.Object))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
         }
