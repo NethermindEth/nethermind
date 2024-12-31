@@ -296,6 +296,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 : BaseFeeCalculator.Calculate(parent, spec);
 
         result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
+        result.SlotNumber = spec.IsEip7843Enabled && parent.SlotNumber is not null ? parent.SlotNumber.Value + 1 : null;
 
         return result;
     }
