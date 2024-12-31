@@ -310,7 +310,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         public Block Block = block;
         public Hash256 StateRoot = stateRoot;
         public IReleaseSpec Spec = spec;
-        public BlockHeader BlockHeader = block.Header.Clone();
+        public BlockHeader BlockHeader => Block.Header;
     }
 }
 
