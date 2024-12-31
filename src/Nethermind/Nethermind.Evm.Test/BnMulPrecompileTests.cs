@@ -4,7 +4,6 @@
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Snarks;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

@@ -8,7 +8,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using NUnit.Framework;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test;
 
