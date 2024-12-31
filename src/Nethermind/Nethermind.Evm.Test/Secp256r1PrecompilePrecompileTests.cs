@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
         public void Produces_Correct_Outputs(string input, bool isValid)
         {
             var bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(bytes, TestPrecompileContext.Instance);
             success.Should().BeTrue();
             output.ToArray().Should().BeEquivalentTo(isValid ? ValidAnswer : []);
         }
@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             var bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(bytes, TestPrecompileContext.Instance);
             success.Should().BeTrue();
             output.Should().Be(ReadOnlyMemory<byte>.Empty);
         }

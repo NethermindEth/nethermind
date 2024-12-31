@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -20,7 +21,7 @@ public class BlsG1MSMPrecompileTests
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = G1MSMPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, TestPrecompileContext.Instance);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }

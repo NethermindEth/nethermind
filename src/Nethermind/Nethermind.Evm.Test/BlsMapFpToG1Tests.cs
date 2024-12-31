@@ -20,7 +20,7 @@ public class BlsMapFpToG1Tests
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = MapFpToG1Precompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, TestPrecompileContext.Instance);
 
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();

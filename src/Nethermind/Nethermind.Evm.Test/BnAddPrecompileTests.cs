@@ -31,7 +31,7 @@ public class BnAddPrecompileTests
         for (int i = 0; i < inputs.Length; i++)
         {
             IPrecompile precompile = Bn254AddPrecompile.Instance;
-            _ = precompile.Run(inputs[i], MuirGlacier.Instance);
+            _ = precompile.Run(inputs[i], TestPrecompileContext.Instance);
         }
     }
 }

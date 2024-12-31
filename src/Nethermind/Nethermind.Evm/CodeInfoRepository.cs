@@ -54,6 +54,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
             [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
+
+            [SlotPrecompile.Address] = new(SlotPrecompile.Instance),
         }.ToFrozenDictionary();
     }
 
@@ -201,12 +203,12 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext context)
         {
             PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
             if (!cache.TryGetValue(key, out (ReadOnlyMemory<byte>, bool) result))
             {
-                result = precompile.Run(inputData, releaseSpec);
+                result = precompile.Run(inputData, context);
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
                 key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
                 cache.TryAdd(key, result);

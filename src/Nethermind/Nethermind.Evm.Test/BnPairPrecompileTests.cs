@@ -62,7 +62,7 @@ public class BnPairPrecompileTests
         {
             byte[] cloned = inputs[i].Clone() as byte[];
             IPrecompile precompile = Bn254PairingPrecompile.Instance;
-            _ = precompile.Run(cloned, MuirGlacier.Instance);
+            _ = precompile.Run(cloned, TestPrecompileContext.Instance);
         }
     }
 }
