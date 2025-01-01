@@ -94,11 +94,6 @@ namespace Nethermind.Serialization.Rlp
                 {
                     blockHeader.RequestsHash = decoderContext.DecodeKeccak();
                 }
-
-                if (itemsRemaining >= 6 && decoderContext.Position != headerCheck)
-                {
-                    blockHeader.SlotNumber = decoderContext.DecodeULong();
-                }
             }
 
 
@@ -190,11 +185,6 @@ namespace Nethermind.Serialization.Rlp
                 if (itemsRemaining >= 5 && rlpStream.Position != headerCheck)
                 {
                     blockHeader.RequestsHash = rlpStream.DecodeKeccak();
-                }
-
-                if (itemsRemaining >= 6 && rlpStream.Position != headerCheck)
-                {
-                    blockHeader.SlotNumber = rlpStream.DecodeULong();
                 }
             }
 

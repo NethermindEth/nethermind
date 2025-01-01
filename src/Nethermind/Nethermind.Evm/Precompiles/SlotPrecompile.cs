@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Precompiles
 
         public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext context)
         {
-            ulong? slotNumber = context.BlockExecutionContext.Header.SlotNumber;
+            ulong? slotNumber = 0;
 
             if (slotNumber is null)
             {

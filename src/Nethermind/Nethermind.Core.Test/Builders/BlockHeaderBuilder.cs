@@ -201,10 +201,4 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.RequestsHash = requestsHash;
         return this;
     }
-
-    public BlockHeaderBuilder WithSlotNumber(ulong slotNumber)
-    {
-        TestObjectInternal.SlotNumber = slotNumber;
-        return this;
-    }
 }
