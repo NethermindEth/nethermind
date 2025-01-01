@@ -38,6 +38,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
+                    currentTx.Index = (ulong)i;
                     ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
