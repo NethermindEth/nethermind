@@ -117,6 +117,8 @@ public class Block
 
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
 
+    [JsonIgnore]
+    public ulong? SlotNumber { get; set; }
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
