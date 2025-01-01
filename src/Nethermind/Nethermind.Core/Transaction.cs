@@ -185,6 +185,12 @@ namespace Nethermind.Core
         public bool IsServiceTransaction { get; set; }
 
         /// <summary>
+        /// In-memory only property, index of transaction within block.
+        /// </summary>
+        /// <remarks>Used for TXINDEX precompile in EIP-7793.</remarks>
+        public ulong Index { get; set; }
+
+        /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
         /// </summary>
         /// <remarks>Used for sorting in edge cases.</remarks>
