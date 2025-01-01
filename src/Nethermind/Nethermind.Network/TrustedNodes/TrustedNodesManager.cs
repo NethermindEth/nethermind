@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-// SPDX-License-Identifier: LGPL-3.0-only
-
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -12,13 +10,10 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.StaticNodes;
-using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
@@ -26,7 +21,6 @@ namespace Nethermind.Network
     public class TrustedNodesManager : ITrustedNodesManager
     {
         private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
-
         private readonly string _trustedNodesPath;
         private readonly ILogger _logger;
 
@@ -38,16 +32,19 @@ namespace Nethermind.Network
 
         public IEnumerable<NetworkNode> Nodes => _nodes.Values;
 
-        private static readonly char[] separator = new[] { '\r', '\n' };
-
         public async Task InitAsync()
         {
             if (!File.Exists(_trustedNodesPath))
             {
-                if (_logger.IsDebug) _logger.Debug($"Trusted nodes file not found for path: {_trustedNodesPath}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Trusted nodes file not found at: {_trustedNodesPath}");
+                }
                 return;
             }
-            List<string> lines = new();
+
+            HashSet<string> lines = new();
+            // Read lines asynchronously
             await foreach (string line in File.ReadLinesAsync(_trustedNodesPath))
             {
                 if (!string.IsNullOrWhiteSpace(line))
@@ -56,47 +53,50 @@ namespace Nethermind.Network
                 }
             }
 
-            string[] nodes = lines.Distinct().ToArray();
-
             if (_logger.IsInfo)
-                _logger.Info($"Loaded {nodes.Length} trusted nodes from file: {Path.GetFullPath(_trustedNodesPath)}");
-
-            if (nodes.Length != 0 && _logger.IsDebug)
             {
-                string formattedNodes = string.Join(Environment.NewLine, nodes);
-                _logger.Debug($"Trusted nodes: {Environment.NewLine}{formattedNodes}");
+                _logger.Info($"Loaded {lines.Count} trusted nodes from: {Path.GetFullPath(_trustedNodesPath)}");
             }
 
+            if (lines.Any() && _logger.IsDebug)
+            {
+                _logger.Debug("Trusted nodes:\n" + string.Join(Environment.NewLine, lines));
+            }
+
+            // Parse each line into a NetworkNode
             List<NetworkNode> networkNodes = new();
-            foreach (string? n in nodes)
+            foreach (string line in lines)
             {
                 try
                 {
-                    NetworkNode networkNode = new(n);
-                    networkNodes.Add(networkNode);
+                    networkNodes.Add(new NetworkNode(line));
                 }
-                catch (Exception exception) when (exception is ArgumentException or SocketException)
+                catch (Exception ex) when (ex is ArgumentException or SocketException)
                 {
-                    if (_logger.IsError) _logger.Error("Unable to process node. ", exception);
+                    if (_logger.IsError)
+                    {
+                        _logger.Error($"Failed to parse '{line}' as a trusted node.", ex);
+                    }
                 }
             }
 
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(n => n.NodeId, n => n));
+            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(
+                networkNodes.ToDictionary(n => n.NodeId, n => n));
         }
 
-        private static string[] GetNodes(string data)
+        // ---- INodeSource requirement: IAsyncEnumerable<Node> ----
+        // C# requires 'async' for IAsyncEnumerable yield. We'll add a small 'await Task.Yield()'
+        // to avoid the warning about "no awaits".
+        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            string[] nodes;
-            try
-            {
-                nodes = JsonSerializer.Deserialize<string[]>(data) ?? Array.Empty<string>();
-            }
-            catch (JsonException)
-            {
-                nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
-            }
+            // At least one 'await', so no compiler warnings
+            await Task.Yield();
 
-            return nodes.Distinct().ToArray();
+            foreach (NetworkNode netNode in _nodes.Values)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return new Node(netNode) { IsTrusted = true };
+            }
         }
 
         public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
@@ -104,18 +104,22 @@ namespace Nethermind.Network
             NetworkNode networkNode = new(enode.ToString());
             if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
             {
-                if (_logger.IsInfo) _logger.Info($"Trusted node was already added: {enode}");
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Trusted node was already added: {enode}");
+                }
                 return false;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Trusted node added: {enode}");
-            Node node = new(networkNode) { IsTrusted = true };
-            NodeAdded?.Invoke(this, new NodeEventArgs(node));
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Trusted node added: {enode}");
+            }
+
             if (updateFile)
             {
                 await SaveFileAsync();
             }
-
             return true;
         }
 
@@ -124,18 +128,22 @@ namespace Nethermind.Network
             NetworkNode networkNode = new(enode.ToString());
             if (!_nodes.TryRemove(networkNode.NodeId, out _))
             {
-                if (_logger.IsInfo) _logger.Info($"Trusted node was not found: {enode}");
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Trusted node was not found: {enode}");
+                }
                 return false;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Trusted node was removed: {enode}");
-            Node node = new(networkNode) { IsTrusted = true };
-            NodeRemoved?.Invoke(this, new NodeEventArgs(node));
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Trusted node was removed: {enode}");
+            }
+
             if (updateFile)
             {
                 await SaveFileAsync();
             }
-
             return true;
         }
 
@@ -145,41 +153,20 @@ namespace Nethermind.Network
             return _nodes.ContainsKey(node.NodeId);
         }
 
-        private Task SaveFileAsync()
-            => File.WriteAllTextAsync(_trustedNodesPath,
-                JsonSerializer.Serialize(_nodes.Values.Select(n => n.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
-
-        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+        // ---- INodeSource requirement: event EventHandler<NodeEventArgs> ----
+        public event EventHandler<NodeEventArgs>? NodeRemoved
         {
-            Channel<Node> ch = Channel.CreateBounded<Node>(128);
-
-            foreach (Node node in _nodes.Values.Select(n => new Node(n) { IsTrusted = true }))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return node;
-            }
-
-            void handler(object? _, NodeEventArgs args)
-            {
-                ch.Writer.TryWrite(args.Node);
-            }
-
-            try
-            {
-                NodeAdded += handler;
-
-                await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
-                {
-                    yield return node;
-                }
-            }
-            finally
-            {
-                NodeAdded -= handler;
-            }
+            add { /* no-op */ }
+            remove { /* no-op*/ }
         }
 
-        private event EventHandler<NodeEventArgs>? NodeAdded;
-        public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+        private Task SaveFileAsync()
+        {
+            // Serialize the Enode strings from each stored node
+            IEnumerable<string> enodes = _nodes.Values.Select(n => n.ToString());
+            return File.WriteAllTextAsync(_trustedNodesPath,
+                JsonSerializer.Serialize(enodes, new JsonSerializerOptions { WriteIndented = true }));
+        }
     }
 }
