@@ -72,6 +72,9 @@ public class Metrics
     [Description("Number of BN254_PAIRING precompile calls.")]
     public static long Bn254PairingPrecompile { get; set; }
 
+    [Description("Number of BN254_MAP_FP_TO_G1 precompile calls.")]
+    public static long AotPrecompiledCalls { get; set; }
+
     [Description("Number of BLS12_G1ADD precompile calls.")]
     public static long BlsG1AddPrecompile { get; set; }
 

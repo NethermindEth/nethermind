@@ -122,7 +122,7 @@ public static class IlAnalyzer
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        codeInfo.IlInfo.ContractMetadata ??= AnalyseContract(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo) ?? throw new InvalidOperationException("Contract metadata is null");
+        codeInfo.IlInfo.ContractMetadata ??= AnalyseContract(codeInfo, StripByteCode(machineCode.Span), vmConfig) ?? throw new InvalidOperationException("Contract metadata is null");
 
         switch (mode)
         {
@@ -185,7 +185,7 @@ public static class IlAnalyzer
         Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
     }
 
-    internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo,  (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
+    internal static ContractMetadata? AnalyseContract(CodeInfo codeInfo,  (OpcodeInfo[], byte[][]) codeData, IVMConfig config)
     {
         if (codeData.Item1.Length == 0)
         {
@@ -206,7 +206,7 @@ public static class IlAnalyzer
 
             if (codeData.Item1[i].IsStateful)
             {
-                int endSegment = i;
+                int endSegment = i + (config.IsFullAotEnabled ? 1 : 0);
                 segments.Add(AnalyzeSegment(codeData.Item1, startSegment..endSegment));
                 startSegment = i + 1;
                 continue;
@@ -350,7 +350,7 @@ public static class IlAnalyzer
                     }
 
                     subSegment.LeftOutStack = currentStackSize;
-                    if (op.IsTerminating || op.IsJump || op.Operation is Instruction.GAS)
+                    if (op.IsTerminating || op.IsJump || op.IsCallOrCreate ||op.Operation is Instruction.GAS)
                     {
                         if (op.Operation is not Instruction.GAS)
                         {

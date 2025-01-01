@@ -18,12 +18,13 @@ using System.Reflection.Metadata;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 using DotNetty.Common.Utilities;
+using Org.BouncyCastle.Math.Field;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
 internal static class FullAOT
 {
     public delegate bool MoveNextDelegate(ulong chainId, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
-
+    public delegate void InitializeDelegate(EvmState vmState, IWorldState dbState, IReleaseSpec spec, IBlockhashProvider blockhashProvider, ITxTracer txTracer, ILogger logger, byte[][] immediates);
     
     public static Type CompileContract(ContractMetadata contractMetadata, IVMConfig vmConfig)
     {
@@ -34,13 +35,100 @@ internal static class FullAOT
 
         ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("ContractsModule");
         TypeBuilder contractStructBuilder = moduleBuilder.DefineType($"{contractMetadata.TargetCodeInfo.Address}", TypeAttributes.Public |
-            TypeAttributes.Sealed | TypeAttributes.SequentialLayout, typeof(ValueType), [typeof(IPrecompiledContract)]);
+            TypeAttributes.Sealed | TypeAttributes.SequentialLayout | TypeAttributes.BeforeFieldInit, typeof(ValueType), [typeof(IPrecompiledContract)]);
 
         FullAotEnvLoader envLoader = new FullAotEnvLoader(contractStructBuilder, contractMetadata);
+
+        EmitConstructor(contractStructBuilder, envLoader);
 
         EmitMoveNext(contractStructBuilder, contractMetadata, envLoader, vmConfig);
 
         return contractStructBuilder.CreateType();
+    }
+
+    public static void EmitConstructor(TypeBuilder contractBuilder, FullAotEnvLoader loader)
+    {
+        var Fields = loader.Fields;
+
+        var constructor = contractBuilder.DefineConstructor(
+            MethodAttributes.Public, CallingConventions.HasThis,
+            [typeof(EvmState), typeof(IWorldState), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer), typeof(ILogger), typeof(byte[][])]
+        );
+
+        var constructorIL = constructor.GetILGenerator();
+
+        LocalBuilder evmState = constructorIL.DeclareLocal(typeof(EvmState));
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_1);
+        constructorIL.Emit(OpCodes.Dup);
+        constructorIL.Emit(OpCodes.Stloc, evmState);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_EVMSTATE]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_2);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_WORLSTATE]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_3);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_SPEC]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_S, 4);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_BLOCKHASHPROVIDER]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_S, 5);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_TRACER]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_S, 6);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_LOGGER]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldarg_S, 7);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_IMMEDIATESDATA]);
+
+        LocalBuilder envContextLocal = constructorIL.DeclareLocal(typeof(ExecutionEnvironment));
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldloc, evmState);
+        constructorIL.Emit(OpCodes.Ldfld, typeof(EvmState).GetField(nameof(EvmState.Env)));
+        constructorIL.Emit(OpCodes.Dup);
+        constructorIL.Emit(OpCodes.Stloc, envContextLocal);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_ENV]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldloc, envContextLocal);
+        constructorIL.Emit(OpCodes.Ldfld, typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData)));
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_CALLDATA]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldloc, envContextLocal);
+        constructorIL.Emit(OpCodes.Ldfld, typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.CodeInfo)));
+        constructorIL.Emit(OpCodes.Call, typeof(CodeInfo).GetProperty(nameof(CodeInfo.MachineCode)).GetGetMethod());
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_MACHINECODE]);
+
+        LocalBuilder txContextLocal = constructorIL.DeclareLocal(typeof(TxExecutionContext));
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldloc, envContextLocal);
+        constructorIL.Emit(OpCodes.Ldfld, typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.TxExecutionContext)));
+        constructorIL.Emit(OpCodes.Dup);
+        constructorIL.Emit(OpCodes.Stloc, txContextLocal);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_TXCONTEXT]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldloc, txContextLocal);
+        constructorIL.Emit(OpCodes.Ldfld, typeof(TxExecutionContext).GetField(nameof(TxExecutionContext.BlockExecutionContext)));
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_BLOCKCONTEXT]);
+
+        constructorIL.Emit(OpCodes.Ldarg_0);
+        constructorIL.Emit(OpCodes.Ldloca, txContextLocal);
+        constructorIL.Emit(OpCodes.Call, typeof(TxExecutionContext).GetProperty(nameof(TxExecutionContext.CodeInfoRepository)).GetGetMethod());
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_CODEINFOREPOSITORY]);
+
+        constructorIL.Emit(OpCodes.Ret);
     }
 
     public static void EmitMoveNext(TypeBuilder contractBuilder, ContractMetadata contractMetadata, FullAotEnvLoader envLoader, IVMConfig config)
@@ -62,22 +150,6 @@ internal static class FullAOT
         Label ret = method.DefineLabel();
 
         Dictionary<int, Label> jumpDestinations = new();
-
-        /*envLoader.LoadResult(method, locals, false);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldStop)));
-        method.BranchIfTrue(exit);
-
-        envLoader.LoadResult(method, locals, false);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldFail)));
-        method.BranchIfTrue(exit);
-
-        envLoader.LoadResult(method, locals, false);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldReturn)));
-        method.BranchIfTrue(exit);
-
-        envLoader.LoadResult(method, locals, false);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldRevert)));
-        method.BranchIfTrue(exit);*/
 
         envLoader.LoadStackHead(method, locals, false);
         method.StoreLocal(locals.stackHeadIdx);
@@ -239,53 +311,8 @@ internal static class FullAOT
                     case Instruction.JUMPDEST:
                         // we do nothing
                         break;
-                    case Instruction.JUMP:
-                        {
-                            // we jump into the jump table
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(locals.wordRef256A);
-
-                            if (config.BakeInTracingInAotModes)
-                            {
-                                UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                                EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-                            }
-                            else
-                            {
-                                UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
-                            }
-                            method.FakeBranch(jumpTable);
-                        }
-                        break;
-                    case Instruction.JUMPI:
-                        {// consume the jump condition
-                            Label noJump = method.DefineLabel();
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                            method.EmitIsZeroCheck();
-                            // if the jump condition is false, we do not jump
-                            method.BranchIfTrue(noJump);
-
-                            // we jump into the jump table
-
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                            method.StoreLocal(locals.wordRef256A);
-
-                            if (config.BakeInTracingInAotModes)
-                            {
-                                UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                                EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-                            }
-                            else
-                            {
-                                UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
-                            }
-                            method.Branch(jumpTable);
-
-                            method.MarkLabel(noJump);
-                        }
-                        break;
                     default:
-                        opEmitter.Emit(config, contractMetadata, segmentMetadata, i, op, method, locals, envLoader, evmExceptionLabels, (ret, exit));
+                        opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
                         break;
 
                 }
@@ -342,11 +369,17 @@ internal static class FullAOT
         // isContinuation
         Label skipJumpValidation = method.DefineLabel();
         method.MarkLabel(isContinuation);
+
         method.LoadLocal(locals.programCounter);
         method.StoreLocal(locals.jmpDestination);
         envLoader.LoadResult(method, locals, true);
         method.LoadConstant(false);
         method.StoreField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldContinue)));
+
+        method.LoadLocal(locals.jmpDestination);
+        method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
+        method.BranchIfGreaterOrEqual(exit);
+
         method.Branch(skipJumpValidation);
 
         method.MarkLabel(jumpTable);

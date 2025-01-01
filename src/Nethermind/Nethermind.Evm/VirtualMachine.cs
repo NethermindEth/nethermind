@@ -90,7 +90,7 @@ public class VirtualMachine : IVirtualMachine
         where TTracingActions : struct, VirtualMachine.IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
 
-    internal readonly ref struct CallResult
+    public readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
@@ -718,18 +718,19 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if (vmState.ILedContract is not null)
         {
+            Metrics.AotPrecompiledCalls++;
             int programCounter = vmState.ProgramCounter;
             if (vmState.ILedContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer))
             {
-                vmState.ProgramCounter = programCounter;
-                vmState.GasAvailable = gasAvailable;
-                vmState.DataStackHead = stack.Head;
+                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
 
                 if (vmState.ILedContract.Current.ShouldContinue)
                 {
                     return new CallResult(vmState.ILedContract.Current.CallResult);
                 }
             }
+
+            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
             if (vmState.ILedContract.Current.ShouldFail)
             {
@@ -740,6 +741,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 return new CallResult(_returnDataBuffer, null, shouldRevert: vmState.ILedContract.Current.ShouldRevert);
             }
+
+            return CallResult.Empty;
         }
 
         // Struct generic parameter is used to burn out all the if statements
@@ -812,7 +815,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     in blkCtx,
 
                     _specProvider.ChainId,
-                    ref _returnDataBuffer,
                     _state,
                     _blockhashProvider,
                     vmState.Env.TxExecutionContext.CodeInfoRepository,
@@ -1907,6 +1909,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 case Instruction.CREATE2:
                     {
                         Metrics.IncrementCreates();
+                        if (!UpdateGas(GasCostOf.Create, ref gasAvailable)) goto OutOfGas;
+
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
@@ -1927,8 +1931,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                             vmState, _state, ref gasAvailable, spec, _txTracer, _logger,
                             instruction,
                             value, memoryPositionOfInitCode, initCodeLength, salt,
-                            ref _returnDataBuffer,
                             out UInt256? earlyStatusPush,
+                            ref _returnDataBuffer,
                             out returnData);
 
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
@@ -2555,7 +2559,9 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     public static EvmExceptionType InstructionCreate<TTracing>(
         EvmState vmState, IWorldState state, ref long gasAvailable, IReleaseSpec spec, ITxTracer tracer, ILogger logger, Instruction instruction,
         UInt256 value, UInt256 memoryPositionOfInitCode, UInt256 initCodeLength, Span<byte> salt,
-        ref ReadOnlyMemory<byte> returnDataBuffer, out UInt256? statusReturn, out object callState)
+        out UInt256? statusReturn,
+        ref ReadOnlyMemory<byte> returnDataBuffer,
+        out object callState)
         where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -2575,8 +2581,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         }
 
         bool outOfGas = false;
-        long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength, out outOfGas) : 0) +
+        long gasCost = (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength, out outOfGas) : 0) +
                        (instruction == Instruction.CREATE2
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength, out outOfGas)
                            : 0);
@@ -2943,7 +2948,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static void StartInstructionTrace(ITxTracer tracer, Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, int stackHead)
+    public static void StartInstructionTrace(ITxTracer tracer, Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, int stackHead)
     {
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
         if (tracer.IsTracingMemory)
@@ -2960,13 +2965,13 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static void EndInstructionTrace(ITxTracer tracer, long gasAvailable, ulong memorySize)
+    public static void EndInstructionTrace(ITxTracer tracer, long gasAvailable, ulong memorySize)
     {
         tracer.ReportOperationRemainingGas(gasAvailable);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static void EndInstructionTraceError(ITxTracer tracer, long gasAvailable, EvmExceptionType evmExceptionType)
+    public static void EndInstructionTraceError(ITxTracer tracer, long gasAvailable, EvmExceptionType evmExceptionType)
     {
         tracer.ReportOperationRemainingGas(gasAvailable);
         tracer.ReportOperationError(evmExceptionType);

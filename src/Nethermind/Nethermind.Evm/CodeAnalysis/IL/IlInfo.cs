@@ -83,7 +83,6 @@ internal class IlInfo
         in TxExecutionContext txCtx,
         in BlockExecutionContext blkCtx,
         ulong chainId,
-        ref ReadOnlyMemory<byte> outputBuffer,
         IWorldState worldState,
         IBlockhashProvider blockHashProvider,
         ICodeInfoRepository codeinfoRepository,
@@ -107,7 +106,7 @@ internal class IlInfo
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, bytecodeChunkHandler);
 
-            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref returnDataBuffer, tracer, logger, ref result);
+            bytecodeChunkHandler.Invoke(vmState, chainId, in env, in txCtx, in blkCtx, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref returnDataBuffer, tracer, logger, ref result);
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
             return true;

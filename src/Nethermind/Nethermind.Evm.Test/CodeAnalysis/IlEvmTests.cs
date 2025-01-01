@@ -33,6 +33,8 @@ using System.Runtime.CompilerServices;
 using Nethermind.Trie;
 
 using static System.Runtime.CompilerServices.Unsafe;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
+using System.Reflection.Emit;
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
     internal class AbortDestinationPattern : IPatternChunk // for testing
@@ -44,7 +46,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return GasCostOf.JumpDest;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -64,7 +66,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return gasCost;
         }
 
-        public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
+        public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
         {
             if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -107,8 +109,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .MSTORE(0, Enumerable.Range(0, 32).Select(i => (byte)i).ToArray())
                 .RETURN(0, 32)
                 .STOP().Done;
-            TestState.CreateAccount(Address.FromNumber(23), 1000000);
-            TestState.InsertCode(Address.FromNumber(23), code, SpecProvider.GenesisSpec);
+            InsertCode(code, Address.FromNumber((int)Instruction.RETURN));
+
+            var returningCode = Prepare.EvmCode
+                        .PushData(UInt256.MaxValue)
+                        .PUSHx([0])
+                        .MSTORE()
+                        .Return(32, 0)
+                        .STOP()
+                        .Done;
+            InsertCode(returningCode, Address.FromNumber((int)Instruction.RETURNDATASIZE));
+
 
             IlAnalyzer.AddPattern<SomeAfterTwoPush>();
             IlAnalyzer.AddPattern<EmulatedStaticCJump>();
@@ -132,17 +143,26 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<S02S01>();
         }
 
-        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000, byte[][] blobVersionedHashes = null)
+        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000)
             where T : ITxTracer
         {
-
+            var blobhashesCount = 10;
+            var blobVersionedHashes = new byte[blobhashesCount][];
+            for (int i = 0; i < blobhashesCount; i++)
+            {
+                blobVersionedHashes[i] = new byte[32];
+                for (int n = 0; n < blobhashesCount; n++)
+                {
+                    blobVersionedHashes[i][n] = (byte)((i * 3 + 10 * 7) % 256);
+                }
+            }
             Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable, blobVersionedHashes);
         }
 
-        public Address InsertCode(byte[] bytecode)
+        public Address InsertCode(byte[] bytecode, Address? target = null)
         {
             var hashcode = Keccak.Compute(bytecode);
-            var address = new Address(hashcode);
+            var address = target ?? new Address(hashcode);
 
             var spec = Prague.Instance;
             TestState.CreateAccount(address, 1_000_000_000);
@@ -162,6 +182,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             if (mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
             {
                 IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
+            }
+
+            if (mode.HasFlag(ILMode.FULL_AOT_MODE))
+            {
+                IlAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
             }
         }
 
@@ -1884,6 +1909,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.RETURNDATACOPY], Prepare.EvmCode
+                    .Call(Address.FromNumber((int)Instruction.RETURNDATASIZE), 10000)
                     .PushData(32) // size
                     .PushData(0) // data idx
                     .PushData(0) // mem idx
@@ -1964,6 +1990,30 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SSTORE()
                     .PushData(Address.Zero)
                     .SELFDESTRUCT()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALL], Prepare.EvmCode
+                    .Call(Address.FromNumber((int)Instruction.RETURN), 10000)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.DELEGATECALL], Prepare.EvmCode
+                    .DelegateCall(Address.FromNumber((int)Instruction.RETURN), 10000)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.STATICCALL], Prepare.EvmCode
+                    .StaticCall(Address.FromNumber((int)Instruction.RETURN), 10000)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALLCODE], Prepare.EvmCode
+                    .CallCode(Address.FromNumber((int)Instruction.RETURN), 10000)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CREATE], Prepare.EvmCode
+                    .Create(Prepare.EvmCode.STOP().Done, 0)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CREATE2], Prepare.EvmCode
+                    .Create2(Prepare.EvmCode.STOP().Done, [1, 2, 3], 0)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
                 yield return ([Instruction.INVALID], Prepare.EvmCode
@@ -2212,6 +2262,74 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPartialAotEnabled = true
             });
 
+            var address = standardChain.InsertCode(testcase.bytecode);
+            enhancedChain.InsertCode(testcase.bytecode);
+
+            GethTraceOptions tracerOptions = new GethTraceOptions
+            {
+                EnableMemory = true,
+            };
+
+            var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
+            var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
+
+            var bytecode = Prepare.EvmCode
+                .PushData(UInt256.MaxValue)
+                .PUSHx([2])
+                .MSTORE()
+                .PushData(0)
+                .PushData(0)
+                .PushData(32) // length
+                .PushData(2) // offset
+                .PushData(0) // value
+                .PushData(address)
+                .PushData(750_000)
+                .Op(Instruction.CALL)
+                .STOP()
+                .Done;
+
+
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+
+            enhancedChain.ForceRunAnalysis(address, ILMode.PARTIAL_AOT_MODE);
+
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
+
+            var normal_traces = tracer1.BuildResult();
+            var ilvm_traces = tracer2.BuildResult();
+
+            var actual = standardChain.StateRoot;
+            var expected = enhancedChain.StateRoot;
+
+            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+
+            if (testcase.opcode is not null)
+            {
+                Assert.That(enhancedHasIlvmTraces, Is.True);
+                Assert.That(normalHasIlvmTraces, Is.False);
+            }
+            Assert.That(actual, Is.EqualTo(expected), testcase.msg);
+        }
+
+
+        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
+        public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
+        {
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+                BakeInTracingInAotModes = !testcase.Item5.enableAmortization,
+                AggressivePartialAotMode = testcase.Item5.enableAggressiveMode,
+                PartialAotThreshold = 1,
+                AnalysisQueueMaxSize = 1,
+                IsPartialAotEnabled = false,
+                IsFullAotEnabled = true
+            });
+
             byte[][] blobVersionedHashes = null;
             switch (testcase.opcode[0])
             {
@@ -2237,6 +2355,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         .Done;
                     var callAddress = standardChain.InsertCode(returningCode);
                     enhancedChain.InsertCode(returningCode);
+                    enhancedChain.ForceRunAnalysis(callAddress, ILMode.PARTIAL_AOT_MODE);
+
                     var callCode =
                         Prepare.EvmCode
                             .Call(callAddress, 100000)
@@ -2275,11 +2395,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done;
 
 
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, blobVersionedHashes: blobVersionedHashes);
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
 
-            enhancedChain.ForceRunAnalysis(address, ILMode.PARTIAL_AOT_MODE);
+            enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, blobVersionedHashes: blobVersionedHashes);
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
 
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
@@ -2290,11 +2410,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
             var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
-            if (testcase.opcode is not null)
-            {
-                Assert.That(enhancedHasIlvmTraces, Is.True);
-                Assert.That(normalHasIlvmTraces, Is.False);
-            }
+            Assert.That(Metrics.AotPrecompiledCalls, Is.GreaterThan(0));
             Assert.That(actual, Is.EqualTo(expected), testcase.msg);
         }
 
@@ -2733,235 +2849,5 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Assert.That(patterns.Count, Is.GreaterThan(0));
         }
-
-        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Ensure_Evm_ILvm_JIT_Compatibility((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
-        {
-            var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
-            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
-            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
-            var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
-            Span<byte> stack = new byte[1024 * 32];
-            var stackhead = 0;
-            var inputBuffer = envExCtx.InputData;
-            _returnBuffer =
-                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
-                .Select(i => (byte)i).ToArray());
-
-            TestState.CreateAccount(Address.FromNumber(1), 1000000);
-            TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-
-            long gasAvailable = 750_000;
-            int programCounter = 0;
-            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
-            var state = new EvmState(
-                gasAvailable,
-                env,
-                ExecutionType.CALL,
-                Snapshot.Empty);
-
-            var memory = state.Memory;
-
-            var outputBuffer = new byte[32];
-            state.InitStacks();
-
-            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
-
-            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
-            var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
-
-            ctx.PrecompiledSegment(
-                SpecProvider.ChainId,
-                ref state,
-                in env,
-                in txExCtx,
-                in blkExCtx,
-
-                ref memory,
-                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
-                ref stackhead,
-
-                _blockhashProvider,
-                TestState,
-                CodeInfoRepository,
-                Prague.Instance,
-                tracer,
-                NullLogger.Instance,
-
-                ref programCounter,
-                ref gasAvailable,
-                testcase.bytecode,
-                in env.InputData,
-                ref _returnBuffer,
-
-                ctx.Data,
-                ref iLChunkExecutionResult);
-
-            state.Dispose();
-            Assert.That(iLChunkExecutionResult.ExceptionType == testcase.exceptionType);
-        }
-
-        private ReadOnlyMemory<byte> _returnBuffer;
-        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Test_ILVM_Trace_Mode((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
-        {
-            var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
-            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
-            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
-            var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
-            Span<byte> stack = new byte[1024 * 32];
-            var stackhead = 0;
-            var inputBuffer = envExCtx.InputData;
-            _returnBuffer =
-                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
-                .Select(i => (byte)i).ToArray());
-
-            TestState.CreateAccount(Address.FromNumber(1), 1000000);
-            TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-
-            var config = new VMConfig
-            {
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = false,
-                BakeInTracingInAotModes = true,
-                AggressivePartialAotMode = true,
-            };
-
-            long gasAvailable = 750_000;
-            int programCounter = 0;
-            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
-            var state = new EvmState(
-                gasAvailable,
-                env,
-                ExecutionType.CALL,
-                Snapshot.Empty);
-
-            var memory = state.Memory;
-
-            state.InitStacks();
-
-            var vmConfig = new VMConfig
-            {
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = false,
-                BakeInTracingInAotModes = !testcase.Item5.enableAmortization,
-                AggressivePartialAotMode = true,
-            };
-
-            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
-
-            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, vmConfig, NullLogger.Instance);
-            var ctx = codeInfo.IlInfo.IlevmChunks[0] as PrecompiledChunk;
-
-            ctx.PrecompiledSegment(
-                SpecProvider.ChainId,
-                ref state,
-                in env,
-                in txExCtx,
-                in blkExCtx,
-
-                ref memory,
-                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
-                ref stackhead,
-
-                _blockhashProvider,
-                TestState,
-                CodeInfoRepository,
-                Prague.Instance,
-                tracer,
-                NullLogger.Instance,
-
-                ref programCounter,
-                ref gasAvailable,
-                testcase.bytecode,
-                in env.InputData,
-                ref _returnBuffer,
-
-                ctx.Data,
-                ref iLChunkExecutionResult);
-
-            state.Dispose();
-            var tracedOpcodes = tracer.BuildResult().Entries;
-
-            if(vmConfig.BakeInTracingInAotModes)
-            {
-                Assert.That(tracedOpcodes.Count, Is.GreaterThan(0));
-            }
-            else
-            {
-                Assert.That(tracedOpcodes.Count, Is.EqualTo(0));
-            }
-        }
-
-        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Test_ILVM_FullAOT_Compatibility((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
-        {
-            var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
-            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
-            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
-            var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
-            Span<byte> stack = new byte[1024 * 32];
-            var stackhead = 0;
-            var inputBuffer = envExCtx.InputData;
-            _returnBuffer =
-                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
-                .Select(i => (byte)i).ToArray());
-
-            TestState.CreateAccount(Address.FromNumber(1), 1000000);
-            TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-
-            long gasAvailable = 750_000;
-            int programCounter = 0;
-            ExecutionEnvironment env = new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0);
-            var state = new EvmState(
-                gasAvailable,
-                env,
-                ExecutionType.CALL,
-                Snapshot.Empty);
-
-            var memory = state.Memory;
-
-            state.InitStacks();
-
-            ILChunkExecutionState iLChunkExecutionResult = new ILChunkExecutionState();
-
-            var config = new VMConfig
-            {
-                PartialAotThreshold = 1,
-                IsPartialAotEnabled = true,
-                PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = false,
-                BakeInTracingInAotModes = false,
-                AggressivePartialAotMode = true,
-            };
-
-            IlAnalyzer.Analyse(codeInfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
-            var ctx = (IPrecompiledContract)env.CodeInfo.IlInfo.DynamicContractType
-                .GetConstructors().First(cons => cons.GetParameters().Length > 0)
-                .Invoke([state, TestState, Prague.Instance, _blockhashProvider, tracer, NullLogger.Instance, env.CodeInfo.IlInfo.ContractMetadata.EmbeddedData]);
-            ctx.Current = iLChunkExecutionResult;
-
-            ctx.MoveNext(
-                SpecProvider.ChainId,
-                ref gasAvailable,
-                ref programCounter,
-                ref stackhead,
-                ref Unsafe.As<byte, Word>(ref stack[stackhead]),
-                ref _returnBuffer
-                );
-
-            state.Dispose();
-            var tracedOpcodes = tracer.BuildResult().Entries;
-
-            Assert.That(ctx.Current.ExceptionType == testcase.exceptionType);
-        }
-
     }
 }

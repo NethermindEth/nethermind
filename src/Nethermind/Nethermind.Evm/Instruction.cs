@@ -361,11 +361,11 @@ namespace Nethermind.Evm
                 [Instruction.SSTORE] = new(DYNAMIC, 0, 2, 0),
 
                 [Instruction.CREATE] = new(GasCostOf.Create + DYNAMIC, 0, 3, 1),
-                [Instruction.CALL] = new(GasCostOf.Call + DYNAMIC, 0, 7, 1),
-                [Instruction.CALLCODE] = new(GasCostOf.Call + DYNAMIC, 0, 7, 1),
-                [Instruction.DELEGATECALL] = new(GasCostOf.Call + DYNAMIC, 0, 6, 1),
+                [Instruction.CALL] = new(DYNAMIC, 0, 7, 1),
+                [Instruction.CALLCODE] = new(DYNAMIC, 0, 7, 1),
+                [Instruction.DELEGATECALL] = new(DYNAMIC, 0, 6, 1),
                 [Instruction.CREATE2] = new(GasCostOf.Create + DYNAMIC, 0, 4, 1),
-                [Instruction.STATICCALL] = new(GasCostOf.Call + DYNAMIC, 0, 6, 1),
+                [Instruction.STATICCALL] = new(DYNAMIC, 0, 6, 1),
                 [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct + DYNAMIC, 0, 1, 0),
 
                 [Instruction.RETURN] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
@@ -382,6 +382,7 @@ namespace Nethermind.Evm
         public readonly bool IsStateful => instruction.IsStateful();
         public readonly bool IsInvalid => instruction.IsInvalid();
         public readonly bool IsJump => instruction.IsJump();
+        public readonly bool IsCallOrCreate => instruction == Instruction.CALL || instruction == Instruction.DELEGATECALL || instruction == Instruction.CALLCODE || instruction == Instruction.CREATE || instruction == Instruction.CREATE2 || instruction == Instruction.STATICCALL;
     }
 
     public static class InstructionExtensions

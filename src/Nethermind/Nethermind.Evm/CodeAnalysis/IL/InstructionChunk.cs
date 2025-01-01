@@ -19,7 +19,6 @@ internal interface InstructionChunk
     string Name { get; }
     void Invoke<T>(EvmState vmState,
             ulong chainId,
-            ref ReadOnlyMemory<byte> outputBuffer,
             in ExecutionEnvironment env,
             in TxExecutionContext txCtx,
             in BlockExecutionContext blkCtx,

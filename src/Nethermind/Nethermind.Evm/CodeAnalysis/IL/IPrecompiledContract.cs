@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using System;

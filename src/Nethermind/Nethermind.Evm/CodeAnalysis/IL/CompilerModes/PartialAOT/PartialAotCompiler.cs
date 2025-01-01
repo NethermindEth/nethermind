@@ -238,53 +238,8 @@ internal static class PartialAOT
                 case Instruction.JUMPDEST:
                     // we do nothing
                     break;
-                case Instruction.JUMP:
-                    {
-                        // we jump into the jump table
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                        method.StoreLocal(locals.wordRef256A);
-
-                        if (bakeInTracerCalls)
-                        {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-                        }
-                        else
-                        {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
-                        }
-                        method.FakeBranch(jumpTable);
-                    }
-                    break;
-                case Instruction.JUMPI:
-                    {// consume the jump condition
-                        Label noJump = method.DefineLabel();
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 2);
-                        method.EmitIsZeroCheck();
-                        // if the jump condition is false, we do not jump
-                        method.BranchIfTrue(noJump);
-
-                        // we jump into the jump table
-
-                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
-                        method.StoreLocal(locals.wordRef256A);
-
-                        if (bakeInTracerCalls)
-                        {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-                        }
-                        else
-                        {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
-                        }
-                        method.Branch(jumpTable);
-
-                        method.MarkLabel(noJump);
-                    }
-                    break;
                 default:
-                    opEmitter.Emit(config, contractMetadata, segmentMetadata, i, op, method, locals, envLoader, evmExceptionLabels, (ret, exit));
+                    opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
                     break;
 
             }
