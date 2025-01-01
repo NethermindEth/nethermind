@@ -2604,7 +2604,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
-        for (int i = 0; i < topicsCount; i++)
+        for (int i = 0; i < topics.Length; i++)
         {
             topics[i] = new Hash256(stack.PopWord256());
         }

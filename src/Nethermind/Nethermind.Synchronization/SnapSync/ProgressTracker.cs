@@ -137,6 +137,12 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
+            if (_pivot.GetPivotHeader() is null)
+            {
+                nextBatch = null;
+                return false;
+            }
+
             Interlocked.Increment(ref _reqCount);
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
