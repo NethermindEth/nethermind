@@ -601,7 +601,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         try
         {
-            PrecompileContext context = new(spec, _specProvider, state.Env.TxExecutionContext.BlockExecutionContext);
+            PrecompileContext context = new(spec, _specProvider, state.Env);
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, context);
             CallResult callResult = new(output, success, !success);
             return callResult;

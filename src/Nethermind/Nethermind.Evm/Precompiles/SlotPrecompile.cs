@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -24,7 +27,7 @@ namespace Nethermind.Evm.Precompiles
 
         public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext context)
         {
-            ulong? slotNumber = context.BlockExecutionContext.Header.SlotNumber;
+            ulong? slotNumber = context.ExecutionEnvironment.TxExecutionContext.BlockExecutionContext.Header.SlotNumber;
 
             if (slotNumber is null)
             {

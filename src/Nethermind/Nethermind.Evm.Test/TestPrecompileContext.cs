@@ -9,8 +9,8 @@ public class TestPrecompileContext : PrecompileContext
 {
     public static TestPrecompileContext Instance { get; } = new(Prague.Instance, TestSpecProvider.Instance, new());
 
-    private TestPrecompileContext(IReleaseSpec spec, ISpecProvider specProvider, BlockExecutionContext blockExecutionContext)
-        : base(spec, specProvider, blockExecutionContext)
+    private TestPrecompileContext(IReleaseSpec spec, ISpecProvider specProvider, ExecutionEnvironment executionEnvironment)
+        : base(spec, specProvider, executionEnvironment)
     {
     }
 }
