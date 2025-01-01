@@ -8,11 +8,11 @@ We expect project participants to adhere to our [code of conduct](./CODE_OF_COND
 
 ## Asking questions and providing feedback
 
-Have a question? Instead of opening an issue, please ask on our [Discord channel](https://discord.gg/N6Fhbg9u).
+Have a question? Instead of opening an issue, please ask on our [Discord channel](https://discord.gg/GXJFaYk).
 
 Our active community will be keen to assist you. Your well-worded questions will also serve as a resource to others searching for help.
 
-Your comments and feedback are welcome, and the development team is almost always available on [Discord](https://discord.gg/76ggjqDz).
+Your comments and feedback are welcome, and the development team is almost always available on [Discord](https://discord.gg/GXJFaYk).
 
 ## Reporting issues
 
