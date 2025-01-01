@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis.IL;
@@ -18,57 +16,7 @@ namespace Nethermind.Evm
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState : IDisposable // TODO: rename to CallState
     {
-        private class StackPool
-        {
-            private readonly int _maxCallStackDepth;
-            private readonly struct StackItem(byte[] dataStack, int[] returnStack)
-            {
-                public readonly byte[] DataStack = dataStack;
-                public readonly int[] ReturnStack = returnStack;
-            }
-
-            // TODO: we have wrong call depth calculation somewhere
-            public StackPool(int maxCallStackDepth = VirtualMachine.MaxCallDepth * 2)
-            {
-                _maxCallStackDepth = maxCallStackDepth;
-            }
-
-            private readonly Stack<StackItem> _stackPool = new(32);
-
-            private int _stackPoolDepth;
-
-            /// <summary>
-            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.
-            /// </summary>
-            /// <param name="dataStack"></param>
-            /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
-            {
-                _stackPool.Push(new(dataStack, returnStack));
-            }
-
-            public (byte[], int[]) RentStacks()
-            {
-                if (_stackPool.TryPop(out StackItem result))
-                {
-                    return (result.DataStack, result.ReturnStack);
-                }
-
-                _stackPoolDepth++;
-                if (_stackPoolDepth > _maxCallStackDepth)
-                {
-                    EvmStack.ThrowEvmStackOverflowException();
-                }
-
-                return
-                (
-                    new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
-                    new int[EvmStack.ReturnStackSize]
-                );
-            }
-        }
-        private static readonly ThreadLocal<StackPool> _stackPool = new(static () => new StackPool());
+        private static readonly StackPool _stackPool = new();
 
         public byte[]? DataStack;
 
@@ -83,7 +31,7 @@ namespace Nethermind.Evm
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
         /// <summary>
-        /// Contructor for a top level <see cref="EvmState"/>.
+        /// Constructor for a top level <see cref="EvmState"/>.
         /// </summary>
         public EvmState(
             long gasAvailable,
@@ -103,7 +51,7 @@ namespace Nethermind.Evm
         {
         }
         /// <summary>
-        /// Contructor for a top level <see cref="EvmState"/>.
+        /// Constructor for a top level <see cref="EvmState"/>.
         /// </summary>
         public EvmState(
             long gasAvailable,
@@ -122,7 +70,7 @@ namespace Nethermind.Evm
         {
         }
         /// <summary>
-        /// Contructor for a frame <see cref="EvmState"/> beneath top level.
+        /// Constructor for a frame <see cref="EvmState"/> beneath top level.
         /// </summary>
         internal EvmState(
             long gasAvailable,
@@ -217,7 +165,7 @@ namespace Nethermind.Evm
             if (DataStack is not null)
             {
                 // Only Dispose once
-                _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+                _stackPool.ReturnStacks(DataStack, ReturnStack!);
                 DataStack = null;
                 ReturnStack = null;
             }
@@ -230,14 +178,14 @@ namespace Nethermind.Evm
         {
             if (DataStack is null)
             {
-                (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
+                (DataStack, ReturnStack) = _stackPool.RentStacks();
             }
         }
 
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
-            _canRestore = false; // we can't restore if we commited
+            _canRestore = false; // we can't restore if we committed
         }
 
         private void Restore()

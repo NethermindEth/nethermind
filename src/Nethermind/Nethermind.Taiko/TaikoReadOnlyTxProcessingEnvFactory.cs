@@ -12,8 +12,7 @@ public class TaikoReadOnlyTxProcessingEnvFactory(
     OverridableWorldStateManager worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
-    ILogManager logManager,
-    IWorldState? worldStateToWarmUp = null)
+    ILogManager logManager)
 {
-    public TaikoReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp);
+    public TaikoReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager);
 }
