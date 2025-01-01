@@ -33,8 +33,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
     public bool IsTracingLogs => false;
+    public bool IsTracingIlEvmCalls => true;
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
-
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
@@ -273,5 +273,17 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        _gasAlreadySetForCurrentOp = false;
+        _traceEntry = new StateTestTxTraceEntry();
+        _traceEntry.Pc = pc;
+        _traceEntry.Operation = null;
+        _traceEntry.OperationName = segmentID;
+        _traceEntry.Gas = gas;
+        _traceEntry.Depth = env.GetGethTraceDepth();
+        _trace.Entries.Add(_traceEntry);
+    }
     public void Dispose() { }
+
 }
