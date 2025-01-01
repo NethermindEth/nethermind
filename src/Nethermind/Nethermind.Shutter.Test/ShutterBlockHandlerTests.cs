@@ -24,10 +24,7 @@ class ShutterBlockHandlerTests : EngineModuleTests
 
         CancellationTokenSource source = new();
         Task<Block?> waitTask = blockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token);
-        Block result = Build.A.Block
-            .WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp)
-            .WithSlotNumber(ShutterTestsCommon.InitialSlot)
-            .TestObject;
+        Block result = Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject;
         api.TriggerNewHeadBlock(new(result));
 
         Assert.That(result, Is.EqualTo(waitTask.Result));
@@ -75,20 +72,12 @@ class ShutterBlockHandlerTests : EngineModuleTests
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         // not triggered on outdated block
-        Block block1 = Build.A.Block
-            .WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp)
-            .WithSlotNumber(ShutterTestsCommon.InitialSlot)
-            .TestObject;
-        api.TriggerNewHeadBlock(new(block1));
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject));
         Assert.That(api.EonUpdateCalled, Is.EqualTo(0));
 
         // triggered on up to date block
         ulong upToDateTimestamp = ShutterTestsCommon.InitialSlotTimestamp + 2 * (ulong)ShutterTestsCommon.BlockUpToDateCutoff.TotalSeconds;
-        Block block2 = Build.A.Block
-            .WithTimestamp(upToDateTimestamp)
-            .WithSlotNumber(ShutterTestsCommon.InitialSlot)
-            .TestObject;
-        api.TriggerNewHeadBlock(new(block2));
+        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(upToDateTimestamp).TestObject));
         Assert.That(api.EonUpdateCalled, Is.EqualTo(1));
     }
 }

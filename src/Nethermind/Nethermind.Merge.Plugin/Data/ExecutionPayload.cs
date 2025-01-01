@@ -106,10 +106,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
-    /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
+    /// Gets or sets <see cref="SlotNumber"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
     /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public ulong? SlotNumber { get; set; }
 
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
@@ -132,7 +132,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
-            SlotNumber = block.SlotNumber,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;

@@ -296,11 +296,6 @@ namespace Nethermind.Facade
                     : blockHeader.ExcessBlobGas;
             }
 
-            if (releaseSpec.IsEip7843Enabled)
-            {
-                callHeader.SlotNumber = blockHeader.SlotNumber;
-            }
-
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();

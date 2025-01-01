@@ -335,12 +335,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
 
-        bool isEip7843Enabled = chainSpecJson.Params.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7843TransitionTimestamp;
-        if (isEip7843Enabled)
-        {
-            genesisHeader.SlotNumber = 0;
-        }
-
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
