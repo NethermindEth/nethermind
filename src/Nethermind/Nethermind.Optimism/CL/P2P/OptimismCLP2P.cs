@@ -24,6 +24,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
 using Snappier;
 
 namespace Nethermind.Optimism;
@@ -91,6 +92,10 @@ public class OptimismCLP2P : IDisposable
                 }
             }
         }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Unhandled exception in Optimism CL P2P:", e);
+        }
         finally
         {
             _semaphore.Release();
@@ -100,7 +105,7 @@ public class OptimismCLP2P : IDisposable
     private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out ExecutionPayloadV3 payload)
     {
         int length = Snappy.GetUncompressedLength(msg);
-        if (length < 65 || length > MaxGossipSize)
+        if (length is < 65 or > MaxGossipSize)
         {
             payload = null;
             return false;
@@ -130,7 +135,7 @@ public class OptimismCLP2P : IDisposable
             return false;
         }
 
-        var validationResult = _blockValidator.Validate(payload, P2PTopic.BlocksV3);
+        ValidityStatus validationResult = _blockValidator.Validate(payload, P2PTopic.BlocksV3);
 
         if (validationResult == ValidityStatus.Reject)
         {
@@ -142,7 +147,7 @@ public class OptimismCLP2P : IDisposable
 
     private async Task<bool> SendNewPayloadToEL(ExecutionPayloadV3 executionPayload)
     {
-        var npResult = await _engineRpcModule.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(),
+        ResultWrapper<PayloadStatusV1> npResult = await _engineRpcModule.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(),
             executionPayload.ParentBeaconBlockRoot);
 
         if (npResult.Result.ResultType == ResultType.Failure)
@@ -165,7 +170,7 @@ public class OptimismCLP2P : IDisposable
 
     private async Task<bool> SendForkChoiceUpdatedToEL(Hash256 headBlockHash)
     {
-        var fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(headBlockHash, headBlockHash, headBlockHash),
             null);
 

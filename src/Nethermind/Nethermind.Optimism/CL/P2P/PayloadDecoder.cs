@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL;
@@ -27,46 +28,25 @@ public class PayloadDecoder : IPayloadDecoder
             throw new ArgumentException("Invalid payload data size");
         }
 
-        int offset = 0;
-        payload.ParentBeaconBlockRoot = new(data[offset..(offset + 32)]);
-        offset += 32;
-        payload.ParentHash = new(data[offset..(offset + 32)]);
-        offset += 32;
-        payload.FeeRecipient = new(data[offset..(offset + 20)]);
-        offset += 20;
-        payload.StateRoot = new(data[offset..(offset + 32)]);
-        offset += 32;
-        payload.ReceiptsRoot = new(data[offset..(offset + 32)]);
-        offset += 32;
-        payload.LogsBloom = new(data[offset..(offset + 256)]);
-        offset += 256;
-        payload.PrevRandao = new(data[offset..(offset + 32)]);
-        offset += 32;
-        payload.BlockNumber = (long)BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
-        offset += 8;
-        payload.GasLimit = (long)BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
-        offset += 8;
-        payload.GasUsed = (long)BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
-        offset += 8;
-        payload.Timestamp = BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
-        offset += 8;
-
-        UInt32 extraDataOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(data[offset..(offset + 4)]);
-        offset += 4;
-        payload.BaseFeePerGas = new(data[offset..(offset + 32)]);
-        offset += 32;
-        payload.BlockHash = new(data[offset..(offset + 32)]);
-        offset += 32;
-
-        UInt32 transactionsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(data[offset..(offset + 4)]);
-        offset += 4;
-        UInt32 withdrawalsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(data[offset..(offset + 4)]);
-        offset += 4;
-
-        payload.BlobGasUsed = BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
-        offset += 8;
-        payload.ExcessBlobGas = BinaryPrimitives.ReadUInt64LittleEndian(data[offset..(offset + 8)]);
-        offset += 8;
+        ReadOnlySpan<byte> movingData = data;
+        payload.ParentBeaconBlockRoot = new(movingData.TakeAndMove(32));
+        payload.ParentHash = new(movingData.TakeAndMove(32));
+        payload.FeeRecipient = new(movingData.TakeAndMove(20));
+        payload.StateRoot = new(movingData.TakeAndMove(32));
+        payload.ReceiptsRoot = new(movingData.TakeAndMove(32));
+        payload.LogsBloom = new(movingData.TakeAndMove(256));
+        payload.PrevRandao = new(movingData.TakeAndMove(32));
+        payload.BlockNumber = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.GasLimit = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.GasUsed = (long)BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.Timestamp = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        UInt32 extraDataOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
+        payload.BaseFeePerGas = new(movingData.TakeAndMove(32));
+        payload.BlockHash = new(movingData.TakeAndMove(32));
+        UInt32 transactionsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
+        UInt32 withdrawalsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
+        payload.BlobGasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+        payload.ExcessBlobGas = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
 
         if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset > transactionsOffset || withdrawalsOffset != data.Length)
         {
@@ -74,9 +54,8 @@ public class PayloadDecoder : IPayloadDecoder
         }
 
         payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset].ToArray();
-
         payload.Transactions = DecodeTransactions(data[(int)transactionsOffset..(int)withdrawalsOffset]);
-        payload.Withdrawals = Array.Empty<Withdrawal>();
+        payload.Withdrawals = [];
 
         return payload;
     }
@@ -108,8 +87,5 @@ public class PayloadDecoder : IPayloadDecoder
         return txs;
     }
 
-    public byte[] EncodePayload(ExecutionPayloadV3 payload)
-    {
-        throw new System.NotImplementedException();
-    }
+    public byte[] EncodePayload(ExecutionPayloadV3 payload) => throw new NotImplementedException();
 }
