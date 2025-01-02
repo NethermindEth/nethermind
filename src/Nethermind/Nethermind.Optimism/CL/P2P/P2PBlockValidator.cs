@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -16,7 +17,7 @@ public class P2PBlockValidator : IP2PBlockValidator
 {
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
-    private readonly ConcurrentDictionary<long, long> _numberOfBlocksSeen = new();
+    private readonly Dictionary<long, long> _numberOfBlocksSeen = new();
     private readonly Address _sequencerP2PAddress;
     private readonly byte[] _chainId;
 
@@ -33,12 +34,21 @@ public class P2PBlockValidator : IP2PBlockValidator
     {
         if (!IsTopicValid(topic) || !IsTimestampValid(payload) || !IsBlockHashValid(payload) ||
             !IsBlobGasUsedValid(payload, topic) || !IsExcessBlobGasValid(payload, topic) ||
-            !IsParentBeaconBlockRootValid(payload, topic) || IsBlockNumberPerHeightLimitReached(payload))
+            !IsParentBeaconBlockRootValid(payload, topic))
         {
             return ValidityStatus.Reject;
         }
 
         return ValidityStatus.Valid;
+    }
+
+    // This method is not thread safe
+    public ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
+    {
+        // [REJECT] if more than 5 different blocks have been seen with the same block height
+        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out var currentCount);
+        _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
+        return currentCount > 5 ? ValidityStatus.Reject : ValidityStatus.Valid;
     }
 
     public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature)
@@ -127,14 +137,6 @@ public class P2PBlockValidator : IP2PBlockValidator
         }
 
         return true;
-    }
-
-    private bool IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
-    {
-        // [REJECT] if more than 5 different blocks have been seen with the same block height
-        long currentCount = _numberOfBlocksSeen.GetOrAdd(payload.BlockNumber, _ => 0);
-        _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
-        return currentCount > 5;
     }
 
     private bool IsSignatureValid(ReadOnlySpan<byte> payloadData, Span<byte> signature)

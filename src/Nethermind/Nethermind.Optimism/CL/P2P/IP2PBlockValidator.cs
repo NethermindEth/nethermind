@@ -11,6 +11,7 @@ public interface IP2PBlockValidator
 {
     ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic);
     ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature);
+    ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload);
 }
 
 public enum ValidityStatus

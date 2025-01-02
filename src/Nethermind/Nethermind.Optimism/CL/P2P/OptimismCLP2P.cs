@@ -12,6 +12,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -40,6 +41,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Multiaddress[] _staticPeerList;
     private readonly ICLConfig _config;
     private ILocalPeer? _localPeer;
+    private readonly Task _mainLoopTask;
 
     private readonly string _blocksV2TopicId;
 
@@ -67,22 +69,49 @@ public class OptimismCLP2P : IDisposable
             })
             .AddSingleton(new Settings())
             .BuildServiceProvider();
+
+        _mainLoopTask = new(async () =>
+        {
+            await MainLoop();
+        });
     }
 
-    private ulong _headPayloadNumber = 0;
-    private readonly SemaphoreSlim _semaphore = new(1);
+    private ulong _headPayloadNumber;
+    private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
+
     private async void OnMessage(byte[] msg)
     {
-        await _semaphore.WaitAsync();
         try
         {
             if (TryValidateAndDecodePayload(msg, out var payload))
             {
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
+                await _blocksP2PMessageChannel.Writer.WriteAsync(payload, _cancellationTokenSource.Token);
+            }
+        }
+        catch (Exception e)
+        {
+            if (e is not OperationCanceledException && _logger.IsError) _logger.Error("Unhandled exception in Optimism CL P2P:", e);
+        }
+    }
+
+    private async Task MainLoop()
+    {
+        while (true)
+        {
+            try
+            {
+                ExecutionPayloadV3 payload =
+                    await _blocksP2PMessageChannel.Reader.ReadAsync(_cancellationTokenSource.Token);
 
                 if (_headPayloadNumber >= (ulong)payload.BlockNumber)
                 {
                     // Old payload. skip
+                    return;
+                }
+
+                if (_blockValidator.IsBlockNumberPerHeightLimitReached(payload) is not ValidityStatus.Valid)
+                {
                     return;
                 }
 
@@ -91,14 +120,11 @@ public class OptimismCLP2P : IDisposable
                     _headPayloadNumber = (ulong)payload.BlockNumber;
                 }
             }
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error("Unhandled exception in Optimism CL P2P:", e);
-        }
-        finally
-        {
-            _semaphore.Release();
+            catch (Exception e)
+            {
+                if (_logger.IsError && e is not OperationCanceledException and not ChannelClosedException)
+                    _logger.Error("Unhandled exception in Optimism CL P2P:", e);
+            }
         }
     }
 
@@ -150,6 +176,8 @@ public class OptimismCLP2P : IDisposable
         ResultWrapper<PayloadStatusV1> npResult = await _engineRpcModule.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(),
             executionPayload.ParentBeaconBlockRoot);
 
+        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+
         if (npResult.Result.ResultType == ResultType.Failure)
         {
             if (_logger.IsError)
@@ -173,6 +201,8 @@ public class OptimismCLP2P : IDisposable
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(headBlockHash, headBlockHash, headBlockHash),
             null);
+
+        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
 
         if (fcuResult.Result.ResultType == ResultType.Failure)
         {
@@ -212,6 +242,8 @@ public class OptimismCLP2P : IDisposable
 
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
         peerStore.Discover(_staticPeerList);
+
+        _mainLoopTask.Start();
 
         if (_logger.IsInfo) _logger.Info($"Started P2P: {_localPeer.Address}");
     }
