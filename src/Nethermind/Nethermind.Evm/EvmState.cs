@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 /// State for EVM Calls
 /// </summary>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public class EvmState : IDisposable // TODO: rename to CallState
+public sealed class EvmState : IDisposable // TODO: rename to CallState
 {
     private static readonly ConcurrentQueue<EvmState> _statePool = new();
     private static readonly StackPool _stackPool = new();
@@ -155,7 +155,7 @@ public class EvmState : IDisposable // TODO: rename to CallState
 
     public void Dispose()
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        if (_isDisposed) return;
 
         _isDisposed = true;
         if (DataStack is not null)
@@ -178,6 +178,8 @@ public class EvmState : IDisposable // TODO: rename to CallState
 
     public void InitStacks()
     {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
         if (DataStack is null)
         {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
@@ -186,12 +188,16 @@ public class EvmState : IDisposable // TODO: rename to CallState
 
     public void CommitToParent(EvmState parentState)
     {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
     }
 
     private void Restore()
     {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
         if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
         {
             _accessTracker.Restore();
