@@ -222,20 +222,20 @@ namespace Nethermind.Evm.Test
 
         private static EvmState CreateEvmState(EvmState parentEvmState = null, bool isContinuation = false) =>
             parentEvmState is null
-                ? new EvmState(10000,
-                    new ExecutionEnvironment(),
+                ? EvmState.RentTopLevel(10000,
                     ExecutionType.CALL,
                     Snapshot.Empty,
+                    new ExecutionEnvironment(),
                     new StackAccessTracker())
-                : new EvmState(10000,
-                    new ExecutionEnvironment(),
+                : EvmState.RentFrame(10000,
+                    0,
+                    0,
                     ExecutionType.CALL,
-                    Snapshot.Empty,
-                    0,
-                    0,
                     false,
-                    parentEvmState.AccessTracker,
-                    false);
+                    false,
+                    Snapshot.Empty,
+                    new ExecutionEnvironment(),
+                    parentEvmState.AccessTracker);
 
         public class Context { }
     }

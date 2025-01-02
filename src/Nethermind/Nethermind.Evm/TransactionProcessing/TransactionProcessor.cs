@@ -620,11 +620,11 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
 
-                using (EvmState state = new EvmState(
+                using (EvmState state = EvmState.RentTopLevel(
                     unspentGas,
-                    env,
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
                     snapshot,
+                    env,
                     accessedItems))
                 {
 

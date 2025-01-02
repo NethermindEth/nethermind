@@ -2229,16 +2229,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
-        returnData = new EvmState(
+        returnData = EvmState.RentFrame(
             gasLimitUl,
-            callEnv,
-            executionType,
-            snapshot,
             outputOffset.ToLong(),
             outputLength.ToLong(),
+            executionType,
             instruction == Instruction.STATICCALL || vmState.IsStatic,
-            vmState.AccessTracker,
-            isCreateOnPreExistingAccount: false);
+            isCreateOnPreExistingAccount: false,
+            snapshot: snapshot,
+            env: callEnv,
+            stateForAccessLists: vmState.AccessTracker);
 
         return EvmExceptionType.None;
 
@@ -2468,16 +2468,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: value,
             value: value
         );
-        EvmState callState = new(
+        EvmState callState = EvmState.RentFrame(
             callGas,
-            callEnv,
+            0L,
+            0L,
             instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
-            snapshot,
-            0L,
-            0L,
             vmState.IsStatic,
-            vmState.AccessTracker,
-            accountExists);
+            accountExists,
+            snapshot,
+            callEnv,
+            vmState.AccessTracker);
 
         return (EvmExceptionType.None, callState);
     }
