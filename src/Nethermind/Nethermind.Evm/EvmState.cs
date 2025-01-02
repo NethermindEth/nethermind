@@ -44,7 +44,10 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private Snapshot _snapshot;
     private ExecutionEnvironment _env;
     private StackAccessTracker _accessTracker;
-
+        
+#if DEBUG
+    private StackTrace? _creationStackTrace;
+#endif
     /// <summary>
     /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
@@ -144,6 +147,10 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
         // Mark revived
         _isDisposed = false;
+            
+#if DEBUG
+        _creationStackTrace = new();
+#endif
 
         [DoesNotReturn]
         [StackTraceHidden]
@@ -196,7 +203,21 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _snapshot = default;
 
         _statePool.Enqueue(this);
+
+#if DEBUG
+        GC.SuppressFinalize(this);
+#endif
     }
+
+#if DEBUG
+    ~EvmState()
+    {
+        if (!_isDisposed)
+        {
+            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
+        }
+    }
+#endif
 
     public void InitializeStacks()
     {
