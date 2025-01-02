@@ -4,9 +4,9 @@
       "commandName": "DebugRoslynComponent",
       "targetProject": "..\\Nethermind.Serialization.SszGenerator.Test\\Nethermind.Serialization.SszGenerator.Test.csproj"
     },
-    "Generate SSZ for Nethermind.Network.Discovery": {
+    "Generate SSZ for Nethermind.Network.Portal": {
       "commandName": "DebugRoslynComponent",
-      "targetProject": "..\\Nethermind.Network.Discovery\\Nethermind.Network.Discovery.csproj"
+      "targetProject": "..\\Nethermind.Network.Portal\\Nethermind.Network.Portal.csproj"
     }
   }
 }

@@ -63,7 +63,7 @@ public class HistoryNetworkStore(
             TxReceipt[]? receipts = receiptFinder.Get(new Hash256(key.ReceiptByHash));
             if (receipts == null) return null;
 
-            return _encoderDecoder.Encode(receipts);
+            return _encoderDecoder.EncodeReceipts(receipts);
         }
 
         throw new Exception($"unsupported content {Convert.ToHexStringLower(contentKey)}");

@@ -23,12 +23,22 @@ public class HistoryNetworkEncoderDecoder
         return header;
     }
 
+    public byte[]? EncodeHeader(BlockHeader header)
+    {
+        var headerBytes = _headerDecoder.Encode(header).Bytes;
+
+        // TODO: Proof
+        return SszEncoding.Encode(new PortalBlockHeaderWithProof()
+        {
+            Header = headerBytes,
+            Proof = new PortalBlockHeaderProof { Selector = PortalBlockHeaderProofSelector.None },
+        });
+    }
+
     public BlockBody DecodeBody(byte[] payload)
     {
         try
         {
-            // TODO: Need to know if post or pre shanghai.
-            // And for that need to get the header first.
             SszEncoding.Decode(payload, out PortalBlockBodyPostShanghai body);
             Transaction[] transactions = body.Transactions
               .Select((tx) => _txDecoder.Decode(new RlpStream(tx.Data))!).ToArray();
@@ -50,53 +60,39 @@ public class HistoryNetworkEncoderDecoder
         }
     }
 
-    public TxReceipt[] DecodeReceipt(byte[] payload)
-    {
-        // TODO: Need to know if post or pre shanghai.
-        // And for that need to get the header first.
-        SszEncoding.Decode(payload, out SszReceipt[] receipts);
-        TxReceipt[] txReceipts = receipts
-            .Select((r) => new ReceiptStorageDecoder().Decode(new RlpStream(r.Data))!).ToArray();
-        // Does not work. Dont know why.
-        // BlockHeader[] uncles = Rlp.Decode<BlockHeader[]>(body.Uncles!);
-
-        // TODO: Widthrawals
-        return txReceipts;// new BlockBody(transactions, Array.Empty<BlockHeader>());
-    }
-
-    public byte[]? EncodeHeader(BlockHeader header)
-    {
-        var headerBytes = _headerDecoder.Encode(header).Bytes;
-
-        // TODO: Proof
-        return SszEncoding.Encode(new PortalBlockHeaderWithProof()
-        {
-            Header = headerBytes
-        });
-    }
-
     public byte[]? EncodeBlockBody(BlockBody blockBody)
     {
         SszTransaction[] transactionBytes = blockBody.Transactions
             .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
-        //SszTransaction[] unclesBytes = blockBody.Transactions
-        //    .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
-        //ssz[] withdrawalBytes = blockBody.Transactions
-        //    .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
-
-        var rlp = new RlpStream(_txDecoder.GetLength(blockBody.Transactions, RlpBehaviors.None));
-        _txDecoder.Encode(rlp, blockBody.Transactions);
+        byte[] unclesBytes = Rlp.Encode(blockBody.Uncles).Bytes;
+        EncodedWidthrawals[]? withdrawalBytes = blockBody.Withdrawals?
+            .Select((w) => new EncodedWidthrawals() { Data = new WithdrawalDecoder().Encode(w).Bytes }).ToArray();
 
         // TODO: Uncles widthrawals
-        return SszEncoding.Encode(new PortalBlockBodyPostShanghai()
+        return withdrawalBytes is not null ? SszEncoding.Encode(new PortalBlockBodyPostShanghai()
         {
-            Transactions = transactionBytes
+            Transactions = transactionBytes,
+            Uncles = unclesBytes,
+            Withdrawals = withdrawalBytes,
+        }) : SszEncoding.Encode(new PortalBlockBodyPreShanghai()
+        {
+            Transactions = transactionBytes,
+            Uncles = unclesBytes,
         });
     }
 
-    public byte[]? Encode(TxReceipt[] receipts)
+    public TxReceipt[] DecodeReceipt(byte[] payload)
     {
-        SszReceipt[] receiptBytes = receipts
+        SszEncoding.Decode(payload, out SszReceipt[] receipts);
+        TxReceipt[] txReceipts = receipts
+            .Select((r) => new ReceiptStorageDecoder().Decode(new RlpStream(r.Data))!).ToArray();
+
+        return txReceipts;
+    }
+
+    public byte[]? EncodeReceipts(TxReceipt[] receipts)
+    {
+        SszReceipt[] sszReceipts = receipts
             .Select((r) =>
             {
                 RlpStream str = new(_receiptDecoder.GetLength(r, RlpBehaviors.None));
@@ -104,10 +100,7 @@ public class HistoryNetworkEncoderDecoder
                 return new SszReceipt() { Data = str.Data.ToArray()! };
             }).ToArray();
 
-        byte[] bytes = new byte[SszEncoding.GetLength(receiptBytes)];
-        SszEncoding.Encode(bytes.AsSpan(), receiptBytes);
-
-        return bytes;
+        return SszEncoding.Encode(sszReceipts);
     }
 
     /*

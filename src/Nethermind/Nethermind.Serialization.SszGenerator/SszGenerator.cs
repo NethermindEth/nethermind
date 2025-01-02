@@ -82,11 +82,6 @@ public partial class SszGenerator : IIncrementalGenerator
         return $"GetLength(container.{m.Name})";
     }
 
-    private static string TypeGetter(SszType decl)
-    {
-        return decl.IsStruct ? "container.Value" : "container";
-    }
-
     private static string GenerateClassCode(SszType decl, List<SszType> foundTypes)
     {
         try
@@ -153,14 +148,25 @@ public partial class SszEncoding
         if (container.{variables[0].Name} is not null) {(variables[0].HandledByStd ? "SszLib.Encode" : "Encode")}(data, container.{variables[0].Name});
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? container)
+    public static byte[] Encode(ICollection<{decl.Name}>? items)
     {{
-        if(container is null) return;
+        if (items is null)
+        {{
+            return [];
+        }}
+        byte[] buf = new byte[GetLength(items)];
+        Encode(buf, items);
+        return buf;
+    }}
 {Whitespace}
-        int offset = container.Count * {(SszType.PointerLength)};
+    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? items)
+    {{
+        if(items is null) return;
+{Whitespace}
+        int offset = items.Count * {(SszType.PointerLength)};
         int itemOffset = 0;
 {Whitespace}
-        foreach({decl.Name} item in container)
+        foreach({decl.Name} item in items)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
@@ -320,14 +326,25 @@ public partial class SszEncoding
 {Shift(2, variables.Select((m, i) => (m.Type.IsStruct ? "" : $"if (container.{m.Name} is not null) ") + $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), container.{m.Name}{(m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"))}
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? container)
+    public static byte[] Encode(ICollection<{decl.Name}>? items)
     {{
-        if(container is null) return;
+        if (items is null)
+        {{
+            return [];
+        }}
+        byte[] buf = new byte[GetLength(items)];
+        Encode(buf, items);
+        return buf;
+    }}
 {Whitespace}
-        {(decl.IsVariable ? @$"int offset = container.Count * {(SszType.PointerLength)};
+    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? items)
+    {{
+        if(items is null) return;
+{Whitespace}
+        {(decl.IsVariable ? @$"int offset = items.Count * {(SszType.PointerLength)};
         int itemOffset = 0;
 {Whitespace}
-        foreach({decl.Name} item in container)
+        foreach({decl.Name} item in items)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
@@ -335,7 +352,7 @@ public partial class SszEncoding
             Encode(data.Slice(offset, length), item);
             offset += length;
         }}" : @$"int offset = 0;
-        foreach({decl.Name} item in container)
+        foreach({decl.Name} item in items)
         {{
             int length = GetLength(item);
             Encode(data.Slice(offset, length), item);
@@ -512,12 +529,23 @@ public partial class SszEncoding
         }};
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? container)
+    public static byte[] Encode(ICollection<{decl.Name}>? items)
     {{
-        if(container is null) return;
-        int offset = container.Count * {(SszType.PointerLength)};
+        if (items is null)
+        {{
+            return [];
+        }}
+        byte[] buf = new byte[GetLength(items)];
+        Encode(buf, items);
+        return buf;
+    }}
+{Whitespace}
+    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? items)
+    {{
+        if(items is null) return;
+        int offset = items.Count * {(SszType.PointerLength)};
         int itemOffset = 0;
-        foreach({decl.Name} item in container)
+        foreach({decl.Name} item in items)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};

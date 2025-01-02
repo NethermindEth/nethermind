@@ -12,21 +12,38 @@ public class PortalBlockHeaderWithProof
     [SszList(2048)]
     public byte[] Header { get; set; } = [];
 
-    [SszList(2048)]
-    public byte[] Proof { get; set; } = [];
+    public PortalBlockHeaderProof Proof { get; set; } = PortalBlockHeaderProof.Default;
 }
 
+[SszSerializable]
 public class PortalBlockHeaderProof
 {
+    public static PortalBlockHeaderProof Default { get; } = new PortalBlockHeaderProof { Selector = PortalBlockHeaderProofSelector.None };
     public PortalBlockHeaderProofSelector Selector { get; set; }
 
-    [SszList(16)] public ValueHash256[] Accumulator { get; set; } = [];
+    [SszVector(15)] public ValueHash256[]? AccumulatorProof { get; set; }
+    public BlockProofHistoricalRoots? BlockProofHistoricalRoots { get; set; }
+    [SszVector(13)] public ValueHash256[]? BlockProofHistoricalSummaries { get; set; }
+}
+
+[SszSerializable]
+public class BlockProofHistoricalRoots
+{
+    [SszVector(14)]
+    public ValueHash256[]? BeaconBlockProof { get; set; } = [];
+    public ValueHash256 BeaconBlockRoot { get; set; }
+
+    [SszVector(11)]
+    public ValueHash256[]? ExecutionBlockProof { get; set; } = [];
+    public ulong Slot { get; set; }
 }
 
 public enum PortalBlockHeaderProofSelector
 {
     None = 0,
     AccumulatorProof = 1,
+    BlockProofHistoricalRoots = 2,
+    BlockProofHistoricalSummaries = 3
 }
 
 [SszSerializable]

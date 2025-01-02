@@ -3,9 +3,11 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz;
@@ -218,6 +220,48 @@ public static partial class Ssz
 
         value.CopyTo(span);
     }
+
+    public static void Encode(Span<byte> span, ValueHash256? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        value.Value.BytesAsSpan.CopyTo(span);
+    }
+
+    public static void Encode(Span<byte> span, ICollection<ValueHash256>? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        foreach (ValueHash256 item in value)
+        {
+            item.BytesAsSpan.CopyTo(span);
+            span = span[32..];
+        }
+    }
+
+    public static void Decode(ReadOnlySpan<byte> span, out ValueHash256 value)
+    {
+        value = new ValueHash256(span);
+    }
+
+    public static void Decode(ReadOnlySpan<byte> span, out ReadOnlySpan<ValueHash256> value)
+    {
+        var result = new ValueHash256[span.Length / 32];
+
+        for (var i = 0; i < result.Length; i++)
+        {
+            result[i] = new ValueHash256(span[(i * 32)..((i + 1) * 32)]);
+        }
+
+        value = result.AsSpan();
+    }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool DecodeBool(Span<byte> span)
@@ -436,4 +480,6 @@ public static partial class Ssz
         throw new InvalidDataException(
             $"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
     }
+
+
 }

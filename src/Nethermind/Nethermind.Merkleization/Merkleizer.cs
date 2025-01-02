@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -772,6 +771,33 @@ public ref struct Merkleizer
                 break;
             }
         }
+    }
+
+    public void Feed(IReadOnlyList<ValueHash256>? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        UInt256[] input = new UInt256[value.Count];
+        for (int i = 0; i < value.Count; i++)
+        {
+            Merkle.Ize(out input[i], value[i].BytesAsSpan);
+        }
+
+        Merkle.Ize(out _chunks[^1], input);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(ValueHash256? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        Feed(MemoryMarshal.Cast<byte, UInt256>(value.Value.BytesAsSpan)[0]);
     }
 
     public UInt256 CalculateRoot()

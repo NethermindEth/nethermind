@@ -54,14 +54,6 @@ class SszType
 
         BasicTypes.Add(new SszType
         {
-            Namespace = "Nethermind.Int256",
-            Name = "UInt256",
-            Kind = Kind.Basic,
-            StaticLength = 32,
-        });
-
-        BasicTypes.Add(new SszType
-        {
             Namespace = "System",
             Name = "Boolean",
             Kind = Kind.Basic,
@@ -73,6 +65,31 @@ class SszType
             Namespace = "System.Collections",
             Name = "BitArray",
             Kind = Kind.Basic,
+        });
+
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Int256",
+            Name = "UInt256",
+            Kind = Kind.Basic,
+            StaticLength = 32,
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Core",
+            Name = "Bytes32",
+            Kind = Kind.Basic,
+            StaticLength = 32,
+        });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Core.Crypto",
+            Name = "ValueHash256",
+            Kind = Kind.Basic,
+            StaticLength = 32,
         });
     }
 
@@ -88,14 +105,12 @@ class SszType
     public IEnumerable<SszProperty>? UnionMembers { get => Kind == Kind.Union ? Members.Where(x => x.Name != "Selector") : null; }
     public SszProperty? Selector { get => Members.FirstOrDefault(x => x.Name == "Selector"); }
 
-    public Dictionary<string, object>? UnionValues { get; set; }
-
     private int? length = null;
 
     public SszType? EnumType { get; set; }
     public int StaticLength { get => length ?? Members.Sum(x => x.StaticLength); set => length = value; }
 
-    public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable);
+    public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable) || Kind is Kind.Union;
 
     public bool IsSszListItself { get; private set; }
 
