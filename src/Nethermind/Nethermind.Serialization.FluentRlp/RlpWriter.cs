@@ -42,7 +42,7 @@ public ref struct RlpWriter
         };
     }
 
-    public void Write<T>(T value) where T : IBinaryInteger<T>
+    public void Write<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
         switch (_mode)
         {
@@ -55,9 +55,9 @@ public ref struct RlpWriter
         }
     }
 
-    private void LengthWrite<T>(T value) where T : IBinaryInteger<T>
+    private unsafe void LengthWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
-        var size = Marshal.SizeOf<T>();
+        var size = sizeof(T);
         Span<byte> bigEndian = stackalloc byte[size];
         value.WriteBigEndian(bigEndian);
         bigEndian = bigEndian.TrimStart((byte)0);
@@ -76,9 +76,9 @@ public ref struct RlpWriter
         }
     }
 
-    private void ContentWrite<T>(T value) where T : IBinaryInteger<T>
+    private unsafe void ContentWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
-        var size = Marshal.SizeOf<T>();
+        var size = sizeof(T);
         Span<byte> bigEndian = stackalloc byte[size];
         value.WriteBigEndian(bigEndian);
         bigEndian = bigEndian.TrimStart((byte)0);
