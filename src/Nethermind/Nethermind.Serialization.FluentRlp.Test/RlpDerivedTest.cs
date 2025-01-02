@@ -34,6 +34,9 @@ public record IntegerTuple((int, long) Values);
 [RlpSerializable(RlpRepresentation.Newtype)]
 public record Address(string HexString);
 
+[RlpSerializable]
+public record AccessList(List<(Address, List<long>)> Entries);
+
 public class RlpDerivedTest
 {
     [Test]
@@ -122,5 +125,19 @@ public class RlpDerivedTest
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAddress());
 
         decoded.Should().BeEquivalentTo(address);
+    }
+
+    [Test]
+    public void RecordWithNestedGenerics()
+    {
+        var accessList = new AccessList([
+            (new Address("0x1234567890ABCDEF"), [1, 1, 3, 5, 8, 13]),
+            (new Address("0xFEDCBA0987654321"), [2, 4, 6, 8, 10])
+        ]);
+
+        ReadOnlySpan<byte> rlp = Rlp.Write(accessList, (ref RlpWriter writer, AccessList value) => writer.Write(value));
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessList());
+        decoded.Should().BeEquivalentTo(accessList);
     }
 }
