@@ -81,8 +81,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _parentHeader = parentHeader;
         _payloadAttributes = payloadAttributes;
         _time = time;
-        _slotNumber = payloadAttributes.SlotNumber ?? 0;
         _slotTimestampMs = payloadAttributes.Timestamp * 1000;
+        _slotNumber = payloadAttributes.SlotNumber ?? _time.GetSlot(_slotTimestampMs);
 
         ImprovementTask = Task.Run(ImproveBlock);
     }

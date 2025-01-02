@@ -98,7 +98,7 @@ public class ShutterApi : IShutterApi
             logManager,
             BlockWaitCutoff);
 
-        TxSource = new ShutterTxSource(TxLoader, _cfg, logManager);
+        TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
 
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 

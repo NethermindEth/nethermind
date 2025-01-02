@@ -21,4 +21,16 @@ public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, Tim
 
     public bool IsBlockUpToDate(Block head)
         => timestamper.UtcNowOffset.ToUnixTimeSeconds() - (long)head.Header.Timestamp < blockUpToDateCutoff.TotalSeconds;
+    
+
+    public ulong GetSlot(ulong slotTimestampMs)
+    {
+        long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GenesisTimestampMs;
+        if (slotTimeSinceGenesis < 0)
+        {
+            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
+        }
+
+        return (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
+    }
 }
