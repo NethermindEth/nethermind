@@ -232,7 +232,7 @@ namespace Nethermind.Consensus.Producers
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao,
-                ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot,
+                ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
