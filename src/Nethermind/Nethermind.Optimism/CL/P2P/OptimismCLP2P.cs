@@ -261,5 +261,6 @@ public class OptimismCLP2P : IDisposable
     {
         _blocksV2Topic?.Unsubscribe();
         _cancellationTokenSource.Cancel();
+        _blocksP2PMessageChannel.Writer.Complete();
     }
 }
