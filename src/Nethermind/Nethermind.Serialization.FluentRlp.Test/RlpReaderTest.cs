@@ -141,4 +141,16 @@ public class RlpReaderTest
             new object[] { new object[] { }, new object[] { new object[] { } } },
         });
     }
+
+    [Test]
+    public void ReadTrailingBytes()
+    {
+        byte[] source = [0x83, (byte)'d', (byte)'o', (byte)'g'];
+
+        var reader = new RlpReader(source);
+        _ = reader.ReadString();
+
+        reader.HasNext.Should().BeFalse();
+        reader.BytesRead.Should().Be(source.Length);
+    }
 }
