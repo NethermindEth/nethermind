@@ -236,6 +236,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7843Enabled = (chainSpec.Parameters.Eip7843TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
+            releaseSpec.IsEip7793Enabled = (chainSpec.Parameters.Eip7793TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             releaseSpec.IsOntakeEnabled = (chainSpec.Parameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
