@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Era1;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -63,9 +64,10 @@ namespace Nethermind.Api
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)
+                .AddModule(new DbModule())
                 .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
-                .AddSingleton(ConfigProvider.GetConfig<IReceiptConfig>())
-                .AddModule(new DbModule());
+                .AddSingleton(ConfigProvider.GetConfig<IEraConfig>())
+                .AddSingleton(ConfigProvider.GetConfig<IReceiptConfig>());
 
             return builder;
         }

@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 }
                 else
                 {
-                    _blockBodyDecoder.Serialize(stream, body);
+                    _blockBodyDecoder.Encode(stream, body);
                 }
             }
         }

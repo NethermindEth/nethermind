@@ -80,5 +80,20 @@ namespace Nethermind.Serialization.Rlp
             return buffer.Array.AsSpan()
                 .Slice(buffer.ArrayOffset + startIdx, buffer.WriterIndex - startIdx);
         }
+
+        /// <summary>
+        /// Return readable space of this byte buffer as a memory.
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <param name="startIndex">Optional start index of the underlying buffer.</param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public static Memory<byte> AsMemory(this IByteBuffer buffer, int? startIndex = null)
+        {
+            if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");
+            int startIdx = startIndex ?? buffer.ReaderIndex;
+            return buffer.Array.AsMemory()
+                .Slice(buffer.ArrayOffset + startIdx, buffer.WriterIndex - startIdx);
+        }
     }
 }
