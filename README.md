@@ -82,7 +82,7 @@ For more info, see [Installing Nethermind](https://docs.nethermind.io/get-starte
 
 ### Docker image
 
-This is the easiest and fastest way to build Nethermind if you don't want to clone Nethermind repo, deal with .NET SDK installation, and other configurations. Running the following simple command does the job:
+This is the easiest and fastest way to build Nethermind if you don't want to clone the Nethermind repo, deal with .NET SDK installation, and other configurations. Running the following simple command builds the Docker image, which is ready to run right after:
 
 ```bash
 docker build https://github.com/nethermindeth/nethermind.git -t nethermind
