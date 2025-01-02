@@ -135,5 +135,5 @@ namespace Nethermind.Specs
         }
 
         public bool IsEip7843Enabled { get; set; }
-    }
+        public bool IsEip7793Enabled { get; set; }
 }

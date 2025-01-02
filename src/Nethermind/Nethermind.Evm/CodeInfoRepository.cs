@@ -56,6 +56,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
 
             [SlotPrecompile.Address] = new(SlotPrecompile.Instance),
+            [TxIndexPrecompile.Address] = new(TxIndexPrecompile.Instance),
         }.ToFrozenDictionary();
     }
 
