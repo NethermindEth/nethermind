@@ -1,4 +1,4 @@
-﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
@@ -112,5 +112,8 @@ public static class Fluent
 
 public static class Program
 {
-    public static void Main() => BenchmarkRunner.Run(typeof(Program).Assembly);
+    public static void Main()
+    {
+        BenchmarkRunner.Run(typeof(Program).Assembly);
+    }
 }
