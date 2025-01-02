@@ -28,7 +28,7 @@ public ref struct RlpReader
 
     public bool HasNext => _position < _buffer.Length;
 
-    public T ReadInteger<T>() where T : IBinaryInteger<T>, ISignedNumber<T>
+    public T ReadInteger<T>() where T : IBinaryInteger<T>
     {
         ReadOnlySpan<byte> bigEndian;
         var header = _buffer[_position];

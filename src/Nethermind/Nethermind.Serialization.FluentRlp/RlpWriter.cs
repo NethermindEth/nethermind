@@ -42,7 +42,7 @@ public ref struct RlpWriter
         };
     }
 
-    public void Write<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
+    public void Write<T>(T value) where T : IBinaryInteger<T>
     {
         switch (_mode)
         {
@@ -55,7 +55,7 @@ public ref struct RlpWriter
         }
     }
 
-    private void LengthWrite<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
+    private void LengthWrite<T>(T value) where T : IBinaryInteger<T>
     {
         var size = Marshal.SizeOf<T>();
         Span<byte> bigEndian = stackalloc byte[size];
@@ -76,7 +76,7 @@ public ref struct RlpWriter
         }
     }
 
-    private void ContentWrite<T>(T value) where T : IBinaryInteger<T>, ISignedNumber<T>
+    private void ContentWrite<T>(T value) where T : IBinaryInteger<T>
     {
         var size = Marshal.SizeOf<T>();
         Span<byte> bigEndian = stackalloc byte[size];
