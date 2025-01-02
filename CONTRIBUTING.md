@@ -8,11 +8,11 @@ We expect project participants to adhere to our [code of conduct](./CODE_OF_COND
 
 ## Asking questions and providing feedback
 
-Have a question? Instead of opening an issue, please ask on our [Discord channel](https://discord.gg/N6Fhbg9u).
+Have a question? Instead of opening an issue, please ask on our [Discord channel](https://discord.gg/GXJFaYk).
 
 Our active community will be keen to assist you. Your well-worded questions will also serve as a resource to others searching for help.
 
-Your comments and feedback are welcome, and the development team is almost always available on [Discord](https://discord.gg/76ggjqDz).
+Your comments and feedback are welcome, and the development team is almost always available on [Discord](https://discord.gg/GXJFaYk).
 
 ## Reporting issues
 
@@ -51,7 +51,7 @@ Branch names must follow the `kebab-case` or `snake_case` pattern and be all low
 
 - `feature/1234-issue-title`
 - `shanghai/feature/1234-issue-title`
-- `fix/1234-bug-decription`
+- `fix/1234-bug-description`
 - `shanghai/refactor/title`
 
 ### File headers
