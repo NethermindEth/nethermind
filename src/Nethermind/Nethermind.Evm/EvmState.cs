@@ -100,14 +100,7 @@ public class EvmState : IDisposable // TODO: rename to CallState
         return state;
     }
 
-    private static EvmState Rent()
-    {
-        if (_statePool.TryDequeue(out EvmState state))
-        {
-            return state;
-        }
-        return new EvmState();
-    }
+    private static EvmState Rent() => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
 
     private void Initialize(
         long gasAvailable,
@@ -145,18 +138,13 @@ public class EvmState : IDisposable // TODO: rename to CallState
         _isDisposed = false;
     }
 
-    public Address From
+    public Address From => ExecutionType switch
     {
-        get
-        {
-            return ExecutionType switch
-            {
-                ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
-                ExecutionType.DELEGATECALL => Env.ExecutingAccount,
-                _ => throw new ArgumentOutOfRangeException(),
-            };
-        }
-    }
+        ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
+            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+        ExecutionType.DELEGATECALL => Env.ExecutingAccount,
+        _ => throw new ArgumentOutOfRangeException(),
+    };
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
     internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
