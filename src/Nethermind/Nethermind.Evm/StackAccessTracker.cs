@@ -114,7 +114,7 @@ public struct StackAccessTracker : IDisposable
         public JournalSet<Address> DestroyList { get; } = new();
         public HashSet<AddressAsKey> CreateList { get; } = new();
 
-        public void Clear()
+        private void Clear()
         {
             AccessedAddresses.Clear();
             AccessedStorageCells.Clear();
