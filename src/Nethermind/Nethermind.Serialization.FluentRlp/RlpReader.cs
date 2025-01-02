@@ -27,6 +27,7 @@ public ref struct RlpReader
     }
 
     public bool HasNext => _position < _buffer.Length;
+    public int BytesRead => _position;
 
     public T ReadInteger<T>() where T : IBinaryInteger<T>
     {
