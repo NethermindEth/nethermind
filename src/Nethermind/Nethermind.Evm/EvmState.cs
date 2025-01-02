@@ -44,7 +44,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private Snapshot _snapshot;
     private ExecutionEnvironment _env;
     private StackAccessTracker _accessTracker;
-        
+
 #if DEBUG
     private StackTrace? _creationStackTrace;
 #endif
@@ -147,7 +147,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
         // Mark revived
         _isDisposed = false;
-            
+
 #if DEBUG
         _creationStackTrace = new();
 #endif
