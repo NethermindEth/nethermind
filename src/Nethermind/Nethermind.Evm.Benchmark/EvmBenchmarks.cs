@@ -57,24 +57,23 @@ namespace Nethermind.Evm.Benchmark
         private EvmState _evmState;
         private WorldState _stateProvider;
 
-        private ExecuteCode<TIsTracing, TIsTracing, TIsTracing> _methodInfo;
-
-        public LocalSetup(string name, byte[] bytecode)
+        public LocalSetup(string name, byte[] bytecode, int? ilvmMode)
         {
             Name = name;
 
 
             VMConfig vmConfig = new VMConfig();
-            vmConfig.BakeInTracingInPartialAotMode = (typeof(TIsTracing) == typeof(VirtualMachine.IsTracing));
+            vmConfig.BakeInTracingInAotModes = (typeof(TIsTracing) == typeof(VirtualMachine.IsTracing));
 
             if (typeof(TIsCompiling) == typeof(VirtualMachine.IsOptimizing))
             {
                 vmConfig.PartialAotThreshold = 0;
-                vmConfig.AggressivePartialAotMode = true;
-                vmConfig.IsPartialAotEnabled = true;
+                vmConfig.AggressivePartialAotMode = (ilvmMode == ILMode.PARTIAL_AOT_MODE);
+                vmConfig.IsPartialAotEnabled = (ilvmMode == ILMode.PARTIAL_AOT_MODE);
                 vmConfig.AnalysisQueueMaxSize = 1;
                 vmConfig.PatternMatchingThreshold = 0;
-                vmConfig.IsPatternMatchingEnabled = false;
+                vmConfig.IsPatternMatchingEnabled = (ilvmMode == ILMode.PATTERN_BASED_MODE);
+                vmConfig.IsFullAotEnabled = (ilvmMode == ILMode.FULL_AOT_MODE);
             }
 
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
@@ -84,10 +83,10 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
             CodeInfoRepository codeInfoRepository = new();
 
-            ILogManager logmanager = vmConfig.BakeInTracingInPartialAotMode ? LimboLogs.Instance : NullLogManager.Instance;
+            ILogManager logmanager = vmConfig.BakeInTracingInAotModes ? LimboLogs.Instance : NullLogManager.Instance;
 
 
-            if (vmConfig.BakeInTracingInPartialAotMode)
+            if (vmConfig.BakeInTracingInAotModes)
             {
                 _txTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             }
@@ -97,8 +96,7 @@ namespace Nethermind.Evm.Benchmark
 
             if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled)
             {
-                var Mode = (vmConfig.IsPartialAotEnabled ? ILMode.PARTIAL_AOT_MODE : 0) | (vmConfig.IsPatternMatchingEnabled ? ILMode.PATTERN_BASED_MODE : 0);
-                IlAnalyzer.Analyse(codeinfo, Mode, vmConfig, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ilvmMode.Value, vmConfig, NullLogger.Instance);
             }
 
             _environment = new ExecutionEnvironment
@@ -114,22 +112,11 @@ namespace Nethermind.Evm.Benchmark
             );
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
-            _evmState.InitStacks();
-
-            var methodInfo = _virtualMachine.GetType().GetMethod("ExecuteCode", BindingFlags.Instance | BindingFlags.NonPublic);
-            var genericMethod = methodInfo.MakeGenericMethod(typeof(TIsTracing), typeof(TIsTracing), typeof(TIsTracing));
-
-            Delegate method = Delegate.CreateDelegate(typeof(ExecuteCode<TIsTracing, TIsTracing, TIsTracing>), _virtualMachine, genericMethod);
-
-            _methodInfo = (ExecuteCode<TIsTracing, TIsTracing, TIsTracing>)method;
         }
 
         public void Run()
         {
-            Span<byte> stack = _evmState.DataStack;
-            EvmStack<TIsTracing> _stack = new(in _evmState.DataStackHead, _txTracer, stack);
-            _methodInfo(_evmState, ref _stack, long.MaxValue, _spec);
-
+            _virtualMachine.Run<TIsTracing>(_evmState, _stateProvider, _txTracer);
         }
 
         public void Reset()
@@ -244,8 +231,10 @@ namespace Nethermind.Evm.Benchmark
                 var argBytes = bytes.WithoutLeadingZeros().ToArray();
                 foreach (var bytecode in GetBenchmarkSamplesGen(argBytes))
                 {
-                    yield return new LocalSetup<NotTracing, NotOptimizing>("EVM::" + bytecode.Item1, bytecode.Item2);
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::" + bytecode.Item1, bytecode.Item2);
+                    yield return new LocalSetup<NotTracing, NotOptimizing>("EVM::std::" + bytecode.Item1, bytecode.Item2, null);
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + bytecode.Item1, bytecode.Item2, ILMode.PATTERN_BASED_MODE);
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + bytecode.Item1, bytecode.Item2, ILMode.PARTIAL_AOT_MODE);
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + bytecode.Item1, bytecode.Item2, ILMode.FULL_AOT_MODE);
                 }
             }
         }
@@ -275,8 +264,10 @@ namespace Nethermind.Evm.Benchmark
             byte[] bytecode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE") ?? string.Empty);
             string BenchmarkName = Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME") ?? string.Empty;
 
-            yield return new LocalSetup<NotTracing, NotOptimizing>("EVM::" + BenchmarkName, bytecode);
-            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::" + BenchmarkName, bytecode);
+            yield return new LocalSetup<NotTracing, NotOptimizing>("EVM::std::" +  BenchmarkName, bytecode, null);
+            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + BenchmarkName, bytecode, ILMode.PATTERN_BASED_MODE);
+            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + BenchmarkName, bytecode, ILMode.PARTIAL_AOT_MODE);
+            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + BenchmarkName, bytecode, ILMode.FULL_AOT_MODE);
         }
 
         [ParamsSource(nameof(GetBenchmarkSamples))]
