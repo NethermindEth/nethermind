@@ -39,6 +39,7 @@ public static class AddressExtensions
                     0x12 => releaseSpec.Bls381Enabled,
                     0x13 => releaseSpec.Bls381Enabled,
                     0x14 => releaseSpec.SlotEnabled,
+                    0x15 => releaseSpec.TxIndexEnabled,
                     _ => false
                 },
                 0x01 => (data[4] >>> 24) switch

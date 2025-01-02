@@ -364,6 +364,8 @@ namespace Nethermind.Core.Specs
 
         public bool SlotEnabled => IsEip7843Enabled;
 
+        public bool TxIndexEnabled => IsEip7793Enabled;
+
         public bool ChargeForTopLevelCreate => IsEip2Enabled;
 
         public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
