@@ -97,7 +97,7 @@ public class OptimismCLP2P : IDisposable
 
     private async Task MainLoop()
     {
-        while (true)
+        while (!_cancellationTokenSource.IsCancellationRequested)
         {
             try
             {
@@ -173,6 +173,7 @@ public class OptimismCLP2P : IDisposable
 
     private async Task<bool> SendNewPayloadToEL(ExecutionPayloadV3 executionPayload)
     {
+        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
         ResultWrapper<PayloadStatusV1> npResult = await _engineRpcModule.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(),
             executionPayload.ParentBeaconBlockRoot);
 
@@ -198,6 +199,7 @@ public class OptimismCLP2P : IDisposable
 
     private async Task<bool> SendForkChoiceUpdatedToEL(Hash256 headBlockHash)
     {
+        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(headBlockHash, headBlockHash, headBlockHash),
             null);
