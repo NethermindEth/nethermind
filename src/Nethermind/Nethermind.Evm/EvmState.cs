@@ -183,7 +183,11 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             DataStack = null;
             ReturnStack = null;
         }
-        Restore(); // we are trying to restore when disposing
+        if (_canRestore)
+        {
+             // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
+            _accessTracker.Restore();
+        }
         _memory.Dispose();
         // Blank refs to not hold against GC
         _memory = default;
@@ -210,15 +214,5 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
-    }
-
-    private void Restore()
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-
-        if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
-        {
-            _accessTracker.Restore();
-        }
     }
 }
