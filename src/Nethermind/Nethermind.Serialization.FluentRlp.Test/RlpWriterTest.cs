@@ -40,9 +40,18 @@ public class RlpWriterTest
     }
 
     [Test]
+    public void WriteZero()
+    {
+        var serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write(0); });
+
+        byte[] expected = [0x80];
+        serialized.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
     public void WriteInteger_1Component()
     {
-        for (int i = 0; i < 0x80; i++)
+        for (int i = 1; i < 0x80; i++)
         {
             var integer = i;
             var serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });

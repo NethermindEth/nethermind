@@ -85,7 +85,7 @@ public ref struct RlpWriter
 
         if (bigEndian.Length == 0)
         {
-            _buffer[_position++] = 0;
+            _buffer[_position++] = 0x80;
         }
         else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
         {
