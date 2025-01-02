@@ -10,7 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.Trie;
+namespace Nethermind.State.Healing;
 
 /// <summary>
 /// Trie store that can recover from network using eth63-eth66 protocol and GetNodeData.

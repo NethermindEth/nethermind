@@ -4,11 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.Trie;
+namespace Nethermind.State.Healing;
 
 public class HealingStorageTreeFactory : IStorageTreeFactory
 {

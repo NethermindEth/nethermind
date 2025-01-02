@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Healing;
+using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -40,6 +45,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     public IStateReader GlobalStateReader { get; }
 
     public bool SupportHashLookup => _readOnlyTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
+    public ISnapServer? SnapServer => new SnapServer.SnapServer(_readOnlyTrieStore, _codeDb, GlobalStateReader, _logManager);
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
@@ -71,5 +77,10 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     {
         OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);
+    }
+
+    public virtual void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
+    {
+        // Noop
     }
 }

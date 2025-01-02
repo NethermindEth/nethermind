@@ -2,29 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.Trie;
+namespace Nethermind.State.Healing;
 
-public class HealingStateTree : StateTree
+public class HealingStorageTree : StorageTree
 {
-    private ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
+    private readonly Address _address;
+    private readonly Hash256 _stateRoot;
+    private readonly ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
-    [DebuggerStepThrough]
-    public HealingStateTree(ITrieStore? store, ILogManager? logManager)
-        : base(store.GetTrieStore(null), logManager)
+    public HealingStorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
+        : base(trieStore, rootHash, logManager)
     {
-    }
-
-    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
-    {
+        _address = address;
+        _stateRoot = stateRoot;
         _recovery = recovery;
     }
 
@@ -36,7 +34,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart(), rootHash ?? RootHash))
+            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -53,7 +51,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart(), RootHash))
+            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
             {
                 base.Set(rawKey, value);
             }
@@ -64,18 +62,18 @@ public class HealingStateTree : StateTree
         }
     }
 
-    private bool Recover(in ValueHash256 rlpHash, ReadOnlySpan<byte> pathPart, Hash256 rootHash)
+    private bool Recover(in ValueHash256 rlpHash, ReadOnlySpan<byte> pathPart)
     {
         if (_recovery?.CanRecover == true)
         {
             GetTrieNodesRequest request = new()
             {
-                RootHash = rootHash,
+                RootHash = _stateRoot,
                 AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
                     new()
                     {
-                        Group = [Nibbles.EncodePath(pathPart)]
+                        Group = [ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart)]
                     }
                 }
             };
