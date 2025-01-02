@@ -232,6 +232,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Fl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.FluentRlp.Generator", "Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj", "{838687B6-9915-4BD2-98CC-79A4130B89B0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rlp.Benchmark", "Nethermind.Serialization.Rlp.Benchmark\Nethermind.Serialization.Rlp.Benchmark.csproj", "{2D355B4C-AE53-4F93-9E3B-91C027CC5075}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -642,6 +644,10 @@ Global
 		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{838687B6-9915-4BD2-98CC-79A4130B89B0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2D355B4C-AE53-4F93-9E3B-91C027CC5075}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2D355B4C-AE53-4F93-9E3B-91C027CC5075}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2D355B4C-AE53-4F93-9E3B-91C027CC5075}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2D355B4C-AE53-4F93-9E3B-91C027CC5075}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
