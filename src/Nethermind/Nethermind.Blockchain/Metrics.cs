@@ -90,5 +90,9 @@ namespace Nethermind.Blockchain
         [GaugeMetric]
         [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
         public static long BadBlocksByNethermindNodes;
+
+        [GaugeMetric]
+        [Description("State root calculation time")]
+        public static double StateMerkleizationTime { get; set; }
     }
 }

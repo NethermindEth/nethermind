@@ -69,7 +69,7 @@ namespace Nethermind.Network.StaticNodes
                 }
             }
 
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(n => n.NodeId, n => n));
+            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
         }
 
         private static string[] GetNodes(string data)
@@ -131,12 +131,12 @@ namespace Nethermind.Network.StaticNodes
         {
             NetworkNode node = new(enode);
             return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-                node.Host, StringComparison.InvariantCultureIgnoreCase);
+                node.Host, StringComparison.OrdinalIgnoreCase);
         }
 
         private Task SaveFileAsync()
             => File.WriteAllTextAsync(_staticNodesPath,
-                JsonSerializer.Serialize(_nodes.Select(n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
+                JsonSerializer.Serialize(_nodes.Select(static n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
         public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
         {

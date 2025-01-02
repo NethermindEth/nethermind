@@ -71,7 +71,7 @@ namespace Nethermind.KeyStore
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _keyStoreEncoding = _config.KeyStoreEncoding.Equals("UTF-8", StringComparison.InvariantCultureIgnoreCase)
+            _keyStoreEncoding = _config.KeyStoreEncoding.Equals("UTF-8", StringComparison.OrdinalIgnoreCase)
                 ? new UTF8Encoding(false)
                 : Encoding.GetEncoding(_config.KeyStoreEncoding);
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
@@ -296,7 +296,7 @@ namespace Nethermind.KeyStore
             try
             {
                 var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
-                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
+                var addresses = files.Select(Path.GetFileName).Select(static fn => fn.Split("--").LastOrDefault()).Where(static x => Address.IsValidAddress(x, false)).Select(static x => new Address(x)).ToArray();
                 return (addresses, Result.Success);
             }
             catch (Exception e)

@@ -206,10 +206,10 @@ namespace Nethermind.EthStats.Integrations
                     block.GasLimit,
                     block.Difficulty.ToString(),
                     (block.TotalDifficulty ?? 0).ToString(),
-                    block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
+                    block.Transactions.Select(static t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
                     (block.TxRoot ?? Keccak.Zero).ToString(),
                     (block.StateRoot ?? Keccak.Zero).ToString(),
-                    block.Uncles.Select(_ => new Uncle()))));
+                    block.Uncles.Select(static _ => new Uncle()))));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)

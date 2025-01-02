@@ -49,7 +49,7 @@ namespace Nethermind.Config
                     else
                     {
                         valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
-                        var valueItems = valueString.Split(',').Select(s => s.Trim()).ToArray();
+                        var valueItems = valueString.Split(',').Select(static s => s.Trim()).ToArray();
                         IList collection = (valueType.IsGenericType
                             ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
                             : (IList)Activator.CreateInstance(valueType, valueItems.Length))!;
@@ -99,7 +99,7 @@ namespace Nethermind.Config
         }
 
         private static bool IsNullString(string valueString) =>
-            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase);
+            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.OrdinalIgnoreCase);
 
         public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
 

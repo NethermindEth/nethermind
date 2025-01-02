@@ -53,7 +53,13 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max((bestSuggestedHeader?.Number ?? 0) + MultiSyncModeSelector.FastSyncLag - syncConfig.StateMinDistanceFromHead, 0);
+            long targetBlockNumber = (bestSuggestedHeader?.Number ?? 0) + MultiSyncModeSelector.FastSyncLag - syncConfig.StateMinDistanceFromHead;
+            targetBlockNumber = Math.Max(targetBlockNumber, 0);
+            // The new pivot must be at least one block after the sync pivot as the forward downloader does not
+            // download the block at the sync pivot which may cause state not found error if state was downloaded
+            // at exactly sync pivot.
+            targetBlockNumber = Math.Max(targetBlockNumber, syncConfig.PivotNumberParsed + 1);
+
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {

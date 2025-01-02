@@ -148,7 +148,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == 14));
+            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 14));
         }
 
         private class Context

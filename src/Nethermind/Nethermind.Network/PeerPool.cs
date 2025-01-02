@@ -33,7 +33,7 @@ namespace Nethermind.Network
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
         private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
-        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(p => !p.Node.IsStatic);
+        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(static p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
 
         public int PeerCount => Peers.Count;

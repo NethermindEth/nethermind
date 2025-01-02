@@ -48,13 +48,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("fast", true)]
     public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled)
     {
-        Test<ISyncConfig, bool>(configWildcard, c => c.FastSync, fastSyncEnabled);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.FastSync, fastSyncEnabled);
     }
 
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard)
     {
-        Test<IPruningConfig, PruningMode>(configWildcard, c => c.Mode, PruningMode.None);
+        Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
     }
 
     [TestCase("archive", true)]
@@ -62,7 +62,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("spaceneth", false)]
     public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
     {
-        Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.SynchronizationEnabled, isSyncEnabled);
     }
 
     [TestCase("archive", true)]
@@ -70,7 +70,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("spaceneth", false)]
     public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
     {
-        Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.NetworkingEnabled, isEnabled);
     }
 
     [TestCase("sepolia", "ws://localhost:3000/api")]
@@ -81,16 +81,16 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("volta", "ws://localhost:3000/api")]
     public void Ethstats_values_are_correct(string configWildcard, string host)
     {
-        Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
-        Test<IEthStatsConfig, string>(configWildcard, c => c.Server, host);
-        Test<IEthStatsConfig, string>(configWildcard, c => c.Secret, "secret");
-        Test<IEthStatsConfig, string>(configWildcard, c => c.Contact, "hello@nethermind.io");
+        Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
+        Test<IEthStatsConfig, string>(configWildcard, static c => c.Server, host);
+        Test<IEthStatsConfig, string>(configWildcard, static c => c.Secret, "secret");
+        Test<IEthStatsConfig, string>(configWildcard, static c => c.Contact, "hello@nethermind.io");
     }
 
     [TestCase("aura ^archive", false)]
     public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
     {
-        Test<ISyncConfig, bool>(configWildcard, c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
     }
 
     [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
@@ -99,7 +99,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("volta", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
     public void Genesis_hash_is_correct(string configWildcard, string genesisHash)
     {
-        Test<IInitConfig, string>(configWildcard, c => c.GenesisHash, genesisHash);
+        Test<IInitConfig, string>(configWildcard, static c => c.GenesisHash, genesisHash);
     }
 
     [TestCase("spaceneth", true)]
@@ -107,22 +107,22 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("^validators ^spaceneth", false)]
     public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
     {
-        Test<IInitConfig, bool>(configWildcard, c => c.IsMining, defaultValue);
+        Test<IInitConfig, bool>(configWildcard, static c => c.IsMining, defaultValue);
     }
 
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard)
     {
-        Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
+        Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
     }
 
     [TestCase("*")]
     public void Analytics_defaults(string configWildcard)
     {
-        Test<IAnalyticsConfig, bool>(configWildcard, c => c.PluginsEnabled, false);
-        Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamBlocks, false);
-        Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamTransactions, false);
-        Test<IAnalyticsConfig, bool>(configWildcard, c => c.LogPublishedData, false);
+        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.PluginsEnabled, false);
+        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.StreamBlocks, false);
+        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.StreamTransactions, false);
+        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.LogPublishedData, false);
     }
 
     [TestCase("mainnet archive", 4096000000)]
@@ -137,16 +137,16 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("spaceneth_persistent.json", 128000000)]
     public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
     {
-        Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, expectedValue);
+        Test<IInitConfig, long?>(configWildcard, static c => c.MemoryHint, expectedValue);
     }
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
     {
-        Test<IMetricsConfig, bool>(configWildcard, c => c.Enabled, false);
-        Test<IMetricsConfig, string>(configWildcard, c => c.NodeName.ToUpperInvariant(), (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
-        Test<IMetricsConfig, int>(configWildcard, c => c.IntervalSeconds, 5);
-        Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, (string)null);
+        Test<IMetricsConfig, bool>(configWildcard, static c => c.Enabled, false);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.NodeName.ToUpperInvariant(), static (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
+        Test<IMetricsConfig, int>(configWildcard, static c => c.IntervalSeconds, 5);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUrl, (string)null);
     }
 
     [TestCase("^spaceneth ^volta", 50)]
@@ -154,17 +154,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("volta", 25)]
     public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
     {
-        Test<INetworkConfig, int>(configWildcard, c => c.DiscoveryPort, 30303);
-        Test<INetworkConfig, int>(configWildcard, c => c.P2PPort, 30303);
-        Test<INetworkConfig, string>(configWildcard, c => c.ExternalIp, (string)null);
-        Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string)null);
-        Test<INetworkConfig, int>(configWildcard, c => c.MaxActivePeers, activePeers);
+        Test<INetworkConfig, int>(configWildcard, static c => c.DiscoveryPort, 30303);
+        Test<INetworkConfig, int>(configWildcard, static c => c.P2PPort, 30303);
+        Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIp, (string)null);
+        Test<INetworkConfig, string>(configWildcard, static c => c.LocalIp, (string)null);
+        Test<INetworkConfig, int>(configWildcard, static c => c.MaxActivePeers, activePeers);
     }
 
     [TestCase("*")]
     public void Network_diag_tracer_disabled_by_default(string configWildcard)
     {
-        Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
+        Test<INetworkConfig, bool>(configWildcard, static c => c.DiagTracerEnabled, false);
     }
 
     [TestCase("mainnet", 2048)]
@@ -178,7 +178,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("spaceneth", 128)]
     public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
     {
-        Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
+        Test<ITxPoolConfig, int>(configWildcard, static c => c.Size, poolSize);
     }
 
     [TestCase("spaceneth", true)]
@@ -190,15 +190,15 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("^spaceneth ^mainnet ^gnosis ^sepolia ^holesky ^chiado", false)]
     public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
     {
-        Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
-        Test<IJsonRpcConfig, int>(configWildcard, c => c.Port, 8545);
-        Test<IJsonRpcConfig, string>(configWildcard, c => c.Host, "127.0.0.1");
+        Test<IJsonRpcConfig, bool>(configWildcard, static c => c.Enabled, jsonEnabled);
+        Test<IJsonRpcConfig, int>(configWildcard, static c => c.Port, 8545);
+        Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
     }
 
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard)
     {
-        Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
+        Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
     }
 
     [TestCase("^mainnet ^validators ^archive", true, true)]
@@ -207,9 +207,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("validators", true, false)]
     public void Fast_sync_settings_as_expected(string configWildcard, bool downloadBodies, bool downloadsReceipts, bool downloadHeaders = true)
     {
-        Test<ISyncConfig, bool>(configWildcard, c => c.DownloadBodiesInFastSync, downloadBodies);
-        Test<ISyncConfig, bool>(configWildcard, c => c.DownloadReceiptsInFastSync, downloadsReceipts);
-        Test<ISyncConfig, bool>(configWildcard, c => c.DownloadHeadersInFastSync, downloadHeaders);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.DownloadBodiesInFastSync, downloadBodies);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.DownloadReceiptsInFastSync, downloadsReceipts);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.DownloadHeadersInFastSync, downloadHeaders);
     }
 
     [TestCase("archive", false)]
@@ -221,7 +221,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("volta.json", false)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
     {
-        Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
+        Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);
     }
 
     [TestCase("^aura ^sepolia ^holesky ^mainnet", false)]
@@ -232,29 +232,29 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("mainnet ^archive", true)]
     public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
     {
-        Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
+        Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
     }
 
     [TestCase("^spaceneth.json")]
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard)
     {
-        Test<IInitConfig, DiagnosticMode>(configWildcard, c => c.DiagnosticMode, DiagnosticMode.None);
+        Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
     }
 
     [TestCase("*")]
     public void Migrations_are_not_enabled_by_default(string configWildcard)
     {
-        Test<IInitConfig, bool>(configWildcard, c => c.ReceiptsMigration, false);
-        Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
-        Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
+        Test<IInitConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
+        Test<IBloomConfig, bool>(configWildcard, static c => c.Migration, false);
+        Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
 
     [TestCase("^mainnet", 0)]
     [TestCase("mainnet fast", 0)]
     public void Barriers_defaults_are_correct(string configWildcard, long barrier)
     {
-        Test<ISyncConfig, long>(configWildcard, c => c.AncientBodiesBarrier, barrier);
-        Test<ISyncConfig, long>(configWildcard, c => c.AncientReceiptsBarrier, barrier);
+        Test<ISyncConfig, long>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
+        Test<ISyncConfig, long>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
     }
 
     [TestCase("^spaceneth", "nethermind_db")]
@@ -268,14 +268,14 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("sepolia", "Data/static-nodes-sepolia.json")]
     public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
     {
-        Test<IInitConfig, string>(configWildcard, c => c.StaticNodesPath, staticNodesPath);
+        Test<IInitConfig, string>(configWildcard, static c => c.StaticNodesPath, staticNodesPath);
     }
 
     [TestCase("^validators", true)]
     [TestCase("validators", false)]
     public void Stores_receipts(string configWildcard, bool storeReceipts)
     {
-        Test<IReceiptConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
+        Test<IReceiptConfig, bool>(configWildcard, static c => c.StoreReceipts, storeReceipts);
     }
 
     [TestCase("mainnet_archive.json", true)]
@@ -285,24 +285,24 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("volta", false)]
     public void Basic_configs_are_as_expected(string configWildcard, bool isProduction = false)
     {
-        Test<IInitConfig, bool>(configWildcard, c => c.DiscoveryEnabled, true);
-        Test<IInitConfig, bool>(configWildcard, c => c.ProcessingEnabled, true);
-        Test<IInitConfig, bool>(configWildcard, c => c.WebSocketsEnabled, true);
-        Test<IInitConfig, bool>(configWildcard, c => c.PeerManagerEnabled, true);
-        Test<IInitConfig, bool>(configWildcard, c => c.KeepDevWalletInMemory, false);
+        Test<IInitConfig, bool>(configWildcard, static c => c.DiscoveryEnabled, true);
+        Test<IInitConfig, bool>(configWildcard, static c => c.ProcessingEnabled, true);
+        Test<IInitConfig, bool>(configWildcard, static c => c.WebSocketsEnabled, true);
+        Test<IInitConfig, bool>(configWildcard, static c => c.PeerManagerEnabled, true);
+        Test<IInitConfig, bool>(configWildcard, static c => c.KeepDevWalletInMemory, false);
 
         if (isProduction)
         {
-            Test<IInitConfig, bool>(configWildcard, c => c.EnableUnsecuredDevWallet, false);
+            Test<IInitConfig, bool>(configWildcard, static c => c.EnableUnsecuredDevWallet, false);
         }
 
-        Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("json", "logs.txt"), cf));
+        Test<IInitConfig, string>(configWildcard, static c => c.LogFileName, static (cf, p) => p.Should().Be(cf.Replace("json", "logs.txt"), cf));
     }
 
     [TestCase("*")]
     public void Simulating_block_production_on_every_slot_is_always_disabled(string configWildcard)
     {
-        Test<IMergeConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
+        Test<IMergeConfig, bool>(configWildcard, static c => c.SimulateBlockProduction, false);
     }
 
     [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
@@ -313,7 +313,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("^sepolia ^holesky ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
     public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
     {
-        Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, c => c.BlobsSupport, blobsSupportMode);
+        Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, static c => c.BlobsSupport, blobsSupportMode);
     }
 
 
@@ -335,26 +335,26 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void BufferResponses_rpc_is_off(string configWildcard)
     {
-        Test<IJsonRpcConfig, bool>(configWildcard, c => c.BufferResponses, false);
+        Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
     }
 
     [TestCase("*")]
     public void Arena_order_is_default(string configWildcard)
     {
-        Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
+        Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
     }
 
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 30_000_000L)]
-    [TestCase("sepolia", 30_000_000L)]
-    [TestCase("holesky", 30_000_000L)]
+    [TestCase("mainnet", 36_000_000L)]
+    [TestCase("sepolia", 36_000_000L)]
+    [TestCase("holesky", 36_000_000L)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
     public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
     {
-        Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
-        Test<IBlocksConfig, ulong>(configWildcard, c => c.SecondsPerSlot, secondsPerSlot);
-        Test<IBlocksConfig, int>(configWildcard, c => c.BlockProductionTimeoutMs, blockProductionTimeout);
+        Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
+        Test<IBlocksConfig, ulong>(configWildcard, static c => c.SecondsPerSlot, secondsPerSlot);
+        Test<IBlocksConfig, int>(configWildcard, static c => c.BlockProductionTimeoutMs, blockProductionTimeout);
 
     }
 

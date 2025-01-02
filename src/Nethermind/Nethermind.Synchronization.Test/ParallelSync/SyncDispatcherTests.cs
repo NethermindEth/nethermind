@@ -111,8 +111,8 @@ public class SyncDispatcherTests
             return null;
         }
 
-        public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = delegate { };
-        public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = delegate { };
+        public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
+        public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = static delegate { };
 
         public ValueTask DisposeAsync()
         {
@@ -271,6 +271,38 @@ public class SyncDispatcherTests
     }
 
     [Retry(tryCount: 5)]
+    [Test]
+    public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
+    {
+        TestSyncFeed syncFeed = new(isMultiFeed: true);
+        syncFeed.LockResponse();
+        TestDownloader downloader = new TestDownloader();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            downloader,
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        Task executorTask = dispatcher.Start(CancellationToken.None);
+
+        // Load some requests
+        syncFeed.Activate();
+        await Task.Delay(100);
+        syncFeed.Finish();
+
+        // Dispose
+        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync());
+        await Task.Delay(100);
+
+        disposeTask.IsCompletedSuccessfully.Should().BeFalse();
+
+        syncFeed.UnlockResponse();
+        await disposeTask;
+        await executorTask;
+    }
+
+    [Retry(tryCount: 5)]
     [TestCase(false, 1, 1, 8)]
     [TestCase(true, 1, 1, 24)]
     [TestCase(true, 2, 1, 32)]
@@ -294,6 +326,7 @@ public class SyncDispatcherTests
 
         Task _ = dispatcher.Start(CancellationToken.None);
         syncFeed.Activate();
+
         await Task.Delay(100);
 
         Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(4000, 100));

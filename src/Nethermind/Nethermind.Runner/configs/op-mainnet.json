@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/op-mainnet.json",
     "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
@@ -16,8 +17,8 @@
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 128690000,
-    "PivotHash": "0x6ba4ae18a363b318dad04a6dc638a60cad1d5b42a8d8c05048408ffadcb100c8",
+    "PivotNumber": 129900000,
+    "PivotHash": "0x6ed7a63e1752a64fa777d1f07974b50bd43270c9d9333c88535cea0cf7e7cbbb",
     "PivotTotalDifficulty": "0"
   },
   "Discovery": {
