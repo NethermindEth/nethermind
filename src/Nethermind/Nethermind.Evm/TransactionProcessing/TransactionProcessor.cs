@@ -158,7 +158,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            StackAccessTracker accessTracker = new();
+            // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
+            using StackAccessTracker accessTracker = new();
+
             int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
@@ -618,11 +620,11 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
 
-                using (EvmState state = new EvmState(
+                using (EvmState state = EvmState.RentTopLevel(
                     unspentGas,
-                    env,
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
                     snapshot,
+                    env,
                     accessedItems))
                 {
 
