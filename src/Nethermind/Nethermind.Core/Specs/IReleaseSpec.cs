@@ -425,6 +425,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip7843Enabled { get; }
 
+        /// <summary>
+        /// EIP-7793: TxIndex precompile
+        /// </summary>
+        bool IsEip7793Enabled { get; }
+
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }
