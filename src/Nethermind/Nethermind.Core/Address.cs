@@ -140,6 +140,18 @@ namespace Nethermind.Core
             Bytes = bytes;
         }
 
+        public Address(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != Size)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
+                    nameof(bytes));
+            }
+
+            Bytes = bytes.ToArray();
+        }
+
         public bool Equals(Address? other)
         {
             if (other is null)
