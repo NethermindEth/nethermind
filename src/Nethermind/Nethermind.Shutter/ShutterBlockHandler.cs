@@ -169,7 +169,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
             lock (_syncObject)
             {
-                ulong slot = e.Block.SlotNumber!;
+                ulong slot = e.Block.SlotNumber!.Value;
                 _slotToBlockHash.Set(slot, head.Hash);
 
                 if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))

@@ -12,8 +12,6 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
-
     /// <summary>
     /// Method parameter list is extended with <see cref="SlotNumber"/> parameter.
     /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.

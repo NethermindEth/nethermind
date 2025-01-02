@@ -101,6 +101,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool Bn128Enabled => spec.Bn128Enabled;
     public virtual bool BlakeEnabled => spec.BlakeEnabled;
     public virtual bool Bls381Enabled => spec.Bls381Enabled;
+    public virtual bool SlotEnabled => spec.SlotEnabled;
     public virtual bool ChargeForTopLevelCreate => spec.ChargeForTopLevelCreate;
     public virtual bool FailOnOutOfGasCodeDeposit => spec.FailOnOutOfGasCodeDeposit;
     public virtual bool UseShanghaiDDosProtection => spec.UseShanghaiDDosProtection;
