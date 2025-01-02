@@ -17,25 +17,38 @@ namespace Nethermind.Evm
         private static readonly StackPool _stackPool = new();
 
         public byte[]? DataStack;
-
         public int[]? ReturnStack;
 
-        public StackAccessTracker AccessTracker => _accessTracker;
-
         private readonly StackAccessTracker _accessTracker;
+        private readonly ExecutionEnvironment _env;
+        private EvmPooledMemory _memory;
 
         public int DataStackHead = 0;
 
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
+
+        public long GasAvailable { get; set; }
+        public int ProgramCounter { get; set; }
+        public long Refund { get; set; }
+
+        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
+        public bool IsTopLevel { get; } // TODO: move to CallEnv
+        internal long OutputDestination { get; } // TODO: move to CallEnv
+        internal long OutputLength { get; } // TODO: move to CallEnv
+        public bool IsStatic { get; } // TODO: move to CallEnv
+        public bool IsContinuation { get; set; } // TODO: move to CallEnv
+        public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
+        public Snapshot Snapshot { get; } // TODO: move to CallEnv
+
         /// <summary>
         /// Constructor for a top level <see cref="EvmState"/>.
         /// </summary>
         public EvmState(
             long gasAvailable,
-            ExecutionEnvironment env,
+            in ExecutionEnvironment env,
             ExecutionType executionType,
-            Snapshot snapshot,
+            in Snapshot snapshot,
             in StackAccessTracker accessedItems) : this(gasAvailable,
                                     env,
                                     executionType,
@@ -49,32 +62,13 @@ namespace Nethermind.Evm
         {
         }
         /// <summary>
-        /// Constructor for a top level <see cref="EvmState"/>, used by tests.
-        /// </summary>
-        internal EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            Snapshot snapshot) : this(gasAvailable,
-                                    env,
-                                    executionType,
-                                    isTopLevel: true,
-                                    snapshot,
-                                    outputDestination: 0L,
-                                    outputLength: 0L,
-                                    isStatic: false,
-                                    new StackAccessTracker(),
-                                    isCreateOnPreExistingAccount: false)
-        {
-        }
-        /// <summary>
         /// Constructor for a frame <see cref="EvmState"/> beneath top level.
         /// </summary>
         internal EvmState(
             long gasAvailable,
-            ExecutionEnvironment env,
+            in ExecutionEnvironment env,
             ExecutionType executionType,
-            Snapshot snapshot,
+            in Snapshot snapshot,
             long outputDestination,
             long outputLength,
             bool isStatic,
@@ -96,10 +90,10 @@ namespace Nethermind.Evm
         }
         private EvmState(
             long gasAvailable,
-            ExecutionEnvironment env,
+            in ExecutionEnvironment env,
             ExecutionType executionType,
             bool isTopLevel,
-            Snapshot snapshot,
+            in Snapshot snapshot,
             long outputDestination,
             long outputLength,
             bool isStatic,
@@ -111,7 +105,7 @@ namespace Nethermind.Evm
             IsTopLevel = isTopLevel;
             _canRestore = !isTopLevel;
             Snapshot = snapshot;
-            Env = env;
+            _env = env;
             OutputDestination = outputDestination;
             OutputLength = outputLength;
             IsStatic = isStatic;
@@ -138,24 +132,10 @@ namespace Nethermind.Evm
             }
         }
 
-        public long GasAvailable { get; set; }
-        public int ProgramCounter { get; set; }
-        public long Refund { get; set; }
-
         public Address To => Env.CodeSource ?? Env.ExecutingAccount;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public readonly ExecutionEnvironment Env;
-
-        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
-        public bool IsTopLevel { get; } // TODO: move to CallEnv
-        internal long OutputDestination { get; } // TODO: move to CallEnv
-        internal long OutputLength { get; } // TODO: move to CallEnv
-        public bool IsStatic { get; } // TODO: move to CallEnv
-        public bool IsContinuation { get; set; } // TODO: move to CallEnv
-        public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
-        public Snapshot Snapshot { get; } // TODO: move to CallEnv
-
-        private EvmPooledMemory _memory;
+        public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
+        public ref readonly ExecutionEnvironment Env => ref _env;
         public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
 
         public void Dispose()

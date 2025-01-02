@@ -225,7 +225,8 @@ namespace Nethermind.Evm.Test
                 ? new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
-                    Snapshot.Empty)
+                    Snapshot.Empty,
+                    new StackAccessTracker())
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
