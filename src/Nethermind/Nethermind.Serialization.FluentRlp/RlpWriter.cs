@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Numerics;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.FluentRlp;
 
