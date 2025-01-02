@@ -39,32 +39,32 @@ namespace Nethermind.Evm
             in StackAccessTracker accessedItems) : this(gasAvailable,
                                     env,
                                     executionType,
-                                    true,
+                                    isTopLevel: true,
                                     snapshot,
-                                    0L,
-                                    0L,
-                                    false,
+                                    outputDestination: 0L,
+                                    outputLength: 0L,
+                                    isStatic: false,
                                     accessedItems,
-                                    false)
+                                    isCreateOnPreExistingAccount: false)
         {
         }
         /// <summary>
-        /// Constructor for a top level <see cref="EvmState"/>.
+        /// Constructor for a top level <see cref="EvmState"/>, used by tests.
         /// </summary>
-        public EvmState(
+        internal EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
             Snapshot snapshot) : this(gasAvailable,
                                     env,
                                     executionType,
-                                    true,
+                                    isTopLevel: true,
                                     snapshot,
-                                    0L,
-                                    0L,
-                                    false,
+                                    outputDestination: 0L,
+                                    outputLength: 0L,
+                                    isStatic: false,
                                     new StackAccessTracker(),
-                                    false)
+                                    isCreateOnPreExistingAccount: false)
         {
         }
         /// <summary>
@@ -84,7 +84,7 @@ namespace Nethermind.Evm
                 gasAvailable,
                 env,
                 executionType,
-                false,
+                isTopLevel: false,
                 snapshot,
                 outputDestination,
                 outputLength,
