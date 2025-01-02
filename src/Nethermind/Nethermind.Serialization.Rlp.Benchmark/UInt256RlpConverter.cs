@@ -102,8 +102,8 @@ public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
         public static bool IsPow2(Wrap value) => throw new NotImplementedException();
         public static Wrap Log2(Wrap value) => throw new NotImplementedException();
         public static Wrap operator <<(Wrap value, int shiftAmount) => throw new NotImplementedException();
-        public static Wrap operator >> (Wrap value, int shiftAmount) => throw new NotImplementedException();
-        public static Wrap operator >>> (Wrap value, int shiftAmount) => throw new NotImplementedException();
+        public static Wrap operator >>(Wrap value, int shiftAmount) => throw new NotImplementedException();
+        public static Wrap operator >>>(Wrap value, int shiftAmount) => throw new NotImplementedException();
         public int GetByteCount() => throw new NotImplementedException();
         public int GetShortestBitLength() => throw new NotImplementedException();
         public static Wrap PopCount(Wrap value) => throw new NotImplementedException();
