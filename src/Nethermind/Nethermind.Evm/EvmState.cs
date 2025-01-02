@@ -185,7 +185,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
         if (_canRestore)
         {
-             // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
+            // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             _accessTracker.Restore();
         }
         _memory.Dispose();
