@@ -125,7 +125,7 @@ For more info, see [Building standalone binaries](https://docs.nethermind.io/dev
 
 ## Contributing
 
-BEFORE you start work on a feature or fix, please read and follow our [contributing guidelines](https://github.com/nethermindeth/nethermind/blob/master/CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
+BEFORE you start work on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
 
 ## Security
 
@@ -133,4 +133,4 @@ If you believe you have found a security vulnerability in our code, please repor
 
 ## License
 
-Nethermind is an open-source software licensed under the [LGPL-3.0](https://github.com/nethermindeth/nethermind/blob/master/LICENSE-LGPL).
+Nethermind is an open-source software licensed under the [LGPL-3.0](./LICENSE-LGPL.md).
