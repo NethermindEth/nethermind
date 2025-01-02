@@ -121,6 +121,8 @@ dotnet test Nethermind.sln -c release
 dotnet test EthereumTests.sln -c release
 ```
 
+For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
+
 ## Contributing
 
 BEFORE you start work on a feature or fix, please read and follow our [contributing guidelines](https://github.com/nethermindeth/nethermind/blob/master/CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
