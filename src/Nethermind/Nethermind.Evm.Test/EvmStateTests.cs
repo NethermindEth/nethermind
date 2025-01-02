@@ -216,7 +216,7 @@ namespace Nethermind.Evm.Test
         public void Can_dispose_after_init()
         {
             EvmState evmState = CreateEvmState();
-            evmState.InitStacks();
+            evmState.InitializeStacks();
             evmState.Dispose();
         }
 

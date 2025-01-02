@@ -647,7 +647,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             goto Empty;
         }
 
-        vmState.InitStacks();
+        vmState.InitializeStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
         long gasAvailable = vmState.GasAvailable;
 

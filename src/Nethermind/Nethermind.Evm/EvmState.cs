@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.State;
 
@@ -37,7 +38,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
 
-    private bool _isDisposed;
+    private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
     private Snapshot _snapshot;
@@ -135,7 +136,21 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
+
+        // Should be disposed when being initialized
+        if (!_isDisposed)
+        {
+            ThrowIfNotUninitialized();
+        }
+        // Mark revived
         _isDisposed = false;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowIfNotUninitialized()
+        {
+            throw new InvalidOperationException("Already in use");
+        }
     }
 
     public Address From => ExecutionType switch
@@ -155,12 +170,15 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     public void Dispose()
     {
+        // Shouldn't be called multiple times
+        Debug.Assert(!_isDisposed);
+
         if (_isDisposed) return;
 
         _isDisposed = true;
         if (DataStack is not null)
         {
-            // Only Dispose once
+            // Only return if initialized
             _stackPool.ReturnStacks(DataStack, ReturnStack!);
             DataStack = null;
             ReturnStack = null;
@@ -176,7 +194,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _statePool.Enqueue(this);
     }
 
-    public void InitStacks()
+    public void InitializeStacks()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
