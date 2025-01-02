@@ -41,7 +41,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
-        private readonly HashSet<Address> _accessedAddresses = [];
 
         [Flags]
         protected enum ExecutionOptions
