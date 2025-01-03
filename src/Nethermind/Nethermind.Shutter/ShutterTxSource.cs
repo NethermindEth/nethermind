@@ -18,7 +18,7 @@ namespace Nethermind.Shutter;
 public class ShutterTxSource(
     ShutterTxLoader txLoader,
     IShutterConfig shutterConfig,
-    ShutterTime shutterTime,
+    ShutterTime time,
     ILogManager logManager)
     : ITxSource, IShutterTxSignal
 {
@@ -36,16 +36,11 @@ public class ShutterTxSource(
             return [];
         }
 
-        ulong buildingSlot;
-        try
+        if (payloadAttributes!.SlotNumber is null)
         {
-            (buildingSlot, _) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
+            if (_logger.IsDebug) _logger.Warn($"PayloadAttributes.SlotNumber is null");
         }
-        catch (ShutterTime.ShutterSlotCalulationException e)
-        {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
-            return [];
-        }
+        ulong buildingSlot = payloadAttributes.SlotNumber ?? time.GetSlot(payloadAttributes.Timestamp * 1000);
 
         ShutterTransactions? shutterTransactions = _txCache.Get(buildingSlot);
         if (shutterTransactions is null)

@@ -8,9 +8,9 @@ using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Test;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Precompiles.Benchmark
 {
@@ -89,7 +89,7 @@ namespace Nethermind.Precompiles.Benchmark
         [Benchmark(Baseline = true)]
         public (ReadOnlyMemory<byte>, bool) Baseline()
         {
-            return Input.Precompile.Run(Input.Bytes, Berlin.Instance);
+            return Input.Precompile.Run(Input.Bytes, TestPrecompileContext.Instance);
         }
     }
 }

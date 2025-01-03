@@ -362,6 +362,8 @@ namespace Nethermind.Core.Specs
 
         public bool Bls381Enabled => IsEip2537Enabled;
 
+        public bool SlotEnabled => IsEip7843Enabled;
+
         public bool ChargeForTopLevelCreate => IsEip2Enabled;
 
         public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
@@ -417,6 +419,11 @@ namespace Nethermind.Core.Specs
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
+
+        /// <summary>
+        /// EIP-7843: Slot precompile
+        /// </summary>
+        bool IsEip7843Enabled { get; }
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }

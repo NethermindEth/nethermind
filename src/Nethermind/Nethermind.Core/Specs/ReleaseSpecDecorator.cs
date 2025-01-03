@@ -80,6 +80,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public virtual bool IsEip7843Enabled => spec.IsEip7843Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOntakeEnabled => spec.IsOntakeEnabled;
@@ -100,6 +101,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool Bn128Enabled => spec.Bn128Enabled;
     public virtual bool BlakeEnabled => spec.BlakeEnabled;
     public virtual bool Bls381Enabled => spec.Bls381Enabled;
+    public virtual bool SlotEnabled => spec.SlotEnabled;
     public virtual bool ChargeForTopLevelCreate => spec.ChargeForTopLevelCreate;
     public virtual bool FailOnOutOfGasCodeDeposit => spec.FailOnOutOfGasCodeDeposit;
     public virtual bool UseShanghaiDDosProtection => spec.UseShanghaiDDosProtection;
