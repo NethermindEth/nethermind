@@ -22,25 +22,24 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     protected ILogManager LogManager { get; }
 
     private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
-    protected OverridableWorldState StateProvider { get; }
+    protected IOverridableWorldState StateProvider { get; }
     protected OverridableCodeInfoRepository CodeInfoRepository { get; }
     protected IVirtualMachine Machine { get; }
     protected ITransactionProcessor TransactionProcessor => _transactionProcessorLazy.Value;
 
     public OverridableTxProcessingEnv(
-        OverridableWorldStateManager worldStateManager,
+        IOverridableWorldScope overridableScope,
         IReadOnlyBlockTree readOnlyBlockTree,
         ISpecProvider specProvider,
         ILogManager? logManager
     )
     {
         SpecProvider = specProvider;
-        StateReader = worldStateManager.GlobalStateReader;
+        StateReader = overridableScope.GlobalStateReader;
         BlockTree = readOnlyBlockTree;
         IBlockhashProvider blockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
         LogManager = logManager;
-
-        StateProvider = (OverridableWorldState)worldStateManager.CreateResettableWorldState();
+        StateProvider = overridableScope.WorldState;
 
         CodeInfoRepository = new(new CodeInfoRepository());
         Machine = new VirtualMachine(blockhashProvider, specProvider, CodeInfoRepository, logManager);
