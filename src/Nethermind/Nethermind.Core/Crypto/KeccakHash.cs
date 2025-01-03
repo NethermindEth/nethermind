@@ -485,8 +485,8 @@ namespace Nethermind.Core.Crypto
                 for (int i = 0; i < ulongLength; i += sizeof(ulong))
                 {
                     ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
-                    ulong input128 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
-                    state64 ^= input128;
+                    ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                    state64 ^= input64;
                 }
 
                 // Should exit here for 25 longs
