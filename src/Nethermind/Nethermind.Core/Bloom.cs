@@ -46,6 +46,11 @@ namespace Nethermind.Core
             Bytes = bytes;
         }
 
+        public Bloom(ReadOnlySpan<byte> bytes)
+        {
+            Bytes = bytes.ToArray();
+        }
+
         public byte[] Bytes { get; }
 
         public void Set(ReadOnlySpan<byte> sequence)

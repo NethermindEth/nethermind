@@ -41,7 +41,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
-        private readonly HashSet<Address> _accessedAddresses = [];
 
         [Flags]
         protected enum ExecutionOptions
@@ -122,7 +121,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.IsSystem())
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, blCtx.Header, tracer, opts);
