@@ -477,7 +477,7 @@ namespace Nethermind.Core.Crypto
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
-            // As 25 longs in state, 9 more to process after the vector sizes
+            // As 25 longs in state, 1 more to process after the vector sizes
             if (input.Length >= sizeof(ulong))
             {
                 int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
