@@ -3,7 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -13,20 +13,20 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    public Task<ResultWrapper<InclusionList>> engine_getInclusionList()
-        => GetInclusionList(EngineApiVersions.Osaka);
+    public Task<ResultWrapper<Transaction[]>> engine_getInclusionList()
+        => GetInclusionListTransactions(EngineApiVersions.Osaka);
 
     /// <summary>
-    /// Method parameter list is extended with <see cref="InclusionList"/> parameter.
+    /// Method parameter list is extended with <see cref="InclusionListTransactions"/> parameter.
     /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
     /// </summary>
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, InclusionList? inclusionList)
-        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionList), EngineApiVersions.Osaka);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, Transaction[]? inclusionListTransactions)
+        => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.Osaka);
 
-    protected async Task<ResultWrapper<InclusionList>> GetInclusionList(int version)
+    protected async Task<ResultWrapper<Transaction[]>> GetInclusionListTransactions(int version)
     {
         // todo: fetch from local mempool
         await Task.Delay(0);
-        return ResultWrapper<InclusionList>.Success(new InclusionList());
+        return ResultWrapper<Transaction[]>.Success([]);
     }
 }

@@ -9,14 +9,14 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Consensus.Producers;
+
 namespace Nethermind.Merge.Plugin.Data;
 
 public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
-    InclusionList? InclusionList { get; set; }
+    Transaction[]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -27,7 +27,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests = null,
-    InclusionList? inclusionList = null)
+    Transaction[]? inclusionListTransactions = null)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
@@ -39,10 +39,10 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
     /// <summary>
-    /// Gets or sets <see cref="InclusionList"/> as defined in
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
     /// </summary>
-    public InclusionList? InclusionList { get; set; } = inclusionList;
+    public Transaction[]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
@@ -95,7 +95,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
         if (spec.InclusionListsEnabled)
         {
-            if (InclusionList is null)
+            if (InclusionListTransactions is null)
             {
                 error = "Inclusion list must be set";
                 return ValidationResult.Fail;

@@ -21,6 +21,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
+        executionPayload.InclusionListTransactions = block.InclusionListTransactions;
         return executionPayload;
     }
 
@@ -37,6 +38,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
+        block.InclusionListTransactions = InclusionListTransactions;
         return true;
     }
 
