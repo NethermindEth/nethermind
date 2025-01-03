@@ -162,6 +162,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
                     $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average)" +
                     $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average)" +
+                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average)" +
                     $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average)" +
                     $"\n\t\tPages total: {pagesStats.PagesAllocated} allocated, {pagesStats.PagesTaken} taken, {pagesStats.PagesReturned} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending");
             }
@@ -206,7 +207,8 @@ namespace Nethermind.Init.Steps.Migrations
             try
             {
                 const int startFrom = 0;
-                // const int startFrom = 750_000; // Where slowdown starts
+                // const int startFrom = 750_000; // Just before slowdown
+                // const int startFrom = 750_000 + 18_000; // Where slowdown starts
                 // const int startFrom = 2_000_000; // Average blocks
                 // const int startFrom = 2_000_000 + 180_000; // Very log-dense blocks
                 foreach (Block block in GetBlocksForMigration(token, startFrom))
