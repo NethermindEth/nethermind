@@ -121,6 +121,9 @@ public class Block
     public byte[][]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
+    public Transaction[]? InclusionListTransactions { get; set; }
+
+    [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
     [JsonIgnore]
     internal volatile int TransactionProcessed;

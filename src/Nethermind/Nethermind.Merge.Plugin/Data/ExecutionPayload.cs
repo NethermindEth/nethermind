@@ -105,6 +105,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual Transaction[]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
