@@ -36,6 +36,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Network.Kademlia;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -56,6 +57,7 @@ public class DiscoveryV5App : IDiscoveryApp
         IRpcModuleProvider rpcModuleProvider,
         SameKeyGenerator privateKeyProvider,
         IIPResolver? ipResolver,
+        ISyncConfig syncConfig,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         IDb discoveryDb,
@@ -85,6 +87,7 @@ public class DiscoveryV5App : IDiscoveryApp
                .AddSingleton<ILoggerFactory, NullLoggerFactory>()
                .AddSingleton(blockTree)
                .AddSingleton(receiptStorage)
+               .AddSingleton(syncConfig)
                .AddSingleton(receiptFinder)
                .AddSingleton(logManager)
                .AddSingleton(_sessionOptions.Verifier)
@@ -122,7 +125,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 .Where(enr => enr != null)!
                 ];
 
-            IPAddress heh = NetworkInterface.GetAllNetworkInterfaces()!
+            IPAddress localNetworkIp = NetworkInterface.GetAllNetworkInterfaces()!
                      .Where(i => i.Name == "eth0" ||
                         (i.OperationalStatus == OperationalStatus.Up &&
                          i.NetworkInterfaceType == NetworkInterfaceType.Ethernet &&
@@ -132,7 +135,7 @@ public class DiscoveryV5App : IDiscoveryApp
                      .UnicastAddresses
                      .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork).Select(a => a.Address).First();
 
-            IPAddress addr = IpV4BlockLoopback.Contains(ipResolver.ExternalIp) ? heh : ipResolver.ExternalIp;
+            IPAddress addr = IpV4BlockLoopback.Contains(ipResolver.ExternalIp) ? localNetworkIp : ipResolver.ExternalIp;
 
             _logger.Warn($"Discv5 IP address: {addr}");
 
@@ -171,7 +174,7 @@ public class DiscoveryV5App : IDiscoveryApp
             string[] bootNodesStr =
             [
                 //Trin bootstrap nodes
-                "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+                "enr:-JS4QOJXgQ_c7RPMBouV4drzxbnEgzbnAxnwJSRXqZEPeBc-aAriFCDobSZXeeAivcY_PMeTu1ym6NI1bVcEJlvxttuEZ3aTpGOKdCBkZTg1MDEzNYJpZIJ2NIJpcISs6KTMiXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgnZf",
                 "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
                 "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
 
@@ -204,10 +207,10 @@ public class DiscoveryV5App : IDiscoveryApp
 
             _ = Task.Run(async () =>
             {
-                for (var i = 1; i < 10; i++)
-                {
-                    blocks.Add(await net.LookupBlockHeader(1, default));
-                }
+                //for (var i = 1; i < 10; i++)
+                //{
+                //    blocks.Add(await net.LookupBlockHeader(1, default));
+                //}
                 //async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
                 //{
                 //    Channel<Node> channel = Channel.CreateBounded<Node>(1);

@@ -65,7 +65,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet --data-dir D:/Temp/mn01 --log WARNING --KeyStore.EnodeKeyFile D:/Temp/node.key.plain",
+      "commandLineArgs": "-c mainnet --data-dir D:/Temp/mn02 --log WARNING --KeyStore.EnodeKeyFile D:/Temp/node.key.plain",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

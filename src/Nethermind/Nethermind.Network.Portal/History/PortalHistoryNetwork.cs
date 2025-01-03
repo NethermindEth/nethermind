@@ -4,6 +4,7 @@
 using Lantern.Discv5.Enr;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -19,6 +20,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly ISyncConfig syncConfig;
     private readonly RadiusTracker _radiusTracker;
     private readonly ILogger _logger;
     public static PortalHistoryNetwork? Current { get; private set; }
@@ -28,7 +30,8 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
         IBlockTree blockTree,
         RadiusTracker radiusTracker,
         IReceiptStorage receiptStorage,
-        ILogManager logManager
+        ILogManager logManager,
+        ISyncConfig syncConfig
     )
     {
         Current = this;
@@ -37,6 +40,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
         _logger = logManager.GetClassLogger<PortalHistoryNetwork>();
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
+        this.syncConfig = syncConfig;
         _radiusTracker = radiusTracker;
 
         _ = Task.Run(HandleNewHeaders);
@@ -57,12 +61,17 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
 
     public void OnNewHeader(BlockHeader newHeader)
     {
+        if (syncConfig.AncientReceiptsBarrierCalc > newHeader.Number || syncConfig.AncientBodiesBarrierCalc > newHeader.Number)
+        {
+            _logger.Warn($"Portal: skipped as pre-merge {newHeader.Number}");
+            return;
+        }
         HeadersToHandle.Add(newHeader);
     }
 
     private async Task Load(BlockHeader newHeader)
     {
-        _logger.Info($"Portal: requested {newHeader.Number}");
+        _logger.Warn($"Portal: requested {newHeader.Number}");
 
         try
         {
@@ -82,7 +91,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
                 HeaderByHash = newHeader.Hash.Bytes.ToArray()
             })))
             {
-                _logger.Info($"Portal: skipped {newHeader.Number}, not in radius");
+                _logger.Warn($"Portal: skipped {newHeader.Number}, not in radius");
                 return;
             }
 
@@ -104,12 +113,17 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
                 Block block = new Block(newHeader, body);
                 _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
                 _receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL);
-                _logger.Info($"Portal: loaded {newHeader.Number}) {sw.Elapsed} {sw2.Elapsed}");
+                _logger.Warn($"Portal: loaded {newHeader.Number}) {sw.Elapsed} {sw2.Elapsed}");
             }
             else
             {
-                _logger.Info($"Portal: skipped {newHeader.Number}, not found ({body is not null} {receipts is not null})");
+                HeadersToHandle.Add(newHeader);
+                _logger.Warn($"Portal: skipped {newHeader.Number}, not found ({body is not null} {receipts is not null})");
             }
+        }
+        catch
+        {
+            HeadersToHandle.Add(newHeader);
         }
         finally
         {

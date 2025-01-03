@@ -15,7 +15,9 @@
     "FastSyncCatchUpHeightDelta": "10000000000",
     "DownloadBodiesInFastSync": false,
     "DownloadReceiptsInFastSync": false,
-    "NonValidatorNode":  true
+    "NonValidatorNode": true,
+    "AncientBodiesBarrier": 15537393,
+    "AncientReceiptsBarrier": 15537393
   },
   "Blocks": {
     "TargetBlockGasLimit": 36000000
@@ -29,6 +31,9 @@
       "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client"
     ],
     "UnsecureDevNoRpcAuthentication": true
+  },
+  "Network": {
+    "DiscoveryPort": 30305
   },
   "Merge": {
     "Enabled": true

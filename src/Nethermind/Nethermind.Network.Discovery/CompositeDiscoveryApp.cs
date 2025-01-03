@@ -9,6 +9,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -51,6 +52,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private IDiscoveryApp? _v5;
     private INodeSource _compositeNodeSource = null!;
     private INethermindApi _api;
+    private readonly ISyncConfig syncConfig;
     private readonly IBlockTree _blockTree;
     private readonly IRpcModuleProvider _rpcModuleProvider;
 
@@ -61,10 +63,12 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, INethermindApi api
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, INethermindApi api,
+        ISyncConfig syncConfig
     )
     {
         _api = api;
+        this.syncConfig = syncConfig;
         _blockTree = blockTree;
         _rpcModuleProvider = rpcModuleProvider;
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
@@ -214,7 +218,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
             _logManager);
 
-        _v5 = new DiscoveryV5App(_blockTree, _receiptStorage, _api.ReceiptFinder!, _rpcModuleProvider, privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager, _api);
+        _v5 = new DiscoveryV5App(_blockTree, _receiptStorage, _api.ReceiptFinder!, _rpcModuleProvider, privateKeyProvider, _ipResolver, syncConfig, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager, _api);
         _v5.Initialize(_nodeKey.PublicKey);
     }
 

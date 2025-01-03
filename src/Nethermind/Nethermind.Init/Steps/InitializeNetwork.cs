@@ -269,7 +269,8 @@ public class InitializeNetwork : IStep
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
-            _api.NodeStatsManager, _api.IpResolver, (_api as INethermindApi)!
+            _api.NodeStatsManager, _api.IpResolver, (_api as INethermindApi)!,
+             _api.Config<ISyncConfig>()
         );
 
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);

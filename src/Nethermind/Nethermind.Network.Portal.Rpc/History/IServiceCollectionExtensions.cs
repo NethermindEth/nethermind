@@ -5,6 +5,7 @@ using Lantern.Discv5.Enr;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Kademlia;
@@ -35,6 +36,7 @@ public static class IServiceCollectionExtensions
             .ForwardServiceAsSingleton<IBlockTree>(baseServiceProvider)
             .ForwardServiceAsSingleton<IReceiptStorage>(baseServiceProvider)
             .ForwardServiceAsSingleton<IReceiptFinder>(baseServiceProvider)
+            .ForwardServiceAsSingleton<ISyncConfig>(baseServiceProvider)
             .AddSingleton<IPortalContentNetworkStore, HistoryNetworkStore>()
             .AddSingleton<IPortalHistoryNetwork, PortalHistoryNetwork>()
             .AddSingleton<IPortalHistoryRpcModule, PortalHistoryRpcModule>()
