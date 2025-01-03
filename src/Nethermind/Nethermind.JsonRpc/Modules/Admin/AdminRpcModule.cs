@@ -27,6 +27,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
     private NodeInfo _nodeInfo = null!;
+    private readonly ITrustedNodesManager _trustedNodesManager;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -36,7 +37,8 @@ public class AdminRpcModule : IAdminRpcModule
         IEnode enode,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
-        ChainParameters parameters)
+        ChainParameters parameters,
+        ITrustedNodesManager trustedNodesManager)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -46,6 +48,7 @@ public class AdminRpcModule : IAdminRpcModule
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+        _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
         BuildNodeInfo();
     }
@@ -114,6 +117,24 @@ public class AdminRpcModule : IAdminRpcModule
             ? ResultWrapper<string>.Success(enode)
             : ResultWrapper<string>.Fail("Failed to remove peer.");
     }
+
+    public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode)
+    {
+        Enode enodeObj = new(enode);
+        bool added = await _trustedNodesManager.AddAsync(enodeObj);
+
+        if (added)
+        {
+            _peerPool.GetOrAdd(new NetworkNode(enodeObj.ToString()));
+
+            return ResultWrapper<bool>.Success(true);
+        }
+        else
+        {
+            return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
+        }
+    }
+
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
         => ResultWrapper<PeerInfo[]>.Success(
