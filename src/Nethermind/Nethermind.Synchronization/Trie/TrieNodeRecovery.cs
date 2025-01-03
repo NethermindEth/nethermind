@@ -106,6 +106,10 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         {
             if (_logger.IsTrace) _logger.Trace($"Cancelled recovering RLP {rlpHash} from peer {peer}");
         }
+        catch (TimeoutException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Timeout recovering RLP {rlpHash} from peer {peer}");
+        }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not recover RLP {rlpHash} from {peer}");
