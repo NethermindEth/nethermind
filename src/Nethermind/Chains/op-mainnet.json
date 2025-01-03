@@ -10,6 +10,7 @@
         "ecotoneTimestamp": "0x65f23e01",
         "fjordTimestamp": "0x668eb001",
         "graniteTimestamp": "0x66e1be81",
+        "holoceneTimestamp": "0x67800ea1",
         "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
         "l1BlockAddress": "0x4200000000000000000000000000000000000015",
         "canyonBaseFeeChangeDenominator": "250",
@@ -72,6 +73,7 @@
 
     "rip7212TransitionTimestamp": "0x668eb001",
     "opGraniteTransitionTimestamp": "0x66e1be81",
+    "opHoloceneTransitionTimestamp": "0x67800ea1",
 
     "terminalTotalDifficulty": "210470125"
   },
