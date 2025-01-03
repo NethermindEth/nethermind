@@ -15,6 +15,7 @@ public record Address(byte[] Bytes)
 [RlpSerializable]
 public record AccessList(List<(Address, List<UInt256>)> Addresses);
 
+[MemoryDiagnoser]
 public class CurrentFluentBenchmark
 {
     private readonly Nethermind.Core.Eip2930.AccessList _current;
