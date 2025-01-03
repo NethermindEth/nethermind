@@ -86,6 +86,17 @@ public partial class BlockProcessor(
     {
         if (suggestedBlocks.Count == 0) return [];
 
+        Block suggestedBlock = suggestedBlocks[0];
+        CancellationTokenSource? cancellationTokenSource = null;
+        Task? preWarmTask = null;
+        // Start prewarming as early as possible
+        WaitForCacheClear();
+        bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
+        if (!skipPrewarming)
+        {
+            (cancellationTokenSource, preWarmTask) = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
+        }
+
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -99,22 +110,19 @@ public partial class BlockProcessor(
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
-
-        Task? preWarmTask = null;
-        CancellationTokenSource? cancellationTokenSource = null;
         try
         {
             for (int i = 0; i < blocksCount; i++)
             {
-                preWarmTask = null;
                 WaitForCacheClear();
-                Block suggestedBlock = suggestedBlocks[i];
+                suggestedBlock = suggestedBlocks[i];
 
-                bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
-                if (!skipPrewarming)
+                skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
+                // If cancelationTokenSource is not null it means we are in first iteration of loop
+                // and started prewarming at method entry, so don't start it again
+                if (cancellationTokenSource is null && !skipPrewarming)
                 {
-                    cancellationTokenSource = new();
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
+                    (cancellationTokenSource, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
                 }
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -138,12 +146,12 @@ public partial class BlockProcessor(
                 }
                 else
                 {
+                    // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
                     if (result != default)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
@@ -175,6 +183,7 @@ public partial class BlockProcessor(
                 preBlockStateRoot = processedBlock.StateRoot;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
+                preWarmTask = null;
                 _stateProvider.Reset(resizeCollections: true);
             }
 
@@ -194,6 +203,18 @@ public partial class BlockProcessor(
             RestoreBranch(previousBranchStateRoot);
             throw;
         }
+    }
+
+    private (CancellationTokenSource cancellationTokenSource, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
+    {
+        CancellationTokenSource cancellationTokenSource = new();
+        Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
+                                                   preBlockStateRoot,
+                                                   _specProvider.GetSpec(suggestedBlock.Header),
+                                                   cancellationTokenSource.Token,
+                                                   _beaconBlockRootHandler);
+
+        return (cancellationTokenSource, preWarmTask);
     }
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
