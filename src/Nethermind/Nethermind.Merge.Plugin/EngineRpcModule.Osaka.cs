@@ -13,6 +13,7 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
+    protected readonly IHandler<Transaction[]> _getInclusionListTransactionsHandler;
     public Task<ResultWrapper<Transaction[]>> engine_getInclusionList()
         => GetInclusionListTransactions(EngineApiVersions.Osaka);
 
@@ -23,10 +24,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, Transaction[]? inclusionListTransactions)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.Osaka);
 
-    protected async Task<ResultWrapper<Transaction[]>> GetInclusionListTransactions(int version)
-    {
-        // todo: fetch from local mempool
-        await Task.Delay(0);
-        return ResultWrapper<Transaction[]>.Success([]);
-    }
+    protected Task<ResultWrapper<Transaction[]>> GetInclusionListTransactions(int version)
+        => _getInclusionListTransactionsHandler.Handle();
 }
