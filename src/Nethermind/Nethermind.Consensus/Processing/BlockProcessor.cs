@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -100,6 +101,7 @@ public partial class BlockProcessor(
         Block[] processedBlocks = new Block[blocksCount];
 
         Task? preWarmTask = null;
+        CancellationTokenSource? cancellationTokenSource = null;
         try
         {
             for (int i = 0; i < blocksCount; i++)
@@ -107,6 +109,14 @@ public partial class BlockProcessor(
                 preWarmTask = null;
                 WaitForCacheClear();
                 Block suggestedBlock = suggestedBlocks[i];
+
+                bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
+                if (!skipPrewarming)
+                {
+                    cancellationTokenSource = new();
+                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
+                }
+
                 if (blocksCount > 64 && i % 8 == 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
@@ -120,14 +130,11 @@ public partial class BlockProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
-                bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
                 if (!skipPrewarming)
                 {
-                    using CancellationTokenSource cancellationTokenSource = new();
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
-                    cancellationTokenSource.Cancel();
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref cancellationTokenSource);
                 }
                 else
                 {
@@ -181,6 +188,7 @@ public partial class BlockProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            CancellationTokenExtensions.CancelDisposeAndClear(ref cancellationTokenSource);
             QueueClearCaches(preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
