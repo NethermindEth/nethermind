@@ -5,5 +5,5 @@ namespace Nethermind.Core;
 
 public static class Eip7002Constants
 {
-    public static readonly Address WithdrawalRequestPredeployAddress = new("0x09Fc772D0857550724b07B850a4323f39112aAaA");
+    public static readonly Address WithdrawalRequestPredeployAddress = new("0x0c15F14308530b7CDB8460094BbB9cC28b9AaaAA");
 }
