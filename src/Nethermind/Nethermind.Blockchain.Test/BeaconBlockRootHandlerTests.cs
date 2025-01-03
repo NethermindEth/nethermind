@@ -99,7 +99,7 @@ public class BeaconBlockRootHandlerTests
 
         Assert.That(accessList, Is.Not.Null);
         Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
-        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(1));
+        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(2));
     }
 
     [Test]
