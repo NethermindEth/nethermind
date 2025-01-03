@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastSync
     public class StateSyncPivot
     {
         private readonly IBlockTree _blockTree;
-        private BlockHeader _bestHeader;
+        private BlockHeader? _bestHeader;
         private readonly ILogger _logger;
         private readonly ISyncConfig _syncConfig;
 
@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public BlockHeader GetPivotHeader()
+        public BlockHeader? GetPivotHeader()
         {
             if (_bestHeader is null || (_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
             {

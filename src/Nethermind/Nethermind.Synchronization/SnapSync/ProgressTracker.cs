@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
-            if (!CanSync())
+            if (_pivot.GetPivotHeader() is null)
             {
                 nextBatch = null;
                 return false;
