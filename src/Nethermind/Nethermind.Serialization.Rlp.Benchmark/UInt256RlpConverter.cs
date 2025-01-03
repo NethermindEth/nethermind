@@ -31,6 +31,27 @@ public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
             return true;
         }
 
+        public int WriteBigEndian(Span<byte> destination)
+        {
+            var uint256 = Unwrap;
+            uint256.ToBigEndian(destination);
+            return 32;
+        }
+
+        public int WriteBigEndian(byte[] destination, int startIndex)
+        {
+            var uint256 = Unwrap;
+            uint256.ToBigEndian(destination.AsSpan()[startIndex..]);
+            return 32;
+        }
+
+        public int WriteBigEndian(byte[] destination)
+        {
+            var uint256 = Unwrap;
+            uint256.ToBigEndian(destination);
+            return 32;
+        }
+
         // NOTE: None of the following are required
         public override bool Equals(object? obj) => obj is Wrap other && Equals(other);
         public override int GetHashCode() => throw new NotImplementedException();
@@ -110,6 +131,9 @@ public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
         public static Wrap TrailingZeroCount(Wrap value) => throw new NotImplementedException();
         public static bool TryReadLittleEndian(ReadOnlySpan<byte> source, bool isUnsigned, out Wrap value) => throw new NotImplementedException();
         public bool TryWriteLittleEndian(Span<byte> destination, out int bytesWritten) => throw new NotImplementedException();
+        public int WriteLittleEndian(Span<byte> destination) => throw new NotImplementedException();
+        public int WriteLittleEndian(byte[] destination) => throw new NotImplementedException();
+        public int WriteLittleEndian(byte[] destination, int startIndex) => throw new NotImplementedException();
     }
 
     public static UInt256 Read(ref RlpReader reader)
