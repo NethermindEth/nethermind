@@ -1,5 +1,3 @@
-using Microsoft.CodeAnalysis;
-
 class SszType
 {
     static SszType()
@@ -59,7 +57,6 @@ class SszType
             Kind = Kind.Basic,
             StaticLength = 32,
         });
-
         BasicTypes.Add(new SszType
         {
             Namespace = "System",
@@ -88,14 +85,12 @@ class SszType
     public IEnumerable<SszProperty>? UnionMembers { get => Kind == Kind.Union ? Members.Where(x => x.Name != "Selector") : null; }
     public SszProperty? Selector { get => Members.FirstOrDefault(x => x.Name == "Selector"); }
 
-    public Dictionary<string, object>? UnionValues { get; set; }
-
     private int? length = null;
 
     public SszType? EnumType { get; set; }
     public int StaticLength { get => length ?? Members.Sum(x => x.StaticLength); set => length = value; }
 
-    public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable);
+    public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable) || Kind is Kind.Union;
 
     public bool IsSszListItself { get; private set; }
 
