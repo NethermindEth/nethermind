@@ -145,6 +145,7 @@ public partial class EngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetInclusionListTransactionsHandler(chain.TxPool),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
