@@ -86,6 +86,12 @@ public partial class BlockProcessor(
     {
         if (suggestedBlocks.Count == 0) return [];
 
+        /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
+           In case of invalid blocks on the new branch we will discard the entire branch and come back to
+           the previous head state.*/
+        Hash256 previousBranchStateRoot = CreateCheckpoint();
+        InitBranch(newBranchStateRoot);
+
         Block suggestedBlock = suggestedBlocks[0];
         CancellationTokenSource? cancellationTokenSource = null;
         Task? preWarmTask = null;
@@ -100,11 +106,6 @@ public partial class BlockProcessor(
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
-        /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
-           In case of invalid blocks on the new branch we will discard the entire branch and come back to
-           the previous head state.*/
-        Hash256 previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
         Hash256 preBlockStateRoot = newBranchStateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
