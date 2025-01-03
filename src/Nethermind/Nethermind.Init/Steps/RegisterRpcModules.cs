@@ -178,7 +178,8 @@ public class RegisterRpcModules : IStep
             _api.FilterStore,
             _api.EthSyncingInfo!,
             _api.SpecProvider,
-            rpcModuleProvider.Serializer);
+            rpcModuleProvider.Serializer,
+            _api.PeerPool);
 
         _api.SubscriptionFactory = subscriptionFactory;
 
