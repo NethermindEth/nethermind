@@ -19,6 +19,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
+    private const int MaxBlobCount = 6;
+    private const int TargetBlobCount = 3;
+
     [TestCase(true, "0x4")] //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4)
     [TestCase(false, "0x4")] //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4)
     public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
@@ -67,21 +70,21 @@ public partial class EthRpcModuleTests
     private static Block[] GetThreeTestBlocks(bool eip1559Enabled = true)
     {
         Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero)
-            .WithExcessBlobGas(eip1559Enabled ? Eip4844Constants.MaxBlobGasPerBlock * 4 : null)
+            .WithExcessBlobGas(eip1559Enabled ? MaxBlobCount * Eip4844Constants.GasPerBlob * 4 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject
         ).TestObject;
 
         Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash!)
-            .WithExcessBlobGas(eip1559Enabled ? Eip4844Constants.MaxBlobGasPerBlock * 8 : null)
+            .WithExcessBlobGas(eip1559Enabled ? MaxBlobCount * Eip4844Constants.GasPerBlob * 8 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).TestObject
         ).TestObject;
 
         Block thirdBlock = Build.A.Block.WithNumber(2).WithParentHash(secondBlock.Hash!)
-            .WithExcessBlobGas(eip1559Enabled ? Eip4844Constants.MaxBlobGasPerBlock * 12 : null)
+            .WithExcessBlobGas(eip1559Enabled ? MaxBlobCount * Eip4844Constants.GasPerBlob * 12 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
             Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
@@ -137,22 +140,22 @@ public partial class EthRpcModuleTests
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
                 ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
             };
-            yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock * 4)
+            yield return new TestCaseData(MaxBlobCount * Eip4844Constants.GasPerBlob * 4)
             {
                 TestName = "Initial price spike",
                 ExpectedResult = Success(2)
             };
-            yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock * 42)
+            yield return new TestCaseData(MaxBlobCount * Eip4844Constants.GasPerBlob * 42)
             {
                 TestName = "Price spike",
                 ExpectedResult = Success(19806)
             };
-            yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock * 419)
+            yield return new TestCaseData(MaxBlobCount * Eip4844Constants.GasPerBlob * 419)
             {
                 TestName = $"Price spike higher than {nameof(UInt64)} value",
                 ExpectedResult = Success(UInt256.Parse("0x54486950184d094e079641e7e0d6dd85a81c"))
             };
-            yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock * 3000)
+            yield return new TestCaseData(MaxBlobCount * Eip4844Constants.GasPerBlob * 3000)
             {
                 TestName = $"Overflow for huge {nameof(BlockHeader.ExcessBlobGas)} value",
                 ExpectedResult = Fail()

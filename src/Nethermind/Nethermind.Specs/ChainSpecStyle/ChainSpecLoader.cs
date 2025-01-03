@@ -42,6 +42,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
         chainSpec.Name = chainSpecJson.Name;
         chainSpec.DataDir = chainSpecJson.DataDir;
+        chainSpec.BlobSchedule = chainSpecJson.BlobScheduleJson;
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
@@ -224,6 +225,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
+        chainSpec.PragueTimestamp = chainSpecJson.Params.PragueTransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;

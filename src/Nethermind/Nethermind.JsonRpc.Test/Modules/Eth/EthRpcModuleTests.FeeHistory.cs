@@ -18,6 +18,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -58,7 +59,8 @@ public partial class EthRpcModuleTests
                   .Returns(ci => blocks[((Hash256)ci[0]).Bytes[^1]]);
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
+        ISpecProvider specProvider = new OverridableSpecProvider(new TestSingleReleaseSpecProvider(Cancun.Instance),
+            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount});
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
         using ResultWrapper<FeeHistoryResults> result = oracle
@@ -88,15 +90,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    Eip4844Constants.TargetBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock * 4 },
+                    TargetBlobCount * Eip4844Constants.GasPerBlob,
+                    MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    MaxBlobCount * Eip4844Constants.GasPerBlob * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock })
+                    MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    MaxBlobCount * Eip4844Constants.GasPerBlob })
             {
                 TestName = "Different values",
                 ExpectedResult = (
