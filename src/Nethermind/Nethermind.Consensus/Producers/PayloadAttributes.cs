@@ -26,6 +26,8 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public InclusionList? InclusionList { get; set; }
+
     public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);

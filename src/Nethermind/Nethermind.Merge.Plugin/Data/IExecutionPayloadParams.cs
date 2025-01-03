@@ -9,13 +9,14 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-
+using Nethermind.Consensus.Producers;
 namespace Nethermind.Merge.Plugin.Data;
 
 public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    InclusionList? InclusionList { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -25,7 +26,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
+    byte[][]? executionRequests = null,
+    InclusionList? inclusionList = null)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
@@ -35,6 +37,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
+
+    /// <summary>
+    /// Gets or sets <see cref="InclusionList"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    public InclusionList? InclusionList { get; set; } = inclusionList;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
@@ -84,6 +92,15 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
+
+        if (spec.InclusionListsEnabled)
+        {
+            if (InclusionList is null)
+            {
+                error = "Inclusion list must be set";
+                return ValidationResult.Fail;
+            }
+        }
 
         error = null;
         return ValidationResult.Success;

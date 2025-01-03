@@ -13,7 +13,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
-
+using Nethermind.Consensus.Producers;
 namespace Nethermind.Merge.Plugin.Data;
 
 public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutionPayload : ExecutionPayload
@@ -104,6 +104,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="InclusionList"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public InclusionList? InclusionList { get; set; }
 
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
