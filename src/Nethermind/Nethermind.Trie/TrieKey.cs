@@ -351,7 +351,7 @@ public readonly struct TrieKey
         ReadOnlySpan<byte> otherSpan0 = other._keyPart0;
 
         // If both have the same length in their first array, compare them directly.
-        if (thisSpan0.Length == otherSpan0.Length)
+        if (thisSpan0.Length == otherSpan0.Length && (_keyPart1 is null || _keyPart1.Length == 0))
         {
             return thisSpan0.SequenceEqual(otherSpan0);
         }
