@@ -21,7 +21,7 @@ public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, Tim
 
     public bool IsBlockUpToDate(Block head)
         => timestamper.UtcNowOffset.ToUnixTimeSeconds() - (long)head.Header.Timestamp < blockUpToDateCutoff.TotalSeconds;
-    
+
 
     public ulong GetSlot(ulong slotTimestampMs)
     {
