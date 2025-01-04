@@ -11,8 +11,9 @@ public readonly struct BlockExecutionContext
 {
     public BlockHeader Header { get; }
     public UInt256? BlobBaseFee { get; }
+    public ulong? SlotNumber { get; }
 
-    public BlockExecutionContext(BlockHeader blockHeader)
+    public BlockExecutionContext(BlockHeader blockHeader, ulong? slotNumber = null)
     {
         Header = blockHeader;
         if (blockHeader?.ExcessBlobGas is not null)
@@ -23,6 +24,8 @@ public readonly struct BlockExecutionContext
             }
             BlobBaseFee = feePerBlobGas;
         }
+
+        SlotNumber = slotNumber;
     }
 
     public BlockExecutionContext(BlockHeader blockHeader, UInt256 forceBlobBaseFee)

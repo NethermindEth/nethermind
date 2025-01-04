@@ -36,7 +36,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public const int ItemSize = 160;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext _)
     {
         Metrics.BlsG1MSMPrecompile++;
 

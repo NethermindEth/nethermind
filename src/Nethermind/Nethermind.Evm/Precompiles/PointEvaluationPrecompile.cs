@@ -26,7 +26,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext _)
     {
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

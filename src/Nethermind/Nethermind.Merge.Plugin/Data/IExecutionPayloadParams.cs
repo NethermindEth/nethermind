@@ -16,6 +16,7 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    public ulong? SlotNumber { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -25,7 +26,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
+    byte[][]? executionRequests = null,
+    ulong? slotNumber = null)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
@@ -35,6 +37,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
+
+    /// <summary>
+    /// Gets or sets <see cref="SlotNumber"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
+    /// </summary>
+    public ulong? SlotNumber { get; set; } = slotNumber;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 

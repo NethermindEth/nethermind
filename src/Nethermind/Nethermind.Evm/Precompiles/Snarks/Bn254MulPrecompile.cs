@@ -21,7 +21,7 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, PrecompileContext _)
     {
         Metrics.Bn254MulPrecompile++;
         Span<byte> inputDataSpan = stackalloc byte[96];

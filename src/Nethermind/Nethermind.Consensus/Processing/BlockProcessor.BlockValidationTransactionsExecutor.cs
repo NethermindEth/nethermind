@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block) => new(block.Header);
+            protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block) => new(block.Header, block.SlotNumber);
 
             protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {

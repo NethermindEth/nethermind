@@ -4,7 +4,6 @@
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Snarks;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -62,7 +61,7 @@ public class BnPairPrecompileTests
         {
             byte[] cloned = inputs[i].Clone() as byte[];
             IPrecompile precompile = Bn254PairingPrecompile.Instance;
-            _ = precompile.Run(cloned, MuirGlacier.Instance);
+            _ = precompile.Run(cloned, TestPrecompileContext.Instance);
         }
     }
 }
