@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -61,6 +62,7 @@ public partial class BlockProcessor(
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
+    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -256,6 +258,12 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
+        if (_specProvider.GetSpec(block.Header).InclusionListsEnabled)
+        {
+            ValidateInclusionList(block);
+        }
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts);
@@ -276,6 +284,35 @@ public partial class BlockProcessor(
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+    }
+
+    private void ValidateInclusionList(Block block)
+    {
+        // Return early if block is already at gas limit
+        if (block.GasUsed >= block.GasLimit)
+        {
+            return;
+        }
+
+        foreach (Transaction tx in block.InclusionListTransactions)
+        {
+            if (block.Transactions.Contains(tx))
+            {
+                continue;
+            }
+
+            if (block.GasUsed + tx.GasLimit > block.GasLimit)
+            {
+                continue;
+            }
+
+            bool couldIncludeTx = _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+
+            if (couldIncludeTx)
+            {
+                throw new InvalidBlockException(block, "Block excludes valid inclusion list transaction");
+            }
+        }
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
