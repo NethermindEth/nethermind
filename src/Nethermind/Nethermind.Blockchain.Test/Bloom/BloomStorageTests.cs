@@ -67,7 +67,7 @@ public class BloomStorageTests
     {
         get
         {
-            static IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(i => (long)i);
+            static IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(static i => (long)i);
             int searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier * LevelMultiplier + LevelMultiplier * LevelMultiplier * LevelMultiplier;
 
             int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;

@@ -41,7 +41,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
-        private readonly HashSet<Address> _accessedAddresses = [];
 
         [Flags]
         protected enum ExecutionOptions
@@ -64,17 +63,17 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Skip potential fail checks
             /// </summary>
-            Warmup = 4,
+            SkipValidation = 4,
 
             /// <summary>
             /// Skip potential fail checks and commit state after execution
             /// </summary>
-            NoValidation = Commit | Warmup,
+            SkipValidationAndCommit = Commit | SkipValidation,
 
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore | NoValidation
+            CommitAndRestore = Commit | Restore | SkipValidation
         }
 
         protected TransactionProcessorBase(
@@ -115,14 +114,14 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
+            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         public TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Warmup);
+            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.SkipValidation);
 
         private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.IsSystem())
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, blCtx.Header, tracer, opts);
@@ -141,7 +140,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // commit - is for standard execute, we will commit thee state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.Warmup) && !spec.IsEip658Enabled);
+            bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
             IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
@@ -159,7 +158,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            StackAccessTracker accessTracker = new();
+            // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
+            using StackAccessTracker accessTracker = new();
+
             int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
@@ -178,7 +179,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                    if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
                     DecrementNonce(tx);
 
@@ -318,15 +319,8 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
-                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
-                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
-
                 Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
                 Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
-                Metrics.Transactions++;
 
                 Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
                 Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
@@ -355,7 +349,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in IntrinsicGas intrinsicGas)
         {
 
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             if (tx.SenderAddress is null)
             {
@@ -409,7 +403,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
                 bool restore = opts.HasFlag(ExecutionOptions.Restore);
-                bool noValidation = opts.HasFlag(ExecutionOptions.NoValidation);
+                bool noValidation = opts.HasFlag(ExecutionOptions.SkipValidation);
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
@@ -444,7 +438,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             if (validate && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
             {
@@ -461,7 +455,7 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             if (validate)
             {
@@ -587,7 +581,7 @@ namespace Nethermind.Evm.TransactionProcessing
             );
         }
 
-        protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.NoValidation);
+        protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
         protected virtual void ExecuteEvmCall(
             Transaction tx,
@@ -627,11 +621,11 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
 
-                using (EvmState state = new EvmState(
+                using (EvmState state = EvmState.RentTopLevel(
                     unspentGas,
-                    env,
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
                     snapshot,
+                    env,
                     accessedItems))
                 {
 
@@ -706,7 +700,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot);
 
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.NoValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 header.GasUsed += gasConsumed.SpentGas;
         }
 
@@ -778,7 +772,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
                 // If noValidation we didn't charge for gas, so do not refund
-                if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                     WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
                 spentGas -= actualRefund;
                 operationGas -= actualRefund;
@@ -790,7 +784,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding delegations only: " + refund);
                 // If noValidation we didn't charge for gas, so do not refund
-                if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                     WorldState.AddToBalance(tx.SenderAddress!, (ulong)refund * gasPrice, spec);
                 spentGas -= refund;
                 operationGas -= refund;

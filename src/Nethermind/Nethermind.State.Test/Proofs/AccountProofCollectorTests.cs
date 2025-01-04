@@ -703,7 +703,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
 
             for (int i = 0; i < accountsCount; i++)
             {
-                AccountProofCollector collector = new(addressesWithStorage[i].Address, addressesWithStorage[i].StorageCells.Select(sc => sc.Index).ToArray());
+                AccountProofCollector collector = new(addressesWithStorage[i].Address, addressesWithStorage[i].StorageCells.Select(static sc => sc.Index).ToArray());
                 tree.Accept(collector, tree.RootHash);
 
                 AccountProof accountProof = collector.BuildResult();

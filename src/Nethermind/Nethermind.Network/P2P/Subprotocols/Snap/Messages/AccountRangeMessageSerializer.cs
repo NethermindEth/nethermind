@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = rlpStream.DecodeLong();
             message.PathsWithAccounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.Proofs = rlpStream.DecodeArrayPoolList(s => s.DecodeByteArray());
+            message.Proofs = rlpStream.DecodeArrayPoolList(static s => s.DecodeByteArray());
 
             return message;
         }

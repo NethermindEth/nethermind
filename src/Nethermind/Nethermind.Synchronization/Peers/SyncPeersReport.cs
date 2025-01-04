@@ -37,9 +37,9 @@ namespace Nethermind.Synchronization.Peers
         private readonly Lock _writeLock = new();
 
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers
-            .OrderByDescending(p => p.SyncPeer?.HeadNumber)
-            .ThenByDescending(p => p.SyncPeer?.Node?.ClientId?.StartsWith("Nethermind") ?? false)
-            .ThenByDescending(p => p.SyncPeer?.Node?.ClientId).ThenBy(p => p.SyncPeer?.Node?.Host);
+            .OrderByDescending(static p => p.SyncPeer?.HeadNumber)
+            .ThenByDescending(static p => p.SyncPeer?.Node?.ClientId?.StartsWith("Nethermind") ?? false)
+            .ThenByDescending(static p => p.SyncPeer?.Node?.ClientId).ThenBy(static p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Peers
                 if (_logger.IsDebug)
                 {
                     var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
-                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
+                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(static p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
                 }
             }
         }
@@ -84,13 +84,13 @@ namespace Nethermind.Synchronization.Peers
         {
             lock (_writeLock)
             {
-                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => peerInfo.SyncPeer.ClientType);
-                float sum = peerGroups.Sum(x => x.Count());
+                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(static peerInfo => peerInfo.SyncPeer.ClientType);
+                float sum = peerGroups.Sum(static x => x.Count());
 
                 _stringBuilder.Append(header);
                 _stringBuilder.Append(" |");
                 bool isFirst = true;
-                foreach (var peerGroup in peers.GroupBy(peerInfo => peerInfo.SyncPeer.Name).OrderBy(p => p.Key))
+                foreach (var peerGroup in peers.GroupBy(static peerInfo => peerInfo.SyncPeer.Name).OrderBy(static p => p.Key))
                 {
                     if (isFirst)
                     {
@@ -144,13 +144,13 @@ namespace Nethermind.Synchronization.Peers
         {
             lock (_writeLock)
             {
-                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => peerInfo.SyncPeer.ClientType);
-                float sum = peerGroups.Sum(x => x.Count());
+                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(static peerInfo => peerInfo.SyncPeer.ClientType);
+                float sum = peerGroups.Sum(static x => x.Count());
 
                 _stringBuilder.Append(header);
 
                 bool isFirst = true;
-                foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
+                foreach (var peerGroup in peerGroups.OrderByDescending(static x => x.Count()))
                 {
                     if (isFirst)
                     {

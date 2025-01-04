@@ -48,7 +48,7 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
     {
         while (keyRecoveries.Count > 0)
         {
-            using ArrayPoolList<Task<(Recovery, byte[]?)>>? tasks = keyRecoveries.Select(kr => kr.Task!).ToPooledList(keyRecoveries.Count);
+            using ArrayPoolList<Task<(Recovery, byte[]?)>>? tasks = keyRecoveries.Select(static kr => kr.Task!).ToPooledList(keyRecoveries.Count);
             Task<(Recovery, byte[]?)> task = await Task.WhenAny<(Recovery, byte[]?)>(tasks.AsSpan());
             (Recovery Recovery, byte[]? Data) result = await task;
             if (result.Data is null)
@@ -85,11 +85,11 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
     private ArrayPoolList<Recovery> AllocatePeers() =>
         new(MaxPeersForRecovery,
                 _syncPeerPool!.InitializedPeers
-                    .Select(p => p.SyncPeer)
+                    .Select(static p => p.SyncPeer)
                     .Where(CanAllocatePeer)
-                    .OrderByDescending(p => p.HeadNumber)
+                    .OrderByDescending(static p => p.HeadNumber)
                     .Take(MaxPeersForRecovery)
-                    .Select(peer => new Recovery { Peer = peer })
+                    .Select(static peer => new Recovery { Peer = peer })
             );
 
     protected abstract bool CanAllocatePeer(ISyncPeer peer);
@@ -104,11 +104,16 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         }
         catch (OperationCanceledException)
         {
-            if (_logger.IsTrace) _logger.Trace($"Cancelled recovering RLP from peer {peer}");
+            if (_logger.IsTrace) _logger.Trace($"Cancelled recovering RLP {rlpHash} from peer {peer}");
+        }
+        catch (TimeoutException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Timeout recovering RLP {rlpHash} from peer {peer}");
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error($"Could not recover from {peer}", e);
+            if (_logger.IsWarn) _logger.Warn($"Could not recover RLP {rlpHash} from {peer}");
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Could not recover RLP {rlpHash} from {peer}", e);
         }
 
         return (recovery, null);

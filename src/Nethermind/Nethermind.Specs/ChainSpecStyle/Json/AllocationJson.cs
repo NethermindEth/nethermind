@@ -23,7 +23,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public Dictionary<UInt256, byte[]> GetConvertedStorage()
         {
-            return Storage?.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
+            return Storage?.ToDictionary(static s => Bytes.FromHexString(s.Key).ToUInt256(), static s => Bytes.FromHexString(s.Value));
         }
     }
 }

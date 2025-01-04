@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/poacore.json",
     "GenesisHash": "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634",
@@ -17,6 +18,7 @@
   },
   "Receipt": {
     "TxLookupLimit": 0
+
   },
   "Bloom": {
     "IndexLevelBucketSizes": [ 16, 16, 16, 16 ]

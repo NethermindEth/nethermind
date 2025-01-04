@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa
                 throw new ArgumentException("Authority Round step 0 duration is undefined.");
             }
 
-            if (stepDurations.Any(s => s.Value == 0))
+            if (stepDurations.Any(static s => s.Value == 0))
             {
                 throw new ArgumentException("Authority Round step duration cannot be 0.");
             }

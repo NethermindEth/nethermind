@@ -35,7 +35,7 @@ public class JsonRpcConfig : IJsonRpcConfig
         get => _enabledModules;
         set
         {
-            _enabledModules = value.Where(m => !string.IsNullOrWhiteSpace(m)).ToArray();
+            _enabledModules = value.Where(static m => !string.IsNullOrWhiteSpace(m)).ToArray();
         }
     }
 

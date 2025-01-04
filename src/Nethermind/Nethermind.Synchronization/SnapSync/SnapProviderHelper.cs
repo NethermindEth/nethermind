@@ -311,23 +311,26 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (!node.IsPersisted)
                 {
-                    if (node.IsExtension)
+                    INodeData nodeData = node.NodeData;
+                    if (nodeData is ExtensionData extensionData)
                     {
-                        if (IsChildPersisted(node, ref path, ExtensionRlpChildIndex, store))
+                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, store))
                         {
                             node.IsBoundaryProofNode = false;
                         }
                     }
-                    else if (node.IsBranch)
+                    else if (nodeData is BranchData branchData)
                     {
                         bool isBoundaryProofNode = false;
-                        for (int ci = 0; ci <= 15; ci++)
+                        int ci = 0;
+                        foreach (object? o in branchData.Branches)
                         {
-                            if (!IsChildPersisted(node, ref path, ci, store))
+                            if (!IsChildPersisted(node, ref path, o, ci, store))
                             {
                                 isBoundaryProofNode = true;
                                 break;
                             }
+                            ci++;
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
@@ -336,15 +339,19 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, int childIndex, IScopedTrieStore store)
+        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, object? child, int childIndex, IScopedTrieStore store)
         {
-            TrieNode data = node.GetData(childIndex) as TrieNode;
-            if (data is not null)
+            if (child is TrieNode childNode)
             {
-                return data.IsBoundaryProofNode == false;
+                return childNode.IsBoundaryProofNode == false;
             }
 
-            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
+            ValueHash256 childKeccak;
+            if (child is Hash256 hash)
+            {
+                childKeccak = hash.ValueHash256;
+            }
+            else if (!node.GetChildHashAsValueKeccak(childIndex, out childKeccak))
             {
                 return true;
             }

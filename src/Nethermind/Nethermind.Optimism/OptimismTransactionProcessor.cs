@@ -70,7 +70,7 @@ public sealed class OptimismTransactionProcessor(
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
 
-        bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+        bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
