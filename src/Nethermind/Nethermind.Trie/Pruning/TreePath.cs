@@ -88,7 +88,17 @@ public struct TreePath : IEquatable<TreePath>
     public readonly TreePath Append(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return this;
-        if (nibbles.Length == 1) return Append(nibbles[0]);
+        if (nibbles.Length == 1) return Append((int)nibbles[0]);
+
+        TreePath copy = this;
+        copy.AppendMut(nibbles);
+        return copy;
+    }
+
+    public readonly TreePath Append(TrieNodeKey nibbles)
+    {
+        if ((nibbles?.Length ?? 0) == 0) return this;
+        if (nibbles.Length == 1) return Append((int)nibbles[0]);
 
         TreePath copy = this;
         copy.AppendMut(nibbles);
@@ -107,7 +117,7 @@ public struct TreePath : IEquatable<TreePath>
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
         {
-            AppendMut(nibbles[0]);
+            AppendMut((int)nibbles[0]);
             return;
         }
 
@@ -129,6 +139,40 @@ public struct TreePath : IEquatable<TreePath>
         }
 
         if (nibbles.Length % 2 == 1)
+        {
+            this[Length] = nibbles[^1];
+            Length++;
+        }
+    }
+
+    internal void AppendMut(TrieNodeKey nibbles)
+    {
+        if ((nibbles?.Length ?? 0) == 0) return;
+        if (nibbles.Length == 1)
+        {
+            AppendMut((int)nibbles[0]);
+            return;
+        }
+
+        Span<byte> pathSpan = Span;
+
+        int offset = 0;
+        if (Length % 2 == 1)
+        {
+            this[Length] = nibbles[0];
+            Length++;
+            offset = 1;
+        }
+
+        int byteLength = (nibbles.Length - offset) / 2;
+        int pathSpanStart = Length / 2;
+        for (int i = 0; i < byteLength; i++)
+        {
+            pathSpan[i + pathSpanStart] = Nibbles.ToByte(nibbles[offset + i * 2], nibbles[offset + i * 2 + 1]);
+            Length += 2;
+        }
+
+        if ((nibbles.Length - offset) % 2 == 1)
         {
             this[Length] = nibbles[^1];
             Length++;
@@ -404,6 +448,12 @@ public struct TreePath : IEquatable<TreePath>
 public static class TreePathExtensions
 {
     public static TreePath.AppendScope ScopedAppend(this ref TreePath path, Span<byte> nibbles)
+    {
+        int previousLength = path.Length;
+        path.AppendMut(nibbles);
+        return new TreePath.AppendScope(previousLength, ref path);
+    }
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, TrieNodeKey nibbles)
     {
         int previousLength = path.Length;
         path.AppendMut(nibbles);

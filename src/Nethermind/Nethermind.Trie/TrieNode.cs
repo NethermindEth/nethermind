@@ -163,7 +163,7 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[]? Key
+        public TrieNodeKey? Key
         {
             get => _nodeData is INodeWithKey node ? node?.Key : null;
             internal set
@@ -175,7 +175,7 @@ namespace Nethermind.Trie
 
                 if (IsSealed)
                 {
-                    if (node.Key.AsSpan().SequenceEqual(value))
+                    if (node.Key == value)
                     {
                         // No change, parallel read
                         return;
@@ -500,11 +500,11 @@ namespace Nethermind.Trie
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    _nodeData = new LeafData(key, in buffer);
+                    _nodeData = new LeafData(new(key), in buffer);
                 }
                 else
                 {
-                    _nodeData = new ExtensionData(key);
+                    _nodeData = new ExtensionData(new(key));
                 }
             }
 
@@ -823,7 +823,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(byte[] key)
+        public TrieNode CloneWithChangedKey(TrieNodeKey key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -857,7 +857,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(TrieNodeKey key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

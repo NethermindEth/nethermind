@@ -36,7 +36,7 @@ namespace Nethermind.Trie
                 Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
-                byte[] hexPrefix = item.Key;
+                TrieNodeKey hexPrefix = item.Key;
                 int hexLength = HexPrefix.ByteLength(hexPrefix);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
@@ -95,7 +95,7 @@ namespace Nethermind.Trie
                     ThrowNullKey(node);
                 }
 
-                byte[] hexPrefix = node.Key;
+                TrieNodeKey hexPrefix = node.Key;
                 int hexLength = HexPrefix.ByteLength(hexPrefix);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)

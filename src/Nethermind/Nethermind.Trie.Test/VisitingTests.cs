@@ -145,14 +145,14 @@ public class VisitingTests
         yield return new TestCaseData(new VisitingOptions
         {
             ExpectAccounts = expectAccounts
-        }).SetName("Default");
+        }).SetName($"Default(expectAccounts: {expectAccounts})");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
             FullScanMemoryBudget = 1.MiB(),
             ExpectAccounts = expectAccounts
-        }).SetName("Parallel");
+        }).SetName($"Parallel(expectAccounts: {expectAccounts})");
     }
 
     public class AppendingVisitor : ITreeVisitor<AppendingVisitor.PathGatheringContext>
@@ -179,6 +179,15 @@ public class VisitingTests
                 var @new = new byte[Nibbles.Length + 1];
                 Nibbles.CopyTo(@new, 0);
                 @new[Nibbles.Length] = nibble;
+
+                return new PathGatheringContext(@new);
+            }
+
+            public readonly PathGatheringContext Add(TrieNodeKey nibble)
+            {
+                var @new = new byte[Nibbles.Length + 1];
+                Nibbles.CopyTo(@new, 0);
+                @new[Nibbles.Length] = nibble[0];
 
                 return new PathGatheringContext(@new);
             }
@@ -213,7 +222,7 @@ public class VisitingTests
 
         public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
-            PathGatheringContext context = nodeContext.Add(node.Key!);
+            PathGatheringContext context = nodeContext.Add(node.Key);
             _paths.Enqueue(context.Nibbles);
         }
 

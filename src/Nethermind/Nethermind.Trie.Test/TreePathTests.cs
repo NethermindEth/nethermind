@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Trie.Test;
 
@@ -45,7 +46,7 @@ public class TreePathTests
     [Test]
     public void TestAppendArray()
     {
-        byte[] nibbles = new byte[64];
+        Span<byte> nibbles = new byte[64];
         for (int i = 0; i < 64; i++)
         {
             nibbles[i] = (byte)(i % 16);
@@ -66,7 +67,7 @@ public class TreePathTests
     [TestCase(41)]
     public void TestAppendArrayDivided(int partition)
     {
-        byte[] nibbles = new byte[64];
+        Span<byte> nibbles = new byte[64];
         for (int i = 0; i < 64; i++)
         {
             nibbles[i] = (byte)(i % 16);
@@ -156,12 +157,12 @@ public class TreePathTests
     {
         TreePath path = TreePath.Empty;
 
-        using (path.ScopedAppend(new byte[] { 1, 2, 3, 4 }))
+        using (path.ScopedAppend(new Span<byte>([1, 2, 3, 4])))
         {
             path.Length.Should().Be(4);
             path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
 
-            using (path.ScopedAppend(new byte[] { 5, 6, 7 }))
+            using (path.ScopedAppend(new Span<byte>([5, 6, 7])))
             {
                 path.Length.Should().Be(7);
                 path.Path.ToString().Should().Be("0x1234567000000000000000000000000000000000000000000000000000000000");
@@ -178,7 +179,7 @@ public class TreePathTests
         TreePath path = new TreePath();
         for (int i = 0; i < 64; i++)
         {
-            path = path.Append((byte)(i % 16));
+            path = path.Append((int)(i % 16));
         }
 
         return path;
