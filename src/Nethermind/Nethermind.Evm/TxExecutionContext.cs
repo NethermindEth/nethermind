@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -11,12 +12,14 @@ namespace Nethermind.Evm
         Address origin,
         in UInt256 gasPrice,
         byte[][] blobVersionedHashes,
-        ICodeInfoRepository codeInfoRepository)
+        ICodeInfoRepository codeInfoRepository,
+        ulong index)
     {
         public readonly BlockExecutionContext BlockExecutionContext = blockExecutionContext;
         public Address Origin { get; } = origin;
         public UInt256 GasPrice { get; } = gasPrice;
         public byte[][]? BlobVersionedHashes { get; } = blobVersionedHashes;
         public ICodeInfoRepository CodeInfoRepository { get; } = codeInfoRepository;
+        public ulong Index { get; } = index;
     }
 }
