@@ -932,11 +932,6 @@ namespace Nethermind.Trie
 
         private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
-            if (node.Key is null)
-            {
-                ThrowMissingPrefixException();
-            }
-
             TrieKey remaining = traverseContext.GetRemainingUpdatePath().ToArray();
             TrieKey shorterPath;
             TrieKey longerPath;
@@ -1038,11 +1033,6 @@ namespace Nethermind.Trie
 
         private ref readonly CappedArray<byte> TraverseExtension(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
-            if (node.Key is null)
-            {
-                ThrowMissingPrefixException();
-            }
-
             TrieNode originalNode = node;
             TrieKey remaining = traverseContext.GetRemainingUpdatePath().ToArray();
 
@@ -1430,13 +1420,6 @@ namespace Nethermind.Trie
         {
             throw new TrieException(
                 $"Could not find the leaf node to delete: {traverseContext.UpdatePath.ToHexString()}");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowMissingPrefixException()
-        {
-            throw new InvalidDataException("An attempt to visit a node without a prefix path.");
         }
 
         [DoesNotReturn]

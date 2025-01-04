@@ -7,12 +7,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.Intrinsics;
-
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using System.Numerics;
 
 namespace Nethermind.Trie;
 
@@ -95,9 +94,9 @@ public struct TreePath : IEquatable<TreePath>
         return copy;
     }
 
-    public readonly TreePath Append(TrieKey nibbles)
+    public readonly TreePath Append(in TrieKey nibbles)
     {
-        if ((nibbles?.Length ?? 0) == 0) return this;
+        if (nibbles.Length == 0) return this;
         if (nibbles.Length == 1) return Append((int)nibbles[0]);
 
         TreePath copy = this;
@@ -145,9 +144,9 @@ public struct TreePath : IEquatable<TreePath>
         }
     }
 
-    internal void AppendMut(TrieKey nibbles)
+    internal void AppendMut(in TrieKey nibbles)
     {
-        if ((nibbles?.Length ?? 0) == 0) return;
+        if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
         {
             AppendMut((int)nibbles[0]);

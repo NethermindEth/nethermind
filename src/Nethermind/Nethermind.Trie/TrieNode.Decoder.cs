@@ -33,8 +33,6 @@ namespace Nethermind.Trie
 
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
-                Debug.Assert(item.Key is not null,
-                    "Extension key is null when encoding");
 
                 TrieKey hexPrefix = item.Key;
                 int hexLength = HexPrefix.ByteLength(hexPrefix);
@@ -90,11 +88,6 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
-                if (node.Key is null)
-                {
-                    ThrowNullKey(node);
-                }
-
                 TrieKey hexPrefix = node.Key;
                 int hexLength = HexPrefix.ByteLength(hexPrefix);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
@@ -119,13 +112,6 @@ namespace Nethermind.Trie
                 }
                 rlpStream.Encode(node.Value.AsSpan());
                 return data;
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            private static void ThrowNullKey(TrieNode node)
-            {
-                throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
             }
 
             public static CappedArray<byte> RlpEncodeBranch(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? pool, bool canBeParallel)

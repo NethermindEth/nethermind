@@ -31,7 +31,7 @@ namespace Nethermind.Trie
                         : (byte)(16 * path[i + 1] + path[i + 2]);
             }
         }
-        public static void CopyToSpan(TrieKey path, bool isLeaf, Span<byte> output)
+        public static void CopyToSpan(in TrieKey path, bool isLeaf, Span<byte> output)
         {
             if (output.Length != ByteLength(path)) throw new ArgumentOutOfRangeException(nameof(output));
 

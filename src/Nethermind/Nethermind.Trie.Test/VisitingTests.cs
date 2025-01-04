@@ -183,7 +183,7 @@ public class VisitingTests
                 return new PathGatheringContext(@new);
             }
 
-            public readonly PathGatheringContext Add(TrieKey nibble)
+            public readonly PathGatheringContext Add(in TrieKey nibble)
             {
                 var @new = new byte[Nibbles.Length + 1];
                 Nibbles.CopyTo(@new, 0);

@@ -98,15 +98,6 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Encoding_leaf_without_key_throws_trie_exception()
-    {
-        TrieNode trieNode = new(NodeType.Leaf);
-        trieNode.Value = new byte[] { 1, 2, 3 };
-        TreePath emptyPath = TreePath.Empty;
-        Assert.Throws<TrieException>(() => trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath));
-    }
-
-    [Test]
     public void Throws_trie_exception_when_resolving_key_on_missing_rlp()
     {
         TrieNode trieNode = new(NodeType.Unknown);
@@ -216,8 +207,7 @@ public class TrieNodeTests
     public void Can_encode_decode_tiny_extension()
     {
         Context ctx = new();
-        TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 5 };
+        TrieNode trieNode = new(NodeType.Extension, key: new byte[] { 5 });
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         TreePath emptyPath = TreePath.Empty;
@@ -237,8 +227,7 @@ public class TrieNodeTests
     public void Can_encode_decode_heavy_extension()
     {
         Context ctx = new();
-        TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 5 };
+        TrieNode trieNode = new(NodeType.Extension, key: new byte[] { 5 });
         trieNode.SetChild(0, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
@@ -254,8 +243,7 @@ public class TrieNodeTests
     [Test]
     public void Can_set_and_get_children_using_indexer()
     {
-        TrieNode tiniest = new(NodeType.Leaf);
-        tiniest.Key = new byte[] { 5 };
+        TrieNode tiniest = new(NodeType.Leaf, key: new byte[] { 5 });
         tiniest.Value = new byte[] { 10 };
 
         TrieNode trieNode = new(NodeType.Branch);
@@ -298,9 +286,8 @@ public class TrieNodeTests
     public void Get_child_hash_works_on_hashed_child_of_an_extension()
     {
         Context ctx = new();
-        TrieNode trieNode = new(NodeType.Extension);
+        TrieNode trieNode = new(NodeType.Extension, key: new byte[] { 5 });
         trieNode[0] = ctx.HeavyLeaf;
-        trieNode.Key = new byte[] { 5 };
         TreePath emptyPath = TreePath.Empty;
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
@@ -313,9 +300,8 @@ public class TrieNodeTests
     public void Get_child_hash_works_on_inlined_child_of_an_extension()
     {
         Context ctx = new();
-        TrieNode trieNode = new(NodeType.Extension);
+        TrieNode trieNode = new(NodeType.Extension, key: new byte[] { 5 });
         trieNode[0] = ctx.TiniestLeaf;
-        trieNode.Key = new byte[] { 5 };
         TreePath emptyPath = TreePath.Empty;
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
@@ -528,8 +514,7 @@ public class TrieNodeTests
     public void Can_encode_branch_with_unresolved_children()
     {
         TrieNode node = new(NodeType.Branch);
-        TrieNode randomTrieNode = new(NodeType.Leaf);
-        randomTrieNode.Key = new byte[] { 1, 2, 3 };
+        TrieNode randomTrieNode = new(NodeType.Leaf, key: new byte[] { 1, 2, 3 });
         randomTrieNode.Value = new byte[] { 1, 2, 3 };
         for (int i = 0; i < 16; i++)
         {
@@ -576,8 +561,7 @@ public class TrieNodeTests
     public void Size_of_an_extension_is_correct()
     {
         Context ctx = new();
-        TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 1 };
+        TrieNode trieNode = new(NodeType.Extension, key: new byte[] { 1 });
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
@@ -587,8 +571,7 @@ public class TrieNodeTests
     public void Size_of_unknown_node_is_correct()
     {
         Context ctx = new();
-        TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = new byte[] { 1 };
+        TrieNode trieNode = new(NodeType.Extension, key: new byte[] { 1 });
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
@@ -689,14 +672,6 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Cannot_change_key_on_sealed()
-    {
-        TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-        Assert.Throws<InvalidOperationException>(
-            () => trieNode.Key = Bytes.FromHexString("aaa"));
-    }
-
-    [Test]
     public void Cannot_set_child_on_sealed()
     {
         TrieNode child = new(NodeType.Leaf, Keccak.Zero);
@@ -708,11 +683,10 @@ public class TrieNodeTests
     public void Pruning_regression()
     {
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
-        TrieNode trieNode = new(NodeType.Extension);
+        TrieNode trieNode = new(NodeType.Extension, key: Bytes.FromHexString("abcd"));
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        trieNode.Key = Bytes.FromHexString("abcd");
         TreePath emptyPath = TreePath.Empty;
         trieNode.RlpEncode(NullTrieStore.Instance, ref emptyPath);
     }
@@ -757,9 +731,8 @@ public class TrieNodeTests
     public void Unresolve_of_persisted()
     {
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
-        TrieNode trieNode = new(NodeType.Extension);
+        TrieNode trieNode = new(NodeType.Extension, key: Bytes.FromHexString("abcd"));
         trieNode.SetChild(0, child);
-        trieNode.Key = Bytes.FromHexString("abcd");
         TreePath emptyPath = TreePath.Empty;
         trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
 
@@ -770,16 +743,14 @@ public class TrieNodeTests
     [Test]
     public void Small_child_unresolve()
     {
-        TrieNode child = new(NodeType.Leaf);
+        TrieNode child = new(NodeType.Leaf, key: Bytes.FromHexString("b"));
         child.Value = Bytes.FromHexString("a");
-        child.Key = Bytes.FromHexString("b");
         TreePath emptyPath = TreePath.Empty;
         child.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
         child.IsPersisted = true;
 
-        TrieNode trieNode = new(NodeType.Extension);
+        TrieNode trieNode = new(NodeType.Extension, key: Bytes.FromHexString("abcd"));
         trieNode.SetChild(0, child);
-        trieNode.Key = Bytes.FromHexString("abcd");
         trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath, false);
 
         trieNode.PrunePersistedRecursively(2);
@@ -859,13 +830,11 @@ public class TrieNodeTests
     [Test]
     public void Batch_not_db_regression()
     {
-        TrieNode child = new(NodeType.Leaf);
-        child.Key = Bytes.FromHexString("abc");
+        TrieNode child = new(NodeType.Leaf, key: Bytes.FromHexString("abc"));
         child.Value = new byte[200];
         child.Seal();
 
-        TrieNode trieNode = new(NodeType.Extension);
-        trieNode.Key = Bytes.FromHexString("000102030506");
+        TrieNode trieNode = new(NodeType.Extension, key: Bytes.FromHexString("000102030506"));
         trieNode.SetChild(0, child);
         trieNode.Seal();
 
@@ -927,15 +896,13 @@ public class TrieNodeTests
         ITrieStore fullTrieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-        TrieNode leaf1 = new(NodeType.Leaf);
-        leaf1.Key = Bytes.FromHexString("abc");
+        TrieNode leaf1 = new(NodeType.Leaf, key: Bytes.FromHexString("abc"));
         leaf1.Value = new byte[111];
         TreePath emptyPath = TreePath.Empty;
         leaf1.ResolveKey(trieStore, ref emptyPath, false);
         leaf1.Seal();
 
-        TrieNode leaf2 = new(NodeType.Leaf);
-        leaf2.Key = Bytes.FromHexString("abd");
+        TrieNode leaf2 = new(NodeType.Leaf, key: Bytes.FromHexString("abd"));
         leaf2.Value = new byte[222];
         leaf2.ResolveKey(trieStore, ref emptyPath, false);
         leaf2.Seal();
@@ -972,8 +939,7 @@ public class TrieNodeTests
         TrieNode node = new(NodeType.Branch);
         for (int i = 0; i < 16; i++)
         {
-            TrieNode randomTrieNode = new(NodeType.Leaf);
-            randomTrieNode.Key = new byte[] { (byte)i, 2, 3 };
+            TrieNode randomTrieNode = new(NodeType.Leaf, key: new byte[] { (byte)i, 2, 3 });
             randomTrieNode.Value = new byte[] { 1, 2, 3 };
             node.SetChild(i, randomTrieNode);
         }
@@ -998,12 +964,10 @@ public class TrieNodeTests
 
         public Context()
         {
-            TiniestLeaf = new TrieNode(NodeType.Leaf);
-            TiniestLeaf.Key = new byte[] { 5 };
+            TiniestLeaf = new TrieNode(NodeType.Leaf, key: new byte[] { 5 });
             TiniestLeaf.Value = new byte[] { 10 };
 
-            HeavyLeaf = new TrieNode(NodeType.Leaf);
-            HeavyLeaf.Key = new byte[20];
+            HeavyLeaf = new TrieNode(NodeType.Leaf, key: new byte[20]);
             HeavyLeaf.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
 
             Account account = new(100);
