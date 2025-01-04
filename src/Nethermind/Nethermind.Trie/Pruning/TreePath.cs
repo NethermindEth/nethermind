@@ -95,7 +95,7 @@ public struct TreePath : IEquatable<TreePath>
         return copy;
     }
 
-    public readonly TreePath Append(TrieNodeKey nibbles)
+    public readonly TreePath Append(TrieKey nibbles)
     {
         if ((nibbles?.Length ?? 0) == 0) return this;
         if (nibbles.Length == 1) return Append((int)nibbles[0]);
@@ -145,7 +145,7 @@ public struct TreePath : IEquatable<TreePath>
         }
     }
 
-    internal void AppendMut(TrieNodeKey nibbles)
+    internal void AppendMut(TrieKey nibbles)
     {
         if ((nibbles?.Length ?? 0) == 0) return;
         if (nibbles.Length == 1)
@@ -453,7 +453,7 @@ public static class TreePathExtensions
         path.AppendMut(nibbles);
         return new TreePath.AppendScope(previousLength, ref path);
     }
-    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, TrieNodeKey nibbles)
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, TrieKey nibbles)
     {
         int previousLength = path.Length;
         path.AppendMut(nibbles);

@@ -23,10 +23,10 @@ public interface INodeData
 
 interface INodeWithKey : INodeData
 {
-    public TrieNodeKey Key { get; set; }
+    public TrieKey Key { get; set; }
 }
 
-public class TrieNodeKey : IEquatable<TrieNodeKey>
+public class TrieKey : IEquatable<TrieKey>
 {
     private readonly static byte[][] _singleByteArrays =
     [
@@ -47,32 +47,32 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         [14],
         [15]
     ];
-    public static TrieNodeKey Empty { get; } = new(Array.Empty<byte>());
-    private readonly static TrieNodeKey[] _singleByteKeys =
+    public static TrieKey Empty { get; } = new(Array.Empty<byte>());
+    private readonly static TrieKey[] _singleByteKeys =
     [
-        new TrieNodeKey(_singleByteArrays[0]),
-        new TrieNodeKey(_singleByteArrays[1]),
-        new TrieNodeKey(_singleByteArrays[2]),
-        new TrieNodeKey(_singleByteArrays[3]),
-        new TrieNodeKey(_singleByteArrays[4]),
-        new TrieNodeKey(_singleByteArrays[5]),
-        new TrieNodeKey(_singleByteArrays[6]),
-        new TrieNodeKey(_singleByteArrays[7]),
-        new TrieNodeKey(_singleByteArrays[8]),
-        new TrieNodeKey(_singleByteArrays[9]),
-        new TrieNodeKey(_singleByteArrays[10]),
-        new TrieNodeKey(_singleByteArrays[11]),
-        new TrieNodeKey(_singleByteArrays[12]),
-        new TrieNodeKey(_singleByteArrays[13]),
-        new TrieNodeKey(_singleByteArrays[14]),
-        new TrieNodeKey(_singleByteArrays[15])
+        new TrieKey(_singleByteArrays[0]),
+        new TrieKey(_singleByteArrays[1]),
+        new TrieKey(_singleByteArrays[2]),
+        new TrieKey(_singleByteArrays[3]),
+        new TrieKey(_singleByteArrays[4]),
+        new TrieKey(_singleByteArrays[5]),
+        new TrieKey(_singleByteArrays[6]),
+        new TrieKey(_singleByteArrays[7]),
+        new TrieKey(_singleByteArrays[8]),
+        new TrieKey(_singleByteArrays[9]),
+        new TrieKey(_singleByteArrays[10]),
+        new TrieKey(_singleByteArrays[11]),
+        new TrieKey(_singleByteArrays[12]),
+        new TrieKey(_singleByteArrays[13]),
+        new TrieKey(_singleByteArrays[14]),
+        new TrieKey(_singleByteArrays[15])
     ];
 
     private readonly byte[] _keyPart0;
     private readonly byte[]? _keyPart1;
 
-    public TrieNodeKey(byte[] key) => _keyPart0 = key;
-    public TrieNodeKey(byte keyPart0, TrieNodeKey keyPart1)
+    public TrieKey(byte[] key) => _keyPart0 = key;
+    public TrieKey(byte keyPart0, TrieKey keyPart1)
     {
         if (keyPart1.Length == 0)
         {
@@ -91,7 +91,7 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         }
     }
 
-    public TrieNodeKey(TrieNodeKey keyPart0, TrieNodeKey keyPart1)
+    public TrieKey(TrieKey keyPart0, TrieKey keyPart1)
     {
         if (keyPart0.Length == 0 && keyPart1.Length == 0)
         {
@@ -165,14 +165,14 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         }
     }
 
-    public TrieNodeKey(byte[] keyPart0, byte[] keyPart1)
+    public TrieKey(byte[] keyPart0, byte[] keyPart1)
     {
         _keyPart0 = keyPart0;
         _keyPart1 = keyPart1;
     }
 
-    public static implicit operator TrieNodeKey(byte key) => _singleByteKeys[key];
-    public static implicit operator TrieNodeKey(byte[] key) => new(key);
+    public static implicit operator TrieKey(byte key) => _singleByteKeys[key];
+    public static implicit operator TrieKey(byte[] key) => new(key);
 
     public byte this[int index]
     {
@@ -186,7 +186,7 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         }
     }
 
-    public int CommonPrefixLength(TrieNodeKey other)
+    public int CommonPrefixLength(TrieKey other)
     {
         int commonLength = 0;
         int minLength = Math.Min(Length, other.Length);
@@ -197,9 +197,9 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         return commonLength;
     }
 
-    public TrieNodeKey Slice(int start) => Slice(start, Length - start);
+    public TrieKey Slice(int start) => Slice(start, Length - start);
 
-    public TrieNodeKey Slice(int start, int length)
+    public TrieKey Slice(int start, int length)
     {
         if (start < 0 || length < 0 || start + length > Length)
         {
@@ -223,11 +223,11 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         {
             if (start == 0 && length == part0Length)
             {
-                return _keyPart1 is null ? this : new TrieNodeKey(_keyPart0!);
+                return _keyPart1 is null ? this : new TrieKey(_keyPart0!);
             }
             byte[] newArray = new byte[length];
             Array.Copy(_keyPart0!, start, newArray, 0, length);
-            return new TrieNodeKey(newArray);
+            return new TrieKey(newArray);
         }
 
         // If slice starts in second part
@@ -235,11 +235,11 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         {
             if (start == part0Length && length == _keyPart1!.Length)
             {
-                return new TrieNodeKey(_keyPart1);
+                return new TrieKey(_keyPart1);
             }
             byte[] newArray = new byte[length];
             Array.Copy(_keyPart1!, start - part0Length, newArray, 0, length);
-            return new TrieNodeKey(newArray);
+            return new TrieKey(newArray);
         }
 
         // Slice spans both parts
@@ -250,7 +250,7 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         Array.Copy(_keyPart0, start, newKey, 0, lengthInPart0);
         Array.Copy(_keyPart1, 0, newKey, lengthInPart0, lengthInPart1);
 
-        return new TrieNodeKey(newKey);
+        return new TrieKey(newKey);
     }
 
     public byte[] ToArray()
@@ -267,15 +267,15 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
 
     public int Length => _keyPart0.Length + (_keyPart1?.Length ?? 0);
 
-    public static bool operator ==(TrieNodeKey left, TrieNodeKey right)
+    public static bool operator ==(TrieKey left, TrieKey right)
     {
         if (left is null) return right is null;
         return left.Equals(right);
     }
 
-    public static bool operator !=(TrieNodeKey left, TrieNodeKey right) => !(left == right);
+    public static bool operator !=(TrieKey left, TrieKey right) => !(left == right);
 
-    public bool Equals(TrieNodeKey? other)
+    public bool Equals(TrieKey? other)
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
@@ -320,7 +320,7 @@ public class TrieNodeKey : IEquatable<TrieNodeKey>
         return true;
     }
 
-    public override bool Equals(object obj) => Equals(obj as TrieNodeKey);
+    public override bool Equals(object obj) => Equals(obj as TrieKey);
 
     public override int GetHashCode()
     {
@@ -360,9 +360,9 @@ public class ExtensionData : INodeWithKey
         (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
     public int Length => 2;
 
-    public TrieNodeKey _key;
+    public TrieKey _key;
     public object? _value;
-    public TrieNodeKey Key { get => _key; set => _key = value; }
+    public TrieKey Key { get => _key; set => _key = value; }
     public object? Value { get => _value; set => _value = value; }
     public ref object this[int index]
     {
@@ -386,18 +386,18 @@ public class ExtensionData : INodeWithKey
 
     public ExtensionData() { }
 
-    internal ExtensionData(TrieNodeKey key)
+    internal ExtensionData(TrieKey key)
     {
         Key = key;
     }
 
-    internal ExtensionData(TrieNodeKey key, TrieNode value)
+    internal ExtensionData(TrieKey key, TrieNode value)
     {
         Key = key;
         Value = value;
     }
 
-    private ExtensionData(TrieNodeKey key, object? value)
+    private ExtensionData(TrieKey key, object? value)
     {
         Key = key;
         Value = value;
@@ -416,19 +416,19 @@ public class LeafData : INodeWithKey
 
     private readonly CappedArray<byte> _value;
 
-    public TrieNodeKey Key { get; set; }
+    public TrieKey Key { get; set; }
     public ref readonly CappedArray<byte> Value => ref _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData() { }
 
-    internal LeafData(TrieNodeKey key, in CappedArray<byte> value)
+    internal LeafData(TrieKey key, in CappedArray<byte> value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(TrieNodeKey key, in CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(TrieKey key, in CappedArray<byte> value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;

@@ -163,7 +163,7 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public TrieNodeKey? Key
+        public TrieKey? Key
         {
             get => _nodeData is INodeWithKey node ? node?.Key : null;
             internal set
@@ -823,7 +823,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(TrieNodeKey key)
+        public TrieNode CloneWithChangedKey(TrieKey key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -857,7 +857,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(TrieNodeKey key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(TrieKey key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

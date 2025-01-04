@@ -390,7 +390,7 @@ public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
     public EmptyContext Add(ReadOnlySpan<byte> nibblePath) => this;
     public EmptyContext Add(byte nibble) => this;
-    public EmptyContext Add(TrieNodeKey nibble) => this;
+    public EmptyContext Add(TrieKey nibble) => this;
     public EmptyContext AddStorage(in ValueHash256 storage) => this;
 }
 
@@ -418,7 +418,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
         };
     }
 
-    public TreePathContext Add(TrieNodeKey nibble)
+    public TreePathContext Add(TrieKey nibble)
     {
         return new TreePathContext()
         {
@@ -465,7 +465,7 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
         };
     }
 
-    public TreePathContextWithStorage Add(TrieNodeKey nibble)
+    public TreePathContextWithStorage Add(TrieKey nibble)
     {
         return new TreePathContextWithStorage()
         {
@@ -500,7 +500,7 @@ public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INod
         return this;
     }
 
-    public readonly NoopTreePathContextWithStorage Add(TrieNodeKey nibble)
+    public readonly NoopTreePathContextWithStorage Add(TrieKey nibble)
     {
         return this;
     }
@@ -523,6 +523,6 @@ public interface INodeContext<out TNodeContext>
 
     TNodeContext Add(byte nibble);
 
-    TNodeContext Add(TrieNodeKey nibble);
+    TNodeContext Add(TrieKey nibble);
     TNodeContext AddStorage(in ValueHash256 storage);
 }

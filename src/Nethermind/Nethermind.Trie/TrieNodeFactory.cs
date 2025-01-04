@@ -12,17 +12,17 @@ namespace Nethermind.Trie
             return new(new BranchData());
         }
 
-        public static TrieNode CreateLeaf(TrieNodeKey path, in CappedArray<byte> value)
+        public static TrieNode CreateLeaf(TrieKey path, in CappedArray<byte> value)
         {
             return new(new LeafData(path, in value));
         }
 
-        public static TrieNode CreateExtension(TrieNodeKey path)
+        public static TrieNode CreateExtension(TrieKey path)
         {
             return new(new ExtensionData(path));
         }
 
-        public static TrieNode CreateExtension(TrieNodeKey path, TrieNode child)
+        public static TrieNode CreateExtension(TrieKey path, TrieNode child)
         {
             return new(new ExtensionData(path, child));
         }
