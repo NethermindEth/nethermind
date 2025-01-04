@@ -21,7 +21,8 @@ public interface INodeData
 
 interface INodeWithKey : INodeData
 {
-    public byte[] Key { get; set; }
+    public TrieKey Key { get; set; }
+    public INodeData Clone(in TrieKey newKey);
 }
 
 public class BranchData : INodeData
@@ -53,12 +54,12 @@ public class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize +
-        (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
+        (Key.Length > 0 ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
     public int Length => 2;
 
-    public byte[]? _key;
+    private TrieKey _key;
     public object? _value;
-    public byte[] Key { get => _key; set => _key = value; }
+    public TrieKey Key { get => _key; set => _key = value; }
     public object? Value { get => _value; set => _value = value; }
     public ref object this[int index]
     {
@@ -82,24 +83,25 @@ public class ExtensionData : INodeWithKey
 
     public ExtensionData() { }
 
-    internal ExtensionData(byte[] key)
+    internal ExtensionData(in TrieKey key)
     {
         Key = key;
     }
 
-    internal ExtensionData(byte[] key, TrieNode value)
+    internal ExtensionData(in TrieKey key, TrieNode value)
     {
         Key = key;
         Value = value;
     }
 
-    private ExtensionData(byte[] key, object? value)
+    private ExtensionData(in TrieKey key, object? value)
     {
         Key = key;
         Value = value;
     }
 
     INodeData INodeData.Clone() => new ExtensionData(Key, Value);
+    public INodeData Clone(in TrieKey newKey) => new ExtensionData(newKey, Value);
 }
 
 public class LeafData : INodeWithKey
@@ -107,24 +109,24 @@ public class LeafData : INodeWithKey
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
-         (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
+         (Key.Length > 0 ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
          (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
 
     private readonly CappedArray<byte> _value;
 
-    public byte[] Key { get; set; }
+    public TrieKey Key { get; set; }
     public ref readonly CappedArray<byte> Value => ref _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData() { }
 
-    internal LeafData(byte[] key, in CappedArray<byte> value)
+    internal LeafData(in TrieKey key, in CappedArray<byte> value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(byte[] key, in CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(in TrieKey key, in CappedArray<byte> value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;
@@ -134,4 +136,5 @@ public class LeafData : INodeWithKey
 
     INodeData INodeData.Clone() => new LeafData(Key, in _value);
     public LeafData CloneWithNewValue(in CappedArray<byte> value) => new LeafData(Key, in value, StorageRoot);
+    public INodeData Clone(in TrieKey newKey) => new LeafData(in newKey, in _value);
 }

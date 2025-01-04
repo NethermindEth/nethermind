@@ -163,44 +163,8 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[]? Key
-        {
-            get => _nodeData is INodeWithKey node ? node?.Key : null;
-            internal set
-            {
-                if (_nodeData is not INodeWithKey node)
-                {
-                    ThrowDoesNotSupportKey();
-                }
+        public TrieKey Key => _nodeData is INodeWithKey node ? node.Key : default;
 
-                if (IsSealed)
-                {
-                    if (node.Key.AsSpan().SequenceEqual(value))
-                    {
-                        // No change, parallel read
-                        return;
-                    }
-                    ThrowAlreadySealed();
-                }
-
-                node.Key = value;
-                Keccak = null;
-
-                [DoesNotReturn]
-                [StackTraceHidden]
-                void ThrowDoesNotSupportKey()
-                {
-                    throw new InvalidOperationException($"{NodeType} {this} is does not support having a {nameof(Key)}.");
-                }
-
-                [DoesNotReturn]
-                [StackTraceHidden]
-                void ThrowAlreadySealed()
-                {
-                    throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
-                }
-            }
-        }
         public ref readonly CappedArray<byte> ValueRef
         {
             get
@@ -288,10 +252,24 @@ namespace Nethermind.Trie
             _nodeData = node._nodeData?.Clone();
         }
 
+        private TrieNode(TrieNode node, in TrieKey key)
+        {
+            _blockAndFlags |= _dirtyMask;
+            _nodeData = (node._nodeData as INodeWithKey)?.Clone(key);
+        }
+
         public TrieNode(NodeType nodeType)
         {
             _blockAndFlags |= _dirtyMask;
             _nodeData = CreateNodeData(nodeType);
+        }
+
+        // For tests only
+        internal TrieNode(NodeType nodeType, in TrieKey key)
+        {
+            _blockAndFlags |= _dirtyMask;
+            _nodeData = CreateNodeData(nodeType);
+            (_nodeData as INodeWithKey).Key = key;
         }
 
         public TrieNode(INodeData nodeData)
@@ -500,11 +478,11 @@ namespace Nethermind.Trie
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    _nodeData = new LeafData(key, in buffer);
+                    _nodeData = new LeafData(new(key), in buffer);
                 }
                 else
                 {
-                    _nodeData = new ExtensionData(key);
+                    _nodeData = new ExtensionData(new(key));
                 }
             }
 
@@ -823,10 +801,21 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(byte[] key)
+        public TrieNode CloneWithChangedKey(in TrieKey key)
         {
-            TrieNode trieNode = Clone();
-            trieNode.Key = key;
+            return Clone(key);
+        }
+
+        private TrieNode Clone(in TrieKey key)
+        {
+            TrieNode trieNode = new(this, key);
+
+            RlpFactory rlp = _rlp;
+            if (rlp is not null)
+            {
+                trieNode._rlp = rlp;
+            }
+
             return trieNode;
         }
 
@@ -857,10 +846,9 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(TrieKey key, in CappedArray<byte> changedValue)
         {
-            TrieNode trieNode = Clone();
-            trieNode.Key = key;
+            TrieNode trieNode = Clone(key);
             trieNode.Value = changedValue;
             return trieNode;
         }

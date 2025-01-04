@@ -81,7 +81,7 @@ public class HealingTreeTests
         ITrieStore trieStore = Substitute.For<ITrieStore>();
         trieStore.FindCachedOrUnknown(null, TreePath.Empty, _key).Returns(
             k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
-            k => new TrieNode(NodeType.Leaf) { Key = path });
+            k => new TrieNode(NodeType.Leaf, key: path));
         trieStore.GetTrieStore(Arg.Any<Hash256?>())
             .Returns((callInfo) => new ScopedTrieStore(trieStore, (Hash256?)callInfo[0]));
         TestMemDb db = new();
