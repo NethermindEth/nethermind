@@ -37,8 +37,7 @@ public class PayloadAttributes
         var sb = new StringBuilder($"{indentation}{nameof(PayloadAttributes)} {{")
             .Append($"{nameof(Timestamp)}: {Timestamp}, ")
             .Append($"{nameof(PrevRandao)}: {PrevRandao}, ")
-            .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}")
-            .Append($"{nameof(SlotNumber)}: {SlotNumber}");
+            .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}");
 
         if (Withdrawals is not null)
         {
@@ -48,6 +47,11 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
+        }
+
+        if (SlotNumber is not null)
+        {
+            sb.Append($", {nameof(SlotNumber)}: {SlotNumber}");
         }
 
         sb.Append('}');
