@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -132,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = false, Description = "Signs a transaction", IsSharable = true)]
-        ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message);
+        ResultWrapper<Memory<byte>> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Send a transaction to the tx pool and broadcasting",
