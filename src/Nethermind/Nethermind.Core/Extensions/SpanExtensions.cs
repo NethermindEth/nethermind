@@ -173,6 +173,10 @@ namespace Nethermind.Core.Extensions
             return newList;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FastHash(this Span<byte> input)
+            => FastHash((ReadOnlySpan<byte>)input);
+
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
         {
