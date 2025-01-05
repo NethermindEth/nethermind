@@ -94,13 +94,13 @@ public struct TreePath : IEquatable<TreePath>
         return copy;
     }
 
-    public readonly TreePath Append(in TrieKey nibbles)
+    public readonly TreePath Append(in TrieKey nibblePath)
     {
-        if (nibbles.Length == 0) return this;
-        if (nibbles.Length == 1) return Append((int)nibbles[0]);
+        if (nibblePath.Length == 0) return this;
+        if (nibblePath.Length == 1) return Append((int)nibblePath[0]);
 
         TreePath copy = this;
-        copy.AppendMut(nibbles);
+        copy.AppendMut(nibblePath);
         return copy;
     }
 

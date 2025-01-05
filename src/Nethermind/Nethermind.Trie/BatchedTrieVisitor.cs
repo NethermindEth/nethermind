@@ -418,11 +418,11 @@ public struct TreePathContext : INodeContext<TreePathContext>
         };
     }
 
-    public TreePathContext Add(in TrieKey nibble)
+    public TreePathContext Add(in TrieKey nibblePath)
     {
         return new TreePathContext()
         {
-            Path = Path.Append(nibble)
+            Path = Path.Append(nibblePath)
         };
     }
 
