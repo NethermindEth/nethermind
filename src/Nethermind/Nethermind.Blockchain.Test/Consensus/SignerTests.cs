@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             Signer signer = new(1, TestItem.PrivateKeyA, LimboLogs.Instance);
             await signer.Sign(Build.A.Transaction.TestObject);
-            signer.Sign(Keccak.Zero).Bytes.Should().HaveCount(64);
+            signer.Sign(Keccak.Zero).Bytes.Length.Should().Be(64);
         }
     }
 }

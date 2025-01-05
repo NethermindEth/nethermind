@@ -73,8 +73,8 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         GasPrice = transaction.GasPrice;
         ChainId = transaction.ChainId;
 
-        R = new UInt256(transaction.Signature?.R ?? [], true);
-        S = new UInt256(transaction.Signature?.S ?? [], true);
+        R = new UInt256(transaction.Signature.R, true);
+        S = new UInt256(transaction.Signature.S, true);
         V = transaction.Signature?.V ?? 0;
     }
 

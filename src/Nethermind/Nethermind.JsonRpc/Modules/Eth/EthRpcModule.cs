@@ -285,7 +285,7 @@ public partial class EthRpcModule(
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
-        return ResultWrapper<byte[]>.Success(sig.Bytes);
+        return ResultWrapper<byte[]>.Success(sig.Bytes.ToArray());
     }
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)

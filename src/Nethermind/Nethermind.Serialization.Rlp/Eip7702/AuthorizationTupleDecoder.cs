@@ -106,8 +106,8 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     private static int GetContentLength(AuthorizationTuple tuple) =>
         GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
         + Rlp.LengthOf(tuple.AuthoritySignature.V - Signature.VOffset)
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.AsSpan(), true))
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.AsSpan(), true));
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R, true))
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S, true));
 
     private static int GetContentLengthWithoutSig(UInt256 chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)

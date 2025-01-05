@@ -60,8 +60,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Input = transaction.Data.AsArray();
             PublicKey = publicKey;
             ChainId = transaction.Signature.ChainId;
-            R = transaction.Signature.R;
-            S = transaction.Signature.S;
+            R = transaction.Signature.R.ToArray();
+            S = transaction.Signature.S.ToArray();
             V = (UInt256)transaction.Signature.V;
             StandardV = transaction.Signature.RecoveryId;
             // TKS: it does not seem to work with CREATE2
