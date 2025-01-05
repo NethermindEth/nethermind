@@ -85,7 +85,7 @@ public static class IlAnalyzer
 
     public static void Initialize()
     {
-        Type[] InstructionChunks = typeof(IPatternChunk).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(InstructionChunk))).ToArray();
+        Type[] InstructionChunks = typeof(IPatternChunk).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(IPatternChunk))).ToArray();
         foreach (var chunkType in InstructionChunks)
         {
             _patterns[chunkType] = (IPatternChunk)Activator.CreateInstance(chunkType);
@@ -304,10 +304,12 @@ public static class IlAnalyzer
         long coststack = 0;
 
         bool notStart = true;
+        bool lastOpcodeIsAjumpdest = false;
 
         for (int pc = 0; pc < metadata.Segment.Length; pc++)
         {
             OpcodeInfo op = metadata.Segment[pc];
+            lastOpcodeIsAjumpdest = op.Operation is Instruction.JUMPDEST;
             metadata.StackOffsets[pc] = currentStackSize;
             subSegment.End = pc;
             switch (op.Operation)
@@ -384,7 +386,7 @@ public static class IlAnalyzer
             notStart = false;
         }
 
-        if (!metadata.SubSegments.ContainsKey(subsegmentStart))
+        if (!metadata.SubSegments.ContainsKey(subsegmentStart) || lastOpcodeIsAjumpdest)
         {
             subSegment.Start = subsegmentStart;
             subSegment.StaticGasSubSegmentes[costStart] = coststack;

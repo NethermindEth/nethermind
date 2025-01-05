@@ -34,6 +34,7 @@ namespace Nethermind.Evm.Benchmark
 {
     public interface ILocalSetup
     {
+        void Setup();
         void Run();
         void Reset();
     }
@@ -56,6 +57,7 @@ namespace Nethermind.Evm.Benchmark
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
         private WorldState _stateProvider;
+        private ILogger _logger;
 
         public LocalSetup(string name, byte[] bytecode, int? ilvmMode)
         {
@@ -67,12 +69,16 @@ namespace Nethermind.Evm.Benchmark
 
             if (typeof(TIsCompiling) == typeof(VirtualMachine.IsOptimizing))
             {
+                vmConfig.AnalysisQueueMaxSize = 1;
+
                 vmConfig.PartialAotThreshold = 0;
                 vmConfig.AggressivePartialAotMode = (ilvmMode == ILMode.PARTIAL_AOT_MODE);
                 vmConfig.IsPartialAotEnabled = (ilvmMode == ILMode.PARTIAL_AOT_MODE);
-                vmConfig.AnalysisQueueMaxSize = 1;
+
                 vmConfig.PatternMatchingThreshold = 0;
                 vmConfig.IsPatternMatchingEnabled = (ilvmMode == ILMode.PATTERN_BASED_MODE);
+
+                vmConfig.FullAotThreshold= 0;
                 vmConfig.IsFullAotEnabled = (ilvmMode == ILMode.FULL_AOT_MODE);
             }
 
@@ -85,16 +91,18 @@ namespace Nethermind.Evm.Benchmark
 
             ILogManager logmanager = vmConfig.BakeInTracingInAotModes ? LimboLogs.Instance : NullLogManager.Instance;
 
-
+            _logger = logmanager.GetClassLogger();
             if (vmConfig.BakeInTracingInAotModes)
             {
                 _txTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             }
-            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, MainnetSpecProvider.Instance, vmConfig, logmanager.GetClassLogger());
 
-            var codeinfo = new CodeInfo(bytecode);
 
-            if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled)
+            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, MainnetSpecProvider.Instance, vmConfig, _logger);
+
+            var codeinfo = new CodeInfo(bytecode, Address.FromNumber(23));
+
+            if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled || vmConfig.IsFullAotEnabled)
             {
                 IlAnalyzer.Analyse(codeinfo, ilvmMode.Value, vmConfig, NullLogger.Instance);
             }
@@ -110,8 +118,18 @@ namespace Nethermind.Evm.Benchmark
                 txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
                 inputData: default
             );
+        }
 
+        public void Setup()
+        {
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
+            if(_environment.CodeInfo.IlInfo.Mode == ILMode.FULL_AOT_MODE)
+            {
+                _evmState.ILedContract = Activator.CreateInstance(_environment.CodeInfo.IlInfo.DynamicContractType, [
+                    _evmState, _stateProvider, _spec, _blockhashProvider, _txTracer, _logger, _environment.CodeInfo.IlInfo.ContractMetadata.EmbeddedData
+                ]) as IPrecompiledContract;
+            }
+
         }
 
         public void Run()
@@ -121,10 +139,6 @@ namespace Nethermind.Evm.Benchmark
 
         public void Reset()
         {
-            _evmState.DataStackHead = 0;
-            _evmState.ProgramCounter = 0;
-            _evmState.GasAvailable = long.MaxValue;
-
             _stateProvider.Reset();
         }
 
@@ -231,7 +245,7 @@ namespace Nethermind.Evm.Benchmark
                 var argBytes = bytes.WithoutLeadingZeros().ToArray();
                 foreach (var bytecode in GetBenchmarkSamplesGen(argBytes))
                 {
-                    yield return new LocalSetup<NotTracing, NotOptimizing>("EVM::std::" + bytecode.Item1, bytecode.Item2, null);
+                    yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std::" + bytecode.Item1, bytecode.Item2, null);
                     yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + bytecode.Item1, bytecode.Item2, ILMode.PATTERN_BASED_MODE);
                     yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + bytecode.Item1, bytecode.Item2, ILMode.PARTIAL_AOT_MODE);
                     yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + bytecode.Item1, bytecode.Item2, ILMode.FULL_AOT_MODE);
@@ -241,6 +255,12 @@ namespace Nethermind.Evm.Benchmark
 
         [ParamsSource(nameof(GetBenchmarkSamples))]
         public ILocalSetup BenchmarkSetup;
+
+        [IterationSetup]
+        public void Setup()
+        {
+            BenchmarkSetup.Setup();
+        }
 
         [Benchmark]
         public void ExecuteCode()
@@ -264,7 +284,7 @@ namespace Nethermind.Evm.Benchmark
             byte[] bytecode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE") ?? string.Empty);
             string BenchmarkName = Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME") ?? string.Empty;
 
-            yield return new LocalSetup<NotTracing, NotOptimizing>("EVM::std::" +  BenchmarkName, bytecode, null);
+            yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std::" +  BenchmarkName, bytecode, null);
             yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + BenchmarkName, bytecode, ILMode.PATTERN_BASED_MODE);
             yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + BenchmarkName, bytecode, ILMode.PARTIAL_AOT_MODE);
             yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + BenchmarkName, bytecode, ILMode.FULL_AOT_MODE);
@@ -272,6 +292,12 @@ namespace Nethermind.Evm.Benchmark
 
         [ParamsSource(nameof(GetBenchmarkSamples))]
         public ILocalSetup BenchmarkSetup;
+        
+        [IterationSetup]
+        public void Setup()
+        {
+            BenchmarkSetup.Setup();
+        }
 
         [Benchmark]
         public void ExecuteCode()

@@ -24,6 +24,7 @@ using Nethermind.Int256;
 using BenchmarkDotNet.Toolchains.DotNetCli;
 using CommandLine;
 using System.IO;
+using Nethermind.Evm.CodeAnalysis.IL;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -61,10 +62,10 @@ namespace Nethermind.Benchmark.Runner
             public string Name { get; set; }
 
         }
-
-
         public static void Main(string[] args)
         {
+            IlAnalyzer.Initialize();
+
             ParserResult<Options> options = Parser.Default.ParseArguments<Options>(args);
             switch (options.Value.Mode)
             {
@@ -83,7 +84,7 @@ namespace Nethermind.Benchmark.Runner
         {
             if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
             {
-                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
             }
             else
             {

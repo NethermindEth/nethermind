@@ -21,6 +21,11 @@ using DotNetty.Common.Utilities;
 using Org.BouncyCastle.Math.Field;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
+public class EvmGeneratedContract(string Address) : Attribute
+{
+    public string Address { get; } = Address;
+}
+
 internal static class FullAOT
 {
     public delegate bool MoveNextDelegate(ulong chainId, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
@@ -34,8 +39,10 @@ internal static class FullAOT
         var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Nethermind.Evm.Precompiled.Live"), AssemblyBuilderAccess.Run);
 
         ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("ContractsModule");
-        TypeBuilder contractStructBuilder = moduleBuilder.DefineType($"{contractMetadata.TargetCodeInfo.Address}", TypeAttributes.Public |
+        TypeBuilder contractStructBuilder = moduleBuilder.DefineType(Guid.NewGuid().ToString(), TypeAttributes.Public |
             TypeAttributes.Sealed | TypeAttributes.SequentialLayout | TypeAttributes.BeforeFieldInit, typeof(ValueType), [typeof(IPrecompiledContract)]);
+
+        contractStructBuilder.SetCustomAttribute(new CustomAttributeBuilder(typeof(EvmGeneratedContract).GetConstructor([typeof(string)]), [contractMetadata.TargetCodeInfo.Address?.ToString()]));
 
         FullAotEnvLoader envLoader = new FullAotEnvLoader(contractStructBuilder, contractMetadata);
 
@@ -183,8 +190,6 @@ internal static class FullAOT
             for (var i = 0; i < segmentMetadata.Segment.Length; i++)
             {
                 OpcodeInfo op = segmentMetadata.Segment[i];
-
-                method.PrintString($"Opcode: {op.Operation}\n");
 
                 if (!config.BakeInTracingInAotModes && segmentMetadata.SubSegments.ContainsKey(i))
                     currentSegment = segmentMetadata.SubSegments[i];

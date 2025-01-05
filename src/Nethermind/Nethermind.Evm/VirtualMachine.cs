@@ -1,5 +1,5 @@
 
-// #define ILVM_DEBUGDEBUG
+// #define ILVM_DEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -23,7 +23,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 
 
-#if DEBUGDEBUG
+#if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
 #endif
 
@@ -176,7 +176,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-#if ILVM_DEBUGDEBUG
+#if ILVM_DEBUG
         _vmConfig = new VMConfig
         {
             IsJitEnabled = true,
@@ -719,12 +719,13 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         if (vmState.ILedContract is not null)
         {
             Metrics.AotPrecompiledCalls++;
+            IPrecompiledContract precompiledContract = vmState.ILedContract;
             int programCounter = vmState.ProgramCounter;
-            if (vmState.ILedContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer))
+            if (precompiledContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer))
             {
                 UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
 
-                if (vmState.ILedContract.Current.ShouldContinue)
+                if (precompiledContract.Current.ShouldContinue)
                 {
                     return new CallResult(vmState.ILedContract.Current.CallResult);
                 }
@@ -732,12 +733,12 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
-            if (vmState.ILedContract.Current.ShouldFail)
+            if (precompiledContract.Current.ShouldFail)
             {
                 return GetFailureReturn<TTracingInstructions>(gasAvailable, vmState.ILedContract.Current.ExceptionType);
             }
 
-            if (vmState.ILedContract.Current.ShouldReturn || vmState.ILedContract.Current.ShouldRevert)
+            if (precompiledContract.Current.ShouldReturn || vmState.ILedContract.Current.ShouldRevert)
             {
                 return new CallResult(_returnDataBuffer, null, shouldRevert: vmState.ILedContract.Current.ShouldRevert);
             }
@@ -782,7 +783,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
 
-#if ILVM_DEBUGDEBUG
+#if ILVM_DEBUG
         if (env.CodeInfo.IlInfo.IsEmpty)
         {
             //IlAnalyzer.Analyse(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
@@ -790,7 +791,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
         bool isRevert = false;
-#if DEBUGDEBUG
+#if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
         SkipInit(out UInt256 a);
@@ -860,7 +861,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 }
             }
 
-#if DEBUGDEBUG
+#if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
 
@@ -2245,7 +2246,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-#if DEBUGDEBUG
+#if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
