@@ -391,6 +391,26 @@ public readonly struct TrieKey
         return true;
     }
 
+    public readonly void CopyTo(Span<byte> destination)
+    {
+        if (destination.Length < Length)
+        {
+            throw new ArgumentException($"Destination span must be at least {Length} bytes long.", nameof(destination));
+        }
+
+        int offset = 0;
+
+        // Copy the first part if not null
+        if (_keyPart0 is not null)
+        {
+            _keyPart0.CopyTo(destination.Slice(offset, _keyPart0.Length));
+            offset += _keyPart0.Length;
+        }
+
+        // Copy the second part if not null
+        _keyPart1?.CopyTo(destination.Slice(offset, _keyPart1.Length));
+    }
+
     public readonly override bool Equals(object obj) => obj is TrieKey key && Equals(in key);
     public readonly override int GetHashCode() => throw new NotImplementedException();
 }

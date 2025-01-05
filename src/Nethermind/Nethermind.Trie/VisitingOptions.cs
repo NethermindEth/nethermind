@@ -46,5 +46,10 @@ namespace Nethermind.Trie
                 <= -1 => Environment.ProcessorCount,
                 _ => rawMaxDegreeOfParallelism
             };
+
+        public override string ToString()
+        {
+            return $"Accounts: {ExpectAccounts}, {(MaxDegreeOfParallelism > 1 ? "Parallel" : "Serial")}, MemoryBudget: {FullScanMemoryBudget}";
+        }
     }
 }
