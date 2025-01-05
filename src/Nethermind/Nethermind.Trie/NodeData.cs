@@ -54,7 +54,7 @@ public class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize +
-        (Key.Length > 0 ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
+        MemorySizes.RefSize + MemorySizes.RefSize + (Key.Length > 0 ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
     public int Length => 2;
 
     private TrieKey _key;
@@ -109,7 +109,7 @@ public class LeafData : INodeWithKey
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
-         (Key.Length > 0 ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
+         MemorySizes.RefSize + MemorySizes.RefSize + (Key.Length > 0 ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
          (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
 
     private readonly CappedArray<byte> _value;
