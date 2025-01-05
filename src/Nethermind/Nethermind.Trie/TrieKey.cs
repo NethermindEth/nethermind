@@ -199,15 +199,128 @@ public readonly struct TrieKey
     /// <returns>The number of bytes of the shared prefix.</returns>
     public readonly int CommonPrefixLength(TrieKey other)
     {
-        int commonLength = 0;
-        int minLength = Math.Min(Length, other.Length);
-
-        // Increment while bytes are matching.
-        while (commonLength < minLength && this[commonLength] == other[commonLength])
+        ReadOnlySpan<byte> a0 = _keyPart0;
+        ReadOnlySpan<byte> b0 = other._keyPart0;
+        // Single-array shortcut: if both keys have only _keyPart0, compare directly.
+        if (_keyPart1 is null && other._keyPart1 is null)
         {
-            commonLength++;
+            return a0.CommonPrefixLength(b0);
         }
-        return commonLength;
+
+        // Set up spans for each part:
+        ReadOnlySpan<byte> a1 = _keyPart1;
+        ReadOnlySpan<byte> b1 = other._keyPart1;
+
+        // We'll do at most two segments for "this" (a0 then a1) and two for "other" (b0 then b1).
+        // The loop ends as soon as we find a mismatch in the middle of either segment
+        // or run out of segments on either side.
+
+        int totalMatched = 0;
+
+        // Current spans for each side
+        ReadOnlySpan<byte> curA = a0;
+        ReadOnlySpan<byte> curB = b0;
+
+        // Which part are we on? false => part0, true => part1
+        bool aIsOnPart1 = false;
+        bool bIsOnPart1 = false;
+
+        while (true)
+        {
+            // 1) Compare the current spans with .CommonPrefixLength
+            int prefix = curA.CommonPrefixLength(curB);
+            totalMatched += prefix;
+
+            // 2) Check if we exhausted one or both spans
+            bool aExhausted = prefix == curA.Length;
+            bool bExhausted = prefix == curB.Length;
+
+            // 2a) If mismatch in the middle of both spans => done
+            if (!aExhausted && !bExhausted)
+            {
+                return totalMatched;
+            }
+
+            // 2b) If both are exhausted simultaneously, move both to their next part
+            if (aExhausted && bExhausted)
+            {
+                // Move "this" from a0 -> a1 if not already there
+                if (!aIsOnPart1)
+                {
+                    curA = a1;
+                    aIsOnPart1 = true;
+                }
+                else
+                {
+                    // Already on a1 => nothing more to compare
+                    return totalMatched;
+                }
+
+                // Move "other" from b0 -> b1 if not already there
+                if (!bIsOnPart1)
+                {
+                    curB = b1;
+                    bIsOnPart1 = true;
+                }
+                else
+                {
+                    // Already on b1 => nothing more to compare
+                    return totalMatched;
+                }
+
+                // Now compare new spans in next loop iteration
+                continue;
+            }
+
+            // 2c) If exactly one is exhausted, keep leftover in the other
+            //     and move the exhausted side to its next part if possible.
+
+            // "this" side exhausted => move it to a1, or done if we're already on a1
+            if (aExhausted && !bExhausted)
+            {
+                if (!aIsOnPart1)
+                {
+                    // Move this side from a0 -> a1
+                    curA = a1;
+                    aIsOnPart1 = true;
+                }
+                else
+                {
+                    // Already on a1 => nothing left
+                    return totalMatched;
+                }
+                // On the other side, we slice off the matched portion
+                curB = curB.Slice(prefix);
+
+                // Continue comparing leftover in b's current part vs a1
+                continue;
+            }
+
+            // "other" side exhausted => move it to b1, or done if already on b1
+            if (bExhausted && !aExhausted)
+            {
+                if (!bIsOnPart1)
+                {
+                    // Move other side from b0 -> b1
+                    curB = b1;
+                    bIsOnPart1 = true;
+                }
+                else
+                {
+                    // Already on b1 => nothing left
+                    return totalMatched;
+                }
+                // On this side, we slice off the matched portion
+                curA = curA.Slice(prefix);
+
+                // Continue comparing leftover in a's current part vs b1
+                continue;
+            }
+
+            // If we reach here, it means we can't proceed further
+            // (e.g. leftover in one side but no second part in the other).
+            return totalMatched;
+        }
     }
 
     /// <summary>
