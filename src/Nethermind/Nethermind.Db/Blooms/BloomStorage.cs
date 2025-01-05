@@ -283,7 +283,7 @@ namespace Nethermind.Db.Blooms
                 }
             }
 
-            private static uint CountBits(Bloom bloom) => bloom.Bytes.AsSpan().CountBits();
+            private static uint CountBits(Bloom bloom) => bloom.Bytes.CountBits();
 
             public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
 
