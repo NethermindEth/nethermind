@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
@@ -10,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Crypto
 {
-    public class Signature : IEquatable<Signature>
+    public class Signature : MemoryManager<byte>, IEquatable<Signature>
     {
         public const int VOffset = 27;
         private Vector512<byte> _signature;
@@ -57,15 +58,17 @@ namespace Nethermind.Core.Crypto
         {
         }
         public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _signature, 1));
+        public override Memory<byte> Memory => CreateMemory(64);
+
         public ulong V { get; set; }
 
         public ulong? ChainId => V < 35 ? null : (ulong?)(V + (V % 2) - 36) / 2;
 
         public byte RecoveryId => V <= VOffset + 1 ? (byte)(V - VOffset) : (byte)(1 - V % 2);
 
-        public ReadOnlySpan<byte> R => Bytes.Slice(0, 32);
+        public Memory<byte> R => Memory.Slice(0, 32);
         public ReadOnlySpan<byte> RAsSpan => Bytes.Slice(0, 32);
-        public ReadOnlySpan<byte> S => Bytes.Slice(32, 32);
+        public Memory<byte> S => Memory.Slice(32, 32);
         public ReadOnlySpan<byte> SAsSpan => Bytes.Slice(32, 32);
 
         [Todo("Change signature to store 65 bytes and just slice it for normal Bytes.")]
@@ -105,5 +108,11 @@ namespace Nethermind.Core.Crypto
         {
             return MemoryMarshal.Read<int>(Bytes);
         }
+
+        public void Dispose() { }
+        protected override void Dispose(bool disposing) { }
+        public override Span<byte> GetSpan() => Bytes;
+        public override MemoryHandle Pin(int elementIndex = 0) => default;
+        public override void Unpin() { }
     }
 }

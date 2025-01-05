@@ -82,8 +82,8 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         }
         else
         {
-            R = new UInt256(signature.R, true);
-            S = new UInt256(signature.S, true);
+            R = new UInt256(signature.R.Span, true);
+            S = new UInt256(signature.S.Span, true);
             V = signature.V;
         }
     }
