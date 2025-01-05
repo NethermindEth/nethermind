@@ -38,20 +38,22 @@ public class EthereumL1Bridge : IL1Bridge
         while (!_cancellationToken.IsCancellationRequested)
         {
             // TODO: can we do it with subscription?
-            BeaconBlock beaconBlock = await _beaconApi.GetHead();
-            while (beaconBlock.SlotNumber <= _currentSlot)
+            BeaconBlock? beaconBlock = await _beaconApi.GetHead();
+            while (beaconBlock is null || beaconBlock.Value.SlotNumber <= _currentSlot)
             {
                 await Task.Delay(100);
                 beaconBlock = await _beaconApi.GetHead();
             }
 
             // TODO: handle missed slots(_currentSlot + 1 < beaconBlock.SlotNumber)
-            _logger.Error($"HEAD UPDATED: slot {beaconBlock.SlotNumber}");
+            _logger.Error($"HEAD UPDATED: slot {beaconBlock.Value.SlotNumber}");
             // new slot
-            _currentSlot = beaconBlock.SlotNumber;
+            _currentSlot = beaconBlock.Value.SlotNumber;
 
-            ReceiptForRpc[]? receipts = await _ethL1Api.GetReceiptsByHash(beaconBlock.ExecutionBlockHash);
-            OnNewL1Head?.Invoke(beaconBlock, receipts!);
+            _logger.Error($"GETTING RECEIPTS");
+            ReceiptForRpc[]? receipts = await _ethL1Api.GetReceiptsByHash(beaconBlock.Value.ExecutionBlockHash);
+            _logger.Error($"INVOKING");
+            OnNewL1Head?.Invoke(beaconBlock.Value, receipts!);
 
             // Wait next slot
             await Task.Delay(11000, _cancellationToken);
@@ -67,7 +69,7 @@ public class EthereumL1Bridge : IL1Bridge
 
     public event Action<BeaconBlock, ReceiptForRpc[]>? OnNewL1Head;
 
-    public Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber)
+    public Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber)
     {
         return _beaconApi.GetBlobSidecars(slotNumber);
     }

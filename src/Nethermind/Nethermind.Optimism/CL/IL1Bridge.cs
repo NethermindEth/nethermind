@@ -10,5 +10,6 @@ namespace Nethermind.Optimism.CL;
 public interface IL1Bridge
 {
     event Action<BeaconBlock, ReceiptForRpc[]>? OnNewL1Head;
-    Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber);
+    Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber);
+    void Start();
 }

@@ -23,8 +23,7 @@ public class OptimismCL : IDisposable
     private readonly Driver _driver;
 
     public OptimismCL(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters, ICLConfig config,
-        IJsonSerializer jsonSerializer,
-        IEthereumEcdsa ecdsa, ITimestamper timestamper, ILogManager logManager,
+        IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ITimestamper timestamper, ILogManager logManager,
         IOptimismEngineRpcModule engineRpcModule)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.SequencerP2PAddress);
@@ -45,12 +44,15 @@ public class OptimismCL : IDisposable
 
     public void Start()
     {
-        _p2p.Start();
+        _l1Bridge.Start();
+        _driver.Start();
+        // _p2p.Start();
     }
 
     public void Dispose()
     {
         _cancellationTokenSource.Cancel();
         _p2p.Dispose();
+        _driver.Dispose();
     }
 }

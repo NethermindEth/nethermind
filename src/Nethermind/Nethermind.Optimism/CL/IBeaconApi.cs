@@ -11,16 +11,16 @@ namespace Nethermind.Optimism.CL;
 public interface IBeaconApi
 {
     // /eth/v2/beacon/blocks/head
-    Task<BeaconBlock> GetHead();
+    Task<BeaconBlock?> GetHead();
 
     // /eth/v2/beacon/blocks/finalized
-    Task<BeaconBlock> GetFinalized();
+    Task<BeaconBlock?> GetFinalized();
 
     // /eth/v2/beacon/blocks/{slot}
-    Task<BeaconBlock> GetBySlotNumber(ulong slot);
+    Task<BeaconBlock?> GetBySlotNumber(ulong slot);
 
     // /eth/v1/beacon/blob_sidecars/:slot:
-    Task<BlobSidecar[]> GetBlobSidecars(ulong slot);
+    Task<BlobSidecar[]?> GetBlobSidecars(ulong slot);
 }
 
 public struct BeaconBlock

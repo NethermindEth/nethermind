@@ -14,7 +14,7 @@ namespace Nethermind.Optimism.CL;
 // TODO: maybe we should avoid using Rlp library at all?
 public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0>
 {
-    public static BatchDecoder Instance = new();
+    public static readonly BatchDecoder Instance = new();
 
     public int GetLength(BatchV0 item, RlpBehaviors rlpBehaviors)
     {

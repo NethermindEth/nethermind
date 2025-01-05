@@ -34,16 +34,16 @@ public class EthereumBeaconApi : IBeaconApi
         _logger = logger;
     }
 
-    public async Task<BeaconBlock> GetHead()
+    public async Task<BeaconBlock?> GetHead()
     {
-        GetBlockResponse data = await GetData<GetBlockResponse>("/eth/v2/beacon/blocks/head");
-        return new BeaconBlock
+        GetBlockResponse? data = await GetData<GetBlockResponse>("/eth/v2/beacon/blocks/head");
+        return data is null ? null : new BeaconBlock
         {
-            PayloadNumber = data.Data.Message.Body.ExecutionPayload.BlockNumber,
-            SlotNumber = data.Data.Message.Slot,
-            ExecutionBlockHash = data.Data.Message.Body.ExecutionPayload.BlockHash,
-            PrevRandao = data.Data.Message.Body.ExecutionPayload.PrevRandao,
-            Transactions = data.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
+            PayloadNumber = data.Value.Data.Message.Body.ExecutionPayload.BlockNumber,
+            SlotNumber = data.Value.Data.Message.Slot,
+            ExecutionBlockHash = data.Value.Data.Message.Body.ExecutionPayload.BlockHash,
+            PrevRandao = data.Value.Data.Message.Body.ExecutionPayload.PrevRandao,
+            Transactions = data.Value.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
             {
                 // Should we remove this and use L1 EL to retrieve data?
                 var tx = Rlp.Decode<Transaction>(x);
@@ -53,16 +53,16 @@ public class EthereumBeaconApi : IBeaconApi
         };
     }
 
-    public async Task<BeaconBlock> GetBySlotNumber(ulong slot)
+    public async Task<BeaconBlock?> GetBySlotNumber(ulong slot)
     {
-        GetBlockResponse data = await GetData<GetBlockResponse>($"/eth/v2/beacon/blocks/{slot}");
+        GetBlockResponse? data = await GetData<GetBlockResponse>($"/eth/v2/beacon/blocks/{slot}");
         return new BeaconBlock
         {
-            PayloadNumber = data.Data.Message.Body.ExecutionPayload.BlockNumber,
-            SlotNumber = data.Data.Message.Slot,
-            ExecutionBlockHash = data.Data.Message.Body.ExecutionPayload.BlockHash,
-            PrevRandao = data.Data.Message.Body.ExecutionPayload.PrevRandao,
-            Transactions = data.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
+            PayloadNumber = data.Value.Data.Message.Body.ExecutionPayload.BlockNumber,
+            SlotNumber = data.Value.Data.Message.Slot,
+            ExecutionBlockHash = data.Value.Data.Message.Body.ExecutionPayload.BlockHash,
+            PrevRandao = data.Value.Data.Message.Body.ExecutionPayload.PrevRandao,
+            Transactions = data.Value.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
             {
                 // Should we remove this and use L1 EL to retrieve data?
                 var tx = Rlp.Decode<Transaction>(x);
@@ -72,16 +72,16 @@ public class EthereumBeaconApi : IBeaconApi
         };
     }
 
-    public async Task<BeaconBlock> GetFinalized()
+    public async Task<BeaconBlock?> GetFinalized()
     {
-        GetBlockResponse data = await GetData<GetBlockResponse>("/eth/v2/beacon/blocks/finalized");
-        return new BeaconBlock
+        GetBlockResponse? data = await GetData<GetBlockResponse>("/eth/v2/beacon/blocks/finalized");
+        return data is null ? null : new BeaconBlock
         {
-            PayloadNumber = data.Data.Message.Body.ExecutionPayload.BlockNumber,
-            SlotNumber = data.Data.Message.Slot,
-            ExecutionBlockHash = data.Data.Message.Body.ExecutionPayload.BlockHash,
-            PrevRandao = data.Data.Message.Body.ExecutionPayload.PrevRandao,
-            Transactions = data.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
+            PayloadNumber = data.Value.Data.Message.Body.ExecutionPayload.BlockNumber,
+            SlotNumber = data.Value.Data.Message.Slot,
+            ExecutionBlockHash = data.Value.Data.Message.Body.ExecutionPayload.BlockHash,
+            PrevRandao = data.Value.Data.Message.Body.ExecutionPayload.PrevRandao,
+            Transactions = data.Value.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
             {
                 // Should we remove this and use L1 EL to retrieve data?
                 var tx = Rlp.Decode<Transaction>(x);
@@ -91,39 +91,51 @@ public class EthereumBeaconApi : IBeaconApi
         };
     }
 
-    public async Task<BlobSidecar[]> GetBlobSidecars(ulong slot)
+    public async Task<BlobSidecar[]?> GetBlobSidecars(ulong slot)
     {
-        GetBlobSidecarsResponse data = await GetData<GetBlobSidecarsResponse>($"/eth/v1/beacon/blob_sidecars/{slot}");
-        for (int i = 0; i < data.Data.Length; ++i)
+        GetBlobSidecarsResponse? data = await GetData<GetBlobSidecarsResponse>($"/eth/v1/beacon/blob_sidecars/{slot}");
+        if (data is null) return null;
+        for (int i = 0; i < data.Value.Data.Length; ++i)
         {
-            data.Data[i].BlobVersionedHash = (new byte[]{1}).Concat(SHA256.HashData(data.Data[i].KzgCommitment)[1..]).ToArray();
+            data.Value.Data[i].BlobVersionedHash = (new byte[]{1}).Concat(SHA256.HashData(data.Value.Data[i].KzgCommitment)[1..]).ToArray();
         }
-        return data.Data;
+        return data.Value.Data;
     }
 
-    private async Task<T> GetData<T>(string uri)
+    private async Task<T?> GetData<T>(string uri)
     {
-        HttpResponseMessage response = await _client.GetAsync(uri, _cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            if (_logger.IsWarn)
+            HttpResponseMessage response = await _client.GetAsync(uri, _cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
             {
-                _logger.Warn($"Unsuccessful {uri} request");
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Unsuccessful {uri} request");
+                }
+
+                // TODO: remove exception
+                throw new Exception($"Unsuccessful {uri} request");
             }
-            // TODO: remove exception
-            throw new Exception($"Unsuccessful {uri} request");
-        }
 
-        if (_logger.IsDebug)
+            if (_logger.IsDebug)
+            {
+                _logger.Debug(
+                    $"GetData<{typeof(T)}({uri}) result: {await response.Content.ReadAsStringAsync(_cancellationToken)}");
+            }
+
+            T decoded =
+                _jsonSerializer.Deserialize<T>(await response.Content.ReadAsStreamAsync(_cancellationToken));
+
+            return decoded;
+        }
+        catch (Exception e)
         {
-            _logger.Debug($"GetData<{typeof(T)}({uri}) result: {await response.Content.ReadAsStringAsync(_cancellationToken)}");
+            if (_logger.IsWarn) _logger.Warn($"Beacon API request exception({uri}): {e.Message}");
         }
 
-        T decoded =
-            _jsonSerializer.Deserialize<T>(await response.Content.ReadAsStreamAsync(_cancellationToken));
-
-        return decoded;
+        return default;
     }
 
     // TODO: remove

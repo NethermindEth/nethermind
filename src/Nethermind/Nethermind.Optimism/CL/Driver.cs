@@ -3,13 +3,14 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism.CL;
 
-public class Driver
+public class Driver : IDisposable
 {
     private readonly ICLConfig _config;
     private readonly IL1Bridge _l1Bridge;
@@ -27,7 +28,7 @@ public class Driver
         _l1Bridge.OnNewL1Head += OnNewL1Head;
     }
 
-    private void OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
+    private async void OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
     {
         _logger.Error($"INVOKED {block.SlotNumber}");
         Address sepoliaBatcher = new("0x8F23BB38F531600e5d8FDDaAEC41F13FaB46E98c");
@@ -40,7 +41,7 @@ public class Driver
             {
                 if (transaction.Type == TxType.Blob)
                 {
-                    ProcessBlobBatcherTransaction(transaction, block.SlotNumber);
+                    await ProcessBlobBatcherTransaction(transaction, block.SlotNumber);
                 }
                 else
                 {
@@ -51,9 +52,14 @@ public class Driver
         _logger.Error("SLOT PROCESSED");
     }
 
-    private async void ProcessBlobBatcherTransaction(Transaction transaction, ulong slotNumber)
+    private async Task ProcessBlobBatcherTransaction(Transaction transaction, ulong slotNumber)
     {
-        BlobSidecar[] blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+        BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+        while (blobSidecars is null)
+        {
+            await Task.Delay(100);
+            blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+        }
         for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
         {
             for (int j = 0; j < blobSidecars.Length; ++j)
@@ -99,5 +105,12 @@ public class Driver
         {
             _logger.Error($"GOT REGULAR TRANSACTION");
         }
+
+        throw new NotImplementedException();
+    }
+
+    public void Dispose()
+    {
+        _l1Bridge.OnNewL1Head -= OnNewL1Head;
     }
 }
