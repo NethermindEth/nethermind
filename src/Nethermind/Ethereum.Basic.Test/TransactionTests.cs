@@ -50,7 +50,7 @@ namespace Ethereum.Basic.Test
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
             ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, false);
-            Assert.That(decodedUnsigned.Signature.R, Is.EqualTo(decodedSigned.Signature.R), "R");
+            Assert.That(decodedUnsigned.Signature.R.SequenceEqual(decodedSigned.Signature.R), "R");
             BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
             BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();
             BigInteger otherS = EthereumEcdsa.LowSTransform - actualS;
