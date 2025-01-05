@@ -42,7 +42,7 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
 
-        AddOrRefresh(_currentNodeId);
+        // AddOrRefresh(_currentNodeId);
     }
 
     public override string ToString()

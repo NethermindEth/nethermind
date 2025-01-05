@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using System.Diagnostics;
 
 namespace Nethermind.Network.Kademlia.Content;
 
@@ -73,5 +74,10 @@ public class KademliaContent<TNode, TContentKey, TContent>(
 
         if (_logger.IsInfo) _logger.Info($"LA 7");
         return result;
+    }
+
+    public override string ToString()
+    {
+        return $"KademliaContent to string called from {new StackTrace()}";
     }
 }

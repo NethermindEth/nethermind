@@ -70,6 +70,17 @@ public class ContentNetworkProtocol(
         });
 
         var response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, findContentBytes, token);
+
+        if (response is { Length: 0 })
+        {
+            if (_logger.IsWarn) _logger.Warn($"Empty response for request {findContentBytes.ToHexString()}");
+            return new Content
+            {
+                Selector = ContentType.Enrs,
+                Enrs = [],
+            };
+        }
+
         MessageUnion union;
         Content message;
         try
