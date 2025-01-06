@@ -103,7 +103,6 @@ public partial class BlockProcessor(
             (cancellationTokenSource, preWarmTask) = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
         }
 
-        TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
         Hash256 preBlockStateRoot = newBranchStateRoot;
@@ -157,6 +156,7 @@ public partial class BlockProcessor(
                 }
 
                 processedBlocks[i] = processedBlock;
+                TxHashCalculator.CalculateInBackground(suggestedBlock);
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
@@ -502,13 +502,13 @@ public partial class BlockProcessor(
         }
     }
 
-    private class TxHashCalculator(List<Block> suggestedBlocks) : IThreadPoolWorkItem
+    private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(List<Block> suggestedBlocks)
+        public static void CalculateInBackground(Block suggestedBlock)
         {
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
         }
 
         void IThreadPoolWorkItem.Execute()
@@ -516,13 +516,10 @@ public partial class BlockProcessor(
             // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
-            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
+            foreach (Transaction tx in suggestedBlock.Transactions)
             {
-                foreach (Transaction tx in block.Transactions)
-                {
-                    // Calculate the hashes to release the memory from the transactionSequence
-                    tx.CalculateHashInternal();
-                }
+                // Calculate the hashes to release the memory from the transactionSequence
+                tx.CalculateHashInternal();
             }
         }
     }
