@@ -156,7 +156,6 @@ public partial class BlockProcessor(
                 }
 
                 processedBlocks[i] = processedBlock;
-                TxHashCalculator.CalculateInBackground(suggestedBlock);
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
@@ -186,6 +185,11 @@ public partial class BlockProcessor(
                 preWarmTask?.GetAwaiter().GetResult();
                 preWarmTask = null;
                 _stateProvider.Reset(resizeCollections: true);
+
+                // Calculate the transaction hashes in the background and release tx sequence memory
+                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
+                // Though we still want to release the memory even if syncing rather than processing live
+                TxHashCalculator.CalculateInBackground(suggestedBlock);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
