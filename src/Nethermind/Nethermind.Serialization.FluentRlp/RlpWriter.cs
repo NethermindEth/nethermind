@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
 
@@ -21,8 +22,7 @@ public ref struct RlpWriter
 
     public int Length { get; private set; }
 
-    private byte[] _buffer;
-    private int _position;
+    private IBufferWriter<byte> _buffer;
 
     public static RlpWriter LengthWriter()
     {
@@ -32,7 +32,7 @@ public ref struct RlpWriter
         };
     }
 
-    public static RlpWriter ContentWriter(byte[] buffer)
+    public static RlpWriter ContentWriter(IBufferWriter<byte> buffer)
     {
         return new RlpWriter
         {
@@ -84,11 +84,11 @@ public ref struct RlpWriter
 
         if (bigEndian.Length == 0)
         {
-            _buffer[_position++] = 0x80;
+            _buffer.Write([(byte)0x80]);
         }
         else if (bigEndian.Length == 1 && bigEndian[0] < 0x80)
         {
-            _buffer[_position++] = bigEndian[0];
+            _buffer.Write(bigEndian[..1]);
         }
         else
         {
@@ -130,20 +130,19 @@ public ref struct RlpWriter
     {
         if (value.Length < 55)
         {
-            _buffer[_position++] = (byte)(0x80 + value.Length);
+            _buffer.Write([(byte)(0x80 + value.Length)]);
         }
         else
         {
             Span<byte> binaryLength = stackalloc byte[sizeof(int)];
             BinaryPrimitives.WriteInt32BigEndian(binaryLength, value.Length);
             binaryLength = binaryLength.TrimStart((byte)0);
-            _buffer[_position++] = (byte)(0xB7 + binaryLength.Length);
-            binaryLength.CopyTo(_buffer.AsSpan()[_position..]);
-            _position += binaryLength.Length;
+
+            _buffer.Write([(byte)(0xB7 + binaryLength.Length)]);
+            _buffer.Write(binaryLength);
         }
 
-        value.CopyTo(_buffer.AsSpan()[_position..]);
-        _position += value.Length;
+        _buffer.Write(value);
     }
 
     public void WriteSequence(RefRlpWriterAction action)
@@ -185,16 +184,16 @@ public ref struct RlpWriter
         action(ref lengthWriter, ctx);
         if (lengthWriter.Length < 55)
         {
-            _buffer[_position++] = (byte)(0xC0 + lengthWriter.Length);
+            _buffer.Write([(byte)(0xC0 + lengthWriter.Length)]);
         }
         else
         {
             Span<byte> binaryLength = stackalloc byte[sizeof(Int32)];
             BinaryPrimitives.WriteInt32BigEndian(binaryLength, lengthWriter.Length);
             binaryLength = binaryLength.TrimStart((byte)0);
-            _buffer[_position++] = (byte)(0xF7 + binaryLength.Length);
-            binaryLength.CopyTo(_buffer.AsSpan()[_position..]);
-            _position += binaryLength.Length;
+
+            _buffer.Write([(byte)(0xF7 + binaryLength.Length)]);
+            _buffer.Write(binaryLength);
         }
 
         action(ref this, ctx);
