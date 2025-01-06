@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+
 class SszType
 {
     static SszType()

@@ -1,3 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using System.Text;
+using System.Text.RegularExpressions;
+
 [Generator]
 public partial class SszGenerator : IIncrementalGenerator
 {
@@ -37,7 +43,7 @@ public partial class SszGenerator : IIncrementalGenerator
                 if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
                 {
                     var foundTypes = new List<SszType>(SszType.BasicTypes);
-                    return (SszType.From(context.SemanticModel, foundTypes, context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
+                    return (SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
                 }
             }
         }
@@ -45,8 +51,8 @@ public partial class SszGenerator : IIncrementalGenerator
     }
 
     const string Whitespace = "/**/";
-    static Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
-    static Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
+    static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
+    static readonly Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
     public static string FixWhitespace(string data) => OpeningWhiteSpaceRegex.Replace(
                                                         ClosingWhiteSpaceRegex.Replace(
                                                             string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x)),
@@ -634,7 +640,9 @@ public partial class SszEncoding
 }}
 ");
 #if DEBUG
+#pragma warning disable RS1035 // Allow console for debugging
             Console.WriteLine(WithLineNumbers(result, false));
+#pragma warning restore RS1035
 #endif
             return result;
         }
