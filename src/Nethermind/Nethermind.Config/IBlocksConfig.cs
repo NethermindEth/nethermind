@@ -34,9 +34,6 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
-    [ConfigItem(Description = "The block time slot for simulation, in seconds.", DefaultValue = "1")]
-    ulong SimulateSecondsPerSlot { get; set; }
-
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 

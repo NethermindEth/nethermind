@@ -22,7 +22,7 @@ public class BlockOverride
 
     public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg, IReleaseSpec spec)
     {
-        ulong newTime = Time ?? checked(parent.Timestamp + cfg.SimulateSecondsPerSlot);
+        ulong newTime = Time ?? checked(parent.Timestamp + cfg.SecondsPerSlot);
 
         long newGasLimit = GasLimit switch
         {

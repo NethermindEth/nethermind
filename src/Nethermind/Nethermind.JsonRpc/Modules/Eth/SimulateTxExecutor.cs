@@ -121,7 +121,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 $"Too many blocks provided, node is configured to simulate up to {_blocksLimit} while {call.BlockStateCalls?.Count} were given",
                 ErrorCodes.InvalidParams);
 
-        ulong simulateSecondsPerSlot = new BlocksConfig().SimulateSecondsPerSlot;
+        ulong secondsPerSlot = new BlocksConfig().SecondsPerSlot;
 
         if (call.BlockStateCalls is not null)
         {
@@ -139,9 +139,9 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
                         $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
-                if (givenNumber < (ulong)lastBlockNumber)
+                if (givenNumber <= (ulong)lastBlockNumber)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block number out of order {givenNumber} is < than given base number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                        $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
                 if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
@@ -151,7 +151,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
                 for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
-                    ulong fillBlockTime = lastBlockTime + simulateSecondsPerSlot;
+                    ulong fillBlockTime = lastBlockTime + secondsPerSlot;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
                         BlockOverrides = new BlockOverride { Number = fillBlockNumber, Time = fillBlockTime },
@@ -174,7 +174,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 }
                 else
                 {
-                    blockToSimulate.BlockOverrides.Time = lastBlockTime + simulateSecondsPerSlot;
+                    blockToSimulate.BlockOverrides.Time = lastBlockTime + secondsPerSlot;
                     lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
                 }
                 lastBlockNumber = (long)givenNumber;

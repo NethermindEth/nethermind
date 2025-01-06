@@ -23,8 +23,6 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
-        public ulong SimulateSecondsPerSlot { get; set; } = 1;
-
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
