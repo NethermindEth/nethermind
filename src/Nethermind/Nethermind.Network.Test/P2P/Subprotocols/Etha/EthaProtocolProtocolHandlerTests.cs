@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
         }
 
         [Test]
-        public void Handle_GetShardedBlocks_returns_requested_blocks()
+        public void When_GetShardedBlocks_Received_Then_Returns_Requested_Blocks()
         {
             // Arrange
             Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
         }
 
         [Test]
-        public void Handle_ShardedBlocks_suggests_new_blocks()
+        public void When_ShardedBlocks_Received_Then_Suggests_New_Blocks()
         {
             // Arrange
             Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
         }
 
         [Test]
-        public void Handle_NewShardedBlock_suggests_block_if_unknown()
+        public void When_NewShardedBlock_Is_Unknown_Then_Suggests_Block()
         {
             // Arrange
             Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
         }
 
         [Test]
-        public void Handle_NewShardedBlock_ignores_known_block()
+        public void When_NewShardedBlock_Is_Known_Then_Ignores_Block()
         {
             // Arrange
             Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -101,7 +101,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
         }
 
         [Test]
-        public void Handle_unknown_message_logs_error()
+        public void When_Unknown_Message_Received_Then_Logs_Error()
         {
             // Arrange
             var unknownMessageType = 99;
@@ -112,8 +112,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha
 
             // Assert - verify that error was logged
             _logManager.Received().GetClassLogger();
-            // Note: в реальном тесте мы бы проверили логирование ошибки, 
-            // но так как мы используем LimboLogs, это не требуется
+            // Note: in a real test we would verify the error was logged,
+            // but since we're using LimboLogs this is not required
         }
     }
 } 
