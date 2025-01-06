@@ -237,7 +237,7 @@ public partial class SszEncoding
             Merkleize(container[i], out subRoots[i]);
         }}
 {Whitespace}
-        Merkle.Ize(out root, subRoots);
+        Merkle.Merkleize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
@@ -441,7 +441,7 @@ public partial class SszEncoding
             Merkleize(container[i], out subRoots[i]);
         }}
 {Whitespace}
-        Merkle.Ize(out root, subRoots);
+        Merkle.Merkleize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
@@ -622,7 +622,7 @@ public partial class SszEncoding
             Merkleize(container[i], out subRoots[i]);
         }}
 {Whitespace}
-        Merkle.Ize(out root, subRoots);
+        Merkle.Merkleize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
