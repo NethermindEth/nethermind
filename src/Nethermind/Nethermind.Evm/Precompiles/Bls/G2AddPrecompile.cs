@@ -21,7 +21,7 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0e);
+    public static Address Address { get; } = Address.FromNumber(0x0d);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 
