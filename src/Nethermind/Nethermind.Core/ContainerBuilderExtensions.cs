@@ -63,6 +63,45 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddSingleton<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
+    {
+        builder.Register((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+
+                return factoryMethod(arg0);
+            })
+            .As<T>()
+            .SingleInstance();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddSingleton<T, TArg0, TArg1>(this ContainerBuilder builder, Func<TArg0, TArg1, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull
+    {
+        builder.Register((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter2
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter2.Key)
+                    : ctx.Resolve<TArg1>();
+
+                return factoryMethod(arg0, arg1);
+            })
+            .As<T>()
+            .SingleInstance();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
     {
         builder.Register(factory)
