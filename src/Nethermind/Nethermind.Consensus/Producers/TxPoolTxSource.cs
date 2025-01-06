@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new((int) (spec.MaxBlobCount * Eip4844Constants.GasPerBlob));
+            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(spec.MaxBlobCount * Eip4844Constants.GasPerBlob));
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 

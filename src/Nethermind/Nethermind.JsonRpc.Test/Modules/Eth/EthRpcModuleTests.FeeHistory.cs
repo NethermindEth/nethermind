@@ -60,7 +60,7 @@ public partial class EthRpcModuleTests
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = new OverridableSpecProvider(new TestSingleReleaseSpecProvider(Cancun.Instance),
-            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount});
+            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount });
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
         using ResultWrapper<FeeHistoryResults> result = oracle

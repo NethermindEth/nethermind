@@ -40,7 +40,7 @@ public class ShardBlobBlockValidatorTests
     {
         ISpecProvider specProvider = new OverridableSpecProvider(
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount});
+            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount });
 
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(
