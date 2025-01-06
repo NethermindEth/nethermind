@@ -130,4 +130,61 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
         });
     }
+
+    [Test]
+    public void Should_keep_blank_string_values()
+    {
+        Dictionary<string, string> envVars = new()
+        {
+            { "NETHERMIND_BLOCKSCONFIG_EXTRADATA", "" }
+        };
+
+        _env.GetEnvironmentVariables().Returns(envVars);
+        EnvConfigSource? envSource = new(_env);
+
+        ConfigProvider? configProvider = new();
+        configProvider.AddSource(envSource);
+
+        (bool isSet, object value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(isSet, Is.True);
+            Assert.That(value, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Should_ignore_blank_nonstring_values()
+    {
+        Dictionary<string, string> envVars = new()
+        {
+            { "NETHERMIND_BLOOMCONFIG_INDEX", " " },
+            { "NETHERMIND_BLOOMCONFIG_MIGRATION", "" }
+        };
+
+        _env.GetEnvironmentVariables().Returns(envVars);
+        EnvConfigSource? envSource = new(_env);
+        
+        ConfigProvider? configProvider = new();
+        configProvider.AddSource(envSource);
+
+        Assert.DoesNotThrow(configProvider.Initialize);
+
+        (bool isSet, object value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(isSet, Is.False);
+            Assert.That(((ValueTuple<bool, object>)value).Item2, Is.False);
+        });
+
+        (isSet, value) = envSource.GetValue(typeof(bool), "BloomConfig", "Migration");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(isSet, Is.False);
+            Assert.That(((ValueTuple<bool, object>)value).Item2, Is.False);
+        });
+    }
 }
