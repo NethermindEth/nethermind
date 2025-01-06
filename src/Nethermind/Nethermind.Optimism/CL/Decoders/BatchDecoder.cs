@@ -164,7 +164,7 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         // TODO: handle errors
         ulong x = 0;
         int s = 0;
-        for (int i = 0; i < ULongMaxLength; i++)
+        for (int i = 0; i <= ULongMaxLength; i++)
         {
             byte b = data[i];
             if (b < 0x80) {
@@ -227,15 +227,8 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
 
     public BatchV1 DecodeSpanBinary(byte[] data)
     {
-        // byte version = data[4];
-        // if (version != 1)
-        // {
-        //     throw new FormatException("Invalid batch version.");
-        // }
-
         // prefix
-        // TODO: what is these first 4 bytes?
-        int n = 4;
+        int n = 0;
         (ulong relTimestamp, int n1) = DecodeULong(data[n..]);
         n += n1;
         (ulong l1OriginNum, int n2) = DecodeULong(data[n..]);
@@ -274,14 +267,14 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
             signatures[i] = new(
                 data[n..(n + 32)],
                 data[(n + 32)..(n + 64)],
-                0 // TODO: recover v
+                27 // TODO: recover v
             );
             n += 64;
         }
 
         int contractCreationCnt = 0;
         byte[] contractCreationBytes = contractCreationBits.ToByteArray();
-        for (int i = 0; contractCreationBytes.Length <= i / 8 && i < (int)totalTxCount; ++i)
+        for (int i = 0; i / 8 < contractCreationBytes.Length && i < (int)totalTxCount; ++i)
         {
             if (((contractCreationBytes[i / 8] >> (i % 8)) & 1) == 1)
             {
