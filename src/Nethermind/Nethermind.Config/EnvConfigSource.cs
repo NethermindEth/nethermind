@@ -23,6 +23,11 @@ namespace Nethermind.Config
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
             (bool isSet, string value) = GetRawValue(category, name);
+
+            // Unset blank values for non-string types
+            if (type != typeof(string) && string.IsNullOrWhiteSpace(value))
+                isSet = false;
+
             return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value, category, name) : ConfigSourceHelper.GetDefault(type));
         }
 
