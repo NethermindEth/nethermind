@@ -11,50 +11,45 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Init;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
-using NSubstitute;
 
 namespace Nethermind.Synchronization.Test.Modules;
 
-internal class PsudoNethermindModule(IConfigProvider configProvider) : Module
+/// <summary>
+/// Create a reasonably complete nethermind configuration. May not work without `TestEnvironmentModule`.
+/// </summary>
+/// <param name="configProvider"></param>
+/// <param name="spec"></param>
+public class PsudoNethermindModule(IConfigProvider configProvider, ChainSpec spec) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+        ConfigureWorldStateManager(builder);
+        ConfigureNetwork(builder);
 
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddModule(new DbModule())
             .AddModule(new BlocktreeModule())
             .AddModule(new BlockProcessingModule())
-
             .AddSource(new ConfigRegistrationSource())
 
-            .AddSingleton(configProvider)
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
-
-            // TODO: These two have the same responsibility?
-            .AddSingleton<ChainSpec>(new ChainSpec())
-            .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-
-            .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
-            .AddSingleton<IFileSystem>(Substitute.For<IFileSystem>())
-
-            .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<DisposableStack>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((spec) => new EthereumEcdsa(spec.ChainId))
-            .AddSingleton<ITimerFactory, TimerFactory>();
+            .AddSingleton<ITimerFactory, TimerFactory>()
 
-        ConfigureWorldStateManager(builder);
-        ConfigureNetwork(builder);
+            .AddSingleton(configProvider)
+            .AddSingleton<ChainSpec>(spec)
+            .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+            .AddSingleton<IFileSystem>(new FileSystem())
+            .AddSingleton<IDbProvider>(new DbProvider())
+            .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            ;
     }
 
     private void ConfigureWorldStateManager(ContainerBuilder builder)
@@ -77,7 +72,6 @@ internal class PsudoNethermindModule(IConfigProvider configProvider) : Module
             WorldStateManager = worldStateManager;
         }
     }
-
 
     private void ConfigureNetwork(ContainerBuilder builder)
     {
