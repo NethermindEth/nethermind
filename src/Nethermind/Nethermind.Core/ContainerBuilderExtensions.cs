@@ -213,6 +213,22 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+
+    public static ContainerBuilder Add<T, TImpl>(this ContainerBuilder builder) where T : class where TImpl : notnull
+    {
+        builder.RegisterType<TImpl>()
+            .As<T>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddComposite<TComposite, T>(this ContainerBuilder builder) where T : class where TComposite : T
+    {
+        builder.RegisterComposite<TComposite, T>();
+
+        return builder;
+    }
+
     /// <summary>
     /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration
