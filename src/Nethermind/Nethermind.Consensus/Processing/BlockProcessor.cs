@@ -93,15 +93,10 @@ public partial class BlockProcessor(
         InitBranch(newBranchStateRoot);
 
         Block suggestedBlock = suggestedBlocks[0];
-        CancellationTokenSource? cancellationTokenSource = null;
-        Task? preWarmTask = null;
         // Start prewarming as early as possible
         WaitForCacheClear();
-        bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
-        if (!skipPrewarming)
-        {
-            (cancellationTokenSource, preWarmTask) = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
-        }
+        (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
+            = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
 
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -116,13 +111,11 @@ public partial class BlockProcessor(
             {
                 WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
-
-                skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
-                // If cancelationTokenSource is not null it means we are in first iteration of loop
+                // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
-                if (cancellationTokenSource is null && !skipPrewarming)
+                if (prewarmCancellation is null)
                 {
-                    (cancellationTokenSource, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
+                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
                 }
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -138,11 +131,11 @@ public partial class BlockProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
-                if (!skipPrewarming)
+                if (prewarmCancellation is not null)
                 {
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
-                    CancellationTokenExtensions.CancelDisposeAndClear(ref cancellationTokenSource);
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
                 else
                 {
@@ -202,7 +195,7 @@ public partial class BlockProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
-            CancellationTokenExtensions.CancelDisposeAndClear(ref cancellationTokenSource);
+            CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
             QueueClearCaches(preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
@@ -210,16 +203,18 @@ public partial class BlockProcessor(
         }
     }
 
-    private (CancellationTokenSource cancellationTokenSource, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
+    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
     {
-        CancellationTokenSource cancellationTokenSource = new();
+        if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
+
+        CancellationTokenSource prewarmCancellation = new();
         Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
                                                    preBlockStateRoot,
                                                    _specProvider.GetSpec(suggestedBlock.Header),
-                                                   cancellationTokenSource.Token,
+                                                   prewarmCancellation.Token,
                                                    _beaconBlockRootHandler);
 
-        return (cancellationTokenSource, preWarmTask);
+        return (prewarmCancellation, preWarmTask);
     }
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
