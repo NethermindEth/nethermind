@@ -1,102 +1,126 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm;
+
+public struct StackAccessTracker : IDisposable
 {
-    public struct StackAccessTracker
+    public readonly IReadOnlySet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
+    public readonly IReadOnlySet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
+    public readonly ICollection<LogEntry> Logs => _trackingState.Logs;
+    public readonly IReadOnlySet<Address> DestroyList => _trackingState.DestroyList;
+    public readonly IReadOnlySet<AddressAsKey> CreateList => _trackingState.CreateList;
+
+    private TrackingState _trackingState;
+
+    private int _addressesSnapshots;
+    private int _storageKeysSnapshots;
+    private int _destroyListSnapshots;
+    private int _logsSnapshots;
+
+    public StackAccessTracker(in StackAccessTracker accessTracker)
     {
-        public readonly IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
-        public readonly IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
-        public readonly ICollection<LogEntry> Logs => _logs;
-        public readonly IReadOnlySet<Address> DestroyList => _destroyList;
-        public readonly IReadOnlySet<AddressAsKey> CreateList => _createList;
-        private readonly JournalSet<Address> _accessedAddresses;
-        private readonly JournalSet<StorageCell> _accessedStorageCells;
-        private readonly JournalCollection<LogEntry> _logs;
-        private readonly JournalSet<Address> _destroyList;
-        private readonly HashSet<AddressAsKey> _createList;
+        _trackingState = accessTracker._trackingState;
+    }
 
-        private int _addressesSnapshots;
-        private int _storageKeysSnapshots;
-        private int _destroyListSnapshots;
-        private int _logsSnapshots;
+    public StackAccessTracker()
+    {
+        _trackingState = TrackingState.RentState();
+    }
+    public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
-        public StackAccessTracker(in StackAccessTracker accessTracker)
+    public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
+
+    public readonly void WarmUp(Address address)
+    {
+        _trackingState.AccessedAddresses.Add(address);
+    }
+
+    public readonly void WarmUp(in StorageCell storageCell)
+    {
+        _trackingState.AccessedStorageCells.Add(storageCell);
+    }
+
+    public readonly void WarmUp(AccessList? accessList)
+    {
+        if (accessList?.IsEmpty == false)
         {
-            _accessedAddresses = accessTracker._accessedAddresses;
-            _accessedStorageCells = accessTracker._accessedStorageCells;
-            _logs = accessTracker._logs;
-            _destroyList = accessTracker._destroyList;
-            _createList = accessTracker._createList;
-        }
-
-        public StackAccessTracker()
-        {
-            _accessedAddresses = new();
-            _accessedStorageCells = new();
-            _logs = new();
-            _destroyList = new();
-            _createList = new();
-        }
-        public readonly bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
-
-        public readonly bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
-
-        public readonly void WarmUp(Address address)
-        {
-            _accessedAddresses.Add(address);
-        }
-
-        public readonly void WarmUp(in StorageCell storageCell)
-        {
-            _accessedStorageCells.Add(storageCell);
-        }
-
-        public readonly void WarmUp(AccessList? accessList)
-        {
-            if (accessList?.IsEmpty == false)
+            foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
             {
-                foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
+                _trackingState.AccessedAddresses.Add(address);
+                foreach (UInt256 storage in storages)
                 {
-                    _accessedAddresses.Add(address);
-                    foreach (UInt256 storage in storages)
-                    {
-                        _accessedStorageCells.Add(new StorageCell(address, storage));
-                    }
+                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, storage));
                 }
             }
         }
+    }
 
-        public readonly void ToBeDestroyed(Address address)
+    public readonly void ToBeDestroyed(Address address)
+    {
+        _trackingState.DestroyList.Add(address);
+    }
+
+    public readonly void WasCreated(Address address)
+    {
+        _trackingState.CreateList.Add(address);
+    }
+
+    public void TakeSnapshot()
+    {
+        _addressesSnapshots = _trackingState.AccessedAddresses.TakeSnapshot();
+        _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
+        _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
+        _logsSnapshots = _trackingState.Logs.TakeSnapshot();
+    }
+
+    public readonly void Restore()
+    {
+        _trackingState.Logs.Restore(_logsSnapshots);
+        _trackingState.DestroyList.Restore(_destroyListSnapshots);
+        _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
+        _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+    }
+
+    public void Dispose()
+    {
+        TrackingState state = _trackingState;
+        _trackingState = null;
+        TrackingState.ResetAndReturn(state);
+    }
+
+    private class TrackingState
+    {
+        private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
+        public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();
+
+        public static void ResetAndReturn(TrackingState state)
         {
-            _destroyList.Add(address);
+            state.Clear();
+            _trackerPool.Enqueue(state);
         }
 
-        public readonly void WasCreated(Address address)
-        {
-            _createList.Add(address);
-        }
+        public JournalSet<Address> AccessedAddresses { get; } = new();
+        public JournalSet<StorageCell> AccessedStorageCells { get; } = new();
+        public JournalCollection<LogEntry> Logs { get; } = new();
+        public JournalSet<Address> DestroyList { get; } = new();
+        public HashSet<AddressAsKey> CreateList { get; } = new();
 
-        public void TakeSnapshot()
+        private void Clear()
         {
-            _addressesSnapshots = _accessedAddresses.TakeSnapshot();
-            _storageKeysSnapshots = _accessedStorageCells.TakeSnapshot();
-            _destroyListSnapshots = _destroyList.TakeSnapshot();
-            _logsSnapshots = _logs.TakeSnapshot();
-        }
-
-        public readonly void Restore()
-        {
-            _logs.Restore(_logsSnapshots);
-            _destroyList.Restore(_destroyListSnapshots);
-            _accessedAddresses.Restore(_addressesSnapshots);
-            _accessedStorageCells.Restore(_storageKeysSnapshots);
+            AccessedAddresses.Clear();
+            AccessedStorageCells.Clear();
+            Logs.Clear();
+            DestroyList.Clear();
+            CreateList.Clear();
         }
     }
 }

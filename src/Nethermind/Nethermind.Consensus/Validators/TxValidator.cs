@@ -110,11 +110,14 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public static readonly IntrinsicGasTxValidator Instance = new();
     private IntrinsicGasTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
         // This is unnecessarily calculated twice - at validation and execution times.
-        transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec)
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        return transaction.GasLimit < intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
+    }
 }
 
 public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/exosama.json",
     "GenesisHash": "0x46b22ad9d580f08e8c7cf3a4433c8f913b354c43e267512efa19f21dfd234c74",
@@ -11,9 +12,9 @@
   },
   "Sync": {
     "FastSync": true,
-    "PivotNumber": 13670000,
-    "PivotHash": "0xc2ad9b50f13ddc0f96a6f5b308c662eb462e28e3c403e523f2656a8a89aa43b9",
-    "PivotTotalDifficulty": "4651659955809228795544330883592271450243033281",
+    "PivotNumber": 13920000,
+    "PivotHash": "0x6e7b680f8c614eb52b2672b6e12912e6accc0152faaa8fbcc15424be411d124d",
+    "PivotTotalDifficulty": "4736730547539463411410174535450213503106533280",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },
