@@ -165,7 +165,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         _env.GetEnvironmentVariables().Returns(envVars);
         EnvConfigSource? envSource = new(_env);
-        
+
         ConfigProvider? configProvider = new();
         configProvider.AddSource(envSource);
 
