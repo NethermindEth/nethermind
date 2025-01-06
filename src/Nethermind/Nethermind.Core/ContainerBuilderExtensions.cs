@@ -143,6 +143,58 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, T instance) where T : class
+    {
+        builder.Register(ctx => instance)
+            .As<T>()
+            .AsSelf()
+            .ExternallyOwned()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddScoped<T, TArg0, TArg1>(this ContainerBuilder builder, Func<TArg0, TArg1, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull
+    {
+        builder.Register<T>((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter1
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
+                    : ctx.Resolve<TArg1>();
+
+                return factoryMethod(arg0, arg1);
+            })
+            .As<T>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddScoped<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
+    {
+        builder.Register<T>((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+
+                return factoryMethod(arg0);
+            })
+            .As<T>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
     {
         builder.RegisterType<TImpl>()
