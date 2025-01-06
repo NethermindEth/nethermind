@@ -43,7 +43,7 @@ public class RlpDerivedTest
     public void FlatRecord()
     {
         var player = new Player(Id: 42, Username: "SuperUser");
-        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, Player player) => w.Write(player));
+        var rlp = Rlp.Write(player, static (ref RlpWriter w, Player player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayer());
         decoded.Should().BeEquivalentTo(player);
@@ -53,7 +53,7 @@ public class RlpDerivedTest
     public void RecordWithList()
     {
         var player = new PlayerWithFriends(Id: 42, Username: "SuperUser", Friends: ["ana", "bob"]);
-        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithFriends player) => w.Write(player));
+        var rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithFriends player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithFriends());
         decoded.Should().BeEquivalentTo(player);
@@ -63,7 +63,7 @@ public class RlpDerivedTest
     public void RecordWithArray()
     {
         var player = new PlayerWithCodes(Id: 42, Username: "SuperUser", Codes: [2, 4, 8, 16, 32, 64]);
-        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithCodes player) => w.Write(player));
+        var rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithCodes player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithCodes());
         decoded.Should().BeEquivalentTo(player);
@@ -77,7 +77,7 @@ public class RlpDerivedTest
             { "foo", 42 },
             { "bar", 1337 }
         });
-        ReadOnlySpan<byte> rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithScores player) => w.Write(player));
+        var rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithScores player) => w.Write(player));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithScores());
         decoded.Should().BeEquivalentTo(player);
@@ -87,7 +87,7 @@ public class RlpDerivedTest
     public void RecordWithTuple()
     {
         var integerTuple = new IntegerTuple((42, 1337));
-        ReadOnlySpan<byte> rlp = Rlp.Write(integerTuple, static (ref RlpWriter w, IntegerTuple tuple) => w.Write(tuple));
+        var rlp = Rlp.Write(integerTuple, static (ref RlpWriter w, IntegerTuple tuple) => w.Write(tuple));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuple());
         decoded.Should().BeEquivalentTo(integerTuple);
@@ -103,7 +103,7 @@ public class RlpDerivedTest
             new Tree("qux",
                 [new Tree("cat", [])])
         ]);
-        ReadOnlySpan<byte> rlp = Rlp.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
+        var rlp = Rlp.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
         decoded.Should().BeEquivalentTo(tree);
@@ -135,7 +135,7 @@ public class RlpDerivedTest
             (new Address("0xFEDCBA0987654321"), [2, 4, 6, 8, 10])
         ]);
 
-        ReadOnlySpan<byte> rlp = Rlp.Write(accessList, (ref RlpWriter writer, AccessList value) => writer.Write(value));
+        var rlp = Rlp.Write(accessList, (ref RlpWriter writer, AccessList value) => writer.Write(value));
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessList());
         decoded.Should().BeEquivalentTo(accessList);

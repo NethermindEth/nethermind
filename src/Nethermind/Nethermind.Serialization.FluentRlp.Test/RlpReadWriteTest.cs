@@ -201,7 +201,6 @@ public class RlpReadWriteTest
     {
         RefRlpReaderFunc<int> intReader = static (scoped ref RlpReader r) => r.ReadInt32();
         RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadSequence(intReader);
-
         var intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
         var wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); }));
 
