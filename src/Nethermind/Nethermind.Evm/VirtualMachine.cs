@@ -1268,7 +1268,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
                         {
@@ -1341,7 +1341,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
                         if (outOfGas) goto OutOfGas;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
 
                         if (!result.IsZero)
                         {
@@ -1909,7 +1909,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
                         Address delegatedAddress = null;
                         if (_state.AccountExists(address)
                             && !_state.IsDeadAccount(address)
