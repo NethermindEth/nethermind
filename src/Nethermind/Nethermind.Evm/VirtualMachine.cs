@@ -500,10 +500,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         bool notOutOfGas = ChargeAccountGas(ref gasAvailable, vmState, address, spec);
         return notOutOfGas
-               && chargeForDelegation
-               && vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegated)
-            ? ChargeAccountGas(ref gasAvailable, vmState, delegated, spec)
-            : notOutOfGas;
+               && (!chargeForDelegation
+                   || !vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegated)
+                   || ChargeAccountGas(ref gasAvailable, vmState, delegated, spec));
 
         bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
         {
@@ -2075,7 +2074,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         UInt256 result = (UInt256)accountCode.Span.Length;
         if (delegation is not null)
         {
-            //If the account has been delegated only the first two bytes of the delegation header counts as size 
+            //If the account has been delegated only the first two bytes of the delegation header counts as size
             result = (UInt256)Eip7702Constants.FirstTwoBytesOfHeader.Length;
         }
         stack.PushUInt256(in result);
