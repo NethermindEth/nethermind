@@ -30,7 +30,7 @@ namespace Nethermind.Config
         {
             var variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
             var variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
-            return string.IsNullOrWhiteSpace(variableValueString) ? (false, null) : (true, variableValueString);
+            return (variableValueString is not null, variableValueString);
         }
 
         public IEnumerable<(string Category, string Name)> GetConfigKeys()
