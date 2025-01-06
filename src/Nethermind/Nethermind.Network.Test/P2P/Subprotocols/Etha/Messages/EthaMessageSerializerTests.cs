@@ -11,7 +11,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha.Messages
     public class EthaMessageSerializerTests
     {
         [Test]
-        public void Can_serialize_and_deserialize_GetShardedBlocksMessage()
+        public void When_GetShardedBlocksMessage_Then_Can_Serialize_And_Deserialize()
         {
             var serializer = new GetShardedBlocksMessageSerializer();
             var message = new GetShardedBlocksMessage(new[] { TestItem.KeccakA, TestItem.KeccakB });
@@ -24,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha.Messages
         }
 
         [Test]
-        public void Can_serialize_and_deserialize_ShardedBlocksMessage()
+        public void When_ShardedBlocksMessage_Then_Can_Serialize_And_Deserialize()
         {
             var serializer = new ShardedBlocksMessageSerializer();
             var message = new ShardedBlocksMessage(new[] { Build.A.Block.TestObject });
@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Etha.Messages
         }
 
         [Test]
-        public void Can_serialize_and_deserialize_NewShardedBlockMessage()
+        public void When_NewShardedBlockMessage_Then_Can_Serialize_And_Deserialize()
         {
             var serializer = new NewShardedBlockMessageSerializer();
             var block = Build.A.Block.TestObject;
