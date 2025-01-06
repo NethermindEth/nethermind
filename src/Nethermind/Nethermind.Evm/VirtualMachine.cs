@@ -647,7 +647,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             goto Empty;
         }
 
-        vmState.InitStacks();
+        vmState.InitializeStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
         long gasAvailable = vmState.GasAvailable;
 
@@ -1268,7 +1268,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
                         {
@@ -1341,7 +1341,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
                         if (outOfGas) goto OutOfGas;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
 
                         if (!result.IsZero)
                         {
@@ -1909,7 +1909,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
                         Address delegatedAddress = null;
                         if (_state.AccountExists(address)
                             && !_state.IsDeadAccount(address)
@@ -2229,16 +2229,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
-        returnData = new EvmState(
+        returnData = EvmState.RentFrame(
             gasLimitUl,
-            callEnv,
-            executionType,
-            snapshot,
             outputOffset.ToLong(),
             outputLength.ToLong(),
+            executionType,
             instruction == Instruction.STATICCALL || vmState.IsStatic,
-            vmState.AccessTracker,
-            isCreateOnPreExistingAccount: false);
+            isCreateOnPreExistingAccount: false,
+            snapshot: snapshot,
+            env: callEnv,
+            stateForAccessLists: vmState.AccessTracker);
 
         return EvmExceptionType.None;
 
@@ -2468,16 +2468,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: value,
             value: value
         );
-        EvmState callState = new(
+        EvmState callState = EvmState.RentFrame(
             callGas,
-            callEnv,
+            0L,
+            0L,
             instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
-            snapshot,
-            0L,
-            0L,
             vmState.IsStatic,
-            vmState.AccessTracker,
-            accountExists);
+            accountExists,
+            snapshot,
+            callEnv,
+            vmState.AccessTracker);
 
         return (EvmExceptionType.None, callState);
     }
@@ -2496,7 +2496,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
-        for (int i = 0; i < topicsCount; i++)
+        for (int i = 0; i < topics.Length; i++)
         {
             topics[i] = new Hash256(stack.PopWord256());
         }

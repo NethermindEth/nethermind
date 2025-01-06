@@ -18,13 +18,11 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
 {
     private readonly TaikoNethermindApi _api;
     private readonly ILogger _logger;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
 
     public RegisterTaikoRpcModules(INethermindApi api) : base(api)
     {
         _api = (TaikoNethermindApi)api;
         _logger = api.LogManager.GetClassLogger();
-        _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -85,8 +83,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.WorldState);
 
         TaikoTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,

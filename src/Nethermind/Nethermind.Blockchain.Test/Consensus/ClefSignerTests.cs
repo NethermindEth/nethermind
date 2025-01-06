@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Test.Consensus
 
             var result = sut.Sign(Keccak.Zero);
 
-            Assert.That(new Signature(returnValue).Bytes, Is.EqualTo(result.Bytes));
+            Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes));
         }
 
         [Test]

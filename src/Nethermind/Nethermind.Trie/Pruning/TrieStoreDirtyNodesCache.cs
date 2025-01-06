@@ -140,7 +140,7 @@ internal class TrieStoreDirtyNodesCache
             if (_storeByHash)
             {
                 return _byHashObjectCache.Select(
-                    pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
+                    static pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
             }
 
             return _byKeyObjectCache;
@@ -406,7 +406,7 @@ internal class TrieStoreDirtyNodesCache
 
     public void ClearLivePruningTracking()
     {
-        _persistedLastSeen.Clear();
+        _persistedLastSeen?.Clear();
         _pastPathHash?.Clear();
     }
 

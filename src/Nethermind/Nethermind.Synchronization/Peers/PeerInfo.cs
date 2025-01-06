@@ -121,9 +121,9 @@ namespace Nethermind.Synchronization.Peers
         // map from AllocationContexts single flag to index in array of _weaknesses
         private static readonly IDictionary<AllocationContexts, int> AllocationIndexes =
             FastEnum.GetValues<AllocationContexts>()
-            .Where(c => c != AllocationContexts.All && c != AllocationContexts.None)
-            .Select((a, i) => (a, i))
-            .ToDictionary(v => v.a, v => v.i);
+            .Where(static c => c != AllocationContexts.All && c != AllocationContexts.None)
+            .Select(static (a, i) => (a, i))
+            .ToDictionary(static v => v.a, static v => v.i);
 
         private readonly int[] _weaknesses = new int[AllocationIndexes.Count];
 

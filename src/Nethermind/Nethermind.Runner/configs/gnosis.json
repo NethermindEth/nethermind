@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/gnosis.json",
     "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
@@ -13,8 +14,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 37400000,
-    "PivotHash": "0x67f0915d0fbe9487f9da15de6493dd6bb061a897a613483ea2aa272dc3a6cbb1",
+    "PivotNumber": 37870000,
+    "PivotHash": "0xa5952faa70fb98ea5b5e01218280613629db71c14d3b8cddbd0ae65f27e7d12f",
     "PivotTotalDifficulty": "8626000110427538733349499292577475819600160930",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
