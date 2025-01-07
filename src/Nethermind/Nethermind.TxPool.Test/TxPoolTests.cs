@@ -1817,14 +1817,24 @@ namespace Nethermind.TxPool.Test
         private static ISpecProvider GetCancunSpecProvider()
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
+            var spec = new OverridableReleaseSpec(Cancun.Instance)
+            {
+                MaxBlobCount = 6,
+                TargetBlobCount = 3,
+            };
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             return specProvider;
         }
 
         private static ISpecProvider GetPragueSpecProvider()
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Prague.Instance);
+            var spec = new OverridableReleaseSpec(Prague.Instance)
+            {
+                MaxBlobCount = 9,
+                TargetBlobCount = 6,
+            };
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             return specProvider;
         }
 
