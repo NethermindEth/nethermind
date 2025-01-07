@@ -536,18 +536,19 @@ public class PaprikaStateFactory : IStateFactory
 
         public string DumpTrie()
         {
-            return _wrapped.DumpTrie();
+            //return _wrapped.DumpTrie();
+            return string.Empty;
         }
 
         public ValueHash256 RefreshRootHash()
         {
-            return Convert(_wrapped.RefreshRootHash());
+            return Convert(_wrapped.RefreshRootHash(true));
         }
 
         public ValueHash256 RecalculateStorageRoot(ValueHash256 accountHash)
         {
             PaprikaKeccak account = Convert(accountHash);
-            return Convert(_wrapped.RecalculateStorageRoot(account));
+            return Convert(_wrapped.RecalculateStorageRoot(account, true));
         }
 
         public void Discard()

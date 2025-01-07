@@ -7,4 +7,4 @@
 [submodule "Paprika"]
 	path = src/Paprika
 	url = https://github.com/NethermindEth/Paprika.git
-	branch = snap-sync
+	branch = main
