@@ -59,8 +59,7 @@ public partial class EthRpcModuleTests
                   .Returns(ci => blocks[((Hash256)ci[0]).Bytes[^1]]);
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = new OverridableSpecProvider(new TestSingleReleaseSpecProvider(Cancun.Instance),
-            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount });
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
         using ResultWrapper<FeeHistoryResults> result = oracle

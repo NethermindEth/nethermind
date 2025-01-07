@@ -453,7 +453,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 provider = Substitute.For<ISpecProvider>();
                 provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
-                provider.GetSpec(Arg.Any<ForkActivation>()).MaxBlobCount.Returns(6ul);
             }
 
             return new(

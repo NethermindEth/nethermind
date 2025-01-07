@@ -253,12 +253,7 @@ public class TestBlockchain : IDisposable
     {
         return specProvider is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
-            : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s)
-            {
-                IsEip3607Enabled = false,
-                MaxBlobCount = 6,
-                TargetBlobCount = 3,
-            });
+            : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
     private void BlockAddedToMain(object? sender, BlockEventArgs e)

@@ -155,8 +155,8 @@ namespace Nethermind.Specs.Test
             }
         }
 
-        public ulong TargetBlobCount { get; set; }
-        public ulong MaxBlobCount { get; set; }
+        public ulong TargetBlobCount => _spec.TargetBlobCount;
+        public ulong MaxBlobCount => _spec.MaxBlobCount;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;

@@ -17,9 +17,6 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class ShardBlobBlockValidatorTests
 {
-    private const int MaxBlobCount = 6;
-    private const int TargetBlobCount = 3;
-
     [TestCaseSource(nameof(BlobGasFieldsPerForkTestCases))]
     public static bool Blob_gas_fields_should_be_set(IReleaseSpec spec, ulong? blobGasUsed, ulong? excessBlobGas)
     {
@@ -38,10 +35,7 @@ public class ShardBlobBlockValidatorTests
     [TestCaseSource(nameof(BlobsPerBlockCountTestCases))]
     public bool Blobs_per_block_count_is_valid(ulong blobGasUsed)
     {
-        ISpecProvider specProvider = new OverridableSpecProvider(
-            new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            r => new OverridableReleaseSpec(r) { MaxBlobCount = MaxBlobCount, TargetBlobCount = TargetBlobCount });
-
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
@@ -61,11 +55,11 @@ public class ShardBlobBlockValidatorTests
     {
         yield return new TestCaseData(0UL) { ExpectedResult = true };
 
-        yield return new TestCaseData((MaxBlobCount - 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
+        yield return new TestCaseData((Cancun.Instance.MaxBlobCount - 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
 
-        yield return new TestCaseData(MaxBlobCount * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
+        yield return new TestCaseData(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob) { ExpectedResult = true };
 
-        yield return new TestCaseData((MaxBlobCount + 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = false };
+        yield return new TestCaseData((Cancun.Instance.MaxBlobCount + 1) * Eip4844Constants.GasPerBlob) { ExpectedResult = false };
     }
 
     private static IEnumerable<TestCaseData> BlobGasFieldsPerForkTestCases()
