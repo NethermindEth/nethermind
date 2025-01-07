@@ -204,7 +204,7 @@ public class RlpReadWriteTest
         var intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
         var wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); }));
 
-        foreach (var rlp in (byte[][])[intRlp, wrappedIntRlp])
+        foreach (var rlp in (ReadOnlyMemory<byte>[])[intRlp, wrappedIntRlp])
         {
             int decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(wrappedReader, intReader));
 
