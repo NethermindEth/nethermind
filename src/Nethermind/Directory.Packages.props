@@ -36,6 +36,8 @@
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-arm64" Version="7.4.5" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.4.5" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.5" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
