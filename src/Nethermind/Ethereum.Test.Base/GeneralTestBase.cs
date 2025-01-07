@@ -52,15 +52,6 @@ namespace Ethereum.Test.Base
             return RunTest(test, NullTxTracer.Instance);
         }
 
-        private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
-        {
-            return new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s)
-            {
-                MaxBlobCount = 6,
-                TargetBlobCount = 3,
-            });
-        }
-
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
@@ -69,9 +60,14 @@ namespace Ethereum.Test.Base
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
 
-            ISpecProvider specProvider = CreateSpecProvider(new CustomSpecProvider(
+            ISpecProvider specProvider = new CustomSpecProvider(
                 ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Fork)));
+                ((ForkActivation)1, test.Fork));
+
+            if (specProvider.GenesisSpec != Frontier.Instance)
+            {
+                Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
+            }
 
             TrieStore trieStore = new(stateDb, _logManager);
             WorldState stateProvider = new(trieStore, codeDb, _logManager);

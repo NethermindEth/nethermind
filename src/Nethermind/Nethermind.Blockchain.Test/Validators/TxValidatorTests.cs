@@ -367,7 +367,6 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 

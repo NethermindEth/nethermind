@@ -18,7 +18,6 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -89,15 +88,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    TargetBlobCount * Eip4844Constants.GasPerBlob,
-                    MaxBlobCount * Eip4844Constants.GasPerBlob,
-                    MaxBlobCount * Eip4844Constants.GasPerBlob * 4 },
+                    Cancun.Instance.TargetBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    MaxBlobCount * Eip4844Constants.GasPerBlob,
-                    MaxBlobCount * Eip4844Constants.GasPerBlob,
-                    MaxBlobCount * Eip4844Constants.GasPerBlob,
-                    MaxBlobCount * Eip4844Constants.GasPerBlob })
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob })
             {
                 TestName = "Different values",
                 ExpectedResult = (

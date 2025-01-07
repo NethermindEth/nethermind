@@ -11,6 +11,7 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using Org.BouncyCastle.Utilities.Encoders;
 
 namespace SendBlobs;
@@ -282,10 +283,10 @@ internal class BlobSender
 
         if (defaultMaxFeePerBlobGas is null)
         {
-            ulong excessBlobsReserve = 2 * Eip4844Constants.TargetBlobGasPerBlock;
+            ulong excessBlobsReserve = 2 * Cancun.Instance.TargetBlobCount;
             BlobGasCalculator.TryCalculateFeePerBlobGas(
                 (block.ExcessBlobGas ?? 0) +
-                excessBlobs * Eip4844Constants.MaxBlobGasPerBlock +
+                excessBlobs * Cancun.Instance.MaxBlobCount +
                 excessBlobsReserve,
                 out UInt256 blobGasPrice);
             result.maxFeePerBlobGas = blobGasPrice;

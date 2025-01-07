@@ -43,8 +43,7 @@ public class TxPoolSourceTests
 
         Assert.Multiple(() =>
         {
-            Assert.That((ulong)blobsCount * Eip4844Constants.GasPerBlob, Is.LessThanOrEqualTo(1));
-            Assert.That(blobsCount, Is.LessThanOrEqualTo(1));
+            Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxBlobCount));
         });
     }
 
