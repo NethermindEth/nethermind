@@ -162,5 +162,4 @@ internal class ChainSpecParamsJson
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
-    public ulong? PragueTransitionTimestamp { get; set; }
 }

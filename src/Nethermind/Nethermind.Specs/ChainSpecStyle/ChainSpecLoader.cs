@@ -179,7 +179,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
 
             OntakeTransition = chainSpecJson.Params.OntakeTransition,
-            PragueTransitionTimestamp = chainSpecJson.Params.PragueTransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -227,7 +226,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
-        chainSpec.PragueTimestamp = chainSpec.Parameters.PragueTransitionTimestamp;
+        chainSpec.PragueTimestamp = chainSpec.Parameters.Eip7002TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;

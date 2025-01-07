@@ -132,7 +132,6 @@ public class ChainParameters
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
-    public ulong? PragueTransitionTimestamp { get; set; }
 
     #region EIP-4844 parameters
     /// <summary>
