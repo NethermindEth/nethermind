@@ -43,6 +43,14 @@ public interface ITxPoolConfig : IConfig
 
     long? GasLimit { get; set; }
 
+    [ConfigItem(DefaultValue = "131072",
+        Description = "The max transaction size allowed, in bytes.")]
+    long? MaxTxSize { get; set; }
+
+    [ConfigItem(DefaultValue = "1048576",
+        Description = "The max blob transaction size allowed, excluding blobs, in bytes.")]
+    long? MaxBlobTxSize { get; set; }
+
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }

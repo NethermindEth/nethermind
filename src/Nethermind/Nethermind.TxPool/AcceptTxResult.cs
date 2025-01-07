@@ -91,6 +91,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult NotSupportedTxType = new(15, nameof(NotSupportedTxType));
 
         /// <summary>
+        /// Transaction size exceeds configured max size.
+        /// </summary>
+        public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));

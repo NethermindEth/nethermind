@@ -225,6 +225,7 @@ namespace Nethermind.Facade
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = accessTxTracer.GasSpent,
+                OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success,
                 AccessList = accessTxTracer.AccessList

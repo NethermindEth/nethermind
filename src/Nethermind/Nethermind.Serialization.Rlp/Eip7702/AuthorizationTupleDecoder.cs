@@ -19,7 +19,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     {
         int length = stream.ReadSequenceLength();
         int check = length + stream.Position;
-        ulong chainId = stream.DecodeULong();
+        UInt256 chainId = stream.DecodeUInt256();
         Address? codeAddress = stream.DecodeAddress();
         ulong nonce = stream.DecodeULong();
         byte yParity = stream.DecodeByte();
@@ -43,7 +43,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     {
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
-        ulong chainId = decoderContext.DecodeULong();
+        UInt256 chainId = decoderContext.DecodeUInt256();
         Address? codeAddress = decoderContext.DecodeAddress();
         ulong nonce = decoderContext.DecodeULong();
         byte yParity = decoderContext.DecodeByte();
@@ -78,11 +78,11 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         stream.Encode(item.CodeAddress);
         stream.Encode(item.Nonce);
         stream.Encode(item.AuthoritySignature.V - Signature.VOffset);
-        stream.Encode(new UInt256(item.AuthoritySignature.R, true));
-        stream.Encode(new UInt256(item.AuthoritySignature.S, true));
+        stream.Encode(new UInt256(item.AuthoritySignature.R.Span, true));
+        stream.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
     }
 
-    public NettyRlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, ulong nonce)
+    public NettyRlpStream EncodeWithoutSignature(UInt256 chainId, Address codeAddress, ulong nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         var totalLength = Rlp.LengthOfSequence(contentLength);
@@ -92,7 +92,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         return stream;
     }
 
-    public void EncodeWithoutSignature(RlpStream stream, ulong chainId, Address codeAddress, ulong nonce)
+    public void EncodeWithoutSignature(RlpStream stream, UInt256 chainId, Address codeAddress, ulong nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         stream.StartSequence(contentLength);
@@ -106,10 +106,10 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     private static int GetContentLength(AuthorizationTuple tuple) =>
         GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
         + Rlp.LengthOf(tuple.AuthoritySignature.V - Signature.VOffset)
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.AsSpan(), true))
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.AsSpan(), true));
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.Span, true))
+        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.Span, true));
 
-    private static int GetContentLengthWithoutSig(ulong chainId, Address codeAddress, ulong nonce) =>
+    private static int GetContentLengthWithoutSig(UInt256 chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)
         + Rlp.LengthOf(codeAddress)
         + Rlp.LengthOf(nonce);
