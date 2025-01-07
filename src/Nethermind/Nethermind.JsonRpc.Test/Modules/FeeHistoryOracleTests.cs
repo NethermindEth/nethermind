@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
@@ -452,6 +453,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 provider = Substitute.For<ISpecProvider>();
                 provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
+                provider.GetSpec(Arg.Any<ForkActivation>()).MaxBlobCount.Returns(6ul);
             }
 
             return new(
