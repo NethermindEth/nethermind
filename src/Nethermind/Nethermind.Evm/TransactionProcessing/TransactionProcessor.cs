@@ -763,6 +763,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 spentGas -= unspentGas;
                 operationGas -= unspentGas;
                 spentGas = Math.Max(spentGas, floorGas);
+                var unspentGasRefund = tx.GasLimit - spentGas;
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
@@ -770,10 +771,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 long actualRefund = RefundHelper.CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
-                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
+                    Logger.Trace("Refunding unused gas of " + unspentGasRefund + " and refund of " + actualRefund);
                 // If noValidation we didn't charge for gas, so do not refund
                 if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
+                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGasRefund + actualRefund) * gasPrice, spec);
                 spentGas -= actualRefund;
                 operationGas -= actualRefund;
             }
