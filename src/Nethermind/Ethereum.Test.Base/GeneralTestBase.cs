@@ -55,10 +55,10 @@ namespace Ethereum.Test.Base
         private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
         {
             return new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s)
-                {
-                    MaxBlobCount = 6,
-                    TargetBlobCount = 3,
-                });
+            {
+                MaxBlobCount = 6,
+                TargetBlobCount = 3,
+            });
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
