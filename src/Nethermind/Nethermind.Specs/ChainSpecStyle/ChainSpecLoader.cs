@@ -170,9 +170,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
             Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
             Eip4844BlobGasPriceUpdateFraction = chainSpecJson.Params.Eip4844BlobGasPriceUpdateFraction,
-            Eip4844MaxBlobGasPerBlock = chainSpecJson.Params.Eip4844MaxBlobGasPerBlock,
             Eip4844MinBlobGasPrice = chainSpecJson.Params.Eip4844MinBlobGasPrice,
-            Eip4844TargetBlobGasPerBlock = chainSpecJson.Params.Eip4844TargetBlobGasPerBlock,
             Eip4844FeeCollectorTransitionTimestamp = chainSpecJson.Params.Eip4844FeeCollectorTransitionTimestamp,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
@@ -189,9 +187,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         Eip4844Constants.OverrideIfAny(
             chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
-            chainSpec.Parameters.Eip4844MaxBlobGasPerBlock,
-            chainSpec.Parameters.Eip4844MinBlobGasPrice,
-            chainSpec.Parameters.Eip4844TargetBlobGasPerBlock);
+            chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)

@@ -141,22 +141,10 @@ public class ChainParameters
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
 
     /// <summary>
-    /// Gets or sets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
-    /// </summary>
-    public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
-
-    /// <summary>
     /// Gets or sets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei, defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
     /// </summary>
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
-
-    /// <summary>
-    /// Gets or sets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
-    /// </summary>
-    public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
 
     /// <summary>
     /// Enables blob gas fee collection for Gnosis chain

@@ -34,9 +34,7 @@ public class Eip4844Constants
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
     public static void OverrideIfAny(
         UInt256? blobGasPriceUpdateFraction = null,
-        ulong? maxBlobGasPerBlock = null,
-        UInt256? minBlobGasPrice = null,
-        ulong? targetBlobGasPerBlock = null)
+        UInt256? minBlobGasPrice = null)
     {
         if (blobGasPriceUpdateFraction.HasValue)
             BlobGasPriceUpdateFraction = blobGasPriceUpdateFraction.Value;
