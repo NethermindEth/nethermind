@@ -144,8 +144,7 @@ namespace Nethermind.Core.Crypto
         public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         public const int MemorySize =
-            MemorySizes.SmallObjectOverhead -
-            MemorySizes.RefSize +
+            MemorySizes.ObjectHeaderMethodTable +
             Size;
 
         private readonly ValueHash256 _hash256;

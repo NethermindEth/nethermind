@@ -617,7 +617,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             syncPeers.Add(syncPeer);
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p)).ToArray();
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(static p => new PeerInfo(p)).ToArray();
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 

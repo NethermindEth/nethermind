@@ -11,7 +11,7 @@ namespace Nethermind.Core.Test;
 
 public class CachedBlockTreeBuilder
 {
-    private static ConcurrentDictionary<string, CachedDb> _cachedDbs = new();
+    private static readonly ConcurrentDictionary<string, CachedDb> _cachedDbs = new();
     private record CachedDb(
         MemDb blocksDb,
         MemDb metadataDb,

@@ -35,8 +35,8 @@ namespace Nethermind.Grpc.Servers
         {
             var client = request.Client ?? string.Empty;
             var results = _clientResults.AddOrUpdate(client,
-                (_) => new BlockingCollection<string>(MaxCapacity),
-                (_, r) => r);
+                static (_) => new BlockingCollection<string>(MaxCapacity),
+                static (_, r) => r);
 
             if (_logger.IsInfo) _logger.Info($"Starting the data stream for client: '{client}', args: {string.Join(", ", request.Args)}.");
             try

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/energyweb.json",
     "GenesisHash": "0x0b6d3e680af2fc525392c720666cce58e3d8e6fe75ba4b48cb36bcc69039229b",
@@ -11,9 +12,9 @@
   },
   "Sync": {
     "FastSync": true,
-    "PivotNumber": 33280000,
-    "PivotHash": "0x5301bc535f88c067b931c54c02af770b626b8c37746a4f66ecded74251ecd5a9",
-    "PivotTotalDifficulty": "11324597171128832064061106935329246076875696208",
+    "PivotNumber": 33610000,
+    "PivotHash": "0x0c1edd7be6bc0c572dcbbea921463f99ffc0ef6ef85c9d46c7591b3a60910e74",
+    "PivotTotalDifficulty": "11436890352212741757004020555781729586655483070",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },

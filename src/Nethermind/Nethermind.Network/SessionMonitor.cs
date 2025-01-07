@@ -89,7 +89,7 @@ namespace Nethermind.Network
                         int tasksLength = tasks.Length;
                         if (tasksLength != 0)
                         {
-                            int successes = tasks.Count(x => x);
+                            int successes = tasks.Count(static x => x);
                             int failures = tasksLength - successes;
                             if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
                             if (failures > 4 && failures > tasks.Length / 3)

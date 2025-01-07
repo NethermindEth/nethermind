@@ -48,7 +48,7 @@ public class BlockchainBridgeTests
     private IDbProvider _dbProvider;
 
     private class TestReadOnlyTxProcessingEnv(
-        OverridableWorldStateManager worldStateManager,
+        IOverridableWorldScope worldStateManager,
         IReadOnlyBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager logManager,
@@ -72,13 +72,12 @@ public class BlockchainBridgeTests
         _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
         _specProvider = MainnetSpecProvider.Instance;
 
-        IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
-        OverridableWorldStateManager worldStateManager = new(_dbProvider, trieStore, LimboLogs.Instance);
+        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        IOverridableWorldScope overridableWorldScope = worldStateManager.CreateOverridableWorldScope();
 
         IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
         TestReadOnlyTxProcessingEnv processingEnv = new(
-            worldStateManager,
+            overridableWorldScope,
             readOnlyBlockTree,
             _specProvider,
             LimboLogs.Instance,
@@ -129,7 +128,7 @@ public class BlockchainBridgeTests
             .WithIndex(index)
             .TestObject;
         IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
-            .Select(i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
+            .Select(static i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
         var block = Build.A.Block
             .WithTransactions(transactions.ToArray())
             .TestObject;
@@ -153,7 +152,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx =>
+            Arg.Is<BlockExecutionContext>(static blkCtx =>
                 blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
@@ -169,7 +168,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Number == 10),
             Arg.Any<ITxTracer>());
     }
 
@@ -184,7 +183,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
 
@@ -199,7 +198,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
             Arg.Any<ITxTracer>());
     }
 
@@ -207,13 +206,10 @@ public class BlockchainBridgeTests
     [TestCase(0)]
     public void Bridge_head_is_correct(long headNumber)
     {
-        IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
-        OverridableWorldStateManager worldStateManager =
-            new(_dbProvider, trieStore, LimboLogs.Instance);
+        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
         IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
         OverridableTxProcessingEnv processingEnv = new(
-            worldStateManager,
+            worldStateManager.CreateOverridableWorldScope(),
             roBlockTree,
             _specProvider,
             LimboLogs.Instance);

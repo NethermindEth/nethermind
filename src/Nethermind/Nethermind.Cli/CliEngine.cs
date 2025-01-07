@@ -27,7 +27,7 @@ namespace Nethermind.Cli
             JintEngine = new Engine();
             JintEngine.SetValue("gasPrice", (double)20.GWei());
             JintEngine.SetValue("load", new Action<string>(LoadFile));
-            JintEngine.SetValue("log", new Action<JsValue>(v =>
+            JintEngine.SetValue("log", new Action<JsValue>(static v =>
             {
                 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Colorful.Console.WriteLine(v.ToString());
@@ -37,7 +37,7 @@ namespace Nethermind.Cli
 
             ObjectInstance console = JintEngine.Object.Construct(Arguments.Empty);
             JintEngine.SetValue("console", console);
-            console.Put("log", new DelegateWrapper(JintEngine, new Action<JsValue>(v =>
+            console.Put("log", new DelegateWrapper(JintEngine, new Action<JsValue>(static v =>
             {
                 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Colorful.Console.WriteLine(v.ToString());
