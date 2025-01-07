@@ -254,11 +254,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork(chainSpec, releaseStartTimestamp);
             if (fork is null) return;
 
-            if (chainSpec.BlobSchedule.TryGetValue(fork.Name.ToLower(), out ChainSpecBlobCountJson blobCount) ||
-                chainSpec.BlobSchedule.TryGetValue(previousFork.Name.ToLower(), out blobCount))
+            if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name.ToLower(), out ChainSpecBlobCountJson blobCount) ||
+                chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name.ToLower(), out blobCount))
             {
-                spec.TargetBlobCount = blobCount.TargetBlobCount;
-                spec.MaxBlobCount = blobCount.MaxBlobCount;
+                spec.TargetBlobCount = blobCount.Target;
+                spec.MaxBlobCount = blobCount.Max;
             }
             else
             {
@@ -269,7 +269,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork(ChainSpec chainSpec, ulong? releaseStartTimestamp = null)
         {
-            // TODO: add Osaka
             if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
             {
                 return (Prague.Instance, Cancun.Instance);

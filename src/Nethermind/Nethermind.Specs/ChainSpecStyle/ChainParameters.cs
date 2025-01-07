@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -132,6 +134,8 @@ public class ChainParameters
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
+
+    public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
 
     #region EIP-4844 parameters
     /// <summary>

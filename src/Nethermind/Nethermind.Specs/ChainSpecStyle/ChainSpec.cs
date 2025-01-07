@@ -80,7 +80,5 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? CancunTimestamp { get; set; }
 
         public ulong? PragueTimestamp { get; set; }
-
-        public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
     }
 }

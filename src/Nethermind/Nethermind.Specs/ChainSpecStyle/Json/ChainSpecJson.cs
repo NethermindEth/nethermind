@@ -22,7 +22,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public string[] Nodes { get; set; }
         [JsonPropertyName("accounts")]
         public Dictionary<string, AllocationJson> Accounts { get; set; }
-        public Dictionary<string, ChainSpecBlobCountJson> BlobScheduleJson { get; set; } = [];
 
         internal class EngineJson
         {

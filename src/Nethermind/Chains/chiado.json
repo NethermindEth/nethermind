@@ -85,7 +85,17 @@
     "registrar": "0x6000000000000000000000000000000000000000",
     "transactionPermissionContract": "0x4000000000000000000000000000000000000001",
     "transactionPermissionContractTransition": "0x0",
-    "terminalTotalDifficulty": "231707791542740786049188744689299064356246512"
+    "terminalTotalDifficulty": "231707791542740786049188744689299064356246512",
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6
+      },
+      "prague": {
+        "target": 6,
+        "max": 9
+      }
+    }
   },
   "genesis": {
     "seal": {

@@ -42,7 +42,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
         chainSpec.Name = chainSpecJson.Name;
         chainSpec.DataDir = chainSpecJson.DataDir;
-        chainSpec.BlobSchedule = chainSpecJson.BlobScheduleJson;
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
@@ -177,6 +176,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
 
             OntakeTransition = chainSpecJson.Params.OntakeTransition,
+            BlobSchedule = chainSpecJson.Params.BlobSchedule,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
