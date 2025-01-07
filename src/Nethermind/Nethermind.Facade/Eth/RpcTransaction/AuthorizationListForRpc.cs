@@ -56,8 +56,8 @@ public class AuthorizationListForRpc
                     tuple.Nonce,
                     tuple.CodeAddress,
                     tuple.AuthoritySignature.RecoveryId,
-                    new UInt256(tuple.AuthoritySignature.S),
-                    new UInt256(tuple.AuthoritySignature.R))));
+                    new UInt256(tuple.AuthoritySignature.S.Span, true),
+                    new UInt256(tuple.AuthoritySignature.R.Span, true))));
 
     public AuthorizationTuple[] ToAuthorizationList() => _tuples
         .Select(static tuple => new AuthorizationTuple(

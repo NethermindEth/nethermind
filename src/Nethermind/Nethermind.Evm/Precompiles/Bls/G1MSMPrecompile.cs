@@ -23,14 +23,14 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0d);
+    public static Address Address { get; } = Address.FromNumber(0x0c);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 12000L * k * Discount.For(k) / 1000;
+        return 12000L * k * Discount.ForG1(k) / 1000;
     }
 
     public const int ItemSize = 160;

@@ -264,7 +264,7 @@ public partial class EthRpcModule(
                     : []);
     }
 
-    public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
+    public ResultWrapper<Memory<byte>> eth_sign(Address addressData, byte[] message)
     {
         Signature sig;
         try
@@ -277,15 +277,15 @@ public partial class EthRpcModule(
         }
         catch (SecurityException e)
         {
-            return ResultWrapper<byte[]>.Fail(e.Message, ErrorCodes.AccountLocked);
+            return ResultWrapper<Memory<byte>>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception)
         {
-            return ResultWrapper<byte[]>.Fail($"Unable to sign as {addressData}");
+            return ResultWrapper<Memory<byte>>.Fail($"Unable to sign as {addressData}");
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
-        return ResultWrapper<byte[]>.Success(sig.Bytes);
+        return ResultWrapper<Memory<byte>>.Success(sig.Memory);
     }
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)

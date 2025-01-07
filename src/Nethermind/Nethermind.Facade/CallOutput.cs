@@ -12,6 +12,7 @@ public class CallOutput
     public byte[] OutputData { get; set; } = [];
 
     public long GasSpent { get; set; }
+    public long OperationGas { get; set; }
 
     public bool InputError { get; set; }
 

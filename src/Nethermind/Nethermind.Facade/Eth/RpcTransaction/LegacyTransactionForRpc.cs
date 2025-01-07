@@ -73,9 +73,19 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         GasPrice = transaction.GasPrice;
         ChainId = transaction.ChainId;
 
-        R = new UInt256(transaction.Signature?.R ?? [], true);
-        S = new UInt256(transaction.Signature?.S ?? [], true);
-        V = transaction.Signature?.V ?? 0;
+        Signature? signature = transaction.Signature;
+        if (signature is null)
+        {
+            R = UInt256.Zero;
+            S = UInt256.Zero;
+            V = 0;
+        }
+        else
+        {
+            R = new UInt256(signature.R.Span, true);
+            S = new UInt256(signature.S.Span, true);
+            V = signature.V;
+        }
     }
 
     public override Transaction ToTransaction()
