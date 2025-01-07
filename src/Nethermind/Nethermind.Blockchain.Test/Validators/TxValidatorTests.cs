@@ -30,6 +30,12 @@ public class TxValidatorTests
     private const int MaxBlobCount = 6;
     private const int TargetBlobCount = 3;
 
+    private IReleaseSpec CancunSpec = new OverridableReleaseSpec(Cancun.Instance)
+    {
+        MaxBlobCount = MaxBlobCount,
+        TargetBlobCount = TargetBlobCount,
+    };
+
     [SetUp]
     public void Setup()
     {
@@ -349,8 +355,8 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
-        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
+        Assert.That(txValidator.IsWellFormed(txWithoutTo, CancunSpec).AsBool(), Is.False);
+        Assert.That(txValidator.IsWellFormed(txWithTo, CancunSpec).AsBool());
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -371,7 +377,8 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, Cancun.Instance);
+
+        return txValidator.IsWellFormed(tx, CancunSpec);
     }
 
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
@@ -388,19 +395,14 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        var spec = new OverridableReleaseSpec(Cancun.Instance)
-        {
-            MaxBlobCount = 6,
-            TargetBlobCount = 3
-        };
-        return txValidator.IsWellFormed(tx, spec);
+        return txValidator.IsWellFormed(tx, CancunSpec);
     }
 
     [TestCaseSource(nameof(ShardBlobTxIncorrectTransactions))]
     public bool ShardBlobTransaction_fields_should_be_verified(Transaction tx)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, Cancun.Instance);
+        return txValidator.IsWellFormed(tx, CancunSpec);
     }
 
     [Test]
@@ -634,7 +636,6 @@ public class TxValidatorTests
             TargetBlobCount = 3,
         };
         Assert.That(txValidator.IsWellFormed(tx, spec).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
-        // Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
