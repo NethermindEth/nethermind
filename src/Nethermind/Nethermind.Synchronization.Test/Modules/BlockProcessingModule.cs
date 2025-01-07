@@ -18,11 +18,13 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -40,12 +42,11 @@ public class BlockProcessingModule: Module
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-
             // NOTE: The ordering of block preprocessor is not guarenteed
             .AddComposite<CompositeBlockPreprocessorStep, IBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
-            // Yea, for some reason, the ICodeInfoRepository need to be like the main one for ChainHeadInfoProvider to work.
+            // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
             // Like, is ICodeInfoRepository suppose to be global? Why not just IStateReader.
             .AddKeyedSingleton<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState), (ctx) =>
             {
@@ -53,9 +54,29 @@ public class BlockProcessingModule: Module
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
                 return new CodeInfoRepository (preBlockCaches?.PrecompileCache);
             })
-            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
+            .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
+            {
+                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                IStateReader stateReader = ctx.Resolve<IStateReader>();
+                // need this to be the right one.
+                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
+                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository);
+            })
             .AddSingleton<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
             .AddSingleton<ITxPool, TxPool.TxPool>()
+
+            // These are common between processing and production and worldstate-ful, so they should be scoped instead
+            // of singleton.
+            .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
+            .AddScoped<IBlockProcessor, BlockProcessor>()
+            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>(CreateRewardCalculator)
+            .AddScoped<ITransactionProcessor, TransactionProcessor>()
+            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
+            .AddScoped<IBlockhashStore, BlockhashStore>()
+            .AddScoped<IVirtualMachine, VirtualMachine>()
+            .AddScoped<BlockchainProcessor>()
+            .AddScoped<IBlockhashProvider, BlockhashProvider>()
 
             .AddSingleton<MainBlockProcessingContext, ILifetimeScope>((ctx) =>
             {
@@ -63,27 +84,15 @@ public class BlockProcessingModule: Module
                 IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                 IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
                 IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
+                ICodeInfoRepository mainCodeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
 
                 ILifetimeScope innerScope = ctx.BeginLifetimeScope((processingCtxBuilder) =>
                 {
 
                     processingCtxBuilder
 
-                        // Technically, these block are not main block processor specific and can be put at higher level which make it overridable.
-                        // I just put it here since block producer does not need it yet, so in case I miss something
-                        // that is specific to block producer it will throw so I put it here first.
-                        .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>(CreateRewardCalculator)
-                        .AddScoped<IBlockProcessor, BlockProcessor>()
-                        .AddScoped<IVirtualMachine, VirtualMachine>()
-                        .AddScoped<ITransactionProcessor, TransactionProcessor>()
-                        .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
-                        .AddScoped<IBlockhashStore, BlockhashStore>()
-                        .AddScoped<IBlockhashProvider, BlockhashProvider>()
-                        .AddScoped<BlockchainProcessor>()
-                        .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-
-                        // These are definitely main block processing specific
+                        // These are main block processing specific
+                        .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                         .AddScoped(worldState)
                         .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
                         .AddScoped(new BlockchainProcessor.Options
@@ -114,16 +123,20 @@ public class BlockProcessingModule: Module
             .AddSingleton<BlockProducerContext, ILifetimeScope>((ctx) =>
             {
                 // Note: This is modelled after TestBlockchain, not prod
-                // But the additional tx pool source is not set.
-                BlockProducerEnvFactory envFactory = ctx.Resolve<BlockProducerEnvFactory>();
-                BlockProducerEnv env = envFactory.Create();
-
+                IWorldState worldState = ctx.Resolve<IWorldStateManager>().CreateResettableWorldState();
                 ILifetimeScope innerScope = ctx.BeginLifetimeScope((producerCtx) =>
                 {
                     producerCtx
-                        .AddScoped<ITxSource>(env.TxSource)
-                        .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
-                        .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
+                        .AddScoped<ITxSource, TxPoolTxSource>()
+                        .AddScoped<ITxFilterPipeline, ILogManager, ISpecProvider, IBlocksConfig>(TxFilterPipelineBuilder.CreateStandardFilteringPipeline)
+                        .AddDecorator<OneTimeChainProcessor, IBlockchainProcessor>()
+                        .AddScoped(BlockchainProcessor.Options.NoReceipts)
+                        .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
+                        .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
+                        .AddDecorator<BlockProductionWithdrawalProcessor, IWithdrawalProcessor>()
+                        .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+
+                        .AddScoped<IWorldState>(worldState)
                         .AddScoped<IBlockProducer, TestBlockProducer>()
                         .AddScoped<IBlockProducerRunner, StandardBlockProducerRunner>()
                         .AddScoped<BlockProducerContext>();

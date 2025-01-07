@@ -169,14 +169,39 @@ public static class ContainerBuilderExtensions
             {
                 MethodInfo factoryMethodInfo = factoryMethod.Method;
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter0
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter0.Key)
                     : ctx.Resolve<TArg0>();
                 TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter1
                     ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
                     : ctx.Resolve<TArg1>();
 
                 return factoryMethod(arg0, arg1);
+            })
+            .As<T>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddScoped<T, TArg0, TArg1, TArg2>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull
+    {
+        builder.Register<T>((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter0
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter0.Key)
+                    : ctx.Resolve<TArg0>();
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter1
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
+                    : ctx.Resolve<TArg1>();
+                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter2
+                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
+                    : ctx.Resolve<TArg2>();
+
+                return factoryMethod(arg0, arg1, arg2);
             })
             .As<T>()
             .AsSelf()
@@ -234,6 +259,13 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddComposite<TComposite, T>(this ContainerBuilder builder) where T : class where TComposite : T
     {
         builder.RegisterComposite<TComposite, T>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddDecorator<TDecorator, T>(this ContainerBuilder builder) where T : class where TDecorator : T
+    {
+        builder.RegisterDecorator<TDecorator, T>();
 
         return builder;
     }

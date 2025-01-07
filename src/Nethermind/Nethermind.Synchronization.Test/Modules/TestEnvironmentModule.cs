@@ -39,7 +39,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey): Module
 
             .AddKeyedSingleton(NodeKey, nodeKey)
 
-            .AddScoped<IChainHeadInfoProvider, IComponentContext>((ctx) =>
+            .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
