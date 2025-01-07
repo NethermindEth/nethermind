@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -387,7 +388,12 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, Cancun.Instance);
+        var spec = new OverridableReleaseSpec(Cancun.Instance)
+        {
+            MaxBlobCount = 6,
+            TargetBlobCount = 3
+        };
+        return txValidator.IsWellFormed(tx, spec);
     }
 
     [TestCaseSource(nameof(ShardBlobTxIncorrectTransactions))]
@@ -622,7 +628,13 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
+        var spec = new OverridableReleaseSpec(Prague.Instance)
+        {
+            MaxBlobCount = 6,
+            TargetBlobCount = 3,
+        };
+        Assert.That(txValidator.IsWellFormed(tx, spec).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
+        // Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
