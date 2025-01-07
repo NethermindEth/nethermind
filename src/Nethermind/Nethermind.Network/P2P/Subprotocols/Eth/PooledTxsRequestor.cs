@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
         private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is not null
-            ? txPoolConfig.MaxBlobTxSize.Value + (long)Eip4844Constants.MaxBlobGasPerBlock : long.MaxValue;
+            ? txPoolConfig.MaxBlobTxSize.Value + (long)Eip4844Constants.GasPerBlob * 6 : long.MaxValue; // ToDo Yerken * 6 is incorrect here, quick fix to compile the project
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
