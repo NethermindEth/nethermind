@@ -362,6 +362,20 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_reject_tx_if_max_size_is_exceeded([Values(true, false)] bool sizeExceeded)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength() - (sizeExceeded ? 1 : 0) };
+            _txPool = CreatePool(txPoolConfig);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(sizeExceeded ? AcceptTxResult.MaxTxSizeExceeded : AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactionsCount().Should().Be(sizeExceeded ? 0 : 1);
+        }
+
+        [Test]
         public void should_accept_tx_when_base_fee_is_high()
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), static r => new OverridableReleaseSpec(r) { Eip1559TransitionBlock = 1 });
