@@ -47,10 +47,10 @@ namespace Nethermind.Core
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
-        public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
-        public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
-        public bool SupportsAuthorizationList => Type == TxType.SetCode && Type != TxType.DepositTx;
+        public bool SupportsAccessList => Type.SupportsAccessList();
+        public bool Supports1559 => Type.Supports1559();
+        public bool SupportsBlobs => Type.SupportsBlobs();
+        public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -195,9 +195,9 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this);
+            return _size ??= sizeCalculator.GetLength(this, shouldCountBlobs);
         }
 
         public string ToShortString()
@@ -334,7 +334,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx);
+        int GetLength(Transaction tx, bool shouldCountBlobs = true);
     }
 
     /// <summary>
