@@ -231,7 +231,7 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
+            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }),
             _gossipPolicy,
             new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
             LimboLogs.Instance,
