@@ -18,6 +18,8 @@ using IRawState = Paprika.Chain.IRawState;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
 using PaprikaAccount = Paprika.Account;
+using Paprika.RLP;
+using System.Text;
 
 namespace Nethermind.Paprika;
 
@@ -536,8 +538,9 @@ public class PaprikaStateFactory : IStateFactory
 
         public string DumpTrie()
         {
-            //return _wrapped.DumpTrie();
-            return string.Empty;
+            PaprikaTrieDumper trieDumper = new PaprikaTrieDumper();
+            _wrapped.Accept(trieDumper, NibblePath.Empty);
+            return trieDumper.ToString();
         }
 
         public ValueHash256 RefreshRootHash()
@@ -591,3 +594,77 @@ public class PaprikaStateFactory : IStateFactory
         }
     }
 }
+
+
+/// <summary>
+/// To resemble Nethermind.Trie.TrieDumper and produce same output in Fast Sync tests
+/// </summary>
+class PaprikaTrieDumper : IMerkleTrieVisitor
+{
+    private readonly StringBuilder _builder = new();
+
+    public void VisitTree(PaprikaKeccak rootHash, MerkleVisitorContext context)
+    {
+        if (rootHash == PaprikaKeccak.EmptyTreeHash || rootHash == PaprikaKeccak.Zero)
+        {
+            _builder.AppendLine("EMPTY TREE");
+        }
+        else
+        {
+            _builder.AppendLine(context.IsStorage ? "STORAGE TREE" : "STATE TREE");
+        }
+    }
+
+    public void VisitBranch(NibblePath path, KeccakOrRlp keccakOrRlp, MerkleVisitorContext context, IReadOnlyWorldState worldState)
+    {
+        _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {GetKeccakString(keccakOrRlp)}");
+    }
+
+    public void VisitExtension(NibblePath path, KeccakOrRlp keccakOrRlp, Node.Extension extension, MerkleVisitorContext context, IReadOnlyWorldState worldState)
+    {
+        _builder.AppendLine($"{GetPrefix(context)}EXTENSION {extension.Path.ToHexByteString()} -> {GetKeccakString(keccakOrRlp)}");
+    }
+
+    public void VisitLeaf(NibblePath path, KeccakOrRlp keccakOrRlp, NibblePath leafPath, MerkleVisitorContext context, IReadOnlyWorldState worldState)
+    {
+        string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
+
+        _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {leafPath.ToHexByteString()} -> {GetKeccakString(keccakOrRlp)}");
+
+        var full = path.Append(leafPath, stackalloc byte[NibblePath.MaxLengthValue * 2 + 1]);
+        if (!context.IsStorage)
+        {
+            using var owner = worldState.Get(Key.Account(full));
+            PaprikaAccount.ReadFrom(owner.Span, out PaprikaAccount account);
+
+            _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
+            _builder.AppendLine($"{GetPrefix(context)}  BALANCE: {account.Balance}");
+            _builder.AppendLine($"{GetPrefix(context)}  IS_CONTRACT: {account.CodeHash != PaprikaKeccak.OfAnEmptyString}");
+
+            if (account.CodeHash != PaprikaKeccak.OfAnEmptyString)
+                _builder.AppendLine($"{GetIndent(context.Level + 1)}CODE {account.CodeHash}");
+        }
+        else
+        {
+            using var owner = worldState.Get(Key.StorageCell(NibblePath.FromKey(context.AccountHash), full));
+            _builder.AppendLine($"{GetPrefix(context)}  VALUE: {owner.Span.ToHexString(true)}");
+        }
+    }
+
+    private string GetKeccakString(KeccakOrRlp keccakOrRlp)
+    {
+        if (keccakOrRlp.DataType == KeccakOrRlp.Type.Keccak)
+            return keccakOrRlp.Keccak.ToString(false);
+        return keccakOrRlp.Span.ToHexString(false);
+    }
+
+    public override string ToString()
+    {
+        return _builder.ToString();
+    }
+
+    private static string GetPrefix(MerkleVisitorContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
+    private static string GetIndent(int level) => new('+', level * 2);
+    private static string GetChildIndex(MerkleVisitorContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
+}
+
