@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -21,11 +20,9 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -86,6 +83,7 @@ public class BlockProcessingModule: Module
                             StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                             DumpOptions = initConfig.AutoDump
                         })
+                        .AddScoped<GenesisLoader>()
 
                         // Chain head info need the main chain head info which codeInfoRepository, which seems to be
                         // not global. So TxPool is actually in main block processing context.
@@ -158,13 +156,17 @@ public class BlockProcessingModule: Module
         return new TxValidator(specProvider.ChainId);
     }
 
-    public record MainBlockProcessingContext(ILifetimeScope lifetimeScope, BlockchainProcessor BlockchainProcessor, ITxPool TxPool): IAsyncDisposable
+    public record MainBlockProcessingContext(
+        ILifetimeScope LifetimeScope,
+        BlockchainProcessor BlockchainProcessor,
+        ITxPool TxPool,
+        GenesisLoader GenesisLoader): IAsyncDisposable
     {
         public IBlockProcessingQueue BlockProcessingQueue => BlockchainProcessor;
 
         public async ValueTask DisposeAsync()
         {
-            await lifetimeScope.DisposeAsync();
+            await LifetimeScope.DisposeAsync();
         }
     }
 

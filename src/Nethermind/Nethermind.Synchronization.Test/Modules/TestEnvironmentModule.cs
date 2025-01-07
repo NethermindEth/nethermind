@@ -22,6 +22,8 @@ namespace Nethermind.Synchronization.Test.Modules;
 /// <param name="nodeKey"></param>
 public class TestEnvironmentModule(PrivateKey nodeKey): Module
 {
+    public const string NodeKey = "NodeKey";
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -35,13 +37,15 @@ public class TestEnvironmentModule(PrivateKey nodeKey): Module
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
 
+            .AddKeyedSingleton(NodeKey, nodeKey)
+
             .AddScoped<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IWorldState worldState = ctx.Resolve<IWorldState>();
+                IStateReader stateReader = ctx.Resolve<IStateReader>();
                 ICodeInfoRepository codeInfoRepository = ctx.Resolve<ICodeInfoRepository>();
-                return new ChainHeadInfoProvider(specProvider, blockTree, worldState, codeInfoRepository)
+                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository)
                 {
                     // It just need to override this.
                     HasSynced = true

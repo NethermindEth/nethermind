@@ -5,17 +5,19 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Synchronization.Test.Modules;
 using Nethermind.TxPool;
@@ -24,7 +26,8 @@ namespace Nethermind.Synchronization.Test;
 
 public class BlockchainTestContext: IAsyncDisposable
 {
-    PrivateKey sender = TestItem.PrivateKeyA;
+    private readonly PrivateKey _nodeKey;
+
     private readonly IWorldStateManager _worldStateManager;
     private readonly ITxPool _txPool;
     private readonly ISpecProvider _specProvider;
@@ -35,7 +38,9 @@ public class BlockchainTestContext: IAsyncDisposable
     private readonly BlockProcessingModule.MainBlockProcessingContext _mainBlockProcessingContext;
     private readonly IBlockProducerRunner _blockProducerRunner;
 
-    public BlockchainTestContext(IWorldStateManager worldStateManager,
+    public BlockchainTestContext(
+        [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
+        IWorldStateManager worldStateManager,
         ISpecProvider specProvider,
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
@@ -46,8 +51,10 @@ public class BlockchainTestContext: IAsyncDisposable
         ProducedBlockSuggester producedBlockSuggester // Need to be instantiated
     )
     {
+        _nodeKey = nodeKey;
         _worldStateManager = worldStateManager;
         _txPool = mainBlockProcessingContext.TxPool;
+        _mainBlockProcessingContext = mainBlockProcessingContext;
         _specProvider = specProvider;
         _ecdsa = ecdsa;
         _blockTree = blockTree;
@@ -55,91 +62,47 @@ public class BlockchainTestContext: IAsyncDisposable
         _blockProductionTrigger = blockProductionTrigger;
         _blockProducerRunner = blockProducerRunner;
 
-        _mainBlockProcessingContext = mainBlockProcessingContext;
-
         blockProducerRunner.Start();
         mainBlockProcessingContext.BlockchainProcessor.Start();
     }
 
     public async Task PrepareGenesis(CancellationToken cancellation)
     {
-        IWorldState TestState = _worldStateManager.GlobalWorldState;
-
-        TestState.CreateAccount(sender.Address, 100.Ether());
-        TestState.Commit(_specProvider.GenesisSpec);
-        TestState.CommitTree(0);
-
         Task newHeadTask = Wait.ForEventCondition<BlockEventArgs>(
             cancellation,
             (h) => _blockTree.NewHeadBlock += h,
             (h) => _blockTree.NewHeadBlock -= h,
             (e) => true);
 
-        Block genesisBlock = Build.A.Block.Genesis.WithStateRoot(TestState.StateRoot).TestObject;
-        _blockTree.SuggestBlock(genesisBlock);
-
+        Block genesis = _mainBlockProcessingContext.GenesisLoader.Load();
+        _blockTree.SuggestBlock(genesis);
         await newHeadTask;
     }
 
-    public async Task CreateBlock(CancellationToken cancellation)
+    public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
     {
-        PrivateKey sender = TestItem.PrivateKeyA;
-        byte[] initByteCode = Prepare.EvmCode
-            .ForInitOf(
-                Prepare.EvmCode
-                    .PushData(1)
-                    .Op(Instruction.SLOAD)
-                    .PushData(1)
-                    .Op(Instruction.EQ)
-                    .PushData(17)
-                    .Op(Instruction.JUMPI)
-                    .PushData(1)
-                    .PushData(1)
-                    .Op(Instruction.SSTORE)
-                    .PushData(21)
-                    .Op(Instruction.JUMP)
-                    .Op(Instruction.JUMPDEST)
-                    .PushData(0)
-                    .Op(Instruction.SELFDESTRUCT)
-                    .Op(Instruction.JUMPDEST)
-                    .Done)
-            .Done;
+        long gasLimit = 100000;
 
-        Address contractAddress = ContractAddress.From(sender.Address, 0);
+        Hash256 stateRoot = _blockTree.Head?.StateRoot!;
+        UInt256 currentNonce = _worldStateManager.GlobalStateReader.GetNonce(stateRoot, _nodeKey.Address);
+        IReleaseSpec spec = _specProvider.GetSpec((_blockTree.Head?.Number) + 1 ?? 0, null);
+        Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
+            .WithCode(byteCode)
+            .WithNonce(currentNonce++)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ecdsa, _nodeKey, spec.IsEip155Enabled).TestObject)
+            .ToArray();
 
-        byte[] byteCode1 = Prepare.EvmCode
-            .Call(contractAddress, 100000)
-            .Op(Instruction.STOP).Done;
-
-        byte[] byteCode2 = Prepare.EvmCode
-            .Call(contractAddress, 100000)
-            .Op(Instruction.STOP).Done;
-
-        long gasLimit = 1000000;
-
-        // TODO: head + 1
-        IReleaseSpec spec = _specProvider.GetSpec(_blockTree.Head?.Number ?? 0, null);
-        Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(_ecdsa, sender, spec.IsEip155Enabled).TestObject;
-        Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, sender, spec.IsEip155Enabled).TestObject;
-        Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(_ecdsa, sender, spec.IsEip155Enabled).TestObject;
-
-        await AddBlockInternal([initTx, tx1, tx2], cancellation);
+        await BuildBlockWithTxs(txs, cancellation);
     }
 
-    private async Task<AcceptTxResult[]> AddBlockInternal(Transaction[] transactions, CancellationToken cancellation)
+    private async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
     {
         Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
             cancellation,
             (h) => _blockTree.BlockAddedToMain += h,
             (h) => _blockTree.BlockAddedToMain -= h,
             (e) => true);
-
-        Task txHeadChangeTask = Wait.ForEventCondition<Block>(
-            cancellation,
-            (h) => _txPool.TxPoolHeadChanged += h,
-            (h) => _txPool.TxPoolHeadChanged -= h,
-            (e) => true);
-
 
         AcceptTxResult[] txResults = transactions.Select(t => _txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
         foreach (AcceptTxResult acceptTxResult in txResults)
@@ -149,10 +112,7 @@ public class BlockchainTestContext: IAsyncDisposable
 
         _timestamper.Add(TimeSpan.FromSeconds(1));
         await _blockProductionTrigger.BuildBlock();
-
-        await txHeadChangeTask;
         await newBlockTask;
-        return txResults;
     }
 
     public async ValueTask DisposeAsync()

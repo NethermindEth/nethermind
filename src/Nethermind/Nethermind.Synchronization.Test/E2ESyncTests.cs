@@ -1,15 +1,20 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Humanizer;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.Test.Modules;
@@ -24,11 +29,18 @@ public class E2ESyncTests
     public async Task E2ESyncTest()
     {
         IConfigProvider configProvider = new ConfigProvider();
+        configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.None;
+
         ChainSpecLoader specLoader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = specLoader.LoadEmbeddedOrFromFile("chainspec/foundation.json", default);
+        PrivateKey nodeKey = TestItem.PrivateKeyA;
+
+        spec.Genesis.Header.GasLimit = 100000000;
+        spec.Allocations[nodeKey.Address] = new ChainSpecAllocation(30.Ether());
+
         await using IContainer container = new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(configProvider, spec))
-            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA))
+            .AddModule(new TestEnvironmentModule(nodeKey))
             .Build();
 
         var thething = container.Resolve<BlockchainTestContext>();
@@ -36,8 +48,39 @@ public class E2ESyncTests
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.CancelAfter(10.Seconds());
 
+        byte[] spam = Prepare.EvmCode
+            .ForCreate2Of(
+                Prepare.EvmCode
+                    .PushData(100)
+                    .PushData(100)
+                    .Op(Instruction.SSTORE)
+                    .PushData(100)
+                    .PushData(101)
+                    .Op(Instruction.SSTORE)
+                    .PushData(100)
+                    .PushData(102)
+                    .Op(Instruction.SSTORE)
+                    .PushData(100)
+                    .PushData(103)
+                    .Op(Instruction.SSTORE)
+                    .PushData(100)
+                    .Op(Instruction.SLOAD)
+                    .PushData(101)
+                    .Op(Instruction.SLOAD)
+                    .PushData(102)
+                    .Op(Instruction.SLOAD)
+                    .PushData(103)
+                    .Op(Instruction.SLOAD)
+                    .Done)
+            .Done;
+
         await thething.PrepareGenesis(cancellationTokenSource.Token);
-        await thething.CreateBlock(cancellationTokenSource.Token);
+        Console.Error.WriteLine("Genesis done");
+
+        for (int i = 0; i < 1000; i++)
+        {
+            await thething.BuildBlockWithCode([spam, spam, spam], cancellationTokenSource.Token);
+        }
     }
 
     /*
