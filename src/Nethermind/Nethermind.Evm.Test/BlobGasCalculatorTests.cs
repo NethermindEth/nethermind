@@ -27,13 +27,7 @@ public class BlobGasCalculatorTests
                 .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
                 .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
 
-            OverridableReleaseSpec overridableReleaseSpec = new(spec)
-            {
-                MaxBlobCount = MaxBlobCount,
-                TargetBlobCount = TargetBlobCount,
-            };
-
-            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, overridableReleaseSpec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
+            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
         }
 
         Test(Homestead.Instance, false);

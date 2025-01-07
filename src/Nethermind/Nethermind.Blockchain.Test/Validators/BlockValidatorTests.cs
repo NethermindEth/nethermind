@@ -181,7 +181,7 @@ public class BlockValidatorTests
             .Signed()
             .TestObject)
         .TestObject,
-        new CustomSpecProvider(((ForkActivation)0, new OverridableReleaseSpec(Cancun.Instance) { MaxBlobCount = 6, TargetBlobCount = 3 })),
+        new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
         "InsufficientMaxFeePerBlobGas");
     }
 

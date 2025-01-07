@@ -346,8 +346,8 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// EIP-7780: Add blob schedule to EL config files
         /// </summary>
-        public ulong TargetBlobCount { get; set; }
-        public ulong MaxBlobCount { get; set; }
+        public ulong TargetBlobCount { get; }
+        public ulong MaxBlobCount { get; }
 
         public ulong WithdrawalTimestamp { get; }
 

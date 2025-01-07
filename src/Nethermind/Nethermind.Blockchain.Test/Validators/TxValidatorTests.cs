@@ -19,7 +19,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -27,15 +26,6 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class TxValidatorTests
 {
-    private const int MaxBlobCount = 6;
-    private const int TargetBlobCount = 3;
-
-    private IReleaseSpec CancunSpec = new OverridableReleaseSpec(Cancun.Instance)
-    {
-        MaxBlobCount = MaxBlobCount,
-        TargetBlobCount = TargetBlobCount,
-    };
-
     [SetUp]
     public void Setup()
     {
@@ -355,8 +345,8 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Assert.That(txValidator.IsWellFormed(txWithoutTo, CancunSpec).AsBool(), Is.False);
-        Assert.That(txValidator.IsWellFormed(txWithTo, CancunSpec).AsBool());
+        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
+        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -378,7 +368,7 @@ public class TxValidatorTests
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        return txValidator.IsWellFormed(tx, CancunSpec);
+        return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
@@ -395,14 +385,14 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, CancunSpec);
+        return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
     [TestCaseSource(nameof(ShardBlobTxIncorrectTransactions))]
     public bool ShardBlobTransaction_fields_should_be_verified(Transaction tx)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, CancunSpec);
+        return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
     [Test]
@@ -630,12 +620,7 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        var spec = new OverridableReleaseSpec(Prague.Instance)
-        {
-            MaxBlobCount = 6,
-            TargetBlobCount = 3,
-        };
-        Assert.That(txValidator.IsWellFormed(tx, spec).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
@@ -741,19 +726,19 @@ public class TxValidatorTests
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(MaxBlobCount - 1)
+            yield return new TestCaseData(MakeTestObject((int)Cancun.Instance.MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(MaxBlobCount)
+            yield return new TestCaseData(MakeTestObject((int)Cancun.Instance.MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(MaxBlobCount + 1)
+            yield return new TestCaseData(MakeTestObject((int)Cancun.Instance.MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",

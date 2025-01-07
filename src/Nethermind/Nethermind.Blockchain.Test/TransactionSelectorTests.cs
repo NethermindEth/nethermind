@@ -24,7 +24,6 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs.Test;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -161,7 +160,7 @@ namespace Nethermind.Blockchain.Test
                     tx.MaxFeePerBlobGas = 1;
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[5][];
+                    new byte[Cancun.Instance.MaxBlobCount - 1][];
                 maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     maxTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).Take(2));
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
@@ -175,7 +174,7 @@ namespace Nethermind.Blockchain.Test
                     enoughTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).ToArray();
                 expectedSelectedTransactions[0].Type = TxType.Blob;
                 expectedSelectedTransactions[0].BlobVersionedHashes =
-                    new byte[6][];
+                    new byte[Cancun.Instance.MaxBlobCount][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
@@ -222,11 +221,7 @@ namespace Nethermind.Blockchain.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            IReleaseSpec spec = new OverridableReleaseSpec(testCase.ReleaseSpec)
-            {
-                MaxBlobCount = 6,
-                TargetBlobCount = 3,
-            };
+            IReleaseSpec spec = testCase.ReleaseSpec;
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);
