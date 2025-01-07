@@ -44,7 +44,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey): Module
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
-                ICodeInfoRepository codeInfoRepository = ctx.Resolve<ICodeInfoRepository>();
+                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
                 return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository)
                 {
                     // It just need to override this.

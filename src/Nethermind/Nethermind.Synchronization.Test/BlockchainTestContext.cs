@@ -16,7 +16,6 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Synchronization.Test.Modules;
@@ -47,13 +46,14 @@ public class BlockchainTestContext: IAsyncDisposable
         ManualTimestamper timestamper,
         IManualBlockProductionTrigger blockProductionTrigger,
         BlockProcessingModule.MainBlockProcessingContext mainBlockProcessingContext,
+        ITxPool txPool,
         IBlockProducerRunner blockProducerRunner,
         ProducedBlockSuggester producedBlockSuggester // Need to be instantiated
     )
     {
+        _txPool = txPool;
         _nodeKey = nodeKey;
         _worldStateManager = worldStateManager;
-        _txPool = mainBlockProcessingContext.TxPool;
         _mainBlockProcessingContext = mainBlockProcessingContext;
         _specProvider = specProvider;
         _ecdsa = ecdsa;

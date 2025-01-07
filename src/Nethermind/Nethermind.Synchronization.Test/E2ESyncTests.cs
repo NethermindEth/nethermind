@@ -75,7 +75,6 @@ public class E2ESyncTests
             .Done;
 
         await thething.PrepareGenesis(cancellationTokenSource.Token);
-        Console.Error.WriteLine("Genesis done");
 
         for (int i = 0; i < 1000; i++)
         {

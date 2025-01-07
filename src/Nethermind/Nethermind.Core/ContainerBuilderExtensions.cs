@@ -132,6 +132,15 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddKeyedSingleton<T>(this ContainerBuilder builder, string key, Func<IComponentContext, T> factory) where T : class
+    {
+        builder.Register(factory)
+            .Named<T>(key)
+            .SingleInstance();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder) where T : notnull
     {
         builder.RegisterType<T>()
