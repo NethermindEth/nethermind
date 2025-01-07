@@ -41,8 +41,8 @@ public class TransactionProcessorEip7623Tests
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
-    [TestCase(21006, true)] // intrinsic gas
-    [TestCase(21010, false)] // floor gas
+    [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
+    [TestCase(21010, false, TestName = "GasLimit=FloorGas")]
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool isFail)
     {

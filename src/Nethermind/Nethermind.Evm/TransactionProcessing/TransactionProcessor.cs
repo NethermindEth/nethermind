@@ -763,6 +763,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 spentGas -= unspentGas;
                 operationGas -= unspentGas;
                 spentGas = Math.Max(spentGas, floorGas);
+                // Since the spent gas is updated to the maximum of the actual gas used or the floor gas,
+                // we need to recalculate the unspent gas that should be refunded.
                 var unspentGasRefund = tx.GasLimit - spentGas;
 
                 long totalToRefund = codeInsertRefund;
