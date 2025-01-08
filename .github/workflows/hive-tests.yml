@@ -88,7 +88,7 @@ jobs:
         if: env.LIMIT != ''
         continue-on-error: true
         working-directory: hive
-        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL --sim.limit $LIMIT
+        run: ./hive --client besu,reth,go-ethereum,ethereumjs,nethermind,erigon --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL --sim.limit $LIMIT
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
