@@ -14,7 +14,6 @@ public class PeerAddDropResponse
 
     }
 
-    [SkipLocalsInit]
     public PeerAddDropResponse(PeerInfo peerInfo, string subscripionType, string? e)
     {
         Type = subscripionType;

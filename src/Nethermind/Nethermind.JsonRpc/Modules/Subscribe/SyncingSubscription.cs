@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
                 if (isSyncing == false)
                 {
-                    result = CreateSubscriptionMessage(isSyncing, "eth_subscription");
+                    result = CreateSubscriptionMessage(isSyncing);
                 }
                 else
                 {
@@ -77,8 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                         StartingBlock = syncingResult.StartingBlock,
                         CurrentBlock = syncingResult.CurrentBlock,
                         HighestBlock = syncingResult.HighestBlock
-                    },
-                    "eth_subscription");
+                    });
                 }
 
                 using (result)
@@ -90,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        public override string Type => SubscriptionType.Syncing;
+        public override string Type => SubscriptionType.EthSubscription.Syncing;
         public override void Dispose()
         {
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;

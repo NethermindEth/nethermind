@@ -57,22 +57,22 @@ public class SubscriptionFactory : ISubscriptionFactory
         {
 
             //Register the standard subscription types in the dictionary.
-            [SubscriptionType.NewHeads] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
+            [SubscriptionType.EthSubscription.NewHeads] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
                 new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)),
 
-            [SubscriptionType.Logs] = CreateSubscriptionType<Filter?>((jsonRpcDuplexClient, filter) =>
+            [SubscriptionType.EthSubscription.Logs] = CreateSubscriptionType<Filter?>((jsonRpcDuplexClient, filter) =>
                 new LogsSubscription(jsonRpcDuplexClient, receiptCanonicalityMonitor, filterStore, blockTree, logManager, filter)),
 
-            [SubscriptionType.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
+            [SubscriptionType.EthSubscription.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
                 new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, specProvider, logManager, args)),
 
-            [SubscriptionType.DroppedPendingTransactions] = CreateSubscriptionType(jsonRpcDuplexClient =>
+            [SubscriptionType.EthSubscription.DroppedPendingTransactions] = CreateSubscriptionType(jsonRpcDuplexClient =>
                 new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager)),
 
-            [SubscriptionType.Syncing] = CreateSubscriptionType(jsonRpcDuplexClient =>
+            [SubscriptionType.EthSubscription.Syncing] = CreateSubscriptionType(jsonRpcDuplexClient =>
                 new SyncingSubscription(jsonRpcDuplexClient, blockTree, ethSyncingInfo, logManager)),
 
-            [AdminSubscriptionType.PeerEvents] = CreateSubscriptionType((jsonRpcDuplexClient) =>
+            [SubscriptionType.AdminSubscription.PeerEvents] = CreateSubscriptionType((jsonRpcDuplexClient) =>
                 new PeerEventsSubscription(jsonRpcDuplexClient, logManager, _peerPool)),
         };
     }
