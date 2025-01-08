@@ -12,9 +12,9 @@
   },
   "Sync": {
     "FastSync": true,
-    "PivotNumber": 13800000,
-    "PivotHash": "0x09481e05ba5ea79fbf3d0ad65f85746e510d9a58e5cc3c4ec8bf4dbcf21cc751",
-    "PivotTotalDifficulty": "4695896663508950795794569582558401317732053281",
+    "PivotNumber": 13920000,
+    "PivotHash": "0x6e7b680f8c614eb52b2672b6e12912e6accc0152faaa8fbcc15424be411d124d",
+    "PivotTotalDifficulty": "4736730547539463411410174535450213503106533280",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },
