@@ -92,7 +92,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
@@ -144,8 +144,7 @@ namespace Nethermind.Core.Crypto
         public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         public const int MemorySize =
-            MemorySizes.SmallObjectOverhead -
-            MemorySizes.RefSize +
+            MemorySizes.ObjectHeaderMethodTable +
             Size;
 
         private readonly ValueHash256 _hash256;
@@ -192,7 +191,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
@@ -288,7 +287,7 @@ namespace Nethermind.Core.Crypto
 
         public byte[] ThreadStaticBytes()
         {
-            if (_threadStaticBuffer is null) _threadStaticBuffer = new byte[Size];
+            _threadStaticBuffer ??= new byte[Size];
             Bytes.CopyTo(_threadStaticBuffer);
             return _threadStaticBuffer;
         }

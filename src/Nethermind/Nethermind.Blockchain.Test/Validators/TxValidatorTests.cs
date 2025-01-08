@@ -600,12 +600,12 @@ public class TxValidatorTests
     }
 
     private static IEnumerable<TxType> NonSetCodeTypes() =>
-        Enum.GetValues<TxType>().Where(t => t != TxType.SetCode && t != TxType.DepositTx);
+        Enum.GetValues<TxType>().Where(static t => t != TxType.SetCode && t != TxType.DepositTx);
 
     [TestCaseSource(nameof(NonSetCodeTypes))]
     public void IsWellFormed_NonSetCodeTxHasAuthorizationList_ReturnsFalse(TxType type)
     {
-        var x = Enum.GetValues<TxType>().Where(t => t != TxType.SetCode);
+        var x = Enum.GetValues<TxType>().Where(static t => t != TxType.SetCode);
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(type)
             .WithTo(TestItem.AddressA)
@@ -752,35 +752,35 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = Array.Empty<byte[]>())
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Blobs count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = Array.Empty<byte[]>())
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Commitments count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = Array.Empty<byte[]>())
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "A commitment does not math hash",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs are not valid",

@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
-public interface IBeaconBlockRootHandler
+public interface IBeaconBlockRootHandler : IHasAccessList
 {
     (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer);

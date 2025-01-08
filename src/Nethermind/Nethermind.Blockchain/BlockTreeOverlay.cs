@@ -30,12 +30,10 @@ public class BlockTreeOverlay : IBlockTree
     public BlockHeader? BestSuggestedHeader => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
     public Block? BestSuggestedBody => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
     public BlockHeader? BestSuggestedBeaconHeader => _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
-    public BlockHeader? LowestInsertedHeader => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
-
-    public long? LowestInsertedBodyNumber
+    public BlockHeader? LowestInsertedHeader
     {
-        get => _overlayTree.LowestInsertedBodyNumber ?? _baseTree.LowestInsertedBodyNumber;
-        set => _overlayTree.LowestInsertedBodyNumber = value;
+        get => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
+        set => _overlayTree.LowestInsertedHeader = value;
     }
 
     public BlockHeader? LowestInsertedBeaconHeader

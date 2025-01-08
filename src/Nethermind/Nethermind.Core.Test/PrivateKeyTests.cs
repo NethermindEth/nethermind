@@ -36,14 +36,14 @@ public class PrivateKeyTests
     public void Cannot_be_initialized_with_null_bytes()
     {
         // ReSharper disable once ObjectCreationAsStatement
-        Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[])null!));
+        Assert.Throws<ArgumentNullException>(static () => new PrivateKey((byte[])null!));
     }
 
     [Test]
     public void Cannot_be_initialized_with_null_string()
     {
         // ReSharper disable once ObjectCreationAsStatement
-        Assert.Throws<ArgumentNullException>(() => new PrivateKey((string)null!));
+        Assert.Throws<ArgumentNullException>(static () => new PrivateKey((string)null!));
     }
 
     [Test]

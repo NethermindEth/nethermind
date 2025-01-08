@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -35,7 +36,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -228,7 +228,7 @@ public class SynchronizerTests
             {
                 block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                     .WithTotalDifficulty(block.TotalDifficulty + 1000000)
-                    .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
+                    .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
                 Blocks.Add(block);
             }
 
@@ -242,7 +242,7 @@ public class SynchronizerTests
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)
-                    .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
+                    .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
                 Blocks.Add(block);
             }
 
@@ -274,7 +274,7 @@ public class SynchronizerTests
         public SyncingContext Syncing => new(_synchronizerType);
     }
 
-    public class SyncingContext
+    public class SyncingContext : IAsyncDisposable
     {
         private bool _wasStopped = false;
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
@@ -315,8 +315,10 @@ public class SynchronizerTests
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb stateDb = new MemDb();
             IDb codeDb = dbProvider.CodeDb;
+            IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
             BlockTree = Build.A.BlockTree()
                 .WithSpecProvider(new TestSingleReleaseSpecProvider(Constantinople.Instance))
+                .WithBlockStore(blockStore)
                 .WithoutSettingHead
                 .TestObject;
 
@@ -347,7 +349,9 @@ public class SynchronizerTests
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
+                .AddSingleton<IReceiptConfig>(new ReceiptConfig())
                 .AddSingleton(dbProvider)
+                .AddSingleton(blockStore)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IBlockTree>(BlockTree)
@@ -513,6 +517,11 @@ public class SynchronizerTests
             if (_wasStopped) return;
             _wasStopped = true;
             await Container.DisposeAsync();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync();
         }
     }
 
@@ -709,13 +718,12 @@ public class SynchronizerTests
         SyncPeerMock peerB = new("B");
         peerB.AddBlocksUpTo(2, 0, 1);
 
-        await When.Syncing
+        await using SyncingContext syncingContext = When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .BestSuggestedBlockHasNumber(2)
             .AfterPeerIsAdded(peerB)
-            .WaitUntilInitialized()
-            .StopAsync();
+            .WaitUntilInitialized();
 
         Assert.That(peerA.HeadBlock.Hash, Is.Not.EqualTo(peerB.HeadBlock.Hash));
 
@@ -727,7 +735,6 @@ public class SynchronizerTests
         }, Is.True.After(WaitTime, 1));
 
         Assert.That(peerA.HeadBlock.Hash, Is.EqualTo(peerBNewBlock?.Header.Hash!));
-
     }
 
     [Test]

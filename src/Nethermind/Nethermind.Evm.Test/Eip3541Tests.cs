@@ -82,20 +82,12 @@ namespace Nethermind.Evm.Test
             byte[] byteCode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
-            byte[] createContract;
-            switch (context)
+            var createContract = context switch
             {
-                case ContractDeployment.CREATE:
-                    createContract = Prepare.EvmCode.Create(byteCode, UInt256.Zero).Done;
-                    break;
-                case ContractDeployment.CREATE2:
-                    createContract = Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done;
-                    break;
-                default:
-                    createContract = byteCode;
-                    break;
-            }
-
+                ContractDeployment.CREATE => Prepare.EvmCode.Create(byteCode, UInt256.Zero).Done,
+                ContractDeployment.CREATE2 => Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done,
+                _ => byteCode,
+            };
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
@@ -106,7 +98,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.That(tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode), Is.EqualTo(withoutAnyInvalidCodeErrors), $"Code {code}, Context {context}");
+            Assert.That(tracer.ReportedActionErrors.All(static x => x != EvmExceptionType.InvalidCode), Is.EqualTo(withoutAnyInvalidCodeErrors), $"Code {code}, Context {context}");
         }
     }
 }

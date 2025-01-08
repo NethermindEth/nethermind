@@ -51,16 +51,11 @@ namespace Nethermind.Synchronization.Test
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            SyncConfig quickConfig = new() { FastSync = false };
+            _ = new SyncConfig() { FastSync = false };
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
-            SyncConfig syncConfig = new()
-            {
-                MultiSyncModeSelectorLoopTimerMs = 1,
-                SyncDispatcherEmptyRequestDelayMs = 1,
-                SyncDispatcherAllocateTimeoutMs = 1
-            };
+            SyncConfig syncConfig = new TestSyncConfig();
 
             NodeStorage nodeStorage = new NodeStorage(_stateDb);
             TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);

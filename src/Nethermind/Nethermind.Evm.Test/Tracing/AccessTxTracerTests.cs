@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(tuples => tuples.Address);
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(static tuples => tuples.Address);
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.AccessList!.Should().BeEquivalentTo(
                 new[]
                 {
-                    (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
+                    (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
                 });
         }
@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressA, TestItem.AddressB },
-                    new Address[] { });
+                    System.Array.Empty<Address>());
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressB },
                     new[] { TestItem.AddressA });
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(a => a.Address).ToArray(), Is.EquivalentTo(expected));
+            Assert.That(sut.AccessList.Select(static a => a.Address).ToArray(), Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(sut.AccessList.Select(static x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
         }
 
         [Test]
@@ -108,7 +108,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
+            Assert.That(sut.AccessList.Select(static x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);

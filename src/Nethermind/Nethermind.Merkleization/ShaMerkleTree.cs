@@ -9,11 +9,9 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 
-public class ShaMerkleTree : MerkleTree
+public class ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore) : MerkleTree(keyValueStore)
 {
     private static readonly Bytes32[] _zeroHashes = new Bytes32[32];
-    [ThreadStatic]
-    private static HashAlgorithm? _hashAlgorithm;
 
     static ShaMerkleTree()
     {
@@ -27,14 +25,7 @@ public class ShaMerkleTree : MerkleTree
 
     public static ReadOnlyCollection<Bytes32> ZeroHashes => Array.AsReadOnly(_zeroHashes);
 
-    public ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
-        : base(keyValueStore)
-    {
-    }
-
-    public ShaMerkleTree() : base(new MemMerkleTreeStore())
-    {
-    }
+    public ShaMerkleTree() : this(new MemMerkleTreeStore()) { }
 
     private static void HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
     {
@@ -42,7 +33,7 @@ public class ShaMerkleTree : MerkleTree
         a.CopyTo(combined);
         b.CopyTo(combined[a.Length..]);
 
-        (_hashAlgorithm ??= SHA256.Create()).TryComputeHash(combined, target, out int bytesWritten);
+        SHA256.TryHashData(combined, target, out _);
     }
 
     protected override Bytes32[] ZeroHashesInternal => _zeroHashes;

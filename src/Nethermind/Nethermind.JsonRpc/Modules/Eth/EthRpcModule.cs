@@ -33,6 +33,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
@@ -178,8 +179,16 @@ public partial class EthRpcModule(
         }
 
         BlockHeader? header = searchResult.Object;
-        ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
+        try
+        {
+            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+            return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
+        }
+        catch (MissingTrieNodeException e)
+        {
+            var hash = e.TrieNodeException.NodeHash;
+            return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
+        }
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
@@ -252,10 +261,10 @@ public partial class EthRpcModule(
             : ResultWrapper<byte[]>.Success(
                 _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
                     ? _stateReader.GetCode(account.CodeHash)
-                    : Array.Empty<byte>());
+                    : []);
     }
 
-    public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
+    public ResultWrapper<Memory<byte>> eth_sign(Address addressData, byte[] message)
     {
         Signature sig;
         try
@@ -268,15 +277,15 @@ public partial class EthRpcModule(
         }
         catch (SecurityException e)
         {
-            return ResultWrapper<byte[]>.Fail(e.Message, ErrorCodes.AccountLocked);
+            return ResultWrapper<Memory<byte>>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception)
         {
-            return ResultWrapper<byte[]>.Fail($"Unable to sign as {addressData}");
+            return ResultWrapper<Memory<byte>>.Fail($"Unable to sign as {addressData}");
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
-        return ResultWrapper<byte[]>.Success(sig.Bytes);
+        return ResultWrapper<Memory<byte>>.Success(sig.Memory);
     }
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)

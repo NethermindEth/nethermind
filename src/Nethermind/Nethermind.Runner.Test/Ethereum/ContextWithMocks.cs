@@ -47,6 +47,7 @@ using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -94,6 +95,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
                 WorldState = Substitute.For<IWorldState>(),
+                BlockingVerifyTrie = Substitute.For<IBlockingVerifyTrie>(),
                 StateReader = Substitute.For<IStateReader>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
@@ -119,6 +121,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 ApiWithNetworkServiceContainer = new ContainerBuilder()
                     .AddSingleton(Substitute.For<ISyncModeSelector>())
                     .AddSingleton(Substitute.For<ISyncProgressResolver>())
+                    .AddSingleton(Substitute.For<ISyncPointers>())
                     .AddSingleton(Substitute.For<ISynchronizer>())
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())

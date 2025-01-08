@@ -292,7 +292,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
         request.Append("]");
 
-        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, Array.Empty<string>());
+        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
         result.Should().HaveCount(1);
@@ -405,7 +405,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void Cannot_accept_null_file_system()
     {
-        Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
             Substitute.For<IJsonRpcConfig>(),
             null!, LimboLogs.Instance));
     }

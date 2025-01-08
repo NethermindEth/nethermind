@@ -18,7 +18,7 @@ public static class JavaScriptConverter
     public static byte[] ToBytes(this object input) => input switch
     {
         string hexString => Bytes.FromHexString(hexString),
-        ITypedArray<byte> typedArray => typedArray.Length == 0 ? Array.Empty<byte>() : typedArray.ToArray(),
+        ITypedArray<byte> typedArray => typedArray.Length == 0 ? [] : typedArray.ToArray(),
         IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
         IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
         IList list => list.ToEnumerable().Select(Convert.ToByte).ToArray(),

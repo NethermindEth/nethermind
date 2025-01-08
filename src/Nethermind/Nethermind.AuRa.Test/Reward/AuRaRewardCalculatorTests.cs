@@ -53,7 +53,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
 
             _abiEncoder
-                .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "reward"), Arg.Any<object[]>())
+                .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "reward"), Arg.Any<object[]>())
                 .Returns(_rewardData);
         }
 
@@ -207,7 +207,7 @@ namespace Nethermind.AuRa.Test.Reward
                         recipient,
                         0,
                         SetupAbiAddresses(rewards[recipient]),
-                        Array.Empty<LogEntry>());
+                        []);
                 });
         }
 
@@ -218,15 +218,15 @@ namespace Nethermind.AuRa.Test.Reward
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {
-            byte[] data = rewards.Select(r => r.Address).SelectMany(a => a.Bytes).ToArray();
+            byte[] data = rewards.Select(static r => r.Address).SelectMany(static a => a.Bytes).ToArray();
 
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,
-                Arg.Is<AbiSignature>(s =>
+                Arg.Is<AbiSignature>(static s =>
                     s.Types.Length == 2
                     && s.Types[0] is AbiArray && ((AbiArray)s.Types[0]).ElementType is AbiAddress
                     && s.Types[1] is AbiArray && ((AbiArray)s.Types[1]).ElementType is AbiUInt),
-                data).Returns(new object[] { rewards.Select(r => r.Address).ToArray(), rewards.Select(r => r.Value).ToArray() });
+                data).Returns(new object[] { rewards.Select(static r => r.Address).ToArray(), rewards.Select(static r => r.Value).ToArray() });
 
             return data;
         }

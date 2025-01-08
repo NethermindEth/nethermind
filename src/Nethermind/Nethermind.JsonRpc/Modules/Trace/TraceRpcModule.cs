@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env) { }
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
-            types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
+            types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
 
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
@@ -104,9 +104,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
 
-            Block block = new(header, txs, Enumerable.Empty<BlockHeader>());
+            Block block = new(header, txs, []);
             IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t)));
         }
 
         /// <summary>
@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(traceTypes1));
 
             // ReSharper disable once CoVariantArrayConversion
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t, true)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(txTraces.Select(static t => new ParityTxTraceFromReplay(t, true)));
         }
 
         /// <summary>

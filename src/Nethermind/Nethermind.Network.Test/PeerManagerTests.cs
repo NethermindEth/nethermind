@@ -122,7 +122,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_in_port()
         {
-            Assert.Throws<ArgumentException>(delegate
+            Assert.Throws<ArgumentException>(static delegate
             {
                 Enode unused = new(enode3String);
             });
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_in_dns()
         {
-            Assert.Throws<ArgumentException>(delegate
+            Assert.Throws<ArgumentException>(static delegate
             {
                 Enode unused = new(enode4String);
             });
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_when_there_is_no_port()
         {
-            Assert.Throws<ArgumentException>(delegate
+            Assert.Throws<ArgumentException>(static delegate
             {
                 Enode unused = new(enode5String);
             });
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_on_wrong_ports_part()
         {
-            Assert.Throws<ArgumentException>(delegate
+            Assert.Throws<ArgumentException>(static delegate
             {
                 Enode unused = new(enode8String);
             });
@@ -174,7 +174,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_on_duplicated_discovery_port_part()
         {
-            Assert.Throws<ArgumentException>(delegate
+            Assert.Throws<ArgumentException>(static delegate
             {
                 Enode unused = new(enode9String);
             });
@@ -183,7 +183,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_on_wrong_form_of_discovery_port_part()
         {
-            Assert.Throws<ArgumentException>(delegate
+            Assert.Throws<ArgumentException>(static delegate
             {
                 Enode unused = new(enode10String);
             });
@@ -322,7 +322,7 @@ namespace Nethermind.Network.Test
                 for (int i = 0; i < 10; i++)
                 {
                     Assert.That(
-                        () => ctx.PeerPool.ActivePeers.Count(),
+                        () => ctx.PeerPool.ActivePeers.Count,
                         Is.AtLeast(25).After(_travisDelayLonger * 2, 10));
                     ctx.DisconnectAllSessions();
                 }
@@ -535,7 +535,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             const int nodesCount = 5;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(n => new Node(n, true)).ToAsyncEnumerable());
+            ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(static n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
@@ -545,7 +545,7 @@ namespace Nethermind.Network.Test
             }
 
             await Task.Delay(_travisDelay);
-            ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount);
+            ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic).Should().Be(nodesCount);
         }
 
         [Test, Retry(5)]

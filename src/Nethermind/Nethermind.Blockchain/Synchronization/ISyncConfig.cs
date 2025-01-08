@@ -161,4 +161,13 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
     int StateMinDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool GCOnFeedFinished { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
+    int HeaderStateDistance { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    ulong FastHeadersMemoryBudget { get; set; }
 }

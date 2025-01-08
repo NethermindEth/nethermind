@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -84,11 +85,11 @@ namespace Nethermind.Network
 
                     if (_pingTasks.Count > 0)
                     {
-                        bool[] tasks = await Task.WhenAll(_pingTasks);
+                        bool[] tasks = await Task.WhenAll<bool>(CollectionsMarshal.AsSpan(_pingTasks));
                         int tasksLength = tasks.Length;
                         if (tasksLength != 0)
                         {
-                            int successes = tasks.Count(x => x);
+                            int successes = tasks.Count(static x => x);
                             int failures = tasksLength - successes;
                             if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
                             if (failures > 4 && failures > tasks.Length / 3)
@@ -163,7 +164,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERRUR Error during ping timer stop", e);
+                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during ping timer stop", e);
             }
         }
     }

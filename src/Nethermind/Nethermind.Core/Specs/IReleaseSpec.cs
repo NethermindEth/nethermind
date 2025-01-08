@@ -326,8 +326,16 @@ namespace Nethermind.Core.Specs
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
 
+        /// OP Holocene
+        bool IsOpHoloceneEnabled { get; }
+
         /// Taiko Ontake
         bool IsOntakeEnabled { get; }
+
+        /// <summary>
+        ///  Increase call data cost
+        /// </summary>
+        bool IsEip7623Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

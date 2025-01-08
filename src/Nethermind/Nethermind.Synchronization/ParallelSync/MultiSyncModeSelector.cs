@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -65,6 +64,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
         private long? LastBlockThatEnabledFullSync { get; set; }
+        private int TotalSyncLag => FastSyncLag + _syncConfig.HeaderStateDistance;
 
         private readonly CancellationTokenSource _cancellation = new();
 
@@ -400,7 +400,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // and we need to sync away from it.
             // Note: its ok if target block height is not accurate as long as long full sync downloader does not stop
             //  earlier than this condition below which would cause a hang.
-            bool notReachedFullSyncTransition = best.Header < best.TargetBlock - FastSyncLag;
+            bool notReachedFullSyncTransition = best.Header < best.TargetBlock - TotalSyncLag;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
@@ -590,8 +590,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
-            bool stateNotDownloadedYet = (best.TargetBlock - best.State > FastSyncLag ||
-                                          best.Header > best.State && best.Header > best.Block);
+            bool stateNotDownloadedYet = (best.TargetBlock - best.State > TotalSyncLag ||
+                                          best.Header > (best.State + _syncConfig.HeaderStateDistance) && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
@@ -636,8 +636,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 LogDetailedSyncModeChecks("STATE_NODES",
                     (nameof(isInStateSync), isInStateSync),
-                    (nameof(snapSyncDisabled), snapSyncDisabled),
-                    (nameof(snapRangesFinished), snapRangesFinished));
+                    ($"{nameof(snapSyncDisabled)}||{nameof(snapRangesFinished)}", snapSyncDisabled || snapRangesFinished));
             }
 
             return result;
@@ -646,7 +645,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInSnapRangesPhase(Snapshot best)
         {
             bool isInStateSync = best.IsInStateSync;
-            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) < Constants.MaxDistanceFromHead;
+            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= TotalSyncLag;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
 
             if (_logger.IsTrace)
@@ -767,20 +766,20 @@ namespace Nethermind.Synchronization.ParallelSync
             List<string> matched = new();
             List<string> failed = new();
 
-            foreach ((string Name, bool IsSatisfied) check in checks)
+            foreach ((string Name, bool IsSatisfied) in checks)
             {
-                if (check.IsSatisfied)
+                if (IsSatisfied)
                 {
-                    matched.Add(check.Name);
+                    matched.Add(Name);
                 }
                 else
                 {
-                    failed.Add(check.Name);
+                    failed.Add(Name);
                 }
             }
 
-            bool result = checks.All(c => c.IsSatisfied);
-            string text = $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
+            bool result = checks.All(static c => c.IsSatisfied);
+            string text = $"{(result ? " * " : "   ")}{syncType,-20}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
             _logger.Trace(text);
         }
 

@@ -16,7 +16,6 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -34,7 +33,6 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -122,7 +120,7 @@ public class InitializeNetwork : IStep
             IContainer container = builder.Build();
 
             _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Append(container);
+            _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
         if (_api.TrieStore is HealingTrieStore healingTrieStore)
@@ -405,6 +403,10 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
+        if (!_api.WorldStateManager!.SupportHashLookup)
+        {
+            _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }
 
         _api.ProtocolValidator = protocolValidator;

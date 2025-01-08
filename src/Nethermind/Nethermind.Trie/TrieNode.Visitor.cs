@@ -21,8 +21,6 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int BranchesCount = 16;
-
         /// <summary>
         /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
         /// `nextToVisit`. Also, it assume the node is already resolved.
@@ -67,12 +65,7 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                     {
                         visitor.VisitExtension(nodeContext, this, trieVisitContext.ToVisitContext());
-                        TrieNode child = GetChild(nodeResolver, ref emptyPath, 0);
-                        if (child is null)
-                        {
-                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        }
-
+                        TrieNode child = GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         child.ResolveKey(nodeResolver, ref emptyPath, false);
                         TNodeContext childContext = nodeContext.Add(Key!);
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
@@ -279,12 +272,7 @@ namespace Nethermind.Trie
                     {
                         visitor.VisitExtension(nodeContext, this, trieVisitContext);
                         trieVisitContext.AddVisited();
-                        TrieNode child = GetChild(nodeResolver, ref path, 0);
-                        if (child is null)
-                        {
-                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        }
-
+                        TrieNode child = GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         int previousPathLength = AppendChildPath(ref path, 0);
                         child.ResolveKey(nodeResolver, ref path, false);
                         TNodeContext childContext = nodeContext.Add(Key!);

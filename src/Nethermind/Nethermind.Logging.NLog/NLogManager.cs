@@ -20,6 +20,11 @@ namespace Nethermind.Logging.NLog
         private const string DefaultFileTargetName = "file-async_wrapped";
         private const string DefaultFolder = "logs";
 
+        /// <summary>
+        /// The constructor to use when the configuration is not yet initialized.
+        /// </summary>
+        public NLogManager() { /* Log in temp dir? */ }
+
         public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
         {
             Setup(logFileName, logDirectory, logRules);
@@ -107,7 +112,7 @@ namespace Nethermind.Logging.NLog
         }
 
         private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
-            configurationLoggingRules.SelectMany(r => r.Targets).Distinct().ToArray();
+            configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
 
         private static void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {

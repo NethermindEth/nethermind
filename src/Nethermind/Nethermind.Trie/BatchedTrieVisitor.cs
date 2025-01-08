@@ -142,12 +142,11 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
-            // TODO: .Net 9 stackalloc
-            Task[]? tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+            using ArrayPoolList<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
                 .Select(_ => Task.Run(BatchedThread))
-                .ToArray();
+                .ToPooledList(trieVisitContext.MaxDegreeOfParallelism);
 
-            Task.WaitAll(tasks);
+            Task.WaitAll(tasks.AsSpan());
         }
         catch (Exception)
         {
@@ -225,7 +224,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // Sort by level
             if (_activeJobs > _targetCurrentItems)
             {
-                preSort.AsSpan().Sort((item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
+                preSort.AsSpan().Sort(static (item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
             }
 
             int endIdx = Math.Min(_maxBatchSize, preSort.Count);

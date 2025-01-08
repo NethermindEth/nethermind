@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -31,6 +32,8 @@ using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
 using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -45,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
-        public OverridableWorldStateManager OverridableWorldStateManager { get; private set; } = null!;
+        public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -118,7 +121,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 (T)(await _blockchain.Build(specProvider, initialValues, true));
         }
 
-        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = @this => new EthRpcModule(
+        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
             @this.RpcConfig,
             @this.Bridge,
             @this.BlockFinder,
@@ -130,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, @this.ReceiptStorage, new SyncConfig(),
+            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
@@ -147,9 +150,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider, WorldStateManager.TrieStore, LogManager);
+            IOverridableWorldScope overridableWorldStateManager = WorldStateManager.CreateOverridableWorldScope();
             OverridableTxProcessingEnv processingEnv = new(
-                overridableWorldStateManager,
+                WorldStateManager.CreateOverridableWorldScope(),
                 roBlockTree,
                 SpecProvider,
                 LimboLogs.Instance);

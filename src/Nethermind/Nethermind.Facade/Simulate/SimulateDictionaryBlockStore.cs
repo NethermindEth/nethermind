@@ -71,17 +71,6 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         Insert(block);
     }
 
-    public void SetMetadata(byte[] key, byte[] value)
-    {
-        _metadataDict[key] = value;
-        readonlyBaseBlockStore.SetMetadata(key, value);
-    }
-
-    public byte[]? GetMetadata(byte[] key)
-    {
-        return _metadataDict.TryGetValue(key, out var value) ? value : readonlyBaseBlockStore.GetMetadata(key);
-    }
-
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
         return _blockNumDict.ContainsKey(blockNumber);

@@ -16,7 +16,7 @@ public class ConsolePasswordProviderTests
     [Test]
     public void Alternative_provider_sets_correctly()
     {
-        var emptyPasswordProvider = new FilePasswordProvider(address => string.Empty);
+        var emptyPasswordProvider = new FilePasswordProvider(static address => string.Empty);
         var consolePasswordProvider1 = emptyPasswordProvider
                                         .OrReadFromConsole("Test1");
 
@@ -105,7 +105,7 @@ public class ConsolePasswordProviderTests
 
     public class ConsolePasswordProviderTest
     {
-        public ConsoleKeyInfo[] InputChars { get; set; } = Array.Empty<ConsoleKeyInfo>();
+        public ConsoleKeyInfo[] InputChars { get; set; } = [];
         public string ExpectedPassword { get; set; }
 
         public override string ToString() => string.Join("; ", ExpectedPassword);

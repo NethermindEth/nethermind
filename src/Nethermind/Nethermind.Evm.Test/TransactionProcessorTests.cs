@@ -90,7 +90,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        TransactionResult result = Execute(tx, block, tracer);
+        _ = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {
@@ -391,7 +391,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -404,7 +404,7 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         IReleaseSpec releaseSpec = Berlin.Instance;
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
         tracer.GasSpent.Should().Be(54764L);
@@ -432,8 +432,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
         _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
@@ -446,7 +445,7 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
@@ -498,7 +497,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -511,7 +510,7 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
         tracer.GasSpent.Should().Be(85669L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
@@ -540,7 +539,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -553,7 +552,7 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
         tracer.GasSpent.Should().Be(87429L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, 0);
@@ -580,7 +579,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = Berlin.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
         _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
@@ -591,7 +590,7 @@ public class TransactionProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
         long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsic);
+        actualIntrinsic.Should().Be(intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
         tracer.GasSpent.Should().Be(54224L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, 0);

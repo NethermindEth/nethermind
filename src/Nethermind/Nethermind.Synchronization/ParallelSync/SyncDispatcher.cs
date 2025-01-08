@@ -12,21 +12,25 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncDispatcher<T>
+    public class SyncDispatcher<T> : IAsyncDisposable
     {
-        private readonly object _feedStateManipulation = new();
+        private readonly Lock _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
+        private static readonly TimeSpan ActiveTaskDisposeTimeout = TimeSpan.FromSeconds(10);
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
-
         private ILogger Logger { get; }
         private ISyncFeed<T> Feed { get; }
         private ISyncDownloader<T> Downloader { get; }
         private ISyncPeerPool SyncPeerPool { get; }
 
+        private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;
         private readonly int _allocateTimeoutMs;
+
+        private bool _disposed = false;
 
         public SyncDispatcher(
             ISyncConfig syncConfig,
@@ -60,9 +64,25 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+
         public async Task Start(CancellationToken cancellationToken)
         {
             UpdateState(Feed.CurrentState);
+
+            try
+            {
+                _activeTasks.AddCount(1);
+                using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
+                await DispatchLoop(linkedSource.Token);
+            }
+            finally
+            {
+                _activeTasks.Signal();
+            }
+        }
+
+        private async Task DispatchLoop(CancellationToken cancellationToken)
+        {
             while (true)
             {
                 try
@@ -109,7 +129,20 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
 
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
-                            Task task = Task.Run(() => DoDispatch(cancellationToken, allocatedPeer, request, allocation), cancellationToken);
+                            _activeTasks.AddCount();
+
+                            Task task = Task.Run(
+                                () =>
+                                {
+                                    try
+                                    {
+                                        return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                    }
+                                    finally
+                                    {
+                                        _activeTasks.Signal();
+                                    }
+                                });
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -271,6 +304,24 @@ namespace Nethermind.Synchronization.ParallelSync
                     previous?.TrySetResult(null);
                 }
             }
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (Interlocked.CompareExchange(ref _disposed, true, false))
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
+            _activeTasks.Signal();
+            if (!_activeTasks.Wait(ActiveTaskDisposeTimeout))
+            {
+                if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");
+            }
+            _concurrentProcessingSemaphore.Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 }

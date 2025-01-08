@@ -71,7 +71,7 @@ public class ContractBasedValidatorTests
             Addresses = new[] { _contractAddress },
             ValidatorType = AuRaParameters.ValidatorType.Contract
         };
-        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
+        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, []).TestObject, new BlockBody());
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
@@ -82,11 +82,11 @@ public class ContractBasedValidatorTests
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
-            .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "getValidators"), Arg.Any<object[]>())
+            .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "getValidators"), Arg.Any<object[]>())
             .Returns(_getValidatorsData.TransactionData);
 
         _abiEncoder
-            .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
+            .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "finalizeChange"), Arg.Any<object[]>())
             .Returns(_finalizeChangeData.TransactionData);
 
         _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
@@ -158,7 +158,7 @@ public class ContractBasedValidatorTests
             Raise.EventWith(new FinalizeEventArgs(_block.Header,
                 Build.A.BlockHeader.WithNumber(blockNumber).WithHash(blockHash).TestObject));
 
-        validator.Validators.Should().BeEquivalentTo(validators, o => o.WithStrictOrdering());
+        validator.Validators.Should().BeEquivalentTo(validators, static o => o.WithStrictOrdering());
     }
 
     [TestCase(1)]
@@ -166,7 +166,7 @@ public class ContractBasedValidatorTests
     public void loads_initial_validators_from_contract(long blockNumber)
     {
         Address initialValidator = TestItem.AddressA;
-        Block block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, Array.Empty<byte>()).TestObject;
+        Block block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, []).TestObject;
         SetupInitialValidators(block.Header, initialValidator);
         int startBlockNumber = 1;
         ContractBasedValidator validator = new(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, startBlockNumber);
@@ -545,7 +545,7 @@ public class ContractBasedValidatorTests
     [TestCase(1, 7, null)]
     public void nonconsecutive_non_producing_preProcess_loads_pending_validators_from_receipts(int lastLevelFinalized, int initialValidatorsIndex, int? expectedBlockValidators)
     {
-        IEnumerable<Block> GetAllBlocks(BlockTree bt)
+        static IEnumerable<Block> GetAllBlocks(BlockTree bt)
         {
 
             Block? block = bt.FindBlock(bt.Head.Hash, BlockTreeLookupOptions.None);
@@ -610,7 +610,7 @@ public class ContractBasedValidatorTests
     }
 
     private static Address[] GenerateValidators(int number) =>
-        Enumerable.Range(1, number).Select(i => Address.FromNumber((UInt256)i)).ToArray();
+        Enumerable.Range(1, number).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
 
     private void SetupInitialValidators(params Address[] initialValidators)
     {
@@ -641,16 +641,16 @@ public class ContractBasedValidatorTests
                     args.Arg<Transaction>().To,
                     0,
                     SetupAbiAddresses(_initialValidators),
-                    Array.Empty<LogEntry>()));
+                    []));
     }
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,
-            Arg.Is<AbiSignature>(s => s.Types.Length == 1 && s.Types[0].CSharpType == typeof(Address[])),
+            Arg.Is<AbiSignature>(static s => s.Types.Length == 1 && s.Types[0].CSharpType == typeof(Address[])),
             data).Returns(new object[] { addresses });
 
         return data;
@@ -694,7 +694,7 @@ public class ContractBasedValidatorTests
             Address[] validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == block.Number)?.Addresses;
             if (validators is null)
             {
-                return Array.Empty<TxReceipt>();
+                return [];
             }
             else
             {

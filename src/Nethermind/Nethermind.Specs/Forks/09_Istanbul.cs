@@ -21,6 +21,6 @@ namespace Nethermind.Specs.Forks
             IsEip2200Enabled = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Istanbul());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Istanbul());
     }
 }

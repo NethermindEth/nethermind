@@ -41,7 +41,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
-    private readonly object _syncObject = new();
+    private readonly Lock _syncObject = new();
 
     public ShutterBlockHandler(
         ulong chainId,
@@ -125,7 +125,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask =>
+        _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
         {
             waitTask.Value.CancellationRegistration.Dispose();
             waitTask.Value.TimeoutCancellationRegistration.Dispose();

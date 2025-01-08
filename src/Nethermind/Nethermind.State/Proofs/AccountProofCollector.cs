@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -59,7 +59,7 @@ namespace Nethermind.State.Proofs
         /// Only for testing
         /// </summary>
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[] keccakStorageKeys)
-            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueHash256)keccak).ToArray())
+            : this(hashedAddress, keccakStorageKeys.Select(static (keccak) => (ValueHash256)keccak).ToArray())
         {
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.State.Proofs
         /// </summary>
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[] keccakStorageKeys)
         {
-            keccakStorageKeys ??= Array.Empty<ValueHash256>();
+            keccakStorageKeys ??= [];
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
@@ -96,7 +96,7 @@ namespace Nethermind.State.Proofs
 
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][] storageKeys)
         {
-            storageKeys ??= Array.Empty<byte[]>();
+            storageKeys ??= [];
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
             Hash256[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
@@ -176,11 +176,7 @@ namespace Nethermind.State.Proofs
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
                     Hash256 childHash = node.GetChildHash((byte)childIndex);
-                    if (childHash is null)
-                    {
-                        AddEmpty(node, trieVisitContext);
-                    }
-                    else
+                    if (childHash is not null)
                     {
                         ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
                         if (!exists)
@@ -251,24 +247,6 @@ namespace Nethermind.State.Proofs
             else
             {
                 _accountProofItems.Add(node.FullRlp.ToArray());
-            }
-        }
-
-        private void AddEmpty(TrieNode node, TrieVisitContext trieVisitContext)
-        {
-            if (trieVisitContext.IsStorage)
-            {
-                if (_storageNodeInfos.TryGetValue(node.Keccak, out StorageNodeInfo value))
-                {
-                    foreach (int storageIndex in value.StorageIndices)
-                    {
-                        _storageProofItems[storageIndex].Add(Array.Empty<byte>());
-                    }
-                }
-            }
-            else
-            {
-                _accountProofItems.Add(Array.Empty<byte>());
             }
         }
 

@@ -32,7 +32,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public long BlockNumber { get; set; }
 
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
@@ -52,7 +52,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+    protected byte[][] _encodedTransactions = [];
 
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
@@ -184,7 +184,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select((t, i) =>
+        .Select(static (t, i) =>
         {
             try
             {
@@ -203,7 +203,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
             .ToArray();
         _transactions = transactions;
     }

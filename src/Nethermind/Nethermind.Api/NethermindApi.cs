@@ -58,6 +58,7 @@ using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Api
 {
@@ -76,11 +77,10 @@ namespace Nethermind.Api
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider!, WorldStateManager!.TrieStore, LogManager);
 
             // TODO: reuse the same trie cache here
             OverridableTxProcessingEnv txProcessingEnv = new(
-                overridableWorldStateManager,
+                WorldStateManager!.CreateOverridableWorldScope(),
                 readOnlyTree,
                 SpecProvider!,
                 LogManager);
@@ -190,12 +190,14 @@ namespace Nethermind.Api
         public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
 
         public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
+        public ISyncPointers? SyncPointers => ApiWithNetworkServiceContainer?.Resolve<ISyncPointers>();
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
+        public IBlockingVerifyTrie? BlockingVerifyTrie { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }

@@ -26,14 +26,15 @@ public class TransactionProcessorTests
 {
     private readonly OverridableReleaseSpec _spec;
     private readonly ISpecProvider _specProvider;
-    private IEthereumEcdsa _ethereumEcdsa;
-    private TaikoTransactionProcessor _transactionProcessor;
-    private WorldState _stateProvider;
+    private readonly IEthereumEcdsa _ethereumEcdsa;
+    private TaikoTransactionProcessor? _transactionProcessor;
+    private WorldState? _stateProvider;
 
     public TransactionProcessorTests()
     {
         _spec = new(Cancun.Instance);
         _specProvider = new TestSpecProvider(_spec);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
     private static readonly UInt256 AccountBalance = 1.Ether();
@@ -54,7 +55,6 @@ public class TransactionProcessorTests
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
 
@@ -78,11 +78,11 @@ public class TransactionProcessorTests
             .WithExtraData(extraData)
             .WithBeneficiary(benefeciaryAddress).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor!.Execute(tx, block.Header, NullTxTracer.Instance);
 
         Assert.Multiple(() =>
         {
-            Assert.That(_stateProvider.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
+            Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
             Assert.That(_stateProvider.GetBalance(benefeciaryAddress), Is.EqualTo(goesToBeneficiary));
         });
     }

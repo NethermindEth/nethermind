@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
-            string expectedAccounts = string.Join(',', _wallet.GetAccounts().Select(a => $"\"{a.ToString()}\""));
+            string expectedAccounts = string.Join(',', _wallet.GetAccounts().Select(static a => $"\"{a}\""));
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}],\"id\":67}}"));
         }
 
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string passphrase = "testPass";
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_importRawKey", privateKey.KeyBytes.ToHexString(), passphrase);
-            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedAddress.ToString()}\",\"id\":67}}"));
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedAddress}\",\"id\":67}}"));
             _keyStore.DeleteKey(expectedAddress);
         }
 

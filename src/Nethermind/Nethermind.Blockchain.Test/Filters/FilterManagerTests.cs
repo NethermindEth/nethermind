@@ -41,202 +41,227 @@ public class FilterManagerTests
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_default_filter_parameters()
-        => LogsShouldNotBeEmpty(_ => { }, _ => { });
+        => LogsShouldNotBeEmpty(static _ => { }, static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_default_filters_parameters()
-        => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] { _ => { }, _ => { }, _ => { } },
-            new Action<ReceiptBuilder>[] { _ => { }, _ => { }, _ => { } });
+        => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] { static _ => { }, static _ => { }, static _ => { } },
+            new Action<ReceiptBuilder>[] { static _ => { }, static _ => { }, static _ => { } });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_earliest_type()
-        => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), _ => { });
+        => LogsShouldNotBeEmpty(static filter => filter.FromEarliestBlock(), static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_pending_type()
-        => LogsShouldNotBeEmpty(filter => filter.FromPendingBlock(), _ => { });
+        => LogsShouldNotBeEmpty(static filter => filter.FromPendingBlock(), static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_latest_type()
-        => LogsShouldNotBeEmpty(filter => filter.FromLatestBlock(), _ => { });
+        => LogsShouldNotBeEmpty(static filter => filter.FromLatestBlock(), static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_to_block_earliest_type()
-        => LogsShouldNotBeEmpty(filter => filter.ToEarliestBlock(), _ => { });
+        => LogsShouldNotBeEmpty(static filter => filter.ToEarliestBlock(), static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_to_block_pending_type()
-        => LogsShouldNotBeEmpty(filter => filter.ToPendingBlock(), _ => { });
+        => LogsShouldNotBeEmpty(static filter => filter.ToPendingBlock(), static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_to_block_latest_type()
-        => LogsShouldNotBeEmpty(filter => filter.ToLatestBlock(), _ => { });
+        => LogsShouldNotBeEmpty(static filter => filter.ToLatestBlock(), static _ => { });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_number_in_range()
-        => LogsShouldNotBeEmpty(filter => filter.FromBlock(1L),
-            receipt => receipt.WithBlockNumber(2L));
+        => LogsShouldNotBeEmpty(static filter => filter.FromBlock(1L),
+            static receipt => receipt.WithBlockNumber(2L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_from_blocks_numbers_in_range()
         => LogsShouldNotBeEmpty(
             new Action<FilterBuilder>[]
-            {
-                filter => filter.FromBlock(1L),
-                filter => filter.FromBlock(2L),
-                filter => filter.FromBlock(3L)
+            { static filter => filter.FromBlock(1L),
+                static filter => filter.FromBlock(2L),
+                static filter => filter.FromBlock(3L)
             },
             new Action<ReceiptBuilder>[]
-            {
-                receipt => receipt.WithBlockNumber(1L),
-                receipt => receipt.WithBlockNumber(5L),
-                receipt => receipt.WithBlockNumber(10L)
+            { static receipt => receipt.WithBlockNumber(1L),
+                static receipt => receipt.WithBlockNumber(5L),
+                static receipt => receipt.WithBlockNumber(10L)
             });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_from_block_number_not_in_range()
-        => LogsShouldBeEmpty(filter => filter.FromBlock(1L),
-            receipt => receipt.WithBlockNumber(0L));
+        => LogsShouldBeEmpty(static filter => filter.FromBlock(1L),
+            static receipt => receipt.WithBlockNumber(0L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_to_block_number_in_range()
-        => LogsShouldNotBeEmpty(filter => filter.ToBlock(2L),
-            receipt => receipt.WithBlockNumber(1L));
+        => LogsShouldNotBeEmpty(static filter => filter.ToBlock(2L),
+            static receipt => receipt.WithBlockNumber(1L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_to_blocks_numbers_in_range()
         => LogsShouldNotBeEmpty(
             new Action<FilterBuilder>[]
-            {
-                filter => filter.ToBlock(1L),
-                filter => filter.ToBlock(5L),
-                filter => filter.ToBlock(10L)
+            { static filter => filter.ToBlock(1L),
+                static filter => filter.ToBlock(5L),
+                static filter => filter.ToBlock(10L)
             },
             new Action<ReceiptBuilder>[]
-            {
-                receipt => receipt.WithBlockNumber(1L),
-                receipt => receipt.WithBlockNumber(2L),
-                receipt => receipt.WithBlockNumber(3L)
+            { static receipt => receipt.WithBlockNumber(1L),
+                static receipt => receipt.WithBlockNumber(2L),
+                static receipt => receipt.WithBlockNumber(3L)
             });
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_to_block_number_not_in_range()
-        => LogsShouldBeEmpty(filter => filter.ToBlock(1L),
-            receipt => receipt.WithBlockNumber(2L));
+        => LogsShouldBeEmpty(static filter => filter.ToBlock(1L),
+            static receipt => receipt.WithBlockNumber(2L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_number_in_range_and_to_block_number_in_range()
-        => LogsShouldNotBeEmpty(filter => filter.FromBlock(2L).ToBlock(6L),
-            receipt => receipt.WithBlockNumber(4L));
+        => LogsShouldNotBeEmpty(static filter => filter.FromBlock(2L).ToBlock(6L),
+            static receipt => receipt.WithBlockNumber(4L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_from_block_number_in_range_and_to_block_number_not_in_range()
-        => LogsShouldBeEmpty(filter => filter.FromBlock(2L).ToBlock(3L),
-            receipt => receipt.WithBlockNumber(4L));
+        => LogsShouldBeEmpty(static filter => filter.FromBlock(2L).ToBlock(3L),
+            static receipt => receipt.WithBlockNumber(4L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_in_range()
-        => LogsShouldBeEmpty(filter => filter.FromBlock(5L).ToBlock(7L),
-            receipt => receipt.WithBlockNumber(4L));
+        => LogsShouldBeEmpty(static filter => filter.FromBlock(5L).ToBlock(7L),
+            static receipt => receipt.WithBlockNumber(4L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_not_in_range()
-        => LogsShouldBeEmpty(filter => filter.FromBlock(2L).ToBlock(3L),
-            receipt => receipt.WithBlockNumber(4L));
+        => LogsShouldBeEmpty(static filter => filter.FromBlock(2L).ToBlock(3L),
+            static receipt => receipt.WithBlockNumber(4L));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_address()
-        => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
-            receipt => receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
+        => LogsShouldNotBeEmpty(static filter => filter.WithAddress(TestItem.AddressA),
+            static receipt => receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_non_existing_address()
-        => LogsShouldBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
-            receipt => receipt
+        => LogsShouldBeEmpty(static filter => filter.WithAddress(TestItem.AddressA),
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_addresses()
-        => LogsShouldNotBeEmpty(filter => filter.WithAddresses(TestItem.AddressA, TestItem.AddressB),
-            receipt => receipt
+        => LogsShouldNotBeEmpty(static filter => filter.WithAddresses(TestItem.AddressA, TestItem.AddressB),
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_non_existing_addresses()
-        => LogsShouldBeEmpty(filter => filter.WithAddresses(TestItem.AddressA, TestItem.AddressB),
-            receipt => receipt
+        => LogsShouldBeEmpty(static filter => filter.WithAddresses(TestItem.AddressA, TestItem.AddressB),
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_specific_topic()
-        => LogsShouldNotBeEmpty(filter => filter
+        => LogsShouldNotBeEmpty(static filter => filter
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
-            receipt => receipt
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_non_existing_specific_topic()
-        => LogsShouldBeEmpty(filter => filter
+        => LogsShouldBeEmpty(static filter => filter
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
-            receipt => receipt
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_any_topic()
-        => LogsShouldNotBeEmpty(filter => filter
+        => LogsShouldNotBeEmpty(static filter => filter
                 .WithTopicExpressions(TestTopicExpressions.Any),
-            receipt => receipt
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_or_topic()
-        => LogsShouldNotBeEmpty(filter => filter
+        => LogsShouldNotBeEmpty(static filter => filter
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
-            receipt => receipt
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_non_existing_or_topic()
-        => LogsShouldBeEmpty(filter => filter
+        => LogsShouldBeEmpty(static filter => filter
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakD))),
-            receipt => receipt
+            static receipt => receipt
                 .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_block_and_address_and_topics()
-        => LogsShouldNotBeEmpty(filter => filter
+        => LogsShouldNotBeEmpty(static filter => filter
                 .FromBlock(1L)
                 .ToBlock(10L)
                 .WithAddress(TestItem.AddressA)
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
-            receipt => receipt
+            static receipt => receipt
                 .WithBlockNumber(6L)
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
                     .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_existing_block_and_addresses_and_topics()
-        => LogsShouldNotBeEmpty(filter => filter
+        => LogsShouldNotBeEmpty(static filter => filter
                 .FromBlock(1L)
                 .ToBlock(10L)
                 .WithAddresses(TestItem.AddressA, TestItem.AddressB)
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
-            receipt => receipt
+            static receipt => receipt
                 .WithBlockNumber(6L)
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
                     .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_existing_block_and_addresses_and_non_existing_topic()
-        => LogsShouldBeEmpty(filter => filter
+        => LogsShouldBeEmpty(static filter => filter
                 .FromBlock(1L)
                 .ToBlock(10L)
                 .WithAddresses(TestItem.AddressA, TestItem.AddressB)
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakC), TestTopicExpressions.Specific(TestItem.KeccakD))),
-            receipt => receipt
+            static receipt => receipt
                 .WithBlockNumber(6L)
                 .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
                     .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    [TestCase(1, 1)]
+    [TestCase(5, 3)]
+    public void logs_should_have_correct_log_indexes(int filtersCount, int logsPerTx)
+    {
+        const int txCount = 10;
+
+        Assert(
+            filterBuilder: (builder, _) => builder
+                .FromBlock(1L)
+                .ToBlock(10L)
+                .WithAddresses(TestItem.AddressA, TestItem.AddressB)
+                .WithTopicExpressions(TestTopicExpressions.Or(
+                    TestTopicExpressions.Specific(TestItem.KeccakB),
+                    TestTopicExpressions.Specific(TestItem.KeccakD)
+                )),
+            filterCount: filtersCount,
+            receiptBuilder: (builder, _) => builder
+                .WithBlockNumber(6L)
+                .WithLogs(Enumerable.Range(0, logsPerTx).Select(_ =>
+                    Build.A.LogEntry
+                        .WithAddress(TestItem.AddressA)
+                        .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject
+                ).ToArray()),
+            receiptCount: txCount,
+            logsAssertion: logs => logs.Select(l => l.LogIndex).Should().BeEquivalentTo(Enumerable.Range(0, txCount * logsPerTx))
+        );
+    }
 
 
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
@@ -249,11 +274,20 @@ public class FilterManagerTests
 
     private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, logs => logs.Should().NotBeEmpty());
+        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().NotBeEmpty());
 
     private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, logs => logs.Should().BeEmpty());
+        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().BeEmpty());
+
+    private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
+        Action<ReceiptBuilder, int> receiptBuilder, int receiptCount,
+        Action<IEnumerable<FilterLog>> logsAssertion)
+        => Assert(
+            Enumerable.Range(0, filterCount).Select<int, Action<FilterBuilder>>(i => builder => filterBuilder(builder, i)),
+            Enumerable.Range(0, receiptCount).Select<int, Action<ReceiptBuilder>>(i => builder => receiptBuilder(builder, i)),
+            logsAssertion
+        );
 
     private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
@@ -280,7 +314,7 @@ public class FilterManagerTests
         _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
         _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
 
-        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
+        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, []));
 
         int index = 1;
         foreach (TxReceipt receipt in receipts)

@@ -152,7 +152,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
     {
-        _debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(r => r.ToReceipt()).ToArray());
+        _debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(static r => r.ToReceipt()).ToArray());
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 
@@ -312,9 +312,9 @@ public class DebugRpcModule : IDebugRpcModule
             return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
-        if (!receipts.Any())
+        if (receipts.Length == 0)
         {
-            return ResultWrapper<byte[][]>.Success(Array.Empty<byte[]>());
+            return ResultWrapper<byte[][]>.Success([]);
         }
         RlpBehaviors behavior =
             (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?

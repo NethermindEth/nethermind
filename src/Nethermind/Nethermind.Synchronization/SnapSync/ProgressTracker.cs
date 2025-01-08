@@ -58,14 +58,14 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
 
-        private readonly Pivot _pivot;
+        private readonly FastSync.StateSyncPivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, [KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, ILogManager logManager)
+        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
-            _pivot = new Pivot(blockTree, syncConfig, logManager);
+            _pivot = pivot;
 
             int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
             if (accountRangePartitionCount < 1)
@@ -137,6 +137,12 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
+            if (_pivot.GetPivotHeader() is null)
+            {
+                nextBatch = null;
+                return false;
+            }
+
             Interlocked.Increment(ref _reqCount);
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
@@ -313,6 +319,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash)
         {
+            _pivot.UpdatedStorages.Add(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
 
@@ -435,7 +442,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (_logger.IsTrace || (_logger.IsDebug && _reqCount % 1000 == 0))
             {
-                int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
+                int moreAccountCount = AccountRangePartitions.Count(static kv => kv.Value.MoreAccountsToRight);
 
                 _logger.Debug(
                     $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - Requests Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} - Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}");

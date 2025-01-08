@@ -109,7 +109,7 @@ namespace Nethermind.Core
                 {
                     if (allowOverflow)
                     {
-                        span = span.Slice(value.Length - size);
+                        span = span[(value.Length - size)..];
                     }
                     else
                     {
@@ -138,6 +138,18 @@ namespace Nethermind.Core
             }
 
             Bytes = bytes;
+        }
+
+        public Address(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != Size)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
+                    nameof(bytes));
+            }
+
+            Bytes = bytes.ToArray();
         }
 
         public bool Equals(Address? other)
@@ -240,7 +252,7 @@ namespace Nethermind.Core
         public ValueHash256 ToHash()
         {
             Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes.Slice(Hash256.Size - Address.Size));
+            Bytes.CopyTo(addressBytes[(Hash256.Size - Address.Size)..]);
             return new ValueHash256(addressBytes);
         }
     }

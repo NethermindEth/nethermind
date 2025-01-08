@@ -180,7 +180,7 @@ internal static class UInt256Extensions
 {
     public static void WriteBigEndian(in this UInt256 value, Span<byte> output)
     {
-        BinaryPrimitives.WriteUInt64BigEndian(output.Slice(0, 8), value.u3);
+        BinaryPrimitives.WriteUInt64BigEndian(output[..8], value.u3);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(8, 8), value.u2);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(16, 8), value.u1);
         BinaryPrimitives.WriteUInt64BigEndian(output.Slice(24, 8), value.u0);
