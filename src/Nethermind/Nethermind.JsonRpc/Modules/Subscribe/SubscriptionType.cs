@@ -18,7 +18,5 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             public const string PeerEvents = "peerEvents";
         }
-
-        
     }
 }
