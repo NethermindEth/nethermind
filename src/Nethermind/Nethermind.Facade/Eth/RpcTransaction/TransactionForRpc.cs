@@ -86,7 +86,15 @@ public abstract class TransactionForRpc
             Utf8JsonReader txTypeReader = reader;
             TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref txTypeReader, options);
 
-            TxType discriminator = (TxType)(type.Type ?? (ulong)DefaultTxType);
+            TxType discriminator = type switch
+            {
+                { Type: not null } => (TxType)type.Type,
+                { MaxFeePerBlobGas: not null } or { BlobVersionedHashes: not null } => TxType.Blob,
+                { AuthorizationList: not null } => TxType.SetCode,
+                { MaxPriorityFeePerGas: not null } => TxType.EIP1559,
+                { AccessList: not null } => TxType.AccessList,
+                _ => DefaultTxType,
+            };
 
             return _types.TryGetByTxType(discriminator, out Type concreteTxType)
                 ? (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options)
@@ -106,6 +114,11 @@ public abstract class TransactionForRpc
     {
         // Hex value
         public ulong? Type { get; set; }
+        public UInt256? MaxPriorityFeePerGas { get; set; }
+        public AccessListForRpc? AccessList { get; set; }
+        public UInt256? MaxFeePerBlobGas { get; set; }
+        public byte[][]? BlobVersionedHashes { get; set; }
+        public AuthorizationListForRpc AuthorizationList { get; set; }
     }
 
     internal class TransactionConverter
