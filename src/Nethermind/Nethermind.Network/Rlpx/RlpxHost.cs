@@ -52,7 +52,8 @@ namespace Nethermind.Network.Rlpx
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
-            ILogManager logManager
+            ILogManager logManager,
+            IChannelFactory channelFactory
         ) : this(
             serializationService,
             localEnode.PublicKey,
@@ -64,7 +65,8 @@ namespace Nethermind.Network.Rlpx
             sessionMonitor,
             disconnectsAnalyzer,
             logManager,
-            TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs)
+            TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs),
+            channelFactory
         ) {}
 
         public RlpxHost(

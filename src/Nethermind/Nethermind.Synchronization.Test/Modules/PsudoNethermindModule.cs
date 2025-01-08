@@ -4,25 +4,34 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Init;
+using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
+using Block = Nethermind.EthStats.Messages.Models.Block;
 using Module = Autofac.Module;
 
 namespace Nethermind.Synchronization.Test.Modules;
@@ -51,6 +60,17 @@ public class PsudoNethermindModule(IConfigProvider configProvider, ChainSpec spe
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((spec) => new EthereumEcdsa(spec.ChainId))
             .AddSingleton<ITimerFactory, TimerFactory>()
 
+            .AddSingleton<IBackgroundTaskScheduler>((ctx) =>
+            {
+                BlockProcessingModule.MainBlockProcessingContext blockProcessingContext = ctx.Resolve<BlockProcessingModule.MainBlockProcessingContext>();
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+
+                return new BackgroundTaskScheduler(
+                    blockProcessingContext.BlockProcessor,
+                    initConfig.BackgroundTaskConcurrency,
+                    logManager);
+            })
             .AddSingleton(configProvider)
             .AddSingleton<ChainSpec>(spec)
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
@@ -119,6 +139,28 @@ public class NetworkModule : Module
 
                 return serializationService;
             })
+
+
+            .AddSingleton<IProtocolValidator, ProtocolValidator>()
+            .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
+            .AddSingleton<ForkInfo>()
+            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
+            .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
+
+            .AddKeyedSingleton<INetworkStorage>("PeersDb", (ctx) =>
+            {
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+
+                string dbName = "PeersDB";
+                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
+                    ? new MemDb(dbName)
+                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                        logManager);
+                return new NetworkStorage(peersDb, logManager);
+            })
+
+            .AddSingleton<IProtocolsManager, ProtocolsManager>()
 
             ;
 

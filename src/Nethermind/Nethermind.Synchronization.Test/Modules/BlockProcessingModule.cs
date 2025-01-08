@@ -166,6 +166,7 @@ public class BlockProcessingModule: Module
     public record MainBlockProcessingContext(
         ILifetimeScope LifetimeScope,
         BlockchainProcessor BlockchainProcessor,
+        IBlockProcessor BlockProcessor,
         GenesisLoader GenesisLoader): IAsyncDisposable
     {
         public IBlockProcessingQueue BlockProcessingQueue => BlockchainProcessor;

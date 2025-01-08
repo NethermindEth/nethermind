@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.State;
 using Nethermind.Synchronization.Test.Modules;
@@ -38,6 +39,7 @@ public class BlockchainTestContext: IAsyncDisposable
     private readonly IManualBlockProductionTrigger _blockProductionTrigger;
     private readonly BlockProcessingModule.MainBlockProcessingContext _mainBlockProcessingContext;
     private readonly IBlockProducerRunner _blockProducerRunner;
+    private readonly Func<IProtocolsManager> _protocolsManagerFactory;
     private readonly IRlpxHost _rlpxHost;
 
     public BlockchainTestContext(
@@ -52,6 +54,7 @@ public class BlockchainTestContext: IAsyncDisposable
         ITxPool txPool,
         IBlockProducerRunner blockProducerRunner,
         ProducedBlockSuggester producedBlockSuggester, // Need to be instantiated,
+        Func<IProtocolsManager> protocolsManagerFactory,
         IRlpxHost rlpxHost
     )
     {
@@ -65,14 +68,23 @@ public class BlockchainTestContext: IAsyncDisposable
         _timestamper = timestamper;
         _blockProductionTrigger = blockProductionTrigger;
         _blockProducerRunner = blockProducerRunner;
+        _protocolsManagerFactory = protocolsManagerFactory;
         _rlpxHost = rlpxHost;
-
-        rlpxHost.Init();
-        blockProducerRunner.Start();
-        mainBlockProcessingContext.BlockchainProcessor.Start();
     }
 
-    public async Task PrepareGenesis(CancellationToken cancellation)
+    public async Task Start(CancellationToken cancellationToken)
+    {
+        await _rlpxHost.Init();
+        _blockProducerRunner.Start();
+        _mainBlockProcessingContext.BlockchainProcessor.Start();
+
+        await PrepareGenesis(cancellationToken);
+
+        // This need the genesis so it need to be resolved after genesis was prepared.
+        _protocolsManagerFactory();
+    }
+
+    private async Task PrepareGenesis(CancellationToken cancellation)
     {
         Task newHeadTask = Wait.ForEventCondition<BlockEventArgs>(
             cancellation,

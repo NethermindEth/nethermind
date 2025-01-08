@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Net;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -18,8 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Network.Rlpx;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -43,6 +39,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey): Module
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
             .AddSingleton<IChannelFactory>(new LocalChannelFactory("test"))
+            .AddSingleton<IDiscoveryApp, NullDiscoveryApp>()
 
             .AddSingleton<BlockchainTestContext>()
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))

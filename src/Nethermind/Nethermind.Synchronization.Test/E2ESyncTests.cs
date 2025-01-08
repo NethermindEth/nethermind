@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,10 +47,11 @@ public class E2ESyncTests
             .AddModule(new TestEnvironmentModule(nodeKey))
             .Build();
 
-        var thething = server.Resolve<BlockchainTestContext>();
-
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.CancelAfter(10.Seconds());
+
+        var thething = server.Resolve<BlockchainTestContext>();
+        await thething.Start(cancellationTokenSource.Token);
 
         byte[] spam = Prepare.EvmCode
             .ForCreate2Of(
@@ -76,8 +78,6 @@ public class E2ESyncTests
                     .Op(Instruction.SLOAD)
                     .Done)
             .Done;
-
-        await thething.PrepareGenesis(cancellationTokenSource.Token);
 
         for (int i = 0; i < 1000; i++)
         {

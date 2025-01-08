@@ -59,7 +59,7 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    private const string PeersDbPath = "peers";
+    public const string PeersDbPath = "peers";
 
     protected readonly IApiWithNetwork _api;
     private readonly ILogger _logger;
