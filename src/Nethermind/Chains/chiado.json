@@ -88,12 +88,8 @@
     "terminalTotalDifficulty": "231707791542740786049188744689299064356246512",
     "blobSchedule": {
       "cancun": {
-        "target": 3,
-        "max": 6
-      },
-      "prague": {
-        "target": 6,
-        "max": 9
+        "target": 1,
+        "max": 2
       }
     }
   },
