@@ -270,14 +270,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task No_subscription_name_admin()
-        {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "admin_subscribe");
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"Incorrect parameters count, expected: 2, actual: 0\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
-        }
-
-        [Test]
         public async Task NewHeadSubscription_creating_result()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads");
@@ -1152,20 +1144,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task Admin_unsubscribe_success()
-        {
-            string serializedSub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "admin_subscribe", "peerEvents");
-            string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
-            string expectedSub = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
-            expectedSub.Should().Be(serializedSub);
-
-            string serializedUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "admin_unsubscribe", subscriptionId);
-            string expectedUnsub = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-
-            expectedUnsub.Should().Be(serializedUnsub);
-        }
-
-        [Test]
         public async Task Subscriptions_remove_after_closing_websockets_client()
         {
             string serializedLogs = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
@@ -1193,23 +1171,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
                     newPendingTxId, ".\",\"data\":false},\"id\":67}");
             expectedNewPendingTxUnsub.Should().Be(serializedNewPendingTxUnsub);
-        }
-
-        [Test]
-        public async Task Admin_subscriptions_remove_after_closing_websockets_client()
-        {
-            string serializedPeerEvents = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "admin_subscribe", "peerEvents");
-            string peerEventsId = serializedPeerEvents.Substring(serializedPeerEvents.Length - 44, 34);
-            string expectedPeerEvents = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", peerEventsId, "\",\"id\":67}");
-            expectedPeerEvents.Should().Be(serializedPeerEvents);
-
-            _jsonRpcDuplexClient.Closed += Raise.Event();
-
-            string serializedPeerEventsUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "admin_unsubscribe", peerEventsId);
-            string expectedPeerEventsUnsub =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    peerEventsId, ".\",\"data\":false},\"id\":67}");
-            expectedPeerEventsUnsub.Should().Be(serializedPeerEventsUnsub);
         }
 
         [Test]
@@ -1243,34 +1204,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             jsonRpcResults.Count.Should().Be(1);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
-            expectedResult.Should().Be(serialized);
-        }
-
-        [Test]
-        public async Task PeerEventsSubscription_creating_result()
-        {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "admin_subscribe", "peerEvents");
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            expectedResult.Should().Be(serialized);
-        }
-        [Test]
-        public void Admin_subscription_on_PeerAdded_event()
-        {
-            Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
-            JsonRpcResult jsonRpcResult = GetPeerEventsAddResult(new PeerEventArgs(new Peer(node)), out string subscriptionId);
-            jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"Add\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
-            expectedResult.Should().Be(serialized);
-        }
-        [Test]
-        public void Admin_subscription_on_PeerRemoved_event()
-        {
-            Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
-            JsonRpcResult jsonRpcResult = GetPeerEventsRemovedResult(new PeerEventArgs(new Peer(node)), out string subscriptionId);
-            jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"Drop\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
             expectedResult.Should().Be(serialized);
         }
     }

@@ -39,13 +39,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions
                     ? TransactionForRpc.FromTransaction(e.Transaction, chainId: _specProvider.ChainId)
-                    : e.Transaction.Hash!, "eth_subscription");
+                    : e.Transaction.Hash!);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
             });
         }
 
-        public override string Type => SubscriptionType.NewPendingTransactions;
+        public override string Type => SubscriptionType.EthSubscription.NewPendingTransactions;
 
         public override void Dispose()
         {

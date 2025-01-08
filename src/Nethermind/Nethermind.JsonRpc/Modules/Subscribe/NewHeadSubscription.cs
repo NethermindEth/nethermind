@@ -39,13 +39,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             ScheduleAction(async () =>
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider), "eth_subscription");
+                using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             });
         }
 
-        public override string Type => SubscriptionType.NewHeads;
+        public override string Type => SubscriptionType.EthSubscription.NewHeads;
 
         public override void Dispose()
         {

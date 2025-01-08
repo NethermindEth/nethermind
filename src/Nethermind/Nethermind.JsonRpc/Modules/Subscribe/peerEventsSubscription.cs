@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             PeerInfo peerInfo = new(peerEventArgs.Peer, false);
             ScheduleAction(async () =>
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(new PeerAddDropResponse(peerInfo, "Add", null), "admin_subscription");
+                using JsonRpcResult result = CreateSubscriptionMessage(new PeerAddDropResponse(peerInfo, "Add", null), SubscriptionMethodName.AdminSubscription);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed new peer.");
             });
@@ -44,13 +44,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             ScheduleAction(async () =>
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(new PeerAddDropResponse(peerInfo, "Drop", null), "admin_subscription");
+                using JsonRpcResult result = CreateSubscriptionMessage(new PeerAddDropResponse(peerInfo, "Drop", null), SubscriptionMethodName.AdminSubscription);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed dropped peer.");
             });
         }
 
-        public override string Type => AdminSubscriptionType.PeerEvents;
+        public override string Type => SubscriptionType.AdminSubscription.PeerEvents;
 
         public override void Dispose()
         {

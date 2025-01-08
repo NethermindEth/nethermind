@@ -126,6 +126,23 @@ public class RegisterRpcModules : IStep
         _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
 
+        StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
+
+        SubscriptionFactory subscriptionFactory = new(
+            _api.LogManager,
+            _api.BlockTree,
+            _api.TxPool,
+            _api.ReceiptMonitor,
+            _api.FilterStore,
+            _api.EthSyncingInfo!,
+            _api.SpecProvider,
+            rpcModuleProvider.Serializer,
+            _api.PeerPool);
+
+        _api.SubscriptionFactory = subscriptionFactory;
+
+        SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
+
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -137,7 +154,8 @@ public class RegisterRpcModules : IStep
             _api.AdminEraService,
             initConfig.BaseDbPath,
             pruningTrigger,
-            getFromApi.ChainSpec.Parameters);
+            getFromApi.ChainSpec.Parameters,
+            subscriptionManager);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
@@ -162,8 +180,6 @@ public class RegisterRpcModules : IStep
             _api.SpecProvider,
             _api.PeerManager);
         rpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
-
-        StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
 
         JsonRpcLocalStats jsonRpcLocalStats = new(
             _api.Timestamper,

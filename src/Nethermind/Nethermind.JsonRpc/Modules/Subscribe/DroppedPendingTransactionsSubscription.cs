@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             ScheduleAction(async () =>
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash, "eth_subscription");
+                using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace)
                     _logger.Trace(
@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        public override string Type => SubscriptionType.DroppedPendingTransactions;
+        public override string Type => SubscriptionType.EthSubscription.DroppedPendingTransactions;
 
         public override void Dispose()
         {

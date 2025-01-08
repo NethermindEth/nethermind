@@ -8,7 +8,7 @@ using Nethermind.Blockchain.FullPruning;
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 [RpcModule(ModuleType.Admin)]
-public interface IAdminRpcModule : IRpcModule
+public interface IAdminRpcModule : IContextAwareRpcModule
 {
     [JsonRpcMethod(Description = "Adds given node.",
         EdgeCaseHint = "",
@@ -107,4 +107,9 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<string> admin_verifyTrie(BlockParameter block);
+
+    [JsonRpcMethod(Description = "Starts a subscription (on WebSockets/Sockets) to a particular event. For every event that matches the subscription a JSON-RPC notification with event details and subscription ID will be sent to a client.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null);
+    [JsonRpcMethod(Description = "Unsubscribes from a subscription.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    ResultWrapper<bool> admin_unsubscribe(string subscriptionId);
 }
