@@ -199,8 +199,9 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        var maxBlobGasPerBlock = spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
-        return totalDataGas > maxBlobGasPerBlock ? string.Format(TxErrorMessages.BlobTxGasLimitExceeded, maxBlobGasPerBlock)
+        // maxBlobGasPerTxn = maxBlobGasPerBlock
+        var maxBlobGasPerTxn = spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
+        return totalDataGas > maxBlobGasPerTxn ? string.Format(TxErrorMessages.BlobTxGasLimitExceeded, maxBlobGasPerTxn)
             : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
             : ValidateBlobVersionedHashes();
 
