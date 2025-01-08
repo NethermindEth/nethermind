@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
-    <ProjectReference Include="..\Nethermind.Network.Portal\Nethermind.Network.Portal.csproj" />
+    <ProjectReference Include="..\Nethermind.Portal.Plugin\Nethermind.Portal.Plugin.csproj" />
   </ItemGroup>
 
 </Project>

@@ -28,8 +28,12 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Network.Config;
 using Nethermind.Network.Kademlia;
 using DotNetty.Transport.Bootstrapping;
+using Nethermind.Serialization.Json;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Facade.Eth;
 
-var trin = "enr:-JS4QEHRg3Hx-tRSiy-8LbnvGY3iptPSX-q1IBTqmle2beD_FINOR8j5EuBKd4BqCZS8oexrCwz4RFE2Siv6rMr2UuCEZ3I8rGOKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgiMx";
+EthereumJsonSerializer json = new();
+//var trin = "enr:-JS4QEHRg3Hx-tRSiy-8LbnvGY3iptPSX-q1IBTqmle2beD_FINOR8j5EuBKd4BqCZS8oexrCwz4RFE2Siv6rMr2UuCEZ3I8rGOKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDT6KDCWWJCqGnQlJ-fRit89uGtsKlT582MsBHJ9IPzMWDdWRwgiMx";
 
 int port = 30303;
 IPAddress addr = await TryGetIP(); //IPAddress.Parse("127.0.0.1");
@@ -53,6 +57,7 @@ SessionOptions _sessionOptions = new()
 IServiceCollection services = new ServiceCollection()
    .AddSingleton<ILoggerFactory, NullLoggerFactory>()
    .AddSingleton((IBlockTree)new EmptyBlockTree())
+   .AddSingleton<ISyncConfig>(new SyncConfig())
    .AddSingleton((IReceiptStorage)new EmptyReceiptStorage())
    .AddSingleton((IReceiptFinder)new EmptyReceiptFinder())
    .AddSingleton<NettyDiscoveryV5Handler>()
@@ -139,58 +144,61 @@ await proto.InitAsync();
 string[] bootNodesStr =
 [
     //Trin bootstrap nodes
-    trin,
-    //"enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
-    //"enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
-    //"enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+    //trin,
+    "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+    "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
+    "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
 
-    ////Fluffy bootstrap nodes
-    //"enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
-    //"enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
-    //"enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
-    //"enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+    //Fluffy bootstrap nodes
+    "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+    "enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
+    "enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
+    "enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
 
-    ////Ultralight bootstrap nodes
-    //"enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
-    //"enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
-    //"enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
-    //"enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
+    //Ultralight bootstrap nodes
+    "enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
+    "enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
+    "enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
+    "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o"
 ];
 IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
 
 IServiceProvider historyNetworkServiceProvider = _serviceProvider.CreateHistoryNetworkServiceProviderWithRpc(historyNetworkBootnodes);
 IPortalHistoryNetwork historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
 
-_logger.Warn($"Pinging");
-
 //var p = await proto.SendPingAsync(enrFactory.CreateFromString("enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg", identityVerifier));
 //PongMessage? p = await proto.SendPingAsync(enrFactory.CreateFromString("enr:-JS4QGc-JGSrDwji6mkl9Er86OUndfArTYVNFX3e_uJXeXvoWYQOFOONzY_cTRr3UjXlvjWqdMjMhCk6ceeIsDVo8o6EZ21lWWOKdCBjOTNlMTI5ZIJpZIJ2NIJpcISLsbU9iXNlY3AyNTZrMaEDUVl8sas6LoPjnr604i6eeUon2nYkueluBh0JAFrDKf-DdWRwgiMx", identityVerifier));
 
 IKademlia<IEnr>? kad = historyNetworkServiceProvider.GetService<IKademlia<IEnr>>();
 IPortalHistoryNetwork net = historyNetworkServiceProvider.GetService<IPortalHistoryNetwork>()!;
-List<BlockHeader?> blocks = new List<BlockHeader?>();
 
 
-Console.ReadLine();
-//for (var i = 1; i < 10; i++)
-//{
-//    blocks.Add(await net.LookupBlockHeader(1, default));
-//}
-await Task.Delay(10000);
-BlockHeader? head = await net.LookupBlockHeader(1, default);
-//BlockHeader? headByHash = head is not null ? await net.LookupBlockHeader(head.Hash, default) : null;
-//BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
-//TxReceipt[]? receiptByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
+_logger.Warn($"Ready");
 
-Console.WriteLine(blocks[0]);
-//Console.ReadLine();
+while (true)
+{
+    string? input = Console.ReadLine();
+    if (input is null or "exit")
+    {
+        break;
+    }
 
-_logger.Warn($"Done");
+    Hash256 hash = new Hash256(input);
+    BlockHeader? head = await net.LookupBlockHeader(hash, default);
+    Console.WriteLine("Header: {0}", json.Serialize(head));
 
-Console.ReadLine();
+    BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
+    Console.WriteLine("Body: {0}", bodyByHash is not null ? json.Serialize(new BlockForRpc(new Block(head!, bodyByHash), true, null)) : null);
 
+    TxReceipt[]? receiptsByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
+    Console.WriteLine("Receitps: {0}", receiptsByHash?.Length);
 
-async Task<IPAddress> TryGetIP()
+    //BlockHeader? headByHash = head is not null ? await net.LookupBlockHeader(head.Hash, default) : null;
+    //BlockBody? bodyByHash = head is not null ? await net.LookupBlockBody(head.Hash, default) : null;
+    //TxReceipt[]? receiptByHash = head is not null ? await net.LookupReceipts(head.Hash, default) : null;
+}
+
+static async Task<IPAddress> TryGetIP()
 {
     using HttpClient httpClient = new() { Timeout = TimeSpan.FromSeconds(3) };
     string ip = await httpClient.GetStringAsync("http://ipv4.icanhazip.com");

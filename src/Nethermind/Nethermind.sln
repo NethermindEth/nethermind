@@ -236,7 +236,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Rlp", "..\..
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Enr", "..\..\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj", "{3CEBB49C-F3BF-4A64-85C5-77BB6296C8D6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Portal", "Nethermind.Network.Portal\Nethermind.Network.Portal.csproj", "{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Portal.Plugin", "Nethermind.Portal.Plugin\Nethermind.Portal.Plugin.csproj", "{4F0DF070-4964-4D4C-BEE7-F27C02679EF1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Kademlia", "Nethermind.Network.Kademlia\Nethermind.Network.Kademlia.csproj", "{2FE1295B-B25B-4B6F-87A6-35674E7B5966}"
 EndProject

@@ -27,7 +27,7 @@ public class BlockForRpc
     }
 
     [SkipLocalsInit]
-    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
+    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider? specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
         Author = block.Author ?? block.Beneficiary;
@@ -79,7 +79,7 @@ public class BlockForRpc
         Timestamp = block.Timestamp;
         TotalDifficulty = block.TotalDifficulty ?? 0;
         Transactions = (includeFullTransactionData
-                ? block.Transactions.Select((t, idx) => TransactionForRpc.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas, specProvider.ChainId))
+                ? block.Transactions.Select((t, idx) => TransactionForRpc.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas, specProvider?.ChainId ?? 1))
                 : block.Transactions.Select(t => t.Hash).OfType<object>())
             .ToArray();
         TransactionsRoot = block.TxRoot;

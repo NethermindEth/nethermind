@@ -200,7 +200,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 api.RpcModuleProvider!.RegisterSingle(historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>());
             });
 
-            var kad = historyNetworkServiceProvider.GetService<IKademlia<IEnr>>();
+            var kad = historyNetworkServiceProvider.GetRequiredService<IKademlia<IEnr>>();
             var net = historyNetworkServiceProvider.GetService<IPortalHistoryNetwork>()!;
             List<BlockHeader?> blocks = new List<BlockHeader?>();
 
@@ -211,95 +211,92 @@ public class DiscoveryV5App : IDiscoveryApp
                 //{
                 //    blocks.Add(await net.LookupBlockHeader(1, default));
                 //}
-                //async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
-                //{
-                //    Channel<Node> channel = Channel.CreateBounded<Node>(1);
-
-                //    async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
-                //    {
-                //        Queue<IEnr> nodesToCheck = new(startingNode);
-                //        HashSet<IEnr> checkedNodes = [];
-
-                //        while (!token.IsCancellationRequested)
-                //        {
-                //            if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
-                //            {
-                //                return;
-                //            }
-
-                //            if (TryGetNodeFromEnr(newEntry, out Node? node2))
-                //            {
-                //                await channel.Writer.WriteAsync(node2!, token);
-                //                if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
-                //                _discoveryReport?.NodeFound();
-                //            }
-
-                //            if (!checkedNodes.Add(newEntry))
-                //            {
-                //                continue;
-                //            }
-
-                //            IEnumerable<IEnr>? newNodesFound = (await kad.LookupNodesClosest(, token))?.Where(x => !checkedNodes.Contains(x));
-
-                //            if (newNodesFound is not null)
-                //            {
-                //                foreach (IEnr? node in newNodesFound)
-                //                {
-                //                    nodesToCheck.Enqueue(node);
-                //                }
-                //            }
-                //        }
-                //    }
-
-                //    IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
-                //    Random random = new();
-
-                //    const int RandomNodesToLookupCount = 3;
-
-                //    Task discoverTask = Task.Run(async () =>
-                //    {
-                //        byte[] randomNodeId = new byte[32];
-                //        while (!token.IsCancellationRequested)
-                //        {
-                //            try
-                //            {
-                //                List<Task> discoverTasks = new List<Task>();
-                //                discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
-
-                //                for (int i = 0; i < RandomNodesToLookupCount; i++)
-                //                {
-                //                    random.NextBytes(randomNodeId);
-                //                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
-                //                }
-
-                //                await Task.WhenAll(discoverTasks);
-                //            }
-                //            catch (Exception ex)
-                //            {
-                //                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-                //            }
-                //        }
-                //    });
-
-                //    try
-                //    {
-                //        await foreach (Node node in channel.Reader.ReadAllAsync(token))
-                //        {
-                //            yield return node;
-                //        }
-                //    }
-                //    finally
-                //    {
-                //        await discoverTask;
-                //    }
-                //}
-                var hash = Convert.FromHexString("88e96d4537bea4d9c05d12549907b32561d3bf31f45aae734cdc119f13406cb6");
-
-
-                while (true)
+                async IAsyncEnumerable<IEnr> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
                 {
-                    _logger.Warn($"Kad: {kad}");
-                    await Task.Delay(5000);
+                    Channel<IEnr> channel = Channel.CreateBounded<IEnr>(1);
+
+                    async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+                    {
+                        Queue<IEnr> nodesToCheck = new(startingNode);
+                        HashSet<IEnr> checkedNodes = [];
+
+                        while (!token.IsCancellationRequested)
+                        {
+                            if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+                            {
+                                return;
+                            }
+
+                            if (TryGetNodeFromEnr(newEntry, out Node? node2))
+                            {
+                                await channel.Writer.WriteAsync(newEntry!, token);
+                                if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+                                _discoveryReport?.NodeFound();
+                            }
+
+                            if (node2 is null || !checkedNodes.Add(newEntry))
+                            {
+                                continue;
+                            }
+
+                            IEnumerable<IEnr>? newNodesFound = (await kad.LookupNodesClosest(node2!.IdHash.ValueHash256, token))?.Where(x => !checkedNodes.Contains(x));
+
+                            if (newNodesFound is not null)
+                            {
+                                foreach (IEnr? node in newNodesFound)
+                                {
+                                    nodesToCheck.Enqueue(node);
+                                }
+                            }
+                        }
+                    }
+
+                    IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
+                    Random random = new();
+
+                    const int RandomNodesToLookupCount = 3;
+
+                    Task discoverTask = Task.Run(async () =>
+                    {
+                        byte[] randomNodeId = new byte[32];
+                        while (!token.IsCancellationRequested)
+                        {
+                            try
+                            {
+                                List<Task> discoverTasks = [DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId)];
+
+                                for (int i = 0; i < RandomNodesToLookupCount; i++)
+                                {
+                                    random.NextBytes(randomNodeId);
+                                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
+                                }
+
+                                await Task.WhenAll(discoverTasks);
+                            }
+                            catch (Exception ex)
+                            {
+                                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
+                            }
+                        }
+                    });
+
+                    try
+                    {
+                        await foreach (IEnr node in channel.Reader.ReadAllAsync(token))
+                        {
+                            yield return node;
+                        }
+                    }
+                    finally
+                    {
+                        await discoverTask;
+                    }
+                }
+
+                await foreach (IEnr a in DiscoverNodes(default))
+                {
+                    kad.AddOrRefresh(a);
+                    _logger.Warn($"Added to kad, state: {kad}");
                 }
             });
         }

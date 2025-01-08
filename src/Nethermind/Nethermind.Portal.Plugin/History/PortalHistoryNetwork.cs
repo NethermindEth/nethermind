@@ -20,7 +20,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
-    private readonly ISyncConfig syncConfig;
+    private readonly ISyncConfig? _syncConfig;
     private readonly RadiusTracker _radiusTracker;
     private readonly ILogger _logger;
     public static PortalHistoryNetwork? Current { get; private set; }
@@ -31,7 +31,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
         RadiusTracker radiusTracker,
         IReceiptStorage receiptStorage,
         ILogManager logManager,
-        ISyncConfig syncConfig
+        ISyncConfig? syncConfig = null
     )
     {
         Current = this;
@@ -40,7 +40,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
         _logger = logManager.GetClassLogger<PortalHistoryNetwork>();
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
-        this.syncConfig = syncConfig;
+        _syncConfig = syncConfig;
         _radiusTracker = radiusTracker;
 
         _ = Task.Run(HandleNewHeaders);
@@ -61,7 +61,7 @@ public class PortalHistoryNetwork : IPortalHistoryNetwork
 
     public void OnNewHeader(BlockHeader newHeader)
     {
-        if (syncConfig.AncientReceiptsBarrierCalc > newHeader.Number || syncConfig.AncientBodiesBarrierCalc > newHeader.Number)
+        if (_syncConfig is not null && (_syncConfig.AncientReceiptsBarrierCalc > newHeader.Number || _syncConfig.AncientBodiesBarrierCalc > newHeader.Number))
         {
             _logger.Warn($"Portal: skipped as pre-merge {newHeader.Number}");
             return;
