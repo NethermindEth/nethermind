@@ -5,6 +5,6 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public interface IBlockingVerifyTrie
+internal interface IBlockingVerifyTrie
 {
 }

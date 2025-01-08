@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -10,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -24,11 +26,13 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _codeDb;
     private readonly IDbProvider _dbProvider;
+    private readonly BlockingVerifyTrie? _blockingVerifyTrie;
 
     public ReadOnlyWorldStateManager(
         IDbProvider dbProvider,
         IReadOnlyTrieStore readOnlyTrieStore,
-        ILogManager logManager
+        ILogManager logManager,
+        IProcessExitSource? processExitSource = null
     )
     {
         _dbProvider = dbProvider;
@@ -38,6 +42,11 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
+
+        if (processExitSource is not null)
+        {
+            _blockingVerifyTrie = new BlockingVerifyTrie(_readOnlyTrieStore, GlobalStateReader , _codeDb!, processExitSource!, logManager);
+        }
     }
 
     public virtual IWorldState GlobalWorldState => throw new InvalidOperationException("global world state not supported");
@@ -82,5 +91,10 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     public virtual void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
     {
         // Noop
+    }
+
+    public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
+    {
+        return _blockingVerifyTrie?.TryStartVerifyTrie(stateAtBlock) ?? false;
     }
 }

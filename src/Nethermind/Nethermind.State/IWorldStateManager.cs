@@ -33,6 +33,7 @@ public interface IWorldStateManager
     IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
     void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
+    bool TryStartVerifyTrie(BlockHeader stateAtBlock);
 }
 
 public interface IOverridableWorldScope

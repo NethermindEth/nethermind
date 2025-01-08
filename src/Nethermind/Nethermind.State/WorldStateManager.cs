@@ -3,11 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -16,8 +19,9 @@ public class WorldStateManager(
     IWorldState worldState,
     ITrieStore trieStore,
     IDbProvider dbProvider,
-    ILogManager logManager)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
+    ILogManager logManager,
+    IProcessExitSource? processExitSource = null)
+    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager, processExitSource)
 {
     public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
     {
