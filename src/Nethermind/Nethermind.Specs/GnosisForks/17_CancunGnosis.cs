@@ -6,7 +6,8 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.GnosisForks;
 
-public class CancunGnosis: Forks.Cancun {
+public class CancunGnosis : Forks.Cancun
+{
 
     private static IReleaseSpec _instance;
     protected CancunGnosis() : base()
