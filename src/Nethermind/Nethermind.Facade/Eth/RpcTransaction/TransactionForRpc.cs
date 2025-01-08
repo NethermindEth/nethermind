@@ -96,9 +96,16 @@ public abstract class TransactionForRpc
                 _ => DefaultTxType,
             };
 
-            return _types.TryGetByTxType(discriminator, out Type concreteTxType)
+            TransactionForRpc? tx = _types.TryGetByTxType(discriminator, out Type concreteTxType)
                 ? (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options)
                 : throw new JsonException("Unknown transaction type");
+
+            if (tx is BlobTransactionForRpc blobtx)
+            {
+                blobtx.MaxFeePerBlobGas ??= 1;
+            }
+
+            return tx;
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
