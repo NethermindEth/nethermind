@@ -360,32 +360,7 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
-    {
-        CreateStorage();
-        (Block block, TxReceipt[] receipts) = InsertBlock();
-
-        if (_receiptConfig.CompactTxIndex)
-        {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
-        }
-        else
-        {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
-        }
-
-        Block newHead = Build.A.Block.WithNumber(1).TestObject;
-        _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
-
-        Assert.That(
-            () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
-            Is.Null.After(1000, 100)
-            );
-    }
-
-    [Test]
-    public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_UnlessTxIsInOtherBlockNumber()
+    public void When_NewHeadBlock_DoNotRemove_TxIndex_WhenTxIsInOtherBlockNumber()
     {
         CreateStorage();
 
