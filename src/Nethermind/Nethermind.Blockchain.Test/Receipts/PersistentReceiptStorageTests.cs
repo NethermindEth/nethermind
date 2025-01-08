@@ -385,6 +385,40 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
+    public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_UnlessTxIsInOtherBlockNumber()
+    {
+        CreateStorage();
+
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+
+        Block b1a = Build.A.Block.WithNumber(1).TestObject;
+        Block b1b = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+        Block b2a = Build.A.Block.WithNumber(2).WithParent(b1a).WithTransactions(tx).TestObject;
+        Block b2b = Build.A.Block.WithNumber(2).WithParent(b1b).TestObject;
+
+        InsertBlock(b1a);
+        InsertBlock(b1b);
+        InsertBlock(b2a);
+        InsertBlock(b2b);
+
+        // b1a
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, null));
+
+        // b1b
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
+
+        // b2a
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, b1b));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2a, null));
+
+        // b2b
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2b, b2a));
+
+        _storage.FindBlockHash(tx.Hash!).Should().Be(b1b.Hash!);
+    }
+
+    [Test]
     public async Task When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_Unless_ItsAlsoInNewBlock()
     {
         _receiptConfig.CompactTxIndex = _useCompactReceipts;
@@ -486,7 +520,12 @@ public class PersistentReceiptStorageTests
                 .TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(farHead);
         }
-        TxReceipt[] receipts = { Build.A.Receipt.WithCalculatedBloom().TestObject };
+
+        TxReceipt[] receipts = Array.Empty<TxReceipt>();
+        if (block.Transactions.Length == 1)
+        {
+            receipts = [Build.A.Receipt.WithCalculatedBloom().TestObject];
+        }
         return (block, receipts);
     }
 

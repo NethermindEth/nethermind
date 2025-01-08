@@ -376,6 +376,16 @@ namespace Nethermind.Blockchain.Receipts
                 // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
                 // is contained in the new block
                 if (newTxs?.Contains(tx.Hash) == true) continue;
+
+                // Check if the tx is of a different block number, that means that the tx could be a reorg in another
+                // block, so we don't remove it.
+                byte[] txIndexData = _transactionDb.Get(tx.Hash);
+                if (txIndexData is not null && txIndexData.Length != Hash256.Size)
+                {
+                    long blockNumber = new RlpStream(txIndexData).DecodeLong();
+                    if (blockNumber != block.Number) continue;
+                }
+
                 writeBatch[tx.Hash.Bytes] = null;
             }
         }
