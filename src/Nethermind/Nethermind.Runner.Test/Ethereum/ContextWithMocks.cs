@@ -47,6 +47,7 @@ using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Runner.Test.Ethereum
 {

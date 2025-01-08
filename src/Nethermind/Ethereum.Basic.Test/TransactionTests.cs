@@ -50,9 +50,9 @@ namespace Ethereum.Basic.Test
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
             ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, false);
-            Assert.That(decodedUnsigned.Signature.R, Is.EqualTo(decodedSigned.Signature.R), "R");
-            BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
-            BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();
+            Assert.That(decodedUnsigned.Signature.R.Span.SequenceEqual(decodedSigned.Signature.R.Span), "R");
+            BigInteger expectedS = decodedSigned.Signature.S.Span.ToUnsignedBigInteger();
+            BigInteger actualS = decodedUnsigned.Signature.S.Span.ToUnsignedBigInteger();
             BigInteger otherS = EthereumEcdsa.LowSTransform - actualS;
 
             // test does not use normalized signature
@@ -62,7 +62,7 @@ namespace Ethereum.Basic.Test
             }
 
             ulong vToCompare = decodedUnsigned.Signature.V;
-            if (otherS == decodedSigned.Signature.S.ToUnsignedBigInteger())
+            if (otherS == decodedSigned.Signature.S.Span.ToUnsignedBigInteger())
             {
                 vToCompare = vToCompare == 27ul ? 28ul : 27ul;
             }

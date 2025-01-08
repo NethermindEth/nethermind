@@ -323,12 +323,15 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_pruningStrategy.PruningEnabled)
         {
+            while (!Monitor.TryEnter(_dirtyNodesLock, TimeSpan.FromSeconds(10)))
+            {
+                if (_logger.IsInfo) _logger.Info("Waiting for state to be unlocked.");
+            }
+
             if (_currentBlockCommitter is not null)
             {
                 throw new InvalidOperationException("Cannot start a new block commit when an existing one is still not closed");
             }
-
-            Monitor.Enter(_dirtyNodesLock);
         }
 
         _currentBlockCommitter = new BlockCommitter(this, CreateCommitSet(blockNumber));
