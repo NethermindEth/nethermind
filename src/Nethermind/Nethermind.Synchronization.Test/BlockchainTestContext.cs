@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Rlpx;
 using Nethermind.State;
 using Nethermind.Synchronization.Test.Modules;
 using Nethermind.TxPool;
@@ -36,6 +38,7 @@ public class BlockchainTestContext: IAsyncDisposable
     private readonly IManualBlockProductionTrigger _blockProductionTrigger;
     private readonly BlockProcessingModule.MainBlockProcessingContext _mainBlockProcessingContext;
     private readonly IBlockProducerRunner _blockProducerRunner;
+    private readonly IRlpxHost _rlpxHost;
 
     public BlockchainTestContext(
         [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
@@ -48,7 +51,8 @@ public class BlockchainTestContext: IAsyncDisposable
         BlockProcessingModule.MainBlockProcessingContext mainBlockProcessingContext,
         ITxPool txPool,
         IBlockProducerRunner blockProducerRunner,
-        ProducedBlockSuggester producedBlockSuggester // Need to be instantiated
+        ProducedBlockSuggester producedBlockSuggester, // Need to be instantiated,
+        IRlpxHost rlpxHost
     )
     {
         _txPool = txPool;
@@ -61,7 +65,9 @@ public class BlockchainTestContext: IAsyncDisposable
         _timestamper = timestamper;
         _blockProductionTrigger = blockProductionTrigger;
         _blockProducerRunner = blockProducerRunner;
+        _rlpxHost = rlpxHost;
 
+        rlpxHost.Init();
         blockProducerRunner.Start();
         mainBlockProcessingContext.BlockchainProcessor.Start();
     }
@@ -119,5 +125,6 @@ public class BlockchainTestContext: IAsyncDisposable
     {
         await _mainBlockProcessingContext.BlockchainProcessor.StopAsync();
         await _blockProducerRunner.StopAsync();
+        await _rlpxHost.Shutdown();
     }
 }

@@ -3,12 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -30,7 +28,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;

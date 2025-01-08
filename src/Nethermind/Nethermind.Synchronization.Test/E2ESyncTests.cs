@@ -6,7 +6,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using DotNetty.Common.Concurrency;
+using DotNetty.Common.Internal.Logging;
 using Humanizer;
+using Microsoft.Extensions.Logging;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -38,12 +41,12 @@ public class E2ESyncTests
         spec.Genesis.Header.GasLimit = 100000000;
         spec.Allocations[nodeKey.Address] = new ChainSpecAllocation(30.Ether());
 
-        await using IContainer container = new ContainerBuilder()
+        await using IContainer server = new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(configProvider, spec))
             .AddModule(new TestEnvironmentModule(nodeKey))
             .Build();
 
-        var thething = container.Resolve<BlockchainTestContext>();
+        var thething = server.Resolve<BlockchainTestContext>();
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.CancelAfter(10.Seconds());

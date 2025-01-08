@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
+using Autofac.Builder;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 
@@ -252,6 +253,17 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterType<TImpl>()
             .As<T>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddAdvance<T>(this ContainerBuilder builder, Action<IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle>> configurer) where T : class
+    {
+        IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle> adv = builder
+            .RegisterType<T>()
+            .WithAttributeFiltering();
+
+        configurer(adv);
 
         return builder;
     }
