@@ -388,10 +388,10 @@ public class TxValidatorTests
     }
 
     [TestCaseSource(nameof(ShardBlobTxIncorrectTransactions))]
-    public bool ShardBlobTransaction_fields_should_be_verified(Transaction tx)
+    public bool ShardBlobTransaction_fields_should_be_verified(IReleaseSpec spec, Transaction tx)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, Cancun.Instance);
+        return txValidator.IsWellFormed(tx, spec);
     }
 
     [Test]
@@ -695,91 +695,110 @@ public class TxValidatorTests
                 .WithMaxFeePerBlobGas(1)
                 .WithShardBlobTxTypeAndFields(blobCount);
 
-            yield return new TestCaseData(MakeTestObject().SignedAndResolved().TestObject)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject().SignedAndResolved().TestObject)
             {
                 TestName = "A correct shard blob tx",
                 ExpectedResult = true
             };
 
-            yield return new TestCaseData(MakeTestObject(0)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject(0)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "BlobVersionedHashes are empty",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction - 1)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject(Eip4844Constants.MinBlobsPerTransaction - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Not enough BlobVersionedHashes",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject(Eip4844Constants.MinBlobsPerTransaction)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Bare minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction + 1)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject(Eip4844Constants.MinBlobsPerTransaction + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)Cancun.Instance.MaxBlobCount - 1)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)Cancun.Instance.MaxBlobCount)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)Cancun.Instance.MaxBlobCount + 1)
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",
                 ExpectedResult = false
             };
 
-            yield return new TestCaseData(MakeTestObject()
+            yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount - 1)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Less than maximum BlobVersionedHashes",
+                ExpectedResult = true
+            };
+            yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Maximum BlobVersionedHashes",
+                ExpectedResult = true
+            };
+            yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount + 1)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Too many BlobVersionedHashes",
+                ExpectedResult = false
+            };
+
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .WithBlobVersionedHashes(new byte[][] { MakeArray(31, KzgPolynomialCommitments.KzgBlobHashVersionV1) })
                 .SignedAndResolved().TestObject)
             {
                 TestName = "BlobVersionedHashes are of a wrong length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject()
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Blobs count does not match hashes count",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject()
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Commitments count does not match hashes count",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject()
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs count does not match hashes count",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject()
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "A commitment does not math hash",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeTestObject()
+            yield return new TestCaseData(Cancun.Instance, MakeTestObject()
                 .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
