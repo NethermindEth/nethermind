@@ -35,7 +35,7 @@ namespace Nethermind.Config
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
-                    if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith("["))
+                    if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith('['))
                     {
                         // hex encoded byte array
                         value = Bytes.FromHexString(valueString.Trim());
@@ -99,13 +99,13 @@ namespace Nethermind.Config
         }
 
         private static bool IsNullString(string valueString) =>
-            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.OrdinalIgnoreCase);
+            valueString?.Equals("null", StringComparison.OrdinalIgnoreCase) ?? true;
 
         public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
 
         private static bool TryFromHex(Type type, string itemValue, out object value)
         {
-            if (!itemValue.StartsWith("0x"))
+            if (!itemValue.StartsWith("0x", StringComparison.Ordinal))
             {
                 value = null;
                 return false;
