@@ -4,7 +4,6 @@
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
-using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -27,6 +26,8 @@ using Nethermind.Optimism.Rpc;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Snappier;
+using Nethermind.Libp2p;
+using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
 
 namespace Nethermind.Optimism;
 
@@ -37,10 +38,10 @@ public class OptimismCLP2P : IDisposable
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly ILogger _logger;
     private readonly IOptimismEngineRpcModule _engineRpcModule;
-    private readonly IP2PBlockValidator _blockValidator;
+    private readonly P2PBlockValidator _blockValidator;
     private readonly Multiaddress[] _staticPeerList;
     private readonly ICLConfig _config;
-    private ILocalPeer? _localPeer;
+    private IPeer? _localPeer;
     private readonly Task _mainLoopTask;
 
     private readonly string _blocksV2TopicId;
@@ -67,7 +68,16 @@ public class OptimismCLP2P : IDisposable
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(new Settings())
+            .AddSingleton(new PubsubSettings()
+            {
+                ReconnectionAttempts = int.MaxValue,
+                Degree = 3,
+                LowestDegree = 2,
+                HighestDegree = 6,
+                LazyDegree = 3,
+                DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+                GetMessageId = CalculateMessageId
+            })
             .BuildServiceProvider();
 
         _mainLoopTask = new(async () =>
@@ -77,7 +87,7 @@ public class OptimismCLP2P : IDisposable
     }
 
     private ulong _headPayloadNumber;
-    private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
+    private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = System.Threading.Channels.Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
 
     private async void OnMessage(byte[] msg)
     {
@@ -224,30 +234,30 @@ public class OptimismCLP2P : IDisposable
         return true;
     }
 
-    public void Start()
+    public async Task Start()
     {
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        _localPeer = peerFactory.Create(new Identity(), $"/ip4/{_config.P2PHost}/tcp/{_config.P2PPort}");
+        string address = $"/ip4/{_config.P2PHost}/tcp/{_config.P2PPort}";
+        _localPeer = peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
         _blocksV2Topic.OnMessage += OnMessage;
 
-        _ = _router.RunAsync(_localPeer, new Settings
-        {
-            DefaultSignaturePolicy = Settings.SignaturePolicy.StrictNoSign,
-            GetMessageId = CalculateMessageId
-        }, token: _cancellationTokenSource.Token);
+        await _localPeer.StartListenAsync([address], _cancellationTokenSource.Token);
+        await _router.StartAsync(_localPeer, _cancellationTokenSource.Token);
 
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
         peerStore.Discover(_staticPeerList);
+        PubsubPeerDiscoveryProtocol disc = new(_router, peerStore, new PubsubPeerDiscoverySettings(), _localPeer);
+        _ = disc.DiscoverAsync([Multiaddress.Decode(address)], _cancellationTokenSource.Token);
 
         _mainLoopTask.Start();
 
-        if (_logger.IsInfo) _logger.Info($"Started P2P: {_localPeer.Address}");
+        if (_logger.IsInfo) _logger.Info($"Started P2P: {address}");
     }
 
     private MessageId CalculateMessageId(Message message)
