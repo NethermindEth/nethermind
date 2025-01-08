@@ -3,7 +3,7 @@
   "profiles": {
     "EngineRequestsGenerator": {
       "commandName": "Project",
-      "commandLineArgs": "-c benchmarks_chainspec.json -t Modexp208GasBalanced -o testcases"
+      "commandLineArgs": "-c benchmarks_chainspec.json -t Modexp765GasExpHeavy -o testcases"
     },
     "MetadataGenerator": {
       "commandName": "Project",

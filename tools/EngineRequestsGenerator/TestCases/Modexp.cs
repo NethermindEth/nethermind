@@ -71,6 +71,12 @@ public static class Modexp
                 return PrepareCode(56, 63);
             case TestCase.Modexp1045GasBaseHeavy:
                 return PrepareCode(448, 2);
+            case TestCase.Modexp677GasBaseHeavy:
+                return PrepareCode(32, 128);
+            case TestCase.Modexp765GasExpHeavy:
+                return PrepareCode(24, 256);
+            case TestCase.Modexp1360GasBalanced:
+                return PrepareCode(32, 256);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }

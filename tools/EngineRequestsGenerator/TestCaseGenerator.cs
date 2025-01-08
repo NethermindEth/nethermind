@@ -320,6 +320,9 @@ public class TestCaseGenerator
             case TestCase.Modexp867GasBaseHeavy:
             case TestCase.Modexp996GasBalanced:
             case TestCase.Modexp1045GasBaseHeavy:
+            case TestCase.Modexp677GasBaseHeavy:
+            case TestCase.Modexp765GasExpHeavy:
+            case TestCase.Modexp1360GasBalanced:
                 return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcAddInfinities:
             case TestCase.EcAdd12:
