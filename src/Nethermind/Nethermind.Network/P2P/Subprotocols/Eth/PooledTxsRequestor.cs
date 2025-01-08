@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
         private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is not null
-            ? txPoolConfig.MaxBlobTxSize.Value + (long)Eip4844Constants.GasPerBlob * 6 : long.MaxValue; // ToDo Yerken * 6 is incorrect here, quick fix to compile the project
+            ? txPoolConfig.MaxBlobTxSize.Value + (long)(Eip4844Constants.GasPerBlob * Cancun.Instance.MaxBlobCount) : long.MaxValue;
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
