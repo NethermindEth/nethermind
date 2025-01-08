@@ -58,7 +58,6 @@ public class ShutterP2P : IShutterP2P
                 ProtocolVersion = _cfg.P2PProtocolVersion,
                 AgentVersion = _cfg.P2PAgentVersion
             })
-            // pubsub settings
             .AddSingleton(new PubsubSettings()
             {
                 ReconnectionAttempts = int.MaxValue,
@@ -67,9 +66,6 @@ public class ShutterP2P : IShutterP2P
                 HighestDegree = 6,
                 LazyDegree = 3
             });
-        // .AddSingleton<PubsubRouter>()
-        // .AddSingleton<PeerStore>()
-        // .AddSingleton(sp => sp.GetService<IPeerFactoryBuilder>()!.Build());
 
         if (_cfg.P2PLogsEnabled)
         {
