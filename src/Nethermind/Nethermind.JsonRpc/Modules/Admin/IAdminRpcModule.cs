@@ -62,6 +62,12 @@ public interface IAdminRpcModule : IRpcModule
         IsImplemented = false)]
     ResultWrapper<bool> admin_setSolc();
 
+    [JsonRpcMethod(Description = "Runs full pruning if enabled.",
+        EdgeCaseHint = "",
+        ExampleResponse = "\"Starting\"",
+        IsImplemented = true)]
+    ResultWrapper<PruningStatus> admin_prune();
+
     [JsonRpcMethod(Description = "True if state root for the block is available",
         EdgeCaseHint = "",
         ExampleResponse = "\"Starting\"",
