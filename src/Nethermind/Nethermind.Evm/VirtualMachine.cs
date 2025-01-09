@@ -744,9 +744,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        UInt256.Add(in a, in b, out result);
-                        stack.PushUInt256(result);
+                        // if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        ref a = ref stack.PeekRef(out bool);
+
+                        UInt256.Add(in a, in b, out a);
 
                         break;
                     }
@@ -888,7 +889,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Metrics.ExpOpcode++;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopWord256(out b);
 
                         int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -1052,57 +1053,57 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        ref byte bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
-                        bytesRef = ref stack.PopBytesByRef();
+                        bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
-                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(aVec, bVec));
+                        WriteUnaligned(ref stack.PushRef(), Vector256.BitwiseAnd(aVec, bVec));
                         break;
                     }
                 case Instruction.OR:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        ref byte bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
-                        bytesRef = ref stack.PopBytesByRef();
+                        bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
-                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseOr(aVec, bVec));
+                        WriteUnaligned(ref stack.PushRef(), Vector256.BitwiseOr(aVec, bVec));
                         break;
                     }
                 case Instruction.XOR:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        ref byte bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
-                        bytesRef = ref stack.PopBytesByRef();
+                        bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
-                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.Xor(aVec, bVec));
+                        WriteUnaligned(ref stack.PushRef(), Vector256.Xor(aVec, bVec));
                         break;
                     }
                 case Instruction.NOT:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        ref byte bytesRef = ref stack.PopRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
 
                         Vector256<byte> negVec = Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref bytesRef));
 
-                        WriteUnaligned(ref stack.PushBytesRef(), negVec);
+                        WriteUnaligned(ref stack.PushRef(), negVec);
                         break;
                     }
                 case Instruction.BYTE:
@@ -1142,7 +1143,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = vmState.Memory.LoadSpan(in a, b);
 
                         // Compute the KECCAK256 directly to the stack slot
-                        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushBytesRef()));
+                        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushRef()));
                         break;
                     }
                 case Instruction.ADDRESS:

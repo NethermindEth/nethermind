@@ -219,6 +219,18 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
     /// <summary>
+    ///
+    /// </summary>
+    /// <param name="value"></param>
+    void ReportStackPush(in UInt256 value)
+    {
+        if (BitConverter.IsLittleEndian)
+        {
+            // The platform is little endian, requires conversion.
+        }
+    }
+
+    /// <summary>
     /// </summary>
     /// <param name="stackItem"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
