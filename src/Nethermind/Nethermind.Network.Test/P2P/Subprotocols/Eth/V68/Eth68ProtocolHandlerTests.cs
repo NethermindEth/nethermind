@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -50,6 +51,7 @@ public class Eth68ProtocolHandlerTests
     private ITxGossipPolicy _txGossipPolicy = null!;
     private ITimerFactory _timerFactory = null!;
     private CompositeDisposable _disposables = null!;
+    private IBlockTree _blockTree = null!;
 
     [SetUp]
     public void Setup()
@@ -67,6 +69,7 @@ public class Eth68ProtocolHandlerTests
         _transactionPool = Substitute.For<ITxPool>();
         _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
         _specProvider = Substitute.For<ISpecProvider>();
+        _blockTree = Substitute.For<IBlockTree>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -231,7 +234,7 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }),
+            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }, _specProvider, _blockTree),
             _gossipPolicy,
             new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
             LimboLogs.Instance,
