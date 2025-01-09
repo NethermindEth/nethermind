@@ -784,7 +784,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (IsNullRef(ref byRef)) goto StackUnderflow;
                         if (byRef.IsZero)
                         {
-                            byRef = default;
+                            // NOP
+                            // byRef = default;
                         }
                         else
                         {

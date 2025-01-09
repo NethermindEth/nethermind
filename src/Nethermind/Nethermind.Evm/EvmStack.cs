@@ -354,7 +354,9 @@ public ref struct EvmStack<TTracing>
     {
         for (int i = depth; i > 0; i--)
         {
-            _tracer.ReportStackPush(Unsafe.As<Word, UInt256>(ref _words[Head - i]));
+            Word trace = _words[Head - i];
+            Reshuffle(ref trace);
+            _tracer.ReportStackPush(MemoryMarshal.CreateSpan(ref Unsafe.As<Word, byte>(ref trace), WordSize));
         }
     }
 }
