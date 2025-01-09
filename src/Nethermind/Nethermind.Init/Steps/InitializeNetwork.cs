@@ -372,7 +372,7 @@ public class InitializeNetwork : IStep
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider, _api.BlockTree);
 
         ISnapServer? snapServer = null;
         if (_syncConfig.SnapServingEnabled == true)
