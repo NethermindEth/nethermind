@@ -60,7 +60,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters() { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             Substitute.For<IOptimismSpecHelper>()
         );
@@ -103,7 +103,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             Substitute.For<IOptimismSpecHelper>()
         );
@@ -158,7 +158,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             specHelper
         );
@@ -217,7 +217,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             specHelper
         );
@@ -264,7 +264,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             specHelper
         );
@@ -311,7 +311,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             specHelper
         );
@@ -360,7 +360,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             specHelper
         );
@@ -399,7 +399,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             specHelper
         );
@@ -441,7 +441,7 @@ public class SystemConfigDeriverTests
         ]);
 
         var deriver = new SystemConfigDeriver(
-            new RollupConfig { L1SystemConfigAddress = L1SystemConfigAddress },
+            new CLChainSpecEngineParameters { L1SystemConfigAddress = L1SystemConfigAddress },
             receiptFinder,
             Substitute.For<IOptimismSpecHelper>()
         );

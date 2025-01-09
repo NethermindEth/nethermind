@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 
@@ -27,11 +30,14 @@ public static class SystemConfigUpdate
 }
 
 public class SystemConfigDeriver(
-    RollupConfig rollupConfig,
+    CLChainSpecEngineParameters rollupConfig,
     IReceiptFinder receiptFinder,
     IOptimismSpecHelper specHelper
 ) : ISystemConfigDeriver
 {
+    private const int SystemTxDataLengthEcotone = 0;
+    private static readonly byte[] ExpectedAddressPadding = new byte[32];
+
     public SystemConfig SystemConfigFromL2Payload(ExecutionPayload l2Payload)
     {
         if (l2Payload.Transactions.Length == 0)
@@ -44,8 +50,45 @@ public class SystemConfigDeriver(
             throw new ArgumentException("First tx is not deposit tx");
         }
 
+        if (depositTx.Data is null)
+        {
+            throw new ArgumentException("System tx data is null");
+        }
+
         // TODO: all SystemConfig parameters should be encoded in tx.Data();
-        throw new System.NotImplementedException();
+        ReadOnlySpan<byte> data = depositTx.Data.Value.Span;
+
+        if (data.Length != SystemTxDataLengthEcotone)
+        {
+            throw new ArgumentException("System tx data length is incorrect");
+        }
+
+        uint methodId = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(4));
+        uint baseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(4));
+        uint blobBaseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(4));
+        ulong sequenceNumber = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(8));
+        ulong timestamp = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(8));
+        ulong number = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(8));
+        UInt256 baseFee = new(data.TakeAndMove(32));
+        UInt256 blobBaseFee = new(data.TakeAndMove(32));
+        Hash256 blockHash = new(data.TakeAndMove(32));
+        ReadOnlySpan<byte> addressPadding = data.TakeAndMove(12);
+        if (!addressPadding.SequenceEqual(ExpectedAddressPadding))
+        {
+            throw new ArgumentException("Address padding mismatch");
+        }
+        Address batcherAddress = new(data.TakeAndMove(20));
+
+        byte[] scalar = new byte[32];
+        scalar[0] = 1;
+        BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], blobBaseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(scalar[28..32], baseFeeScalar);
+        return new SystemConfig()
+        {
+            BatcherAddress = batcherAddress,
+            GasLimit = (ulong)l2Payload.GasLimit,
+            Scalar = scalar
+        };
     }
 
     public SystemConfig UpdateSystemConfigFromL1BLock(SystemConfig systemConfig, BlockHeader l1Block)

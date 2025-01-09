@@ -12,6 +12,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public Address? BatcherAddress { get; set; }
     public Address? SequencerP2PAddress { get; set; }
     public string[]? Nodes { get; set; }
+    public Address? L1SystemConfigAddress { get; set; }
     public string? EngineName => "OptimismCL";
     public string? SealEngineType => null;
 }
