@@ -30,7 +30,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
             return null;
-        else if (tokenType != JsonTokenType.String)
+        else if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
         {
             ThrowInvalidOperationException();
         }

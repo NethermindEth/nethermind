@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -61,5 +63,25 @@ public class RbuilderRpcModuleTests
         Hash256 theHash = Keccak.Compute(theCodeBytes);
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", theHash);
         response.Should().Contain("null");
+    }
+
+    [Test]
+    public async Task Test_calculateStateRoot()
+    {
+        Dictionary<Address, AccountChange> accountDiff = new Dictionary<Address, AccountChange>();
+        accountDiff[TestItem.AddressA] = new AccountChange()
+        {
+            Nonce = 10,
+            Balance = 20,
+            Code = [1, 2, 3, 4],
+            SelfDestructed = true,
+            ChangedSlots = new Dictionary<Hash256, Hash256>()
+            {
+                { TestItem.KeccakA, TestItem.KeccakB }
+            }
+        };
+
+        string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_calculateStateRoot", "LATEST", accountDiff);
+        response.Should().Contain("0x4dab99008d5b6a24037cf0b601adf7526af44e89c1cef06ccf220b07c497bcd5");
     }
 }
