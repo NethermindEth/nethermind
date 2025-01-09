@@ -10,7 +10,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -20,7 +19,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     public class PooledTxsRequestorTests
     {
         private readonly ITxPool _txPool = Substitute.For<ITxPool>();
-        private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly Action<GetPooledTransactionsMessage> _doNothing = static msg => msg.Dispose();
         private IPooledTxsRequestor _requestor;
@@ -35,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void filter_properly_newPooledTxHashes()
         {
-            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider, _blockTree);
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
             using var skipped = new ArrayPoolList<Hash256>(2) { TestItem.KeccakA, TestItem.KeccakD };
             _requestor.RequestTransactions(_doNothing, skipped);
 
@@ -48,7 +46,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void filter_properly_already_pending_hashes()
         {
-            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider, _blockTree);
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
             using var skipped = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(_doNothing, skipped);
 
@@ -60,7 +58,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void filter_properly_discovered_hashes()
         {
-            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider, _blockTree);
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
 
             using var request = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             using var expected = new ArrayPoolList<Hash256>(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
@@ -71,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void can_handle_empty_argument()
         {
-            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider, _blockTree);
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig(), _specProvider);
             using var skipped = new ArrayPoolList<Hash256>(0);
             _requestor.RequestTransactions(Send, skipped);
             _response.Should().BeEmpty();
@@ -82,7 +80,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.IsKnown(Arg.Any<Hash256>()).Returns(true);
-            _requestor = new PooledTxsRequestor(txPool, new TxPoolConfig(), _specProvider, _blockTree);
+            _requestor = new PooledTxsRequestor(txPool, new TxPoolConfig(), _specProvider);
 
             using var request = new ArrayPoolList<Hash256>(2) { TestItem.KeccakA, TestItem.KeccakB };
             using var expected = new ArrayPoolList<Hash256>(0) { };

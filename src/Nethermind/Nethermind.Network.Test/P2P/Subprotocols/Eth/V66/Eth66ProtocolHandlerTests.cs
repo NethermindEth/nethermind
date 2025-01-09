@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -64,7 +63,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private Block _genesisBlock = null!;
         private Eth66ProtocolHandler _handler = null!;
         private CompositeDisposable _disposables = null!;
-        private IBlockTree _blockTree = null!;
 
         [SetUp]
         public void Setup()
@@ -87,7 +85,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             _timerFactory = Substitute.For<ITimerFactory>();
-            _blockTree = Substitute.For<IBlockTree>();
             _handler = new Eth66ProtocolHandler(
                 _session,
                 _svc,
@@ -325,7 +322,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                new PooledTxsRequestor(_transactionPool, new TxPoolConfig(), _specProvider, _blockTree),
+                new PooledTxsRequestor(_transactionPool, new TxPoolConfig(), _specProvider),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
