@@ -234,7 +234,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         bool hasKeccak = node.GetChildHashAsValueKeccak(ci, out ValueHash256 childKeccak);
 
-                        moreChildrenToRight |= hasKeccak && (ci > right && (ci < limit || noLimit));
+                        moreChildrenToRight |= hasKeccak && (ci > right && (ci <= limit || noLimit));
 
                         if (ci >= left && ci <= right)
                         {
