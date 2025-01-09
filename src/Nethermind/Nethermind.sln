@@ -230,6 +230,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.SszGenerator.Test", "Nethermind.Serialization.SszGenerator.Test\Nethermind.Serialization.SszGenerator.Test.csproj", "{E11DA65F-7F52-40DA-BBF4-E6E90932EB68}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Search.Plugin", "Nethermind.Search.Plugin\Nethermind.Search.Plugin.csproj", "{E4451E87-5A91-4108-94B2-24CA837CD8DE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -636,6 +638,10 @@ Global
 		{E11DA65F-7F52-40DA-BBF4-E6E90932EB68}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E11DA65F-7F52-40DA-BBF4-E6E90932EB68}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E11DA65F-7F52-40DA-BBF4-E6E90932EB68}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E4451E87-5A91-4108-94B2-24CA837CD8DE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E4451E87-5A91-4108-94B2-24CA837CD8DE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E4451E87-5A91-4108-94B2-24CA837CD8DE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E4451E87-5A91-4108-94B2-24CA837CD8DE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
