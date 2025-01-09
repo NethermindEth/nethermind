@@ -165,7 +165,7 @@ public ref struct EvmStack<TTracing>
     }
 
     /// <summary>
-    /// Pops an Uint256 written in big endian.
+    /// Pops an <see cref="UInt256"/>.
     /// </summary>
     /// <param name="result">The returned value.</param>
     public bool PopUInt256(out UInt256 result)
@@ -175,6 +175,20 @@ public ref struct EvmStack<TTracing>
         if (Unsafe.IsNullRef(ref v)) return false;
         result = Unsafe.As<Word, UInt256>(ref v);
         return true;
+    }
+
+    /// <summary>
+    /// Peeks a reference to an <see cref="UInt256"/>.
+    /// </summary>
+    public ref UInt256 PeekUInt256Ref()
+    {
+        int head = Head;
+        if (head == 0)
+        {
+            return ref Unsafe.NullRef<UInt256>();
+        }
+
+        return ref Unsafe.As<Word, UInt256>(ref _words[head - 1]);
     }
 
     private static void Reshuffle(ref Word word)
@@ -250,7 +264,7 @@ public ref struct EvmStack<TTracing>
 
         head--;
         Head = head;
-        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_words), head);
+        return ref _words[head];
     }
 
     public Span<byte> PopWord256(out UInt256 destination)
