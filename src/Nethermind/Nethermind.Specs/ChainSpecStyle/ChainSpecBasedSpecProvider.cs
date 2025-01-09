@@ -262,8 +262,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
             else
             {
-                spec.TargetBlobCount = 3;
-                spec.MaxBlobCount = 6;
+                spec.TargetBlobCount = 0;
+                spec.MaxBlobCount = 0;
             }
         }
 
