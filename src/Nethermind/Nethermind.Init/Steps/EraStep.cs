@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -22,9 +23,13 @@ public class EraStep : IStep
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        await using IContainer container = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
+        IContainer container = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
             .AddModule(new EraModule())
             .Build();
+
+        _api.DisposeStack.Push((IAsyncDisposable) container);
+        _api.AdminEraService = container.Resolve<IAdminEraService>();
+
         await container.Resolve<EraCliRunner>().Run(cancellationToken);
     }
 }

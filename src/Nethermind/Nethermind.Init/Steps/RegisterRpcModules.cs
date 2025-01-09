@@ -124,11 +124,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
 
-        IContainer eraContainer = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
-            .AddModule(new EraModule())
-            .Build();
-        _api.DisposeStack.Push((IAsyncDisposable)eraContainer);
-
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
@@ -141,7 +136,7 @@ public class RegisterRpcModules : IStep
             _api.BlockingVerifyTrie!,
             _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
-            eraContainer.Resolve<IAdminEraService>(),
+            _api.AdminEraService,
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters);
