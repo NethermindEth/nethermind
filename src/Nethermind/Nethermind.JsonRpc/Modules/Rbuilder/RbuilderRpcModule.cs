@@ -44,38 +44,53 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (accountChange.SelfDestructed)
                 {
                     worldState.DeleteAccount(address);
-                    if (accountChange.Balance is not null
-                        || accountChange.Nonce is not null
-                        || accountChange.Code is not null
-                        || accountChange.ChangedSlots?.Count > 0) worldState.CreateAccountIfNotExists(address, 0, 0);
                 }
 
-                // IWorldState does not actually have set nonce or set balance.
-                // Set, its either this or changing `IWorldState` which is somewhat risky.
-                if (accountChange.Nonce is not null)
+                bool hasAccountChange = accountChange.Balance is not null
+                                        || accountChange.Nonce is not null
+                                        || accountChange.Code is not null
+                                        || accountChange.ChangedSlots?.Count > 0;
+                if (!hasAccountChange) continue;
+
+                if (worldState.TryGetAccount(address, out AccountStruct account))
                 {
-                    UInt256 originalNonce = worldState.GetNonce(address);
-                    if (accountChange.Nonce.Value > originalNonce)
+                    // IWorldState does not actually have set nonce or set balance.
+                    // Set, its either this or changing `IWorldState` which is somewhat risky.
+                    if (accountChange.Nonce is not null)
                     {
-                        worldState.IncrementNonce(address, accountChange.Nonce.Value - originalNonce);
+                        UInt256 originalNonce = account.Nonce;
+                        if (accountChange.Nonce.Value > originalNonce)
+                        {
+                            worldState.IncrementNonce(address, accountChange.Nonce.Value - originalNonce);
+                        }
+                        else if (accountChange.Nonce.Value == originalNonce)
+                        {
+                        }
+                        else
+                        {
+                            worldState.DecrementNonce(address, originalNonce - accountChange.Nonce.Value);
+                        }
                     }
-                    else
+
+                    if (accountChange.Balance is not null)
                     {
-                        worldState.DecrementNonce(address, originalNonce - accountChange.Nonce.Value);
+                        UInt256 originalBalance = account.Balance;
+                        if (accountChange.Balance.Value > originalBalance)
+                        {
+                            worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
+                        }
+                        else if (accountChange.Balance.Value == originalBalance)
+                        {
+                        }
+                        else
+                        {
+                            worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
+                        }
                     }
                 }
-
-                if (accountChange.Balance is not null)
+                else
                 {
-                    UInt256 originalBalance = worldState.GetBalance(address);
-                    if (accountChange.Balance.Value > originalBalance)
-                    {
-                        worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
-                    }
-                    else
-                    {
-                        worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
-                    }
+                    worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0);
                 }
 
                 if (accountChange.Code is not null)
