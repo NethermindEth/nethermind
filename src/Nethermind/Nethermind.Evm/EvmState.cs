@@ -5,9 +5,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.State;
-
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 namespace Nethermind.Evm;
 
 /// <summary>
@@ -19,7 +21,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private static readonly ConcurrentQueue<EvmState> _statePool = new();
     private static readonly StackPool _stackPool = new();
 
-    public byte[]? DataStack;
+    public Word[]? DataStack;
     public int[]? ReturnStack;
 
     public long GasAvailable { get; set; }

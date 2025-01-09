@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm;
 
@@ -9,9 +10,9 @@ internal class StackPool
 {
     // Also have parallel prewarming and Rpc calls
     private const int MaxStacksPooled = VirtualMachine.MaxCallDepth * 2;
-    private readonly struct StackItem(byte[] dataStack, int[] returnStack)
+    private readonly struct StackItem(Word[] dataStack, int[] returnStack)
     {
-        public readonly byte[] DataStack = dataStack;
+        public readonly Word[] DataStack = dataStack;
         public readonly int[] ReturnStack = returnStack;
     }
 
@@ -23,7 +24,7 @@ internal class StackPool
     /// </summary>
     /// <param name="dataStack"></param>
     /// <param name="returnStack"></param>
-    public void ReturnStacks(byte[] dataStack, int[] returnStack)
+    public void ReturnStacks(Word[] dataStack, int[] returnStack)
     {
         if (_stackPool.Count <= MaxStacksPooled)
         {
@@ -31,7 +32,7 @@ internal class StackPool
         }
     }
 
-    public (byte[], int[]) RentStacks()
+    public (Word[], int[]) RentStacks()
     {
         if (_stackPool.TryDequeue(out StackItem result))
         {
@@ -40,7 +41,7 @@ internal class StackPool
 
         return
         (
-            new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
+            new Word[EvmStack.MaxStackSize + EvmStack.RegisterLength],
             new int[EvmStack.ReturnStackSize]
         );
     }
