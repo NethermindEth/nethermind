@@ -260,6 +260,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 spec.TargetBlobCount = blobCount.Target;
                 spec.MaxBlobCount = blobCount.Max;
             }
+            else if (chainSpec.Name == "GnosisChain")
+            {
+                spec.TargetBlobCount = 1;
+                spec.MaxBlobCount = 2;
+            }
             else
             {
                 spec.TargetBlobCount = 3;
