@@ -68,7 +68,6 @@ public interface IAdminRpcModule : IRpcModule
         IsImplemented = true)]
     ResultWrapper<PruningStatus> admin_prune();
 
-<<<<<<< HEAD
     [JsonRpcMethod(Description = "Exports a range of historic block in era1 format.",
     EdgeCaseHint = "",
     ExampleResponse = "\"Export task started.\"",
