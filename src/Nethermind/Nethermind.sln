@@ -230,7 +230,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.SszGenerator.Test", "Nethermind.Serialization.SszGenerator.Test\Nethermind.Serialization.SszGenerator.Test.csproj", "{E11DA65F-7F52-40DA-BBF4-E6E90932EB68}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Search.Plugin", "Nethermind.Search.Plugin\Nethermind.Search.Plugin.csproj", "{E4451E87-5A91-4108-94B2-24CA837CD8DE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.ContractSearch.Plugin", "Nethermind.ContractSearch.Plugin\Nethermind.ContractSearch.Plugin.csproj", "{E4451E87-5A91-4108-94B2-24CA837CD8DE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
