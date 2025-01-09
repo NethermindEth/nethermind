@@ -31,7 +31,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     internal void ScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc)
     {
-        backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
+        backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask, Synchronization.Timeouts.Eth);
     }
 
     // I just don't want to create a closure.. so this happens.
