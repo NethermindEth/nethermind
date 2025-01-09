@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -294,15 +295,35 @@ public class PaprikaStateFactory : IStateFactory
         [SkipLocalsInit]
         public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
         {
-            Span<byte> key = stackalloc byte[32];
-            GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
 
             // mimics StorageTree.SetInternal
             if (value.IsZero())
                 value = ReadOnlySpan<byte>.Empty;
 
-            _wrapped.SetStorage(converted, new PaprikaKeccak(key), value);
+            _wrapped.SetStorage(converted, Convert(cell.Hash), value);
+        }
+
+        public IStorage GetStorageSetter(in Address address)
+        {
+            ValueHash256 keccak = KeccakCache.Compute(address.Bytes);
+            return new StorageSetter(address, keccak, _wrapped.GetStorageSetter(Convert(keccak)));
+        }
+
+        private sealed class StorageSetter(Address address, ValueHash256 keccak, IStorageSetter setter) : IStorage
+        {
+            public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
+            {
+                Debug.Assert(cell.Address == address);
+
+                // mimics StorageTree.SetInternal
+                if (value.IsZero())
+                    value = ReadOnlySpan<byte>.Empty;
+
+                setter.SetStorage(Convert(cell.Hash), value);
+            }
+
+            public ValueHash256 Keccak => keccak;
         }
 
         [SkipLocalsInit]

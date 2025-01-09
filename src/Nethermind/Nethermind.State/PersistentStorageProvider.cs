@@ -8,10 +8,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -19,7 +17,6 @@ using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
-    using Core.Cpu;
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
@@ -38,6 +35,8 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, SelfDestructDictionary<byte[]>> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
+
+        private readonly Dictionary<Address, IStorage> _storages = new();
 
         /// <summary>
         /// Manages persistent storage allowing for snapshotting and restoring
@@ -62,10 +61,12 @@ namespace Nethermind.State
         /// </summary>
         public override void Reset(bool resizeCollections = true)
         {
-            base.Reset();
+            base.Reset(resizeCollections);
+
             _blockCache.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
+            _storages.Clear();
         }
 
         /// <summary>
@@ -213,7 +214,18 @@ namespace Nethermind.State
                 return;
             }
 
-            state.SetStorage(change.StorageCell, change.Value);
+            // Ensure the setter exists and set storage
+            ref IStorage? storage =
+                ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, change.StorageCell.Address,
+                    out var storageExists);
+
+            if (!storageExists)
+            {
+                storage = state.GetStorageSetter(change.StorageCell.Address);
+            }
+            storage.SetStorage(change.StorageCell, change.Value);
+
+            // Report write
             Db.Metrics.StorageTreeWrites++;
 
             ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
@@ -381,6 +393,11 @@ namespace Nethermind.State
                 public int GetHashCode([DisallowNull] UInt256 obj)
                     => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
             }
+        }
+
+        public void CommitTrees()
+        {
+            _storages.Clear();
         }
     }
 }
