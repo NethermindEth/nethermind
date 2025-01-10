@@ -124,4 +124,32 @@ public ref struct RlpReader
         }
         throw new RlpReaderException("RLP does not correspond to any alternative");
     }
+
+    public T? Optional<T>(RefRlpReaderFunc<T> f, T? _ = null) where T : class
+    {
+        int startingPosition = _position;
+        try
+        {
+            return f(ref this);
+        }
+        catch (Exception)
+        {
+            _position = startingPosition;
+            return null;
+        }
+    }
+
+    public T? Optional<T>(RefRlpReaderFunc<T> f, T? _ = null) where T : struct
+    {
+        int startingPosition = _position;
+        try
+        {
+            return f(ref this);
+        }
+        catch (Exception)
+        {
+            _position = startingPosition;
+            return null;
+        }
+    }
 }
