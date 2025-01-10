@@ -11,7 +11,7 @@ public class BlsG2MulBenchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
-        G2MulPrecompile.Instance
+        G2MSMPrecompile.Instance
     };
 
     protected override string InputsDirectory => "blsg2mul";
