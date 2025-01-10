@@ -755,17 +755,11 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
         {
             long spentGas = tx.GasLimit;
-            long operationGas = tx.GasLimit;
             var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                operationGas -= unspentGas;
-                spentGas = Math.Max(spentGas, floorGas);
-                // As per eip-7623, the spent gas is updated to the maximum of the actual gas used or the floor gas,
-                // now we need to recalculate the unspent gas that should be refunded.
-                var unspentGasRefund = tx.GasLimit - spentGas;
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
@@ -773,12 +767,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 long actualRefund = RefundHelper.CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
-                    Logger.Trace("Refunding unused gas of " + unspentGasRefund + " and refund of " + actualRefund);
-                // If noValidation we didn't charge for gas, so do not refund
-                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGasRefund + actualRefund) * gasPrice, spec);
+                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
                 spentGas -= actualRefund;
-                operationGas -= actualRefund;
             }
             else if (codeInsertRefund > 0)
             {
@@ -786,12 +776,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding delegations only: " + refund);
-                // If noValidation we didn't charge for gas, so do not refund
-                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)refund * gasPrice, spec);
                 spentGas -= refund;
-                operationGas -= refund;
             }
+
+            var operationGas = spentGas;
+            spentGas = Math.Max(spentGas, floorGas);
+            var totalRefund = tx.GasLimit - spentGas;
+            // If noValidation we didn't charge for gas, so do not refund
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                WorldState.AddToBalance(tx.SenderAddress!, (ulong)totalRefund * gasPrice, spec);
 
             return new GasConsumed(spentGas, operationGas);
         }
