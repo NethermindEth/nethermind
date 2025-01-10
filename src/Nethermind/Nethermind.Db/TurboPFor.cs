@@ -65,9 +65,9 @@ namespace Nethermind.Db
         [DllImport(LibraryName)]
         public extern unsafe static int p4nddec128v32(byte* @in, int n, int* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4ndenc256v32(int[] @in, int n, byte[] @out);
+        public extern unsafe static int p4ndenc256v32(int* @in, int n, byte* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nddec256v32(byte[] @in, int n, int[] @out);
+        public extern unsafe static int p4nddec256v32(byte* @in, int n, int* @out);
 
         [DllImport(LibraryName)]
         public extern unsafe static int p4nd1enc32(int[] @in, int n, byte[] @out); // delta 1: strictly increasing integer list (sorted)
@@ -78,9 +78,9 @@ namespace Nethermind.Db
         [DllImport(LibraryName)]
         public extern unsafe static int p4nd1dec128v32(byte[] @in, int n, int[] @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1enc256v32(int[] @in, int n, byte[] @out);
+        public extern unsafe static int p4nd1enc256v32(int* @in, int n, byte* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1dec256v32(byte[] @in, int n, int[] @out);
+        public extern unsafe static int p4nd1dec256v32(byte* @in, int n, int* @out);
 
         [DllImport(LibraryName)]
         public extern unsafe static int p4nzenc32(int[] @in, int n, byte[] @out); // zigzag: unsorted integer list

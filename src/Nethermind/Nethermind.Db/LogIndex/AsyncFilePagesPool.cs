@@ -4,10 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -17,7 +15,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db;
 
-public interface IAsyncFilePagesPool : IAsyncDisposable
+public interface IFilePagesPool : IAsyncDisposable
 {
     int PageSize { get; }
     SafeFileHandle FileHandle { get; }
@@ -31,7 +29,7 @@ public interface IAsyncFilePagesPool : IAsyncDisposable
     ValueTask ReturnPageAsync(long offset);
 }
 
-public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
+public sealed class AsyncFilePagesPool : IFilePagesPool
 {
     private const int MaxAllocateAtOnceSize = 10 * 1024 * 1024; // 10MB
 
@@ -102,13 +100,23 @@ public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
         if (_allocatePagesTask == null || _allocatedPool == null || _returnedPool == null)
             ThrowNotStarted();
 
-        await _cancellationSource.CancelAsync();
-        await _allocatePagesTask.IgnoreException();
+        try
+        {
+            if (_cancellationSource.IsCancellationRequested)
+                return;
 
-        _allocatedPool.Writer.Complete();
-        _returnedPool.Writer.Complete();
+            await _cancellationSource.CancelAsync();
+            await _allocatePagesTask.IgnoreException();
 
-        StorePooledPages();
+            _allocatedPool.Writer.Complete();
+            _returnedPool.Writer.Complete();
+
+            StorePooledPages();
+        }
+        catch (ObjectDisposedException)
+        {
+            // already disposed
+        }
     }
 
     public async ValueTask<long> TakePageAsync()
@@ -164,25 +172,37 @@ public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
             }
             else
             {
-                var missingCount = AllocatedPagesPoolSize - _allocatedPool.Reader.Count;
-                var allocateCount = Math.Max(1, Math.Min(missingCount / 2, MaxAllocateAtOnceSize / PageSize));
-
-                foreach (var page in AllocatePages(_fileStream, allocateCount))
-                    await _allocatedPool.Writer.WriteAsync(page, CancellationToken.None);
+                await AllocatePages(_fileStream, _allocatedPool);
             }
         }
     }
 
-    private IEnumerable<long> AllocatePages(FileStream fileStream, int count)
+    private async Task AllocatePages(FileStream fileStream, Channel<long> pool)
     {
+        var missingCount = AllocatedPagesPoolSize - pool.Reader.Count;
+        var allocateCount = Math.Max(1, Math.Min(missingCount / 2, MaxAllocateAtOnceSize / PageSize));
+
         long originalSize = fileStream.Length;
-        long newSize = originalSize + PageSize * count;
+        long newSize = originalSize + PageSize * allocateCount;
+        long pooledSize = originalSize;
 
         fileStream.SetLength(newSize);
-        _pagesAllocated += count;
 
-        for (var page = originalSize; page < newSize; page += PageSize)
-            yield return page;
+        try
+        {
+            for (var page = originalSize; page < newSize; page += PageSize)
+            {
+                await pool.Writer.WriteAsync(page, CancellationToken);
+                _pagesAllocated++;
+                pooledSize += PageSize;
+            }
+        }
+        finally
+        {
+            // Rollback length if some allocated pages didn't get to the pool
+            if (pooledSize != newSize)
+                fileStream.SetLength(pooledSize);
+        }
     }
 
     private IEnumerable<long> EnumeratePagesFromStore(byte[]? bytes)
@@ -226,6 +246,8 @@ public sealed class AsyncFilePagesPool : IAsyncDisposable, IAsyncFilePagesPool
 
     async ValueTask IAsyncDisposable.DisposeAsync()
     {
+        await StopAsync();
+
         _allocatePagesTask?.Dispose();
         _cancellationSource.Dispose();
 

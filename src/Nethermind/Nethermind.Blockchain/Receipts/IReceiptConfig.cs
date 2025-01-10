@@ -13,8 +13,8 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to migrate the receipts database to the new schema.", DefaultValue = "false")]
     bool ReceiptsMigration { get; set; }
 
-    [ConfigItem(Description = "The degree of parallelism during receipt migration.", DefaultValue = "0", HiddenFromDocs = true)]
-    int ReceiptsMigrationDegreeOfParallelism { get; set; }
+    [ConfigItem(Description = "The degree of IO operations parallelism during receipts migration.", DefaultValue = "0", HiddenFromDocs = true)]
+    int ReceiptsMigrationIODegreeOfParallelism { get; set; }
 
     [ConfigItem(Description = "Force receipt recovery if its not able to detect it.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ForceReceiptsMigration { get; set; }

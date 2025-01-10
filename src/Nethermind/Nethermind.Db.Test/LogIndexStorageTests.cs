@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +28,7 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
-            _dbPath = $"testdb/{nameof(LogIndexStorageTests)}";
+            _dbPath = $"{nameof(LogIndexStorageTests)}";
 
             if (Directory.Exists(_dbPath))
             {
@@ -34,16 +36,9 @@ namespace Nethermind.Db.Test
             }
             Directory.CreateDirectory(_dbPath);
 
-            _columnsDb = new ColumnsDb<LogIndexColumns>(
+            _columnsDb = new(
                 _dbPath,
-                new DbSettings("logindex", _dbPath)
-                {
-                    BlockCacheSize = (ulong)1.KiB(),
-                    CacheIndexAndFilterBlocks = false,
-                    DeleteOnStart = true,
-                    WriteBufferNumber = 4,
-                    WriteBufferSize = (ulong)1.KiB()
-                },
+                new(DbNames.LogIndexStorage, _dbPath) { DeleteOnStart = true },
                 new DbConfig(),
                 LimboLogs.Instance,
                 Enum.GetValues<LogIndexColumns>()
@@ -51,24 +46,23 @@ namespace Nethermind.Db.Test
 
             _logger = LimboLogs.Instance.GetClassLogger();
 
-            _logIndexStorage = new LogIndexStorage(_columnsDb, _logger, _dbPath);
+            _logIndexStorage = new(_columnsDb, _logger, _dbPath);
             _tempFilePath = _logIndexStorage.TempFilePath;
             _finalFilePath = _logIndexStorage.FinalFilePath;
         }
 
         [TearDown]
-        public void TearDown()
+        public async Task TearDownAsync()
         {
-            _logIndexStorage.Dispose();
+            await ((IAsyncDisposable)_logIndexStorage).DisposeAsync();
             _columnsDb.Dispose();
+
             if (Directory.Exists(_dbPath))
-            {
                 Directory.Delete(_dbPath, true);
-            }
         }
 
         [Test]
-        public void SetReceipts_SavesCorrectAddresses()
+        public async Task SetReceipts_SavesCorrectAddresses()
         {
             // Arrange
             var address1 = new Address("0x0000000000000000000000000000000000001234");
@@ -80,43 +74,27 @@ namespace Nethermind.Db.Test
                 {
                     Logs = new List<LogEntry>
                     {
-                        new LogEntry(address1, Array.Empty<byte>(), Array.Empty<Hash256>()),
-                        new LogEntry(address1, Array.Empty<byte>(), Array.Empty<Hash256>()), // Multiple logs for the same address
-                        new LogEntry(address2, Array.Empty<byte>(), Array.Empty<Hash256>())
+                        new(address1, [], []),
+                        new(address1, [], []), // Multiple logs for the same address
+                        new(address2, [], [])
                     }.ToArray()
                 }
             };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
 
             // Assert
-            var addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            bool foundAddress1 = false;
-            bool foundAddress2 = false;
-            using (var iterator = addressDb.GetIterator(true))
-            {
-                while (iterator.Valid())
-                {
-                    var key = iterator.Key();
-                    if (key.AsSpan(0, 20).SequenceEqual(new Address("0x0000000000000000000000000000000000001234").Bytes))
-                    {
-                        foundAddress1 = true;
-                    }
-                    if (key.AsSpan(0, 20).SequenceEqual(new Address("0x0000000000000000000000000000000000005678").Bytes))
-                    {
-                        foundAddress2 = true;
-                    }
-                    iterator.Next();
-                }
-            }
+            IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
+            using IIterator<byte[], byte[]> iterator = addressDb.GetIterator(true);
 
-            foundAddress1.Should().BeTrue();
-            foundAddress2.Should().BeTrue();
+            Enumerate(iterator)
+                .Select(x => new Address(x.key[..Address.Size])).ToHashSet()
+                .Should().BeEquivalentTo([address1, address2]);
         }
 
         [Test]
-        public void SetReceipts_MovesToFinalizedFile()
+        public async Task SetReceipts_MovesToFinalizedFile()
         {
             // Arrange
             var address = new Address("0x0000000000000000000000000000000000001234");
@@ -124,27 +102,27 @@ namespace Nethermind.Db.Test
             {
                 Logs = new List<LogEntry>
                 {
-                    new LogEntry(address, Array.Empty<byte>(), Array.Empty<Hash256>())
+                    new(address, [], [])
                 }.ToArray()
             };
 
             // Act
             for (int i = 1; i <= 2000; i++)
             {
-                _logIndexStorage.SetReceiptsAsync(i, new[] { receipt }, isBackwardSync: false);
+                await _logIndexStorage.SetReceiptsAsync(i, [receipt], isBackwardSync: false, CancellationToken.None);
             }
 
-            _logIndexStorage.Dispose();
+            await _logIndexStorage.TryDisposeAsync();
 
             // Assert
             File.Exists(_finalFilePath).Should().BeTrue("The finalized file should be created and contain the data.");
 
-            using var finalFileStream = new FileStream(_finalFilePath, FileMode.Open, FileAccess.Read);
+            await using var finalFileStream = new FileStream(_finalFilePath, FileMode.Open, FileAccess.Read);
             finalFileStream.Length.Should().BeGreaterThan(0, "The finalized file should not be empty.");
         }
 
         [Test]
-        public void GetBlockNumbersFor_ReturnsCorrectBlocks()
+        public async Task GetBlockNumbersFor_ReturnsCorrectBlocks()
         {
             // Arrange
             var address = new Address("0x0000000000000000000000000000000000001234");
@@ -152,14 +130,14 @@ namespace Nethermind.Db.Test
             {
                 Logs = new List<LogEntry>
                 {
-                    new LogEntry(address, Array.Empty<byte>(), Array.Empty<Hash256>())
+                    new(address, [], [])
                 }.ToArray()
             };
             var expectedBlocks = new List<int>();
             for (int i = 1; i <= 2000; i++)
             {
                 expectedBlocks.Add(i);
-                _logIndexStorage.SetReceiptsAsync(i, new[] { receipt }, isBackwardSync: false);
+                await _logIndexStorage.SetReceiptsAsync(i, [receipt], isBackwardSync: false, CancellationToken.None);
             }
 
             // Assert
@@ -168,7 +146,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SetReceipts_SavesLogsWithDifferentTopics()
+        public async Task SetReceipts_SavesLogsWithDifferentTopics()
         {
             // Arrange
             var topic1 = new Hash256("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
@@ -176,46 +154,30 @@ namespace Nethermind.Db.Test
             int blockNumber = 100;
             var receipts = new[]
             {
-        new TxReceipt
-        {
-            Logs = new List<LogEntry>
-            {
-                new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { topic1 }),
-                new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { topic2 })
-            }.ToArray()
-        }
-    };
+                new TxReceipt
+                {
+                    Logs = new List<LogEntry>
+                    {
+                        new(Address.Zero, [], [topic1]),
+                        new(Address.Zero, [], [topic2])
+                    }.ToArray()
+                }
+            };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
 
             // Assert
-            var topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
-            bool foundTopic1 = false;
-            bool foundTopic2 = false;
-            using (var iterator = topicDb.GetIterator(true))
-            {
-                while (iterator.Valid())
-                {
-                    var key = iterator.Key();
-                    if (key.AsSpan(0, 32).SequenceEqual(topic1.Bytes.ToArray()))
-                    {
-                        foundTopic1 = true;
-                    }
-                    if (key.AsSpan(0, 32).SequenceEqual(topic2.Bytes.ToArray()))
-                    {
-                        foundTopic2 = true;
-                    }
-                    iterator.Next();
-                }
-            }
+            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
+            using IIterator<byte[], byte[]> iterator = topicDb.GetIterator(true);
 
-            foundTopic1.Should().BeTrue();
-            foundTopic2.Should().BeTrue();
+            Enumerate(iterator)
+                .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
+                .Should().BeEquivalentTo([topic1, topic2]);
         }
 
         [Test]
-        public void SetReceipts_DistinguishesOverlappingAddressAndTopicKeys()
+        public async Task SetReceipts_DistinguishesOverlappingAddressAndTopicKeys()
         {
             // Arrange
             var address = new Address("0x1234567890abcdef1234567890abcdef12345678");
@@ -223,57 +185,34 @@ namespace Nethermind.Db.Test
             int blockNumber = 100;
             var receipts = new[]
             {
-        new TxReceipt
-        {
-            Logs = new List<LogEntry>
-            {
-                new LogEntry(address, Array.Empty<byte>(), new Hash256[] { topic })
-            }.ToArray()
-        }
-    };
+                new TxReceipt
+                {
+                    Logs = new List<LogEntry>
+                    {
+                        new(address, [], [topic])
+                    }.ToArray()
+                }
+            };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
 
             // Assert
-            var addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            var topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
+            IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
+            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
 
-            bool foundAddress = false;
-            bool foundTopic = false;
+            using IIterator<byte[], byte[]> addressIterator = addressDb.GetIterator(true);
+            using IIterator<byte[], byte[]> topicIterator = topicDb.GetIterator(true);
 
-            using (var iterator = addressDb.GetIterator(true))
-            {
-                while (iterator.Valid())
-                {
-                    var key = iterator.Key();
-                    if (key.AsSpan(0, 20).SequenceEqual(address.Bytes))
-                    {
-                        foundAddress = true;
-                    }
-                    iterator.Next();
-                }
-            }
-
-            using (var iterator = topicDb.GetIterator(true))
-            {
-                while (iterator.Valid())
-                {
-                    var key = iterator.Key();
-                    if (key.AsSpan(0, 32).SequenceEqual(topic.Bytes.ToArray()))
-                    {
-                        foundTopic = true;
-                    }
-                    iterator.Next();
-                }
-            }
-
-            foundAddress.Should().BeTrue();
-            foundTopic.Should().BeTrue();
+            Enumerable.Concat<object>(
+                    Enumerate(addressIterator).Select(x => new Address(x.key[..Address.Size])).ToHashSet(),
+                    Enumerate(topicIterator).Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
+                ).ToArray()
+                .Should().BeEquivalentTo(new object[] { address, topic });
         }
 
         [Test]
-        public void SetReceipts_SavesMixedLogsCorrectly()
+        public async Task SetReceipts_SavesMixedLogsCorrectly()
         {
             // Arrange
             var address = new Address("0x0000000000000000000000000000000000001234");
@@ -285,14 +224,14 @@ namespace Nethermind.Db.Test
         {
             Logs = new List<LogEntry>
             {
-                new LogEntry(address, Array.Empty<byte>(), Array.Empty<Hash256>()),
-                new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { topic })
+                new(address, [], []),
+                new(Address.Zero, [], [topic])
             }.ToArray()
         }
     };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
 
             // Assert
             var addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -332,30 +271,33 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SetReceipts_LargeNumberOfReceiptsAcrossMultipleBlocks()
+        public async Task SetReceipts_LargeNumberOfReceiptsAcrossMultipleBlocks()
         {
             // Arrange
             var address1 = new Address("0x0000000000000000000000000000000000001234");
             var topic1 = new Hash256("0x0000000000000000000000000000000000000000000000000000000000000001");
+            var address2 = new Address("0x0000000000000000000000000000000000005678");
             var receipt = new TxReceipt
             {
                 Logs = new List<LogEntry>
-        {
-            new LogEntry(address1, Array.Empty<byte>(), new[] { topic1 })
-        }.ToArray()
+                {
+                    new(address1, [], [topic1]),
+                    new(address2, [], [])
+                }.ToArray()
             };
 
             // Act
-            for (int i = 1; i <= 10000; i++)
+            var receiptBatch = Enumerable.Repeat(receipt, 10).ToArray();
+            for (int i = 1; i <= 2000; i++)
             {
-                _logIndexStorage.SetReceiptsAsync(i, new[] { receipt }, isBackwardSync: false);
+                await _logIndexStorage.SetReceiptsAsync(i, receiptBatch, isBackwardSync: false, CancellationToken.None);
             }
 
-            _logIndexStorage.Dispose();
+            await _logIndexStorage.TryDisposeAsync();
 
             // Assert
             File.Exists(_finalFilePath).Should().BeTrue("The finalized file should be created and contain the data.");
-            using var finalFileStream = new FileStream(_finalFilePath, FileMode.Open, FileAccess.Read);
+            await using var finalFileStream = new FileStream(_finalFilePath, FileMode.Open, FileAccess.Read);
             finalFileStream.Length.Should().BeGreaterThan(0, "The finalized file should not be empty.");
         }
 
@@ -369,12 +311,12 @@ namespace Nethermind.Db.Test
             {
                 Logs = new List<LogEntry>
         {
-            new LogEntry(address1, Array.Empty<byte>(), new[] { topic1 })
+            new(address1, [], [topic1])
         }.ToArray()
             };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(1, new[] { receipt }, isBackwardSync: false);
+            _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
 
             // Assert
             var addressBlocks = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
@@ -396,13 +338,13 @@ namespace Nethermind.Db.Test
             {
                 Logs = new List<LogEntry>
         {
-            new LogEntry(address1, Array.Empty<byte>(), new[] { topic1 }),
-            new LogEntry(address2, Array.Empty<byte>(), new[] { topic2 })
+            new(address1, [], [topic1]),
+            new(address2, [], [topic2])
         }.ToArray()
             };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(1, new[] { receipt }, isBackwardSync: false);
+            _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
 
             // Assert
             var addressBlocks1 = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
@@ -421,8 +363,8 @@ namespace Nethermind.Db.Test
         {
             // Arrange
             int numberOfBlocks = 100;
-            List<Address> generatedAddresses = new List<Address>();
-            List<Hash256> generatedTopics = new List<Hash256>();
+            List<Address> generatedAddresses = [];
+            List<Hash256> generatedTopics = [];
             Dictionary<Address, List<int>> addressBlockMap = new Dictionary<Address, List<int>>();
             Dictionary<Hash256, List<int>> topicBlockMap = new Dictionary<Hash256, List<int>>();
             Random random = new Random();
@@ -434,8 +376,8 @@ namespace Nethermind.Db.Test
                 var topic = new Hash256($"0x{i.ToString("x").PadLeft(64, '0')}");
                 generatedAddresses.Add(address);
                 generatedTopics.Add(topic);
-                addressBlockMap[address] = new List<int>();
-                topicBlockMap[topic] = new List<int>();
+                addressBlockMap[address] = [];
+                topicBlockMap[topic] = [];
             }
 
             // Act: Create receipts and distribute them across blocks
@@ -446,7 +388,7 @@ namespace Nethermind.Db.Test
                 {
                     var address = generatedAddresses[random.Next(generatedAddresses.Count)];
                     var topic = generatedTopics[random.Next(generatedTopics.Count)];
-                    logs.Add(new LogEntry(address, Array.Empty<byte>(), new[] { topic }));
+                    logs.Add(new(address, [], [topic]));
 
                     // Track which blocks these addresses and topics appear in
                     if (!addressBlockMap[address].Contains(blockNumber))
@@ -459,7 +401,7 @@ namespace Nethermind.Db.Test
                     }
                 }
                 var receipt = new TxReceipt { Logs = logs.ToArray() };
-                _logIndexStorage.SetReceiptsAsync(blockNumber, new[] { receipt }, isBackwardSync: false);
+                _logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false, CancellationToken.None);
             }
 
             // Assert: Check that each address and topic returns the correct block numbers
@@ -477,6 +419,16 @@ namespace Nethermind.Db.Test
                 var expectedBlocks = kvp.Value;
                 var resultBlocks = _logIndexStorage.GetBlockNumbersFor(topic, 1, numberOfBlocks).ToList();
                 resultBlocks.Should().BeEquivalentTo(expectedBlocks, $"Topic {topic} should have the correct block numbers.");
+            }
+        }
+
+        private static IEnumerable<(TKey key, TValue value)> Enumerate<TKey, TValue>(IIterator<TKey, TValue> iterator)
+        {
+            iterator.SeekToFirst();
+            while (iterator.Valid())
+            {
+                yield return (iterator.Key(), iterator.Value());
+                iterator.Next();
             }
         }
     }

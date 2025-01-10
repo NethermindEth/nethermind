@@ -7,6 +7,7 @@ namespace Nethermind.Db;
 
 public interface IIterator<TKey, TValue> : IDisposable
 {
+    void SeekToFirst();
     void Seek(TKey key);
     void SeekForPrev(TKey key);
     void SeekForPrev(ReadOnlySpan<byte> key);

@@ -19,5 +19,7 @@ public interface ILogIndexStorage : IAsyncDisposable
     Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
     Task<SetReceiptsStats> SetReceiptsAsync((int blockNumber, TxReceipt[] receipts)[] batch, bool isBackwardSync, CancellationToken cancellationToken);
 
-    public PagesStats PagesStats { get; }
+    PagesStats PagesStats { get; }
+    string TempFilePath { get; }
+    string FinalFilePath { get; }
 }

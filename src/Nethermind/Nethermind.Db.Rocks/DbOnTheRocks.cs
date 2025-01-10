@@ -1546,7 +1546,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options, ColumnFamilyHandle? familyHandle)
     {
         var iterator = CreateIterator(options, familyHandle);
-        iterator.SeekToFirst();
         return new RocksDbIteratorWrapper(iterator);
     }
 

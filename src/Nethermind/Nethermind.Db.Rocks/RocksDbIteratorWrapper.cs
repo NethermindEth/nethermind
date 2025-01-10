@@ -18,6 +18,11 @@ public class RocksDbIteratorWrapper : IIterator<byte[], byte[]>
         _iterator = iterator;
     }
 
+    public void SeekToFirst()
+    {
+        _iterator.SeekToFirst();
+    }
+
     public void Seek(byte[] key)
     {
         _iterator.Seek(key);

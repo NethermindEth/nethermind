@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -155,17 +156,37 @@ namespace Nethermind.Init.Steps.Migrations
 
                 _logger.Info($"LogIndexMigration" +
                     $"\n\t\tBlocks: {total.BlocksAdded:N0} / {_totalBlocks:N0} ( {(decimal)total.BlocksAdded / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
-                    $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded} )" +
+                    $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded:N0} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
-                    $"\n\t\tKeys per batch: {last.KeysCount} ( {total.KeysCount} on average )" +
+                    $"\n\t\tKeys per batch: {last.KeysCount:N0} ( {total.KeysCount:N0} on average )" +
                     $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
                     $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average)" +
+                    $"\n\t\tProcessing: {last.ProcessingData} ( {total.ProcessingData} on average)" +
                     $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average)" +
                     $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average)" +
                     $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average)" +
-                    $"\n\t\tPages total: {pagesStats.PagesAllocated} allocated, {pagesStats.PagesTaken} taken, {pagesStats.PagesReturned} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending");
+                    $"\n\t\tNew indexes: {last.NewDbIndexes:N0} DB ( {total.NewDbIndexes:N0} on average), {last.NewTempIndexes:N0} Temp ( {total.NewTempIndexes:N0} on average), {last.NewTempFromDbIndexes:N0} DB -> Temp ( {total.NewTempFromDbIndexes:N0} on average)" +
+                    $"\n\t\tPages total: {pagesStats.PagesAllocated:N0} allocated, {pagesStats.PagesTaken:N0} taken, {pagesStats.PagesReturned:N0} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending" +
+                    $"\n\t\tFiles sizes: {GetFileSize(_logIndexStorage.TempFilePath)} Temp, {GetFileSize(_logIndexStorage.FinalFilePath)} Final"
+                );
             }
+        }
+
+        private static readonly string[] Suffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
+
+        private string GetFileSize(string path)
+        {
+            int index = 0;
+            double size = new FileInfo(path).Length;
+
+            while (size >= 1024 && index < Suffixes.Length - 1)
+            {
+                size /= 1024;
+                index++;
+            }
+
+            return $"{size:0.##} {Suffixes[index]}";
         }
 
         private async Task RunMigration(CancellationToken token)
@@ -178,12 +199,8 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                // TODO use separate config option?
-                int parallelism = _receiptConfig.ReceiptsMigrationDegreeOfParallelism;
-                if (parallelism == 0) parallelism = Environment.ProcessorCount;
-
                 var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, BatchSize, token), token);
-                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, 1, token), token);
+                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
             }
             finally
@@ -206,9 +223,9 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                const int startFrom = 0;
+                // const int startFrom = 0;
                 // const int startFrom = 750_000; // Just before slowdown
-                // const int startFrom = 750_000 + 18_000; // Where slowdown starts
+                const int startFrom = 750_000 + 18_000 + 33_000; // Where slowdown starts
                 // const int startFrom = 2_000_000; // Average blocks
                 // const int startFrom = 2_000_000 + 180_000; // Very log-dense blocks
                 foreach (Block block in GetBlocksForMigration(token, startFrom))
@@ -236,33 +253,18 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private async Task MigrateBlocks(ChannelReader<(int blockNumber, TxReceipt[] receipts)[]> reader, int parallelism, CancellationToken token)
+        private async Task MigrateBlocks(ChannelReader<(int blockNumber, TxReceipt[] receipts)[]> reader, CancellationToken token)
         {
             try
             {
-                if (parallelism > 1)
+                foreach ((int blockNumber, TxReceipt[] receipts)[] batch in reader.ReadAllAsync(token).ToEnumerable())
                 {
-                    await Parallel.ForEachAsync(
-                        reader.ReadAllAsync(token),
-                        new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = parallelism }, async (batch, _) =>
-                        {
-                            SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
-                            _lastStats.Combine(runStats);
-                            _totalStats.Combine(runStats);
-                        }
-                    );
-                }
-                else
-                {
-                    foreach ((int blockNumber, TxReceipt[] receipts)[] batch in reader.ReadAllAsync(token).ToEnumerable())
-                    {
-                        if (token.IsCancellationRequested)
-                            return;
+                    if (token.IsCancellationRequested)
+                        return;
 
-                        SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
-                        _lastStats.Combine(runStats);
-                        _totalStats.Combine(runStats);
-                    }
+                    SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
+                    _lastStats.Combine(runStats);
+                    _totalStats.Combine(runStats);
                 }
             }
             catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == token)

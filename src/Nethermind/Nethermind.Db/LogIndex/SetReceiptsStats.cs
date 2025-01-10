@@ -13,10 +13,14 @@ public class SetReceiptsStats
     public ExecTimeStats SeekForPrevHit { get; set; } = new();
     public ExecTimeStats SeekForPrevMiss { get; set; } = new();
     public ExecTimeStats BuildingDictionary { get; set; } = new();
+    public ExecTimeStats ProcessingData { get; set; } = new();
     public ExecTimeStats WaitingForFinalization { get; set; } = new();
     public ExecTimeStats FlushingDbs { get; set; } = new();
     public AverageStats KeysCount { get; set; } = new();
     public AverageStats BytesWritten { get; set; } = new();
+    public long NewDbIndexes;
+    public long NewTempIndexes;
+    public long NewTempFromDbIndexes;
 
     public void Combine(SetReceiptsStats other)
     {
@@ -28,9 +32,13 @@ public class SetReceiptsStats
         SeekForPrevHit.Combine(other.SeekForPrevHit);
         SeekForPrevMiss.Combine(other.SeekForPrevMiss);
         BuildingDictionary.Combine(other.BuildingDictionary);
+        ProcessingData.Combine(other.ProcessingData);
         WaitingForFinalization.Combine(other.WaitingForFinalization);
         FlushingDbs.Combine(other.FlushingDbs);
         KeysCount.Combine(other.KeysCount);
         BytesWritten.Combine(other.BytesWritten);
+        NewDbIndexes += other.NewDbIndexes;
+        NewTempIndexes += other.NewTempIndexes;
+        NewTempFromDbIndexes += other.NewTempFromDbIndexes;
     }
 }

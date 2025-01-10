@@ -18,7 +18,7 @@ public class AverageStats
 
     public double Average => _count == 0 ? 0 : (double)_total / _count;
 
-    public override string ToString() => $"{Average:F2} ({_count})";
+    public override string ToString() => $"{Average:F2} ({_count:N0})";
 
     public void Combine(AverageStats stats)
     {

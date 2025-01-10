@@ -20,7 +20,21 @@ public class ExecTimeStats
 
     public TimeSpan Average => _count == 0 ? TimeSpan.Zero : TimeSpan.FromMicroseconds((double)_totalMicroseconds / _count);
 
-    public override string ToString() => $"{Average.TotalMicroseconds:F1}μs ({_count})";
+    public override string ToString()
+    {
+        var timeStr = Average switch
+        {
+            { TotalDays: >= 1 } x => $"{x.TotalDays:F2}d",
+            { TotalHours: >= 1 } x => $"{x.TotalHours:F2}h",
+            { TotalMinutes: >= 1 } x => $"{x.TotalMinutes:F2}m",
+            { TotalSeconds: >= 1 } x => $"{x.TotalSeconds:F2}s",
+            { TotalMilliseconds: >= 1 } x => $"{x.TotalMilliseconds:F1}ms",
+            { TotalMicroseconds: >= 1 } x => $"{x.TotalMicroseconds:F1}μs",
+            var x => $"{x.TotalNanoseconds:F1}ns"
+        };
+
+        return $"{timeStr} ({_count:N0})";
+    }
 
     public void Combine(ExecTimeStats stats)
     {
