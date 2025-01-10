@@ -11,7 +11,7 @@ namespace Nethermind.ContractSearch.Plugin;
 public class ContractSearchPlugin : INethermindPlugin
 {
     public string Name => "ContractSearch";
-    public string Description => "Search smart contracts for magic numbers";
+    public string Description => "Search smart contracts for bytecode patterns.";
     public string Author => "Nethermind";
     private INethermindApi _api = null!;
     private IContractSearchConfig _config = null!;
