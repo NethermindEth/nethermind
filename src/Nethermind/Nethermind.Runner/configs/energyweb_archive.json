@@ -28,6 +28,9 @@
   "Mining": {
     "MinGasPrice": 1
   },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
   "Pruning": {
     "Mode": "None"
   },
