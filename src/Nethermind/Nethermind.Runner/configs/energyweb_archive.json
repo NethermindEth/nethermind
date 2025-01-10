@@ -34,9 +34,6 @@
   "Pruning": {
     "Mode": "None"
   },
-  "Receipt": {
-    "TxLookupLimit": 0
-  },
   "Blocks": {
     "GasToken": "EWT"
   },
