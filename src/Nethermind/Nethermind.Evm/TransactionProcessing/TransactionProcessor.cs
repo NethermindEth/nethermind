@@ -779,9 +779,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 spentGas -= refund;
             }
 
-            var operationGas = spentGas;
+            long operationGas = spentGas;
             spentGas = Math.Max(spentGas, floorGas);
-            var totalRefund = tx.GasLimit - spentGas;
+            long totalRefund = tx.GasLimit - spentGas;
             // If noValidation we didn't charge for gas, so do not refund
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 WorldState.AddToBalance(tx.SenderAddress!, (ulong)totalRefund * gasPrice, spec);
