@@ -96,7 +96,7 @@ public static class BlockErrorMessages
 
     //Block's blob gas used in header is above the limit.
     public static readonly string BlobGasUsedAboveBlockLimit =
-        "BlockBlobGasExceeded: A block cannot have more than {0} blob gas.";
+        "BlockBlobGasExceeded: A block cannot have more than {0} blob gas, blobs count {1}, blobs gas used: {2}.";
 
     //Block's excess blob gas in header is incorrect.
     public const string IncorrectExcessBlobGas =
