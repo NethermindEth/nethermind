@@ -318,6 +318,8 @@ public class AdminModuleTests
             _networkConfig,
             peerPool,
             Substitute.For<IStaticNodesManager>(),
+            Substitute.For<IBlockingVerifyTrie>(),
+            Substitute.For<IStateReader>(),
             new Enode(_enodeString),
             _exampleDataDir,
             new ManualPruningTrigger(),
