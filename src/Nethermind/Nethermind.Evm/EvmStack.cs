@@ -289,7 +289,7 @@ public ref struct EvmStack<TTracing>
         ref Word v = ref MemoryMarshal.GetReference(_words);
 
         ref Word from = ref Unsafe.Add(ref v, Head - depth);
-        ref Word to = ref Unsafe.Add(ref v, Head );
+        ref Word to = ref Unsafe.Add(ref v, Head);
 
         to = from;
 
@@ -316,7 +316,7 @@ public ref struct EvmStack<TTracing>
         ref Word v = ref MemoryMarshal.GetReference(_words);
 
         ref Word bottom = ref Unsafe.Add(ref v, Head - depth);
-        ref Word top = ref Unsafe.Add(ref v, Head );
+        ref Word top = ref Unsafe.Add(ref v, Head);
 
         Word buffer = bottom;
         bottom = top;
@@ -366,7 +366,7 @@ public static class EvmStack
     }
 }
 
-public  static class Endianness
+public static class Endianness
 {
     public static void Reshuffle(ref Word word)
     {
