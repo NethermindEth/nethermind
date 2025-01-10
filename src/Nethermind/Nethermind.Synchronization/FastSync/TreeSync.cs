@@ -672,15 +672,15 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data, TrieNode? node)
         {
-            if (syncItem.IsRoot)
-            {
-                if (!VerifyStorageUpdated(syncItem, data))
-                {
-                    // If storage that should be updated is not updated, skip saving this root node.
-                    // Add it as dependent items of the missing storage which should get fetched later.
-                    return;
-                }
-            }
+            //if (syncItem.IsRoot)
+            //{
+            //    if (!VerifyStorageUpdated(syncItem, data))
+            //    {
+            //        // If storage that should be updated is not updated, skip saving this root node.
+            //        // Add it as dependent items of the missing storage which should get fetched later.
+            //        return;
+            //    }
+            //}
 
             if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
             Interlocked.Increment(ref _data.SavedNodesCount);
@@ -698,9 +698,6 @@ namespace Nethermind.Synchronization.FastSync
                             using var rawState = _stateFactory.GetRaw();
                             SaveNode(rawState, node, syncItem, Keccak.Zero);
                             rawState.Commit(false);
-
-                            //_stateDb.Set(syncItem.Hash, data);
-                            //_nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
                         finally
                         {
@@ -722,8 +719,6 @@ namespace Nethermind.Synchronization.FastSync
                             using var rawState = _stateFactory.GetRaw();
                             SaveNode(rawState, node, syncItem, syncItem.Address);
                             rawState.Commit(false);
-                            //_stateDb.Set(syncItem.Hash, data);
-                            //_nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
                         finally
                         {
@@ -1093,23 +1088,21 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(IRawState rawState, TrieNode node, StateSyncItem syncItem, ValueHash256 accountHash)
         {
-            Span<byte> fullPath = stackalloc byte[64];
-            syncItem.Path.Span.CopyTo(fullPath);
+            TreePath currentPath = syncItem.Path;
             if (node.NodeType == NodeType.Leaf)
             {
-                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
+                currentPath = currentPath.Append(node.Key);
 
                 if (syncItem.NodeDataType == NodeDataType.Storage)
                 {
                     Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(node.Value);
-                    rawState.SetStorage(accountHash, new ValueHash256(Nibbles.ToBytes(fullPath)),
-                        rlpContext.DecodeByteArray());
+                    rawState.SetStorage(accountHash, new ValueHash256(currentPath.Span), rlpContext.DecodeByteArray());
                 }
                 else
                 {
                     var account = new AccountDecoder().Decode(node.Value.AsRlpStream());
-                    rawState.SetAccount(new ValueHash256(Nibbles.ToBytes(fullPath)), account);
-                    _logger.Debug($"Saving account {Nibbles.ToBytes(fullPath).ToHexString()} {account.Balance} | {account.Nonce} | {account.CodeHash} | {account.StorageRoot}");
+                    rawState.SetAccount(new ValueHash256(currentPath.Span), account);
+                    _logger.Debug($"Saving account {currentPath.ToHexString()} {account.Balance} | {account.Nonce} | {account.CodeHash} | {account.StorageRoot}");
                 }
 
                 //if (_additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
@@ -1130,9 +1123,9 @@ namespace Nethermind.Synchronization.FastSync
                 //        }
                 //    }
                 //}
-                rawState.RegisterDeleteByPrefix(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level);
+                rawState.RegisterDeleteByPrefix(accountHash, currentPath.Span, syncItem.Level);
                 if (node.Key.Length > 0)
-                    rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level, 0);
+                    rawState.CreateProofLeaf(accountHash, currentPath.Span, syncItem.Level, 0);
             }
             else if (node.NodeType == NodeType.Branch)
             {
@@ -1142,7 +1135,7 @@ namespace Nethermind.Synchronization.FastSync
                 int pathIndex = syncItem.Level;
                 for (int i = 0; i < 16; i++)
                 {
-                    fullPath[pathIndex] = (byte)i;
+                    TreePath childPath = currentPath.Append(i);
                     if (!node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
                     {
                         TreePath p = TreePath.Empty;
@@ -1155,25 +1148,25 @@ namespace Nethermind.Synchronization.FastSync
                             if (syncItem.NodeDataType == NodeDataType.Storage)
                             {
                                 childNode.ResolveNode(NullTrieNodeResolver.Instance, in p);
-                                childNode.Key.CopyTo(fullPath.Slice(pathIndex + 1));
-                                rawState.SetStorage(accountHash, new Hash256(Nibbles.ToBytes(fullPath)),
+                                childPath = currentPath.Append(childNode.Key);
+                                rawState.SetStorage(accountHash, new Hash256(childPath.Span),
                                     new Rlp.ValueDecoderContext(childNode.Value).DecodeByteArray());
                                 if (childNode.Key.Length > 0)
-                                    rawState.CreateProofLeaf(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level + 1,
+                                    rawState.CreateProofLeaf(accountHash, childPath.Span, syncItem.Level + 1,
                                         0);
 
                                 if (_logger.IsDebug)
-                                    _logger.Debug($"Save inline node {childNode} at {accountHash} | {fullPath.Slice(0, syncItem.Level + 1).ToHexString(true)}");
+                                    _logger.Debug($"Save inline node {childNode} at {accountHash} | {currentPath.ToHexString()}");
                             }
                             else
                             {
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Inline child for state {fullPath.Slice(0, pathIndex + 1).ToHexString(true)}");
+                                    _logger.Info($"Inline child for state {currentPath.ToHexString()}");
                             }
                         }
                         else
                         {
-                            rawState.RegisterDeleteByPrefix(accountHash, Nibbles.ToBytes(fullPath), pathIndex + 1);
+                            rawState.RegisterDeleteByPrefix(accountHash, childPath.Span, pathIndex + 1);
                         }
                     }
                     else
@@ -1182,30 +1175,28 @@ namespace Nethermind.Synchronization.FastSync
                         childHashes.Add(childHash.ToCommitment());
                     }
                 }
-                rawState.CreateProofBranch(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level, children.ToArray(), childHashes.ToArray());
+                rawState.CreateProofBranch(accountHash, currentPath.Span, syncItem.Level, children.ToArray(), childHashes.ToArray());
             }
             else if (node.NodeType == NodeType.Extension)
             {
-                node.Key.CopyTo(fullPath.Slice(syncItem.Level));
-                rawState.CreateProofExtension(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level,
-                node.Key.Length);
+                TreePath childPath = currentPath.Append(node.Key);
+                rawState.CreateProofExtension(accountHash, childPath.Span, syncItem.Level, node.Key.Length);
 
                 TreePath path = TreePath.Empty;
                 TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref path, 0);
                 if (childNode.HasRlp && childNode.RlpStream.Length < 32)
                 {
                     childNode.ResolveNode(NullTrieNodeResolver.Instance, in path);
-                    int nextLevel = syncItem.Level + node.Key.Length;
-                    TreePath p = new TreePath(new ValueHash256(Nibbles.ToBytes(fullPath)), nextLevel);
-                    SaveNode(rawState, childNode, new StateSyncItem(syncItem.Hash, syncItem.Address, p, syncItem.NodeDataType, nextLevel), accountHash);
+                    SaveNode(rawState, childNode, new StateSyncItem(syncItem.Hash, syncItem.Address, childPath, syncItem.NodeDataType, syncItem.Level + node.Key.Length), accountHash);
                 }
 
                 for (byte i = 0; i < 16; i++)
                 {
                     if (i == node.Key[0])
                         continue;
-                    fullPath[syncItem.Level] = i;
-                    rawState.RegisterDeleteByPrefix(accountHash, Nibbles.ToBytes(fullPath), syncItem.Level + 1);
+                    currentPath.AppendMut(i);
+                    rawState.RegisterDeleteByPrefix(accountHash, currentPath.Span, syncItem.Level + 1);
+                    currentPath.TruncateOne();
                 }
             }
         }
