@@ -260,15 +260,15 @@ namespace Nethermind.Specs.ChainSpecStyle
                 spec.TargetBlobCount = blobCount.Target;
                 spec.MaxBlobCount = blobCount.Max;
             }
-            else if (chainSpec.Name == "GnosisChain")
+            else if (chainSpec.Parameters.Eip7840DefaultBlobCountFraction is not null)
             {
-                spec.TargetBlobCount = 1;
-                spec.MaxBlobCount = 2;
+                spec.TargetBlobCount = (ulong)(Eip7840Constants.DefaultTargetBlobCount / chainSpec.Parameters.Eip7840DefaultBlobCountFraction);
+                spec.MaxBlobCount = (ulong)(Eip7840Constants.DefaultMaxBlobCount / chainSpec.Parameters.Eip7840DefaultBlobCountFraction);
             }
             else
             {
-                spec.TargetBlobCount = 3;
-                spec.MaxBlobCount = 6;
+                spec.TargetBlobCount = Eip7840Constants.DefaultTargetBlobCount;
+                spec.MaxBlobCount = Eip7840Constants.DefaultMaxBlobCount;
             }
         }
 
