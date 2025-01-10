@@ -255,26 +255,22 @@ public class RlpReadWriteTest
     [Test]
     public void OptionalStruct()
     {
-        (int, int?) tuple = (42, null);
+        int? value = null;
 
-        var rlp = Rlp.Write(tuple, static (ref RlpWriter w, (int _1, int? _2) value) =>
+        var rlp = Rlp.Write(value, static (ref RlpWriter w, int? value) =>
         {
-            w.Write(value._1);
-            if (value._2.HasValue)
+            if (value.HasValue)
             {
-                w.Write(value._2.Value);
+                w.Write(value.Value);
             }
         });
 
         var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
-            var _1 = r.ReadInt32();
-            var _2 = r.Optional(static (scoped ref RlpReader r) => r.ReadInt32());
-
-            return (_1, _2);
+            return r.Optional(static (scoped ref RlpReader r) => r.ReadInt32());
         });
 
-        decoded.Should().Be(tuple);
+        decoded.Should().Be(value);
     }
 
 
@@ -297,6 +293,38 @@ public class RlpReadWriteTest
         });
 
         decoded.Should().Be(value);
+    }
+
+    [Test]
+    public void OptionalDeep()
+    {
+        (string, string?, int, int?) tuple = ("dog", null, 42, null);
+
+        var rlp = Rlp.Write(tuple, static (ref RlpWriter w, (string _1, string? _2, int _3, int? _4) tuple) =>
+        {
+            w.Write(tuple._1);
+            if (tuple._2 is not null)
+            {
+                w.Write(tuple._2);
+            }
+            w.Write(tuple._3);
+            if (tuple._4.HasValue)
+            {
+                w.Write(tuple._4.Value);
+            }
+        });
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            var _1 = r.ReadString();
+            var _2 = r.Optional(static (scoped ref RlpReader r) => r.ReadString());
+            var _3 = r.ReadInt32();
+            var _4 = r.Optional(static (scoped ref RlpReader r) => r.ReadInt32());
+
+            return (_1, _2, _3, _4);
+        });
+
+        decoded.Should().Be(tuple);
     }
 
     [Test]
