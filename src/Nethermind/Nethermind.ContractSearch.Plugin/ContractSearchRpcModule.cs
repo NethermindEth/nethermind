@@ -17,32 +17,24 @@ public class ContractSearchRpcModule(IBlockTree blockTree, IWorldStateManager wo
 
     public ResultWrapper<ContractSearchResult[]> search_contracts(byte[][] bytecodes)
     {
-        try
+        Block? head = _blockTree.Head;
+        if (head is null)
         {
-            Block? head = _blockTree.Head;
-            if (head is null)
-            {
-                return ResultWrapper<ContractSearchResult[]>.Fail("Chain head not available.");
-            }
-
-            if (head.StateRoot is null)
-            {
-                return ResultWrapper<ContractSearchResult[]>.Fail("State root not available.");
-            }
-
-            List<ContractSearchResult> results = [];
-
-            _worldStateManager.GlobalStateReader.RunTreeVisitor(
-                new ContractBytecodeSearchVisitor(bytecodes, results, _worldStateManager.GlobalStateReader),
-                head.StateRoot);
-
-            return ResultWrapper<ContractSearchResult[]>.Success([.. results]);
+            return ResultWrapper<ContractSearchResult[]>.Fail("Chain head not available.");
         }
-        catch (Exception ex)
+
+        if (head.StateRoot is null)
         {
-            _logger.Error("Error during bytecode search", ex);
-            return ResultWrapper<ContractSearchResult[]>.Fail(ex.Message);
+            return ResultWrapper<ContractSearchResult[]>.Fail("State root not available.");
         }
+
+        List<ContractSearchResult> results = [];
+
+        _worldStateManager.GlobalStateReader.RunTreeVisitor(
+            new ContractBytecodeSearchVisitor(bytecodes, results, _worldStateManager.GlobalStateReader, _logger),
+            head.StateRoot);
+
+        return ResultWrapper<ContractSearchResult[]>.Success([.. results]);
     }
 }
 
@@ -55,11 +47,13 @@ public struct ContractSearchResult
 public class ContractBytecodeSearchVisitor(
     byte[][] searchBytecodes,
     List<ContractSearchResult> results,
-    IStateReader stateReader) : ITreeVisitor
+    IStateReader stateReader,
+    ILogger logger) : ITreeVisitor
 {
     private readonly byte[][] _searchBytecodes = searchBytecodes;
     private readonly List<ContractSearchResult> _results = results;
     private readonly IStateReader _stateReader = stateReader;
+    private readonly ILogger _logger = logger;
     private Address _currentAddress = Address.Zero;
 
     public bool IsFullDbScan => true;
@@ -96,20 +90,23 @@ public class ContractBytecodeSearchVisitor(
 
     public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
     {
+        _logger.Info($"Searching contract at {_currentAddress}");
+
         byte[] code = _stateReader.GetCode(codeHash)!;
         var matchIndices = new List<int[]>();
 
-        foreach (var searchCode in _searchBytecodes)
+        foreach (byte[] searchCode in _searchBytecodes)
         {
-            var indices = FindAllIndices(code, searchCode);
-            if (indices.Length > 0)
+            IEnumerable<int> indices = FindAllIndices(code, searchCode);
+            if (indices.Any())
             {
-                matchIndices.Add(indices);
+                matchIndices.Add([.. indices]);
             }
         }
 
         if (matchIndices.Count == _searchBytecodes.Length)
         {
+            _logger.Info($"Found matching contract at {_currentAddress}");
             _results.Add(new ContractSearchResult
             {
                 Address = _currentAddress,
@@ -118,22 +115,16 @@ public class ContractBytecodeSearchVisitor(
         }
     }
 
-    private static int[] FindAllIndices(byte[] source, byte[] pattern)
+    private static IEnumerable<int> FindAllIndices(byte[] source, byte[] pattern)
     {
-        var indices = new List<int>();
-        int currentIndex = 0;
         ReadOnlySpan<byte> sourceSpan = source;
+        ReadOnlySpan<byte> patternSpan = pattern;
+        int currentIndex;
 
-        while (currentIndex <= source.Length - pattern.Length)
+        while ((currentIndex = sourceSpan.IndexOf(patternSpan)) != -1)
         {
-            int index = sourceSpan[currentIndex..].IndexOf(pattern);
-            if (index == -1)
-                break;
-
-            indices.Add(currentIndex + index);
-            currentIndex += index + 1;
+            yield return currentIndex;
+            sourceSpan = sourceSpan[(currentIndex + 1)..];
         }
-
-        return [.. indices];
     }
 }
