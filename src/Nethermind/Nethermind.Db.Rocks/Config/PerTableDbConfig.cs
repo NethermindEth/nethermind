@@ -40,7 +40,7 @@ public class PerTableDbConfig
         foreach (var prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
-            if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
+            if (GetPrefixedConfigProperty(type, prefixed) is null)
             {
                 throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
@@ -91,13 +91,14 @@ public class PerTableDbConfig
         Type type = dbConfig.GetType();
         PropertyInfo? propertyInfo;
 
+        // TODO: clarify if this can be case-insensitive
         string val = (string)type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)!.GetValue(dbConfig)!;
 
         foreach (var prefix in prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
 
-            propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            propertyInfo = GetPrefixedConfigProperty(type, prefixed);
             if (propertyInfo is not null)
             {
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
@@ -123,7 +124,7 @@ public class PerTableDbConfig
             {
                 string prefixed = string.Concat(prefix, propertyName);
 
-                propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+                propertyInfo = GetPrefixedConfigProperty(type, prefixed);
                 if (propertyInfo is not null)
                 {
                     if (propertyInfo.PropertyType.CanBeAssignedNull())
@@ -148,7 +149,7 @@ public class PerTableDbConfig
             }
 
             // Use generic one even if its available
-            propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            propertyInfo = GetPrefixedConfigProperty(type, propertyName);
             return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
@@ -157,4 +158,8 @@ public class PerTableDbConfig
         }
     }
 
+    private static PropertyInfo? GetPrefixedConfigProperty(Type type, string name)
+    {
+        return type.GetProperty(name, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+    }
 }
