@@ -71,21 +71,11 @@ public class Locals<T>(Emit<T> method) : IDisposable
         return false;
     }
 
-    public bool TryLoadLocal(string name)
+    public bool TryLoadLocal(string name, bool byAddress = false)
     {
         if (AddtionalLocals.ContainsKey(name))
         {
             method.LoadLocal(AddtionalLocals[name]);
-            return true;
-        }
-        return false;
-    }
-
-    public bool TryLoadLocalAddress(string name)
-    {
-        if (AddtionalLocals.ContainsKey(name))
-        {
-            method.LoadLocalAddress(AddtionalLocals[name]);
             return true;
         }
         return false;

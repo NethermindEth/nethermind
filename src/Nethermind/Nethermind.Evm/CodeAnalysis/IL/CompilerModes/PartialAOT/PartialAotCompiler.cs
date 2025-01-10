@@ -96,8 +96,9 @@ internal static class PartialAOT
 
         // if last ilvmstate was a jump
         envLoader.LoadResult(method, locals, true);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldJump)));
-        method.BranchIfTrue(isContinuation);
+        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
+        method.LoadConstant((int)ContractState.EPHEMERAL_JUMP);
+        method.BranchIfEqual(isContinuation);
 
         Dictionary<int, Label> jumpDestinations = new();
 
@@ -293,8 +294,8 @@ internal static class PartialAOT
         method.LoadLocal(locals.programCounter);
         method.StoreLocal(locals.jmpDestination);
         envLoader.LoadResult(method, locals, true);
-        method.LoadConstant(false);
-        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldJump)));
+        method.LoadConstant((int)ContractState.Running);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
         method.Branch(jumpIsLocal);
 
         // jump table
@@ -337,9 +338,9 @@ internal static class PartialAOT
         method.MarkLabel(jumpIsNotLocal);
         envLoader.LoadResult(method, locals, true);
         method.LoadConstant(true);
-        method.Duplicate();
         method.StoreLocal(isEphemeralJump);
-        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldJump)));
+        method.LoadConstant((int)ContractState.EPHEMERAL_JUMP);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
         envLoader.LoadProgramCounter(method, locals, true);
         method.LoadLocal(locals.jmpDestination);
@@ -354,8 +355,13 @@ internal static class PartialAOT
                 EmitCallToErrorTrace(method, locals.gasAvailable, kvp, envLoader, locals);
 
             envLoader.LoadResult(method, locals, true);
+            method.Duplicate();
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+
+            method.LoadConstant((int)ContractState.Failed);
+            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
             method.Branch(exit);
         }
 

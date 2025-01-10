@@ -12,6 +12,13 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.Patterns;
+internal static class HelperMethods {
+    public static void ThrowException(this ref ILChunkExecutionState result, EvmExceptionType exceptionType)
+    {
+        result.ContractState = ContractState.Failed;
+        result.ExceptionType = exceptionType;
+    }
+}
 
 internal class MethodSelector : IPatternChunk
 {
@@ -27,7 +34,7 @@ internal class MethodSelector : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<T, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
         byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
@@ -54,12 +61,12 @@ internal class IsContractCheck : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         Address address = stack.PopAddress();
 
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, worldState, spec, NullTxTracer.Instance, true))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         int contractCodeSize = codeInfoRepository.GetCachedCodeInfo(worldState, address, spec).MachineCode.Length;
         stack.PushUInt32(contractCodeSize);
@@ -89,7 +96,7 @@ internal class EmulatedStaticJump : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
         if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
@@ -98,7 +105,7 @@ internal class EmulatedStaticJump : IPatternChunk
         }
         else
         {
-            result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
+            result.ThrowException(EvmExceptionType.InvalidJumpDestination);
         }
     }
 }
@@ -116,7 +123,7 @@ internal class EmulatedStaticCJump : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.PopUInt256(out UInt256 condition);
         int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
@@ -128,7 +135,7 @@ internal class EmulatedStaticCJump : IPatternChunk
             }
             else
             {
-                result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
+                result.ThrowException(EvmExceptionType.InvalidJumpDestination);
             }
         }
         else
@@ -151,7 +158,7 @@ internal class PP : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.Head -= 2;
         //stack.PopLimbo();
@@ -174,7 +181,7 @@ internal class P01P01SHL : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.PushUInt256((UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << (int)((UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3]).u0);
 
@@ -195,7 +202,7 @@ internal class PJ : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         //stack.Head--;
         stack.PopLimbo();
@@ -209,7 +216,7 @@ internal class PJ : IPatternChunk
         }
         else
         {
-            result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
+            result.ThrowException(EvmExceptionType.InvalidJumpDestination);
         }
     }
 }
@@ -227,7 +234,7 @@ internal class S02P : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.Swap(3);
         stack.Head--;
@@ -249,7 +256,7 @@ internal class S01P : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.Swap(2);
         stack.Head--;
@@ -271,7 +278,7 @@ internal class P01SHL : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.PopUInt256(out UInt256 value);
 
@@ -293,7 +300,7 @@ internal class P01D02 : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1]);
         stack.Dup(2);
@@ -315,7 +322,7 @@ internal class P01D03 : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1]);
         stack.Dup(3);
@@ -337,7 +344,7 @@ internal class S02S01 : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         stack.Swap(3);
         stack.Swap(2);
@@ -360,7 +367,7 @@ internal class D01P04EQ : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
 
         ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 4);
@@ -396,7 +403,7 @@ internal class D01P04GT : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 4);
 
@@ -429,14 +436,14 @@ internal class D02MST : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
 
         stack.Dup(2);
         stack.PopUInt256(out UInt256 location);
         var bytes = stack.PopWord256();
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost(vmState, ref gasAvailable, in location, (UInt256)32))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
         vmState.Memory.SaveWord(in location, bytes);
         stack.PushUInt256(location);
 
@@ -456,16 +463,15 @@ internal class P01ADDS01D02MST : IPatternChunk
     public void Invoke<T>(EvmState vmState, ulong chainId, in ExecutionEnvironment env, in TxExecutionContext txCtx, in BlockExecutionContext blkCtx, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<T> stack, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer trace, ILogger logger, ref ILChunkExecutionState result) where T : struct, VirtualMachine.IIsTracing
     {
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
-
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         if (!stack.PopUInt256(out UInt256 location))
-            result.ExceptionType = EvmExceptionType.StackUnderflow;
+            result.ThrowException(EvmExceptionType.StackUnderflow);
 
         location = location + (new UInt256(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 3, 1)));
 
         if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32))
-            result.ExceptionType = EvmExceptionType.OutOfGas;
+            result.ThrowException(EvmExceptionType.OutOfGas);
 
         vmState.Memory.SaveWord(location, stack.PopWord256());
         stack.PushUInt256(location);

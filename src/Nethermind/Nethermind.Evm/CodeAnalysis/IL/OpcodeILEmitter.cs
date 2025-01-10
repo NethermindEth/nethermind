@@ -142,8 +142,8 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             envLoader.LoadResult(method, locals, true);
-                            method.LoadConstant(true);
-                            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
+                            method.LoadConstant((int)ContractState.Finished);
+                            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                             method.FakeBranch(escapeLabels.returnLabel);
                         });
                     }
@@ -1628,16 +1628,16 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.StoreObject<ReadOnlyMemory<byte>>();
 
                             envLoader.LoadResult(method, locals, true);
-                            method.LoadConstant(true);
                             switch (opcodeMetadata.Operation)
                             {
                                 case Instruction.REVERT:
-                                    method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldRevert)));
+                                    method.LoadConstant((int)ContractState.Revert);
                                     break;
                                 case Instruction.RETURN:
-                                    method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldReturn)));
+                                    method.LoadConstant((int)ContractState.Return);
                                     break;
                             }
+                            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                             method.FakeBranch(escapeLabels.returnLabel);
                         });
                     }
@@ -2063,8 +2063,11 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.BranchIfEqual(endOfOpcode);
 
                             envLoader.LoadResult(method, locals, true);
+                            method.Duplicate();
                             method.LoadLocal(locals.uint32A);
                             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+                            method.LoadConstant((int)ContractState.Failed);
+                            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
                             envLoader.LoadGasAvailable(method, locals, true);
                             method.LoadLocal(locals.gasAvailable);
@@ -2436,8 +2439,11 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         method.BranchIfEqual(happyPath);
 
                         envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
                         method.LoadLocal(locals.uint32A);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+                        method.LoadConstant((int)ContractState.Failed);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
@@ -2446,8 +2452,8 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
 
                         method.MarkLabel(happyPath);
                         envLoader.LoadResult(method, locals, true);
-                        method.LoadConstant(true);
-                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldStop)));
+                        method.LoadConstant((int)ContractState.Finished);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                         method.FakeBranch(escapeLabels.returnLabel);
                     });
                     break;
@@ -2575,8 +2581,11 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                         method.BranchIfEqual(happyPath);
 
                         envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
                         method.LoadLocal(locals.uint32A);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+                        method.LoadConstant((int)ContractState.Failed);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
@@ -2603,8 +2612,8 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                         method.CastClass(typeof(EvmState));
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
 
-                        method.LoadConstant(true);
-                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldContinue)));
+                        method.LoadConstant((int)ContractState.Halted);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                         method.FakeBranch(escapeLabels.returnLabel);
 
                         method.MarkLabel(skipStateMachineScheduling);
@@ -2705,8 +2714,11 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                         method.BranchIfEqual(happyPath);
 
                         envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
                         method.LoadLocal(locals.uint32A);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+                        method.LoadConstant((int)ContractState.Failed);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
@@ -2733,8 +2745,8 @@ internal class FullAotOpcodeEmitter<T> : PartialAotOpcodeEmitter<T>
                         method.CastClass(typeof(EvmState));
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
 
-                        method.LoadConstant(true);
-                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ShouldContinue)));
+                        method.LoadConstant((int)ContractState.Halted);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                         method.Branch(escapeLabels.returnLabel);
 
                         method.MarkLabel(skipStateMachineScheduling);

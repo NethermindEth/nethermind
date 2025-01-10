@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Sigil;
 using System;
 using System.Collections.Generic;
@@ -201,6 +202,18 @@ internal class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
         else
         {
             il.LoadArgument(WORLD_STATE_INDEX);
+        }
+    }
+
+    public override void LoadHeader(Emit<ExecuteSegment> il, Locals<ExecuteSegment> locals, bool loadAddress)
+    {
+        LoadBlockContext(il, locals, true);
+        il.Call(typeof(BlockExecutionContext).GetProperty(nameof(BlockExecutionContext.Header)).GetGetMethod());
+
+        if(loadAddress)
+        {
+            il.StoreLocal(locals.header);
+            il.LoadLocalAddress(locals.header);
         }
     }
 }

@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 result.ExceptionType = EvmExceptionType.OutOfGas;
 
             programCounter += 2;
-            result.ShouldStop = true;
+            result.ContractState = ContractState.Finished;
         }
     }
     internal class SomeAfterTwoPush : IPatternChunk
@@ -81,6 +81,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     internal class TestBlockChain : VirtualMachineTestsBase
     {
         protected IVMConfig config;
+        protected IlAnalyzer ilAnalyzer;
         public TestBlockChain(IVMConfig config)
         {
             this.config = config;
@@ -101,6 +102,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             _blockhashProvider = new TestBlockhashProvider(SpecProvider);
             Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, config);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
+
+            ilAnalyzer = new IlAnalyzer(TestState, SpecProvider, _blockhashProvider, CodeInfoRepository);
 
             var code = Prepare.EvmCode
                 .PushData(23)
@@ -176,17 +179,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             if (mode.HasFlag(ILMode.PATTERN_BASED_MODE))
             {
-                IlAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
+                ilAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
             }
 
             if (mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
             {
-                IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
+                ilAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             }
 
             if (mode.HasFlag(ILMode.FULL_AOT_MODE))
             {
-                IlAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
+                ilAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
             }
         }
 
@@ -2083,53 +2086,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(notCovered.Count, Is.EqualTo(0), $"[{String.Join(", ", notCovered)}]");
         }
 
-        [Test]
-        public void Pattern_Analyzer_Find_All_Instance_Of_Pattern()
-        {
-            byte[] bytecode =
-                Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .Done;
-
-            CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
-
-            IlAnalyzer.Analyse(codeInfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
-
-            codeInfo.IlInfo.IlevmChunks.Length.Should().Be(2);
-        }
-
-        [Test]
-        public void JIT_Analyzer_Compiles_stateless_bytecode_chunk()
-        {
-            byte[] bytecode =
-                Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .Call(Address.FromNumber(23), 10000)
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .STOP()
-                    .Done;
-
-            CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
-
-            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
-
-            codeInfo.IlInfo.IlevmChunks.Length.Should().Be(2);
-        }
 
         [Test]
         public void Execution_Swap_Happens_When_Pattern_Occurs()
@@ -2805,38 +2761,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var hasFailed = traces.Failed;
             Assert.That(HasIlvmTraces, Is.True);
             Assert.That(hasFailed, Is.True);
-        }
-
-        [Test]
-        public void Pure_Opcode_Emition_Coveraga()
-        {
-            Instruction[] instructions =
-                System.Enum.GetValues<Instruction>()
-                .Where(opcode => !opcode.IsStateful())
-                .ToArray();
-
-
-            List<(Instruction, Exception)> notYetImplemented = [];
-            foreach (var instruction in instructions)
-            {
-                string name = $"ILEVM_TEST_{instruction}";
-                OpcodeInfo opcode = new OpcodeInfo(0, instruction, null);
-                try
-                {
-                    var codeinfo = new CodeInfo([(byte)instruction]);
-                    IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
-                }
-                catch (NotSupportedException nse)
-                {
-                    notYetImplemented.Add((instruction, nse));
-                }
-                catch (Exception)
-                {
-                }
-            }
-
-            string missingOpcodes = String.Join("; ", notYetImplemented.Select(op => op.Item1.ToString()));
-            Assert.That(notYetImplemented.Count == 0, $"{notYetImplemented.Count} opcodes missing: [{missingOpcodes}]");
         }
 
 

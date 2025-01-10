@@ -25,6 +25,7 @@ using BenchmarkDotNet.Toolchains.DotNetCli;
 using CommandLine;
 using System.IO;
 using Nethermind.Evm.CodeAnalysis.IL;
+using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -62,7 +63,70 @@ namespace Nethermind.Benchmark.Runner
             public string Name { get; set; }
 
         }
+
+
         public static void Main(string[] args)
+        {
+            IlAnalyzer.Initialize();
+
+            byte[] bytes = new byte[32];
+            ((UInt256)4999).ToBigEndian(bytes);
+            var argBytes = bytes.WithoutLeadingZeros().ToArray();
+            byte[] bytecode = Prepare.EvmCode
+                        .PushData(argBytes)
+                        .COMMENT("1st/2nd fib number")
+                        .PushData(0)
+                        .PushData(1)
+                        .COMMENT("MAINLOOP:")
+                        .JUMPDEST()
+                        .DUPx(3)
+                        .ISZERO()
+                        .PushData(26 + argBytes.Length)
+                        .JUMPI()
+                        .COMMENT("fib step")
+                        .DUPx(2)
+                        .DUPx(2)
+                        .ADD()
+                        .SWAPx(2)
+                        .POP()
+                        .SWAPx(1)
+                        .COMMENT("decrement fib step counter")
+                        .SWAPx(2)
+                        .PushData(1)
+                        .SWAPx(1)
+                        .SUB()
+                        .SWAPx(2)
+                        .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
+                        .JUMP()
+
+                        .COMMENT("CLEANUP:")
+                        .JUMPDEST()
+                        .SWAPx(2)
+                        .POP()
+                        .POP()
+                        .COMMENT("done: requested fib number is the only element on the stack!")
+                        .STOP()
+                        .Done;
+
+            var nrml = new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std", bytecode, null);
+            var ilvm = new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot", bytecode, ILMode.FULL_AOT_MODE);
+
+            Run(ilvm, 1_000);
+            Run(nrml, 1_000);
+
+        }
+
+        public static void Run(ILocalSetup setup, int iterations)
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                setup.Setup();
+                setup.Run();
+                setup.Reset();
+            }
+        }
+
+        public static void _Main(string[] args)
         {
             IlAnalyzer.Initialize();
 
@@ -84,7 +148,7 @@ namespace Nethermind.Benchmark.Runner
         {
             if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
             {
-                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.LongRun.WithRuntime(CoreRuntime.Core90)));
             }
             else
             {

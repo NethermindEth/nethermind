@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
 using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie;
 using System;
 using System.Collections.Concurrent;
@@ -23,7 +25,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
 /// Provides
 /// </summary>
-public static class IlAnalyzer
+public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepo)
 {
     public class AnalysisWork(CodeInfo codeInfo, IlevmMode mode)
     {
@@ -32,7 +34,7 @@ public static class IlAnalyzer
     }
     private static readonly ConcurrentQueue<AnalysisWork> _queue = new();
 
-    public static void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
+    public void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
     {
         _queue.Enqueue(new AnalysisWork(codeInfo, mode));
         if (config.AnalysisQueueMaxSize <= _queue.Count)
@@ -41,7 +43,7 @@ public static class IlAnalyzer
         }
     }
 
-    private static void AnalyzeQueue(IVMConfig config, ILogger logger)
+    private void AnalyzeQueue(IVMConfig config, ILogger logger)
     {
         int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
@@ -53,7 +55,7 @@ public static class IlAnalyzer
             else
             {
                 worklet.CodeInfo.IlInfo.IsBeingProcessed = true;
-                IlAnalyzer.Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
+                Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
                 worklet.CodeInfo.IlInfo.IsBeingProcessed = false;
             }
         }
@@ -117,7 +119,7 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    public static void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
+    public void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
     {
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
@@ -139,7 +141,7 @@ public static class IlAnalyzer
         }
     }
 
-    internal static void CheckPatterns(ContractMetadata contractMetadata, IlInfo ilinfo)
+    internal void CheckPatterns(ContractMetadata contractMetadata, IlInfo ilinfo)
     {
         List<InstructionChunk> patternsFound = new();
         int offset = ilinfo.IlevmChunks?.Length ?? 0;
@@ -230,16 +232,16 @@ public static class IlAnalyzer
         return contractMetadata;
     }
 
-    internal static void CompileContract(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
+    internal void CompileContract(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
     {
         var contractType = FullAOT.CompileContract(contractMetadata, vmConfig);
 
         ilinfo.DynamicContractType = contractType;
-
+        ilinfo.PrecompiledContract = (IPrecompiledContract)Activator.CreateInstance(contractType, [contractMetadata, worldState, specProvider, blockhashProvider, codeInfoRepo]);
         Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 
-    internal static void CompileSegments(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
+    internal void CompileSegments(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
     {
         List<InstructionChunk> segmentsFound = new();
         int offset = ilinfo.IlevmChunks?.Length ?? 0;

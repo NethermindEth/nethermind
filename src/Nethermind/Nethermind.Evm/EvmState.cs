@@ -158,7 +158,7 @@ namespace Nethermind.Evm
 
         private EvmPooledMemory _memory;
         public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
-        internal IPrecompiledContract? ILedContract { get; set; }
+        internal ILChunkExecutionState IlState;
 
         public void Dispose()
         {

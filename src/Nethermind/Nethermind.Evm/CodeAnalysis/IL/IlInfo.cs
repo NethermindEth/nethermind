@@ -11,20 +11,6 @@ using static Nethermind.Evm.VirtualMachine;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-public struct ILChunkExecutionState()
-{
-    public readonly bool ShouldAbort => ShouldFail || ShouldReturn || ShouldStop || ShouldRevert;
-    public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
-
-    public bool ShouldJump;
-    public bool ShouldStop;
-    public bool ShouldRevert;
-    public bool ShouldReturn;
-    public bool ShouldContinue;
-
-    public EvmState CallResult;
-    public EvmExceptionType ExceptionType;
-}
 
 public static class ILMode
 {
@@ -64,8 +50,9 @@ internal class IlInfo
     // assumes small number of ILed
     public InstructionChunk[]? IlevmChunks { get; set; }
 
-    public Type? DynamicContractType;
-    public ContractMetadata? ContractMetadata;
+    public Type? DynamicContractType { get; set; }
+    public ContractMetadata? ContractMetadata { get; set; }
+    public IPrecompiledContract? PrecompiledContract { get; set; }
 
     private byte[] _Mapping = null;
 

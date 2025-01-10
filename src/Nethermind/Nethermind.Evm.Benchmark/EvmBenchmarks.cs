@@ -29,6 +29,7 @@ using Nethermind.Core.Test.Builders;
 using System.Linq;
 using Microsoft.Extensions.Options;
 using BenchmarkDotNet.Running;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -58,13 +59,16 @@ namespace Nethermind.Evm.Benchmark
         private EvmState _evmState;
         private WorldState _stateProvider;
         private ILogger _logger;
+        private byte[] bytecode;
+        private VMConfig vmConfig;
+        private int? mode;
+        private IlAnalyzer _ilAnalyzer;
 
-        public LocalSetup(string name, byte[] bytecode, int? ilvmMode)
+        public LocalSetup(string name, byte[] _bytecode, int? ilvmMode)
         {
             Name = name;
 
-
-            VMConfig vmConfig = new VMConfig();
+            vmConfig = new VMConfig();
             vmConfig.BakeInTracingInAotModes = (typeof(TIsTracing) == typeof(VirtualMachine.IsTracing));
 
             if (typeof(TIsCompiling) == typeof(VirtualMachine.IsOptimizing))
@@ -87,7 +91,11 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            CodeInfoRepository codeInfoRepository = new();
+
+            bytecode = _bytecode;
+            mode = ilvmMode;
+
+            CodeInfoRepository codeInfoRepository = new();  
 
             ILogManager logmanager = vmConfig.BakeInTracingInAotModes ? LimboLogs.Instance : NullLogManager.Instance;
 
@@ -97,14 +105,55 @@ namespace Nethermind.Evm.Benchmark
                 _txTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             }
 
+            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
-            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, MainnetSpecProvider.Instance, vmConfig, _logger);
+            _ilAnalyzer = new IlAnalyzer(_stateProvider, MainnetSpecProvider.Instance, _blockhashProvider, codeInfoRepository);
+        }
+        private Address InsertCode(byte[] bytecode, Address target = null)
+        {
+            var hashcode = Keccak.Compute(bytecode);
+            var address = target ?? new Address(hashcode);
 
-            var codeinfo = new CodeInfo(bytecode, Address.FromNumber(23));
+            var spec = Prague.Instance;
+            _stateProvider.CreateAccount(address, 1_000_000_000);
+            _stateProvider.InsertCode(address, bytecode, spec);
+            return address;
+        }
+
+        public void Setup()
+        {
+            var address = InsertCode(bytecode);
+
+            var driver =
+                Prepare.EvmCode
+                .COMMENT("BEGIN")
+                .Call(address, 100000)
+                .POP()
+                .COMMENT("END")
+                .STOP()
+                .Done;
+
+            CodeInfoRepository codeInfoRepository = new();
+
+            var driverCodeinfo = new CodeInfo(driver, Address.FromNumber(23));
+            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance);
 
             if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled || vmConfig.IsFullAotEnabled)
             {
-                IlAnalyzer.Analyse(codeinfo, ilvmMode.Value, vmConfig, NullLogger.Instance);
+                _ilAnalyzer.Analyse(driverCodeinfo, mode.Value, vmConfig, NullLogger.Instance);
+                _ilAnalyzer.Analyse(targetCodeInfo, mode.Value, vmConfig, NullLogger.Instance);
+                if (driverCodeinfo.IlInfo.Mode == ILMode.FULL_AOT_MODE)
+                {
+                    driverCodeinfo.IlInfo.PrecompiledContract = Activator.CreateInstance(_environment.CodeInfo.IlInfo.DynamicContractType, [
+                        _evmState, _stateProvider, _spec, _blockhashProvider, _txTracer, _logger, _environment.CodeInfo.IlInfo.ContractMetadata.EmbeddedData
+                    ]) as IPrecompiledContract;
+                }
+                if (targetCodeInfo.IlInfo.Mode == ILMode.FULL_AOT_MODE)
+                {
+                    targetCodeInfo.IlInfo.PrecompiledContract = Activator.CreateInstance(_environment.CodeInfo.IlInfo.DynamicContractType, [
+                        _evmState, _stateProvider, _spec, _blockhashProvider, _txTracer, _logger, _environment.CodeInfo.IlInfo.ContractMetadata.EmbeddedData
+                    ]) as IPrecompiledContract;
+                }
             }
 
             _environment = new ExecutionEnvironment
@@ -112,23 +161,15 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: codeinfo,
+                codeInfo: driverCodeinfo,
                 value: 0,
                 transferValue: 0,
                 txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
                 inputData: default
             );
-        }
 
-        public void Setup()
-        {
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
-            if(_environment.CodeInfo.IlInfo.Mode == ILMode.FULL_AOT_MODE)
-            {
-                _evmState.ILedContract = Activator.CreateInstance(_environment.CodeInfo.IlInfo.DynamicContractType, [
-                    _evmState, _stateProvider, _spec, _blockhashProvider, _txTracer, _logger, _environment.CodeInfo.IlInfo.ContractMetadata.EmbeddedData
-                ]) as IPrecompiledContract;
-            }
+            
 
         }
 
@@ -246,8 +287,8 @@ namespace Nethermind.Evm.Benchmark
                 foreach (var bytecode in GetBenchmarkSamplesGen(argBytes))
                 {
                     yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std::" + bytecode.Item1, bytecode.Item2, null);
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + bytecode.Item1, bytecode.Item2, ILMode.PATTERN_BASED_MODE);
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + bytecode.Item1, bytecode.Item2, ILMode.PARTIAL_AOT_MODE);
+                    //yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + bytecode.Item1, bytecode.Item2, ILMode.PATTERN_BASED_MODE);
+                    //yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + bytecode.Item1, bytecode.Item2, ILMode.PARTIAL_AOT_MODE);
                     yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + bytecode.Item1, bytecode.Item2, ILMode.FULL_AOT_MODE);
                 }
             }

@@ -79,11 +79,11 @@ public class VirtualMachine : IVirtualMachine
         _config = vmConfig ?? new VMConfig();
         _evm = logger.IsTrace
             ? _config.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger)
+                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger)
+                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger)
             : _config.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger);
+                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger)
+                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -166,8 +166,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     private ITxTracer _txTracer = NullTxTracer.Instance;
     private readonly IVMConfig _vmConfig;
 
+    private IlAnalyzer IlAnalyzer { get; }
+
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
+        ICodeInfoRepository codeInfoRepository,
         ISpecProvider? specProvider,
         IVMConfig vmConfig,
         ILogger? logger)
@@ -176,6 +179,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+
+        if(typeof(IsOptimizing) == typeof(TOptimizing))
+        {
+            IlAnalyzer = new IlAnalyzer(_state, specProvider, _blockhashProvider, codeInfoRepository);
+        }
 #if ILVM_DEBUG
         _vmConfig = new VMConfig
         {
@@ -675,7 +683,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsEmpty)
             {
-                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+                vmState.Env.CodeInfo.NoticeExecution(IlAnalyzer, _vmConfig, _logger);
             }
         }
 
@@ -687,13 +695,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             }
             goto Empty;
         }
-
-
-        if (!env.CodeInfo.IlInfo.IsEmpty && env.CodeInfo.IlInfo.Mode.HasFlag(ILMode.FULL_AOT_MODE) && vmState.ILedContract is null)
-        {
-            vmState.ILedContract = (IPrecompiledContract)Activator.CreateInstance(env.CodeInfo.IlInfo.DynamicContractType, vmState, _state, spec, _blockhashProvider, _txTracer, _logger, env.CodeInfo.IlInfo.ContractMetadata.EmbeddedData);
-        }
-
 
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
@@ -716,34 +717,29 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if (vmState.ILedContract is not null)
+        if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
         {
             Metrics.AotPrecompiledCalls++;
-            IPrecompiledContract precompiledContract = vmState.ILedContract;
+            IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
             int programCounter = vmState.ProgramCounter;
-            if (precompiledContract.MoveNext(_specProvider.ChainId, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer))
+            ref ILChunkExecutionState chunkExecutionState = ref vmState.IlState;
+            if (precompiledContract.MoveNext(vmState, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger, ref chunkExecutionState))
             {
                 UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
-
-                if (precompiledContract.Current.ShouldContinue)
-                {
-                    return new CallResult(vmState.ILedContract.Current.CallResult);
-                }
+                return new CallResult(chunkExecutionState.CallResult);
             }
 
             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
-            if (precompiledContract.Current.ShouldFail)
+            switch(chunkExecutionState.ContractState)
             {
-                return GetFailureReturn<TTracingInstructions>(gasAvailable, vmState.ILedContract.Current.ExceptionType);
+                case ContractState.Finished:
+                    goto Empty;
+                case ContractState.Return or ContractState.Revert:
+                   return new CallResult(_returnDataBuffer, null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                case ContractState.Failed:
+                    return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
             }
-
-            if (precompiledContract.Current.ShouldReturn || vmState.ILedContract.Current.ShouldRevert)
-            {
-                return new CallResult(_returnDataBuffer, null, shouldRevert: vmState.ILedContract.Current.ShouldRevert);
-            }
-
-            return CallResult.Empty;
         }
 
         // Struct generic parameter is used to burn out all the if statements
@@ -828,30 +824,20 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                     ref chunkExecutionResult)))
                 {
-                    if (chunkExecutionResult.ShouldReturn)
+                    switch(chunkExecutionResult.ContractState)
                     {
-                        returnData = ((ReadOnlyMemory<byte>)_returnDataBuffer).ToArray();
-                        goto DataReturn;
-                    }
-                    if (chunkExecutionResult.ShouldRevert)
-                    {
-                        isRevert = true;
-                        returnData = ((ReadOnlyMemory<byte>)_returnDataBuffer).ToArray();
-                        goto DataReturn;
-                    }
-                    if (chunkExecutionResult.ShouldStop)
-                    {
-                        goto EmptyReturn;
-                    }
-                    if (chunkExecutionResult.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
-                    {
-                        exceptionType = EvmExceptionType.InvalidJumpDestination;
-                        goto InvalidJumpDestination;
-                    }
-                    if (chunkExecutionResult.ShouldFail)
-                    {
-                        exceptionType = chunkExecutionResult.ExceptionType;
-                        goto ReturnFailure;
+                        case ContractState.Return or ContractState.Revert:
+                            returnData = ((ReadOnlyMemory<byte>)_returnDataBuffer).ToArray();
+                            isRevert = chunkExecutionResult.ContractState == ContractState.Revert;
+                            goto DataReturn;
+                        case ContractState.Finished:
+                            goto EmptyReturn;
+                        case ContractState.EPHEMERAL_JUMP when !vmState.Env.CodeInfo.ValidateJump(programCounter):
+                            exceptionType = EvmExceptionType.InvalidJumpDestination;
+                            goto InvalidJumpDestination;
+                        case ContractState.Failed:
+                            exceptionType = chunkExecutionResult.ExceptionType;
+                            goto ReturnFailure;
                     }
 
                     if (programCounter >= codeLength)

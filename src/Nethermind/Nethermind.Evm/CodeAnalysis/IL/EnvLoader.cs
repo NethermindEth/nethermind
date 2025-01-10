@@ -10,8 +10,9 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-public abstract class EnvLoader<T>
+internal abstract class EnvLoader<T>
 {
+    public abstract void LoadHeader(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadChainId(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadVmState(Emit<T> il, Locals<T> locals, bool loadAddress);
     public abstract void LoadEnv(Emit<T> il, Locals<T> locals, bool loadAddress);

@@ -19,6 +19,7 @@ using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 using DotNetty.Common.Utilities;
 using Org.BouncyCastle.Math.Field;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
 public class EvmGeneratedContract(string Address) : Attribute
@@ -28,8 +29,7 @@ public class EvmGeneratedContract(string Address) : Attribute
 
 internal static class FullAOT
 {
-    public delegate bool MoveNextDelegate(ulong chainId, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
-    public delegate void InitializeDelegate(EvmState vmState, IWorldState dbState, IReleaseSpec spec, IBlockhashProvider blockhashProvider, ITxTracer txTracer, ILogger logger, byte[][] immediates);
+    public delegate bool MoveNextDelegate(EvmState env, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer tracer, ILogger logger,  ref ILChunkExecutionState state);
     
     public static Type CompileContract(ContractMetadata contractMetadata, IVMConfig vmConfig)
     {
@@ -39,7 +39,8 @@ internal static class FullAOT
         var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Nethermind.Evm.Precompiled.Live"), AssemblyBuilderAccess.Run);
 
         ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("ContractsModule");
-        TypeBuilder contractStructBuilder = moduleBuilder.DefineType(Guid.NewGuid().ToString(), TypeAttributes.Public |
+        ValueHash256 codeHash = Keccak.Compute(contractMetadata.TargetCodeInfo.MachineCode.Span);
+        TypeBuilder contractStructBuilder = moduleBuilder.DefineType(codeHash.ToString(), TypeAttributes.Public |
             TypeAttributes.Sealed | TypeAttributes.SequentialLayout | TypeAttributes.BeforeFieldInit, typeof(ValueType), [typeof(IPrecompiledContract)]);
 
         contractStructBuilder.SetCustomAttribute(new CustomAttributeBuilder(typeof(EvmGeneratedContract).GetConstructor([typeof(string)]), [contractMetadata.TargetCodeInfo.Address?.ToString()]));
@@ -59,18 +60,20 @@ internal static class FullAOT
 
         var constructor = contractBuilder.DefineConstructor(
             MethodAttributes.Public, CallingConventions.HasThis,
-            [typeof(EvmState), typeof(IWorldState), typeof(IReleaseSpec), typeof(IBlockhashProvider), typeof(ITxTracer), typeof(ILogger), typeof(byte[][])]
+            [typeof(ContractMetadata), typeof(IWorldState), typeof(ISpecProvider), typeof(IBlockhashProvider), typeof(ICodeInfoRepository)]
         );
 
         var constructorIL = constructor.GetILGenerator();
 
         LocalBuilder evmState = constructorIL.DeclareLocal(typeof(EvmState));
 
+        LocalBuilder metadataLocal = constructorIL.DeclareLocal(typeof(ContractMetadata));
+
         constructorIL.Emit(OpCodes.Ldarg_0);
         constructorIL.Emit(OpCodes.Ldarg_1);
         constructorIL.Emit(OpCodes.Dup);
-        constructorIL.Emit(OpCodes.Stloc, evmState);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_EVMSTATE]);
+        constructorIL.Emit(OpCodes.Stloc, metadataLocal);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_METADATA]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
         constructorIL.Emit(OpCodes.Ldarg_2);
@@ -78,62 +81,27 @@ internal static class FullAOT
 
         constructorIL.Emit(OpCodes.Ldarg_0);
         constructorIL.Emit(OpCodes.Ldarg_3);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_SPEC]);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_SPEC_PROVIDER]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_S, 4);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_BLOCKHASHPROVIDER]);
+        constructorIL.Emit(OpCodes.Ldarga_S, 4);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_BLOCKHASH_PROVIDER]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
         constructorIL.Emit(OpCodes.Ldarg_S, 5);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_TRACER]);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_CODEINFO_REPOSITORY]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_S, 6);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_LOGGER]);
+        constructorIL.Emit(OpCodes.Ldloc, metadataLocal);
+        constructorIL.Emit(OpCodes.Call, typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.EmbeddedData)).GetMethod);
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_IMMEDIATES_DATA]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_S, 7);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_IMMEDIATESDATA]);
-
-        LocalBuilder envContextLocal = constructorIL.DeclareLocal(typeof(ExecutionEnvironment));
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, evmState);
-        constructorIL.Emit(OpCodes.Ldfld, typeof(EvmState).GetField(nameof(EvmState.Env)));
-        constructorIL.Emit(OpCodes.Dup);
-        constructorIL.Emit(OpCodes.Stloc, envContextLocal);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_ENV]);
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, envContextLocal);
-        constructorIL.Emit(OpCodes.Ldfld, typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData)));
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_CALLDATA]);
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, envContextLocal);
-        constructorIL.Emit(OpCodes.Ldfld, typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.CodeInfo)));
-        constructorIL.Emit(OpCodes.Call, typeof(CodeInfo).GetProperty(nameof(CodeInfo.MachineCode)).GetGetMethod());
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_MACHINECODE]);
-
-        LocalBuilder txContextLocal = constructorIL.DeclareLocal(typeof(TxExecutionContext));
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, envContextLocal);
-        constructorIL.Emit(OpCodes.Ldfld, typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.TxExecutionContext)));
-        constructorIL.Emit(OpCodes.Dup);
-        constructorIL.Emit(OpCodes.Stloc, txContextLocal);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_TXCONTEXT]);
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, txContextLocal);
-        constructorIL.Emit(OpCodes.Ldfld, typeof(TxExecutionContext).GetField(nameof(TxExecutionContext.BlockExecutionContext)));
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_BLOCKCONTEXT]);
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloca, txContextLocal);
-        constructorIL.Emit(OpCodes.Call, typeof(TxExecutionContext).GetProperty(nameof(TxExecutionContext.CodeInfoRepository)).GetGetMethod());
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.FLD_CODEINFOREPOSITORY]);
+        constructorIL.Emit(OpCodes.Ldloc, metadataLocal);
+        constructorIL.Emit(OpCodes.Call, typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.TargetCodeInfo)).GetMethod);
+        constructorIL.Emit(OpCodes.Call, typeof(CodeInfo).GetProperty(nameof(CodeInfo.MachineCode)).GetMethod);
+        constructorIL.Emit(OpCodes.Call, typeof(ReadOnlyMemory<byte>).GetMethod(nameof(ReadOnlyMemory<byte>.ToArray)));
+        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_MACHINECODE]);
 
         constructorIL.Emit(OpCodes.Ret);
     }
@@ -150,6 +118,11 @@ internal static class FullAOT
 
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
+
+        // set up spec
+        envLoader.CacheSpec(method, locals);
+        envLoader.CacheBlockContext(method, locals);
+        envLoader.CacheTxContext(method, locals);
 
         Label exit = method.DefineLabel(); // the label just before return
         Label jumpTable = method.DefineLabel(); // jump table
@@ -173,8 +146,9 @@ internal static class FullAOT
         method.StoreLocal(locals.programCounter);
 
         envLoader.LoadResult(method, locals, false);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldContinue)));
-        method.BranchIfTrue(isContinuation);
+        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
+        method.LoadConstant((int)ContractState.Halted);
+        method.BranchIfEqual(isContinuation);
 
         foreach (var segmentMetadata in contractMetadata.Segments)
         {
@@ -360,15 +334,7 @@ internal static class FullAOT
         method.MarkLabel(exit);
 
         envLoader.LoadResult(method, locals, true);
-        method.Call(typeof(ILChunkExecutionState).GetProperty(nameof(ILChunkExecutionState.ShouldAbort)).GetMethod);
-        method.BranchIfTrue(returnFalse);
-
-        envLoader.LoadResult(method, locals, true);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldContinue)));
-        method.Return();
-
-        method.MarkLabel(returnFalse);
-        method.LoadConstant(false);
+        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldAbort)));
         method.Return();
 
         // isContinuation
@@ -378,8 +344,8 @@ internal static class FullAOT
         method.LoadLocal(locals.programCounter);
         method.StoreLocal(locals.jmpDestination);
         envLoader.LoadResult(method, locals, true);
-        method.LoadConstant(false);
-        method.StoreField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldContinue)));
+        method.LoadConstant((int)ContractState.Running);
+        method.StoreField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
 
         method.LoadLocal(locals.jmpDestination);
         method.LoadConstant(contractMetadata.TargetCodeInfo.MachineCode.Length);
@@ -427,8 +393,12 @@ internal static class FullAOT
                 EmitCallToErrorTrace(method, locals.gasAvailable, kvp, envLoader, locals);
 
             envLoader.LoadResult(method, locals, true);
+            method.Duplicate();
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+
+            method.LoadConstant((int)ContractState.Failed);
+            method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
             method.Branch(exit);
         }
 
