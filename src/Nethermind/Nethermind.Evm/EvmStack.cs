@@ -230,7 +230,11 @@ public ref struct EvmStack<TTracing>
 
         ref Word word = ref _words[Head];
         Reshuffle(ref word);
-        return new Address(MemoryMarshal.CreateSpan(ref Unsafe.As<Word, byte>(ref word), AddressSize).ToArray());
+
+        const int offset = WordSize - AddressSize;
+        return new Address(MemoryMarshal
+            .CreateSpan(ref Unsafe.Add(ref Unsafe.As<Word, byte>(ref word), offset), AddressSize)
+            .ToArray());
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
