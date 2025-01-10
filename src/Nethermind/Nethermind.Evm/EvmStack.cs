@@ -54,7 +54,6 @@ public ref struct EvmStack<TTracing>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref UInt256 PushRefAsUInt256() => ref Unsafe.As<Word, UInt256>(ref PushRef());
 
-
     public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
@@ -262,6 +261,17 @@ public ref struct EvmStack<TTracing>
         head--;
         Head = head;
         return ref _words[head];
+    }
+
+    public ref Word PeekRef()
+    {
+        int head = Head;
+        if (head == 0)
+        {
+            return ref Unsafe.NullRef<Word>();
+        }
+
+        return ref _words[head - 1];
     }
 
     public Span<byte> PopWord(out UInt256 destination)

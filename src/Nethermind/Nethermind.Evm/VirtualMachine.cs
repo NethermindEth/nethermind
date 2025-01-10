@@ -712,6 +712,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
         ref UInt256 byRef = ref NullRef<UInt256>();
+        ref Word byRefWord = ref NullRef<Word>();
 
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
@@ -940,17 +941,23 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         int position = 31 - (int)a;
 
-                        bytes = stack.PeekWord256(out b);
-                        sbyte sign = (sbyte)bytes[position];
+                        byRefWord = ref stack.PeekRef();
+                        Endianness.Reshuffle(ref byRefWord);
+
+                        sbyte sign = (sbyte)byRefWord[position];
+
+                        bytes = MemoryMarshal.CreateSpan(ref As<Word, byte>(ref byRefWord), position);
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesZero32.AsSpan(0, position).CopyTo(bytes);
                         }
                         else
                         {
-                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesMax32.AsSpan(0, position).CopyTo(bytes);
                         }
+
+                        Endianness.Reshuffle(ref byRefWord);
 
                         // Didn't remove from stack so don't need to push back
                         break;
@@ -1037,10 +1044,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ref Vector256<byte> aVec = ref stack.PopRef();
                         if (IsNullRef(ref aVec)) goto StackUnderflow;
 
-                        ref Vector256<byte> bVec = ref stack.PopRef();
-                        if (IsNullRef(ref bVec)) goto StackUnderflow;
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        stack.PushRef() = Vector256.BitwiseAnd(aVec, bVec);
+                        byRefWord = Vector256.BitwiseAnd(aVec, byRefWord);
                         break;
                     }
                 case Instruction.OR:
@@ -1050,10 +1057,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ref Vector256<byte> aVec = ref stack.PopRef();
                         if (IsNullRef(ref aVec)) goto StackUnderflow;
 
-                        ref Vector256<byte> bVec = ref stack.PopRef();
-                        if (IsNullRef(ref bVec)) goto StackUnderflow;
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        stack.PushRef() = Vector256.BitwiseOr(aVec, bVec);
+                        byRefWord = Vector256.BitwiseOr(aVec, byRefWord);
                         break;
                     }
                 case Instruction.XOR:
@@ -1063,20 +1070,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ref Vector256<byte> aVec = ref stack.PopRef();
                         if (IsNullRef(ref aVec)) goto StackUnderflow;
 
-                        ref Vector256<byte> bVec = ref stack.PopRef();
-                        if (IsNullRef(ref bVec)) goto StackUnderflow;
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        stack.PushRef() = Vector256.Xor(aVec, bVec);
+                        byRefWord = Vector256.Xor(aVec, byRefWord);
                         break;
                     }
                 case Instruction.NOT:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref Vector256<byte> vec = ref stack.PopRef();
-                        if (IsNullRef(ref vec)) goto StackUnderflow;
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        stack.PushRef() = Vector256.OnesComplement(vec);
+                        byRefWord = Vector256.OnesComplement(byRefWord);
                         break;
                     }
                 case Instruction.BYTE:
