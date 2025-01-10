@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -11,11 +10,9 @@ using Nethermind.Evm.Tracing;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.Intrinsics.X86;
-using Microsoft.ClearScript.Util.Web;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json.Converters;
+using static Nethermind.Evm.Endianness;
 
 namespace Nethermind.Evm;
 
@@ -102,6 +99,8 @@ public ref struct EvmStack<TTracing>
         {
             top = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
+
+        Reshuffle(ref top);
     }
 
     public void PushByte(byte value)
@@ -126,10 +125,17 @@ public ref struct EvmStack<TTracing>
 
     public void PushUInt32(int value)
     {
-        PushRefAsUInt256() = new UInt256(unchecked((uint)value));
+        ref Word top = ref PushRef();
+        Unsafe.As<Word, UInt256>(ref top) = new UInt256(unchecked((uint)value));
 
-        // TODO: trace
-        //if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(intPlace);
+        if (typeof(TTracing) == typeof(IsTracing))
+        {
+            Word traced = top;
+            Reshuffle(ref traced);
+
+            Span<byte> span = MemoryMarshal.CreateSpan(ref Unsafe.As<Word, byte>(ref traced), WordSize);
+            _tracer.ReportStackPush(span);
+        }
     }
 
     /// <summary>
@@ -191,32 +197,6 @@ public ref struct EvmStack<TTracing>
         return ref Unsafe.As<Word, UInt256>(ref _words[head - 1]);
     }
 
-    private static void Reshuffle(ref Word word)
-    {
-        if (Avx2.IsSupported)
-        {
-            Word shuffle = Vector256.Create(
-                0x18191a1b1c1d1e1ful,
-                0x1011121314151617ul,
-                0x08090a0b0c0d0e0ful,
-                0x0001020304050607ul).AsByte();
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                word = Avx512Vbmi.VL.PermuteVar32x8(word, shuffle);
-            }
-            else
-            {
-                Word convert = Avx2.Shuffle(word, shuffle);
-                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
-                word = Unsafe.As<Vector256<ulong>, Word>(ref permute);
-            }
-        }
-        else
-        {
-            throw new NotImplementedException();
-        }
-    }
-
     public readonly bool PeekUInt256IsZero()
     {
         int head = Head;
@@ -267,7 +247,7 @@ public ref struct EvmStack<TTracing>
         return ref _words[head];
     }
 
-    public Span<byte> PopWord256(out UInt256 destination)
+    public Span<byte> PopWord(out UInt256 destination)
     {
         ref Word v = ref PopRef();
         if (Unsafe.IsNullRef(ref v)) EvmStack.ThrowEvmStackUnderflowException();
@@ -284,7 +264,7 @@ public ref struct EvmStack<TTracing>
     /// Pops the word using the stack slot without copying.
     /// This means that if there's a follow push without consuming the value, it will be overwritten.
     /// </summary>
-    public Span<byte> PopWord256Unsafe()
+    public Span<byte> PopWordUnsafe()
     {
         ref Word v = ref PopRef();
         if (Unsafe.IsNullRef(ref v)) EvmStack.ThrowEvmStackUnderflowException();
@@ -383,5 +363,34 @@ public static class EvmStack
     {
         Metrics.EvmExceptions++;
         throw new EvmStackOverflowException();
+    }
+}
+
+public  static class Endianness
+{
+    public static void Reshuffle(ref Word word)
+    {
+        if (Avx2.IsSupported)
+        {
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                word = Avx512Vbmi.VL.PermuteVar32x8(word, shuffle);
+            }
+            else
+            {
+                Word convert = Avx2.Shuffle(word, shuffle);
+                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+                word = Unsafe.As<Vector256<ulong>, Word>(ref permute);
+            }
+        }
+        else
+        {
+            throw new NotImplementedException();
+        }
     }
 }

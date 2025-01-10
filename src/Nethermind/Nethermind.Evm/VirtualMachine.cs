@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -17,9 +18,11 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using DotNetty.Common.Utilities;
 using Microsoft.ClearScript.Util.Web;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -894,7 +897,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Metrics.ExpOpcode++;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256(out b);
+                        bytes = stack.PopWord(out b);
 
                         int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -1081,7 +1084,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256(out b);
+                        bytes = stack.PopWord(out b);
 
                         if (a >= BigInt32)
                         {
@@ -1523,7 +1526,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
 
-                        bytes = stack.PopWord256Unsafe();
+                        bytes = stack.PopWordUnsafe();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
                         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
@@ -1569,7 +1572,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.High;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        bytes = stack.PopWord256Unsafe();
+                        bytes = stack.PopWordUnsafe();
                         if (!bytes.SequenceEqual(BytesZero32))
                         {
                             if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
@@ -1931,7 +1934,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
-                            bytes = stack.PopWord256(out a);
+                            bytes = stack.PopWord(out a);
 
                             _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
@@ -2335,7 +2338,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Span<byte> salt = default;
         if (instruction == Instruction.CREATE2)
         {
-            salt = stack.PopWord256(out UInt256 _);
+            salt = stack.PopWord(out UInt256 _);
         }
 
         //EIP-3860
@@ -2468,7 +2471,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
-            topics[i] = new Hash256(stack.PopWord256Unsafe());
+            topics[i] = new Hash256(stack.PopWordUnsafe());
         }
 
         LogEntry logEntry = new(
@@ -2532,7 +2535,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256Unsafe();
+        ReadOnlySpan<byte> bytes = stack.PopWordUnsafe();
         bool newIsZero = bytes.IsZero();
         bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
@@ -2725,9 +2728,35 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (_txTracer.IsTracingStack)
         {
-            //throw new Exception("Stack tracing not possible atm.");
-            //Memory<byte> stackMemory = MemoryMarshal.Cast<Vector256<byte>, byte>(vmState.DataStack).AsMemory().Slice(0, stackValue.Head * EvmStack<TIsTracing>.WordSize);
-            //_txTracer.SetOperationStack(new TraceStack(stackMemory));
+            // Requires Reshuffling
+            var head = stackValue.Head;
+
+            if (head == 0)
+            {
+                _txTracer.SetOperationStack(new TraceStack(ReadOnlyMemory<byte>.Empty));
+            }
+            else
+            {
+                // Tracing requires reshuffling the whole stack.
+                // This could be yet rethought as we could implement a memory manager that provides the casting and then Reshuffle twice.
+                Span<Word> current = vmState.DataStack.AsSpan(0, head);
+
+                var length = head * EvmStack<TIsTracing>.WordSize;
+                var bytes = ArrayPool<byte>.Shared.Rent(length);
+
+                Memory<byte> traced = bytes.AsMemory(0, length);
+                Span<Word> words = MemoryMarshal.Cast<byte, Word>(traced.Span);
+                current.CopyTo(words);
+
+                foreach (ref Word word in words)
+                {
+                    Endianness.Reshuffle(ref word);
+                }
+
+                _txTracer.SetOperationStack(new TraceStack(traced));
+
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
         }
     }
 
