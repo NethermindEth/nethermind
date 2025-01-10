@@ -253,6 +253,53 @@ public class RlpReadWriteTest
     }
 
     [Test]
+    public void OptionalStruct()
+    {
+        (int, int?) tuple = (42, null);
+
+        var rlp = Rlp.Write(tuple, static (ref RlpWriter w, (int _1, int? _2) value) =>
+        {
+            w.Write(value._1);
+            if (value._2.HasValue)
+            {
+                w.Write(value._2.Value);
+            }
+        });
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            var _1 = r.ReadInt32();
+            var _2 = r.Optional(static (scoped ref RlpReader r) => r.ReadInt32());
+
+            return (_1, _2);
+        });
+
+        decoded.Should().Be(tuple);
+    }
+
+
+    [Test]
+    public void OptionalReference()
+    {
+        string? value = null;
+
+        var rlp = Rlp.Write(value, static (ref RlpWriter w, string? value) =>
+        {
+            if (value is not null)
+            {
+                w.Write(value);
+            }
+        });
+
+        var decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            return r.Optional(static (scoped ref RlpReader r) => r.ReadString());
+        });
+
+        decoded.Should().Be(value);
+    }
+
+    [Test]
     public void UserDefinedRecord()
     {
         List<Student> students =
