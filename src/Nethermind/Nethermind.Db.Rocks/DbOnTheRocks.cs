@@ -852,6 +852,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         ReadOptions readOptions = new();
         readOptions.SetTailing(!options.IsOrdered);
 
+        readOptions.SetTotalOrderSeek(true);
+
         if (options.LowerBound is {} lowerBound)
             readOptions.SetIterateLowerBound(lowerBound);
 
@@ -1173,6 +1175,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         InnerFlush(onlyWal);
     }
 
+    public void FlushWithColumnFamily(ColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        InnerFlush(familyHandle);
+    }
+
     public virtual void Compact()
     {
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
@@ -1188,6 +1197,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             {
                 _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
             }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+        }
+    }
+
+    private void InnerFlush(ColumnFamilyHandle columnFamilyHandle)
+    {
+        try
+        {
+            _rocksDbNative.rocksdb_flush_cf(_db.Handle, FlushOptions.DefaultFlushOptions.Handle, columnFamilyHandle.Handle);
         }
         catch (RocksDbSharpException e)
         {

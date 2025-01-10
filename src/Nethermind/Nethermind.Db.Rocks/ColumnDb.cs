@@ -130,7 +130,7 @@ public class ColumnDb : IDb
 
     public void Flush(bool onlyWal)
     {
-        _mainDb.Flush(onlyWal);
+        _mainDb.FlushWithColumnFamily(_columnFamily);
     }
 
     public void Compact()
