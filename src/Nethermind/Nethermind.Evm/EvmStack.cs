@@ -54,12 +54,25 @@ public ref struct EvmStack<TTracing>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref UInt256 PushRefAsUInt256() => ref Unsafe.As<Word, UInt256>(ref PushRef());
 
+
     public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
         ref Word top = ref PushRef();
-        top = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+        if (value.Length != WordSize)
+        {
+            // Not full entry, clear first.
+            top = default;
+            var offset = WordSize - value.Length;
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref Unsafe.As<Word, byte>(ref top), offset),
+                value.Length));
+        }
+        else
+        {
+            top = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+        }
+
         Reshuffle(ref top);
     }
 
