@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 
 namespace Nethermind.ContractSearch.Plugin;
@@ -17,6 +18,7 @@ public class ContractSearchPlugin : INethermindPlugin
     private ILogManager _logManager = null!;
     private ILogger _logger;
     private bool Enabled => _config?.Enabled == true;
+    private IContractSearchRpcModule? _rpcModule;
 
     public Task Init(INethermindApi nethermindApi)
     {
@@ -27,13 +29,14 @@ public class ContractSearchPlugin : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    public Task InitNetworkProtocol()
+    public Task InitRpcModules()
     {
         if (Enabled)
         {
-            if (_logger.IsInfo) _logger.Info($"Setting up search plugin");
+            if (_logger.IsInfo) _logger.Info("Setting up contract search plugin");
 
-            // Setup Search
+            _rpcModule = new ContractSearchRpcModule(_api.BlockTree!, _api.WorldStateManager!, _logManager);
+            _api.RpcModuleProvider!.Register(new SingletonModulePool<IContractSearchRpcModule>(_rpcModule, true));
         }
 
         return Task.CompletedTask;
