@@ -3,7 +3,6 @@
 
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.FluentRlp;
 
@@ -29,7 +28,7 @@ public ref struct RlpReader
     public bool HasNext => _position < _buffer.Length;
     public int BytesRead => _position;
 
-    public T ReadInteger<T>() where T : IBinaryInteger<T>
+    public unsafe T ReadInteger<T>() where T : unmanaged, IBinaryInteger<T>
     {
         ReadOnlySpan<byte> bigEndian;
         var header = _buffer[_position];
@@ -42,7 +41,7 @@ public ref struct RlpReader
             bigEndian = ReadBytes();
         }
 
-        Span<byte> buffer = stackalloc byte[Marshal.SizeOf<T>()];
+        Span<byte> buffer = stackalloc byte[sizeof(T)];
         bigEndian.CopyTo(buffer[^bigEndian.Length..]);
         return T.ReadBigEndian(buffer, false);
     }
