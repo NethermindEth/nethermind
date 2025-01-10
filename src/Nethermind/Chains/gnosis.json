@@ -97,9 +97,9 @@
       "cancun": {
         "target": 1,
         "max": 2
-      },
-      "eip7840DefaultBlobCountFraction": 3
-    }
+      }
+    },
+    "eip7840DefaultBlobCountFraction": 3
   },
   "genesis": {
     "seal": {
