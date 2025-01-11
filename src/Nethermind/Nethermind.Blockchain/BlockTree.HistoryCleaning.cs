@@ -12,6 +12,7 @@ public partial class BlockTree
 {
     private Task? _pruneHistoryTask;
     private readonly Lock _pruneLock = new();
+    private ulong _lastPrunedTimestamp;
 
     public void TryPruneHistory()
     {
@@ -32,7 +33,15 @@ public partial class BlockTree
     }
 
     private bool ShouldPruneHistory()
-        => _historyConfig.HistoryPruneEpochs is not null || _historyConfig.DropPreMerge;
+    {
+        if (!(_historyConfig.HistoryPruneEpochs is not null || _historyConfig.DropPreMerge))
+        {
+            return false;
+        }
+
+        ulong cutoffTimestamp = CalculateCutoffTimestamp();
+        return cutoffTimestamp > _lastPrunedTimestamp;
+    }
 
     private async Task ExecuteHistoryPruningAsync()
     {
@@ -42,11 +51,17 @@ public partial class BlockTree
         }
 
         ulong cutoffTimestamp = CalculateCutoffTimestamp();
+        
+        if (cutoffTimestamp <= _lastPrunedTimestamp)
+        {
+            return;
+        }
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
         await Task.Run(() => DeleteBlocksBeforeTimestamp(cutoffTimestamp));
 
+        _lastPrunedTimestamp = cutoffTimestamp;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
     }
 
@@ -95,13 +110,9 @@ public partial class BlockTree
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsInfo) _logger.Info($"Pruning operation was cancelled at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
-        }
         finally
         {
-            if (_logger.IsInfo) _logger.Info($"Completed pruning operation. Deleted {deletedBlocks} blocks.");
+            if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
             ReleaseAcceptingNewBlocks();
         }
     }
