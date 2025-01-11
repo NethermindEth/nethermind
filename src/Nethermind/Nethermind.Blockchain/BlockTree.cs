@@ -1488,35 +1488,43 @@ namespace Nethermind.Blockchain
                 newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
             }
 
-            using (_chainLevelInfoRepository.StartBatch())
+            BlockAcceptingNewBlocks();
+            try
             {
-                for (long i = endNumber.Value; i >= startNumber; i--)
+                using (_chainLevelInfoRepository.StartBatch())
                 {
-                    ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
-                    if (chainLevelInfo is null)
+                    for (long i = endNumber.Value; i >= startNumber; i--)
                     {
-                        continue;
-                    }
+                        ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
+                        if (chainLevelInfo is null)
+                        {
+                            continue;
+                        }
 
-                    _chainLevelInfoRepository.Delete(i);
-                    deleted++;
+                        _chainLevelInfoRepository.Delete(i);
+                        deleted++;
 
-                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                    {
-                        Hash256 blockHash = blockInfo.BlockHash;
-                        _blockInfoDb.Delete(blockHash);
-                        _blockStore.Delete(i, blockHash);
-                        _headerStore.Delete(blockHash);
+                        foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+                        {
+                            Hash256 blockHash = blockInfo.BlockHash;
+                            _blockInfoDb.Delete(blockHash);
+                            _blockStore.Delete(i, blockHash);
+                            _headerStore.Delete(blockHash);
+                        }
                     }
                 }
-            }
 
-            if (newHeadBlock is not null)
+                if (newHeadBlock is not null)
+                {
+                    UpdateHeadBlock(newHeadBlock);
+                }
+
+                return deleted;
+            }
+            finally
             {
-                UpdateHeadBlock(newHeadBlock);
+                ReleaseAcceptingNewBlocks();
             }
-
-            return deleted;
         }
 
         internal void BlockAcceptingNewBlocks()
@@ -1625,34 +1633,21 @@ namespace Nethermind.Blockchain
 
         private void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp)
         {
-            using (_chainLevelInfoRepository.StartBatch())
+            BlockAcceptingNewBlocks();
+            try
             {
-                foreach ((long blockNumber, Hash256 _) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+                using (_chainLevelInfoRepository.StartBatch())
                 {
-                    DeleteBlockAtLevel(blockNumber);
+                    foreach ((long _, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+                    {
+                        DeleteBlocks(blockHash);
+                    }
                 }
             }
-        }
-
-        private void DeleteBlockAtLevel(long blockNumber)
-        {
-            ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockNumber);
-            if (chainLevelInfo is not null)
+            finally
             {
-                _chainLevelInfoRepository.Delete(blockNumber);
-
-                foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                {
-                    DeleteBlock(blockNumber, blockInfo.BlockHash);
-                }
+                ReleaseAcceptingNewBlocks();
             }
-        }
-
-        private void DeleteBlock(long blockNumber, Hash256 blockHash)
-        {
-            _blockInfoDb.Delete(blockHash);
-            _blockStore.Delete(blockNumber, blockHash);
-            _headerStore.Delete(blockHash);
         }
     }
 }
