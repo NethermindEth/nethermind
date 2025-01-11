@@ -180,4 +180,27 @@ public class AdminRpcModule : IAdminRpcModule
 
         return ResultWrapper<string>.Success("Starting.");
     }
+
+    public async Task<ResultWrapper<bool>> admin_exportChain(string filePath, ulong? firstBlock = null, ulong? lastBlock = null)
+    {
+        try
+        {
+            await Task.Run(() =>
+            {
+                // TODO: export logic goes here.
+                // 1. Open filePath for writing.
+                // 2. Determine the range of blocks (firstBlock ?? 0) up to (lastBlock ?? chainHead).
+                // 3. Iterate over each block, serialize it, and write to file.
+                // 4. Close the file, return success.
+            });
+
+            return ResultWrapper<bool>.Success(true);
+        }
+        catch (Exception ex)
+        {
+            // Return a failure message or a generic error
+            return ResultWrapper<bool>.Fail($"Export failed: {ex.Message}");
+        }
+    }
+
 }
