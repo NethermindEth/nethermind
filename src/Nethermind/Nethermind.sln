@@ -219,6 +219,7 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Flashbots", "Nethermind.Flashbots\Nethermind.Flashbots.csproj", "{580DB104-AE89-444F-BD99-7FE0C84C615C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Flasbots.Test", "Nethermind.Flashbots.Test\Nethermind.Flasbots.Test.csproj", "{370C4088-0DB9-401A-872F-E72E3272AB54}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Taiko", "Nethermind.Taiko\Nethermind.Taiko.csproj", "{B4070433-328E-40E6-B89A-6554F015694C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Shutter", "Nethermind.Shutter\Nethermind.Shutter.csproj", "{F38037D2-98EA-4263-887A-4B383635F605}"
