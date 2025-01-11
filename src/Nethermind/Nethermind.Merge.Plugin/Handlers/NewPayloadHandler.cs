@@ -195,6 +195,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
             _beaconPivot.EnsurePivot(block.Header, true);
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
+            _blockTree.TryPruneHistory();
 
             if (_logger.IsInfo) _logger.Info($"Syncing... Inserting block {block}.");
             return NewPayloadV1Result.Syncing;

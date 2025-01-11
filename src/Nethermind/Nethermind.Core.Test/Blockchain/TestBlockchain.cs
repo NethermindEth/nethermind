@@ -179,6 +179,7 @@ public class TestBlockchain : IDisposable
             NullBloomStorage.Instance,
             new SyncConfig(),
             new HistoryConfig(),
+            new BlocksConfig(),
             LogManager);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);

@@ -249,4 +249,6 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockHeader FindBestSuggestedHeader() =>
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
+
+    public void TryPruneHistory() => _overlayTree.TryPruneHistory();
 }

@@ -15,4 +15,4 @@ public interface IHistoryConfig : IConfig
         Description = "Whether to drop pre-merge blocks and receipts.",
         DefaultValue = "false")]
     bool DropPreMerge { get; set; }
-} 
+}

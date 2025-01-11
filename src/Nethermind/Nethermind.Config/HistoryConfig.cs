@@ -7,4 +7,4 @@ public class HistoryConfig : IHistoryConfig
 {
     public ulong? HistoryPruneEpochs { get; set; }
     public bool DropPreMerge { get; set; }
-} 
+}

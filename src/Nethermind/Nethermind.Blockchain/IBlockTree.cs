@@ -178,5 +178,7 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+
+        void TryPruneHistory();
     }
 }

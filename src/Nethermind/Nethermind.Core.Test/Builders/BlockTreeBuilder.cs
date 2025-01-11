@@ -89,6 +89,7 @@ namespace Nethermind.Core.Test.Builders
                         BloomStorage,
                         SyncConfig,
                         new HistoryConfig(),
+                        new BlocksConfig(),
                         LimboLogs.Instance);
                 }
 
