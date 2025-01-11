@@ -108,18 +108,19 @@ public class BlockStore(IDb blockDb) : IBlockStore
             if (block.Timestamp >= timestamp)
             {
                 if (logger.IsInfo) logger.Info($"Stopping block search at block {block.Number} (timestamp {block.Timestamp})");
-                break;
+                yield break;
             }
 
             blocksFound++;
+            yield return (block.Number, block.Hash);
+            
             if (logger.IsInfo)
             {
                 logger.Info($"Found {blocksFound} blocks older than timestamp {timestamp}");
             }
-
-            yield return (block.Number, block.Hash);
         }
         
         if (logger.IsInfo) logger.Info($"Completed block search, found {blocksFound} blocks older than timestamp {timestamp}");
     }
 }
+
