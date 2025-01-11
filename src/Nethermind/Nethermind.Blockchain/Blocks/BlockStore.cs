@@ -97,17 +97,29 @@ public class BlockStore(IDb blockDb) : IBlockStore
         _blockCache.Set(block.Hash, block);
     }
 
-    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
+    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp, Logging.ILogger logger)
     {
+        if (logger.IsInfo) logger.Info($"Searching for blocks older than timestamp {timestamp}");
+        int blocksFound = 0;
+        
         foreach ((byte[] _, byte[]? value) in blockDb.GetAll(true))
         {
             Block block = _blockDecoder.Decode(value.AsRlpStream());
             if (block.Timestamp >= timestamp)
             {
+                if (logger.IsInfo) logger.Info($"Stopping block search at block {block.Number} (timestamp {block.Timestamp})");
                 break;
+            }
+
+            blocksFound++;
+            if (logger.IsInfo)
+            {
+                logger.Info($"Found {blocksFound} blocks older than timestamp {timestamp}");
             }
 
             yield return (block.Number, block.Hash);
         }
+        
+        if (logger.IsInfo) logger.Info($"Completed block search, found {blocksFound} blocks older than timestamp {timestamp}");
     }
 }

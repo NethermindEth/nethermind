@@ -97,7 +97,7 @@ public partial class BlockTree
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_historyConfig.PruningTimeout));
             using (_chainLevelInfoRepository.StartBatch())
             {
-                foreach ((long _, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
+                foreach ((long _, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp, _logger))
                 {
                     if (cts.Token.IsCancellationRequested)
                     {

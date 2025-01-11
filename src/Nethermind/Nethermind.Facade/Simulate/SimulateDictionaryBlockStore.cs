@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Simulate;
@@ -74,7 +75,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         return _blockNumDict.ContainsKey(blockNumber);
     }
 
-    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
+    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp, ILogger logger)
     {
         foreach (KeyValuePair<long, Block> kv in _blockNumDict)
         {
