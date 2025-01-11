@@ -151,11 +151,12 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
                     .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
-                    .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
+                    .ChildHandler(new ActionChannelInitializer<IChannel>(ch =>
                     {
                         Session session = new(LocalPort, ch, _disconnectsAnalyzer, _logManager);
-                        session.RemoteHost = ((IPEndPoint)ch.RemoteAddress).Address.ToString();
-                        session.RemotePort = ((IPEndPoint)ch.RemoteAddress).Port;
+                        IPEndPoint? ipEndPoint = ch.RemoteAddress.ConvertTo<IPEndPoint>();
+                        session.RemoteHost = ipEndPoint.Address.ToString();
+                        session.RemotePort = ipEndPoint.Port;
                         InitializeChannel(ch, session);
                     }));
 
@@ -206,7 +207,7 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
+            clientBootstrap.Handler(new ActionChannelInitializer<IChannel>(ch =>
             {
                 Session session = new(LocalPort, node, ch, _disconnectsAnalyzer, _logManager);
                 InitializeChannel(ch, session);
@@ -221,6 +222,7 @@ namespace Nethermind.Network.Rlpx
 
                 _ = connectTask.ContinueWith(async c =>
                 {
+                    Console.Error.WriteLine($"Thee err could be {c.Exception}");
                     if (connectTask.IsCompletedSuccessfully)
                     {
                         await c.Result.DisconnectAsync();
@@ -233,6 +235,7 @@ namespace Nethermind.Network.Rlpx
             delayCancellation.Cancel();
             if (connectTask.IsFaulted)
             {
+                Console.Error.WriteLine($"Got err {connectTask.Exception}");
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");

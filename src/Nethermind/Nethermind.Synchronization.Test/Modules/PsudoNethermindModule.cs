@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
@@ -79,6 +80,19 @@ public class PsudoNethermindModule(IConfigProvider configProvider, ChainSpec spe
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
             ;
+
+
+        // Yep... this global thing need to work.
+        builder.RegisterBuildCallback((_) =>
+        {
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            if (assembly is not null)
+            {
+                Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
+            }
+        });
+
+
     }
 
     private void ConfigureWorldStateManager(ContainerBuilder builder)

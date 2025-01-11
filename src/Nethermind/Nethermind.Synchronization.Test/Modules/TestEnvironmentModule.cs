@@ -38,7 +38,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey): Module
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
-            .AddSingleton<IChannelFactory>(new LocalChannelFactory("test"))
+            .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory("test", networkConfig))
             .AddSingleton<IDiscoveryApp, NullDiscoveryApp>()
 
             .AddSingleton<BlockchainTestContext>()

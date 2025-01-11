@@ -2,23 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using DotNetty.Common.Concurrency;
-using DotNetty.Common.Internal.Logging;
 using Humanizer;
-using Microsoft.Extensions.Logging;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.Test.Modules;
@@ -29,29 +23,40 @@ namespace Nethermind.Synchronization.Test;
 public class E2ESyncTests
 {
 
-    [Test]
-    public async Task E2ESyncTest()
+    public IContainer CreateContainer(PrivateKey nodeKey, Action<IConfigProvider, ChainSpec> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.None;
+        ChainSpec spec = new ChainSpecLoader(new EthereumJsonSerializer()).LoadEmbeddedOrFromFile("chainspec/foundation.json", default);
+        // spec.Genesis.Header.BaseFeePerGas = 1000000000;
 
-        ChainSpecLoader specLoader = new ChainSpecLoader(new EthereumJsonSerializer());
-        ChainSpec spec = specLoader.LoadEmbeddedOrFromFile("chainspec/foundation.json", default);
-        PrivateKey nodeKey = TestItem.PrivateKeyA;
+        configurer.Invoke(configProvider, spec);
 
-        spec.Genesis.Header.GasLimit = 100000000;
-        spec.Allocations[nodeKey.Address] = new ChainSpecAllocation(30.Ether());
-
-        await using IContainer server = new ContainerBuilder()
+        return new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(configProvider, spec))
             .AddModule(new TestEnvironmentModule(nodeKey))
             .Build();
+    }
 
+
+    [Test]
+    public async Task E2ESyncTest()
+    {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.CancelAfter(10.Seconds());
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        var thething = server.Resolve<BlockchainTestContext>();
-        await thething.Start(cancellationTokenSource.Token);
+        PrivateKey serverKey = TestItem.PrivateKeyA;
+        await using IContainer server = CreateContainer(serverKey, (cfg, spec) =>
+        {
+            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
+            networkConfig.P2PPort = 1000;
+
+            spec.Genesis.Header.GasLimit = 100000000;
+            spec.Allocations[serverKey.Address] = new ChainSpecAllocation(30.Ether());
+        });
+
+        var serverCtx = server.Resolve<BlockchainTestContext>();
+        await serverCtx.StartBlockProcessing(cancellationToken);
 
         byte[] spam = Prepare.EvmCode
             .ForCreate2Of(
@@ -81,8 +86,28 @@ public class E2ESyncTests
 
         for (int i = 0; i < 1000; i++)
         {
-            await thething.BuildBlockWithCode([spam, spam, spam], cancellationTokenSource.Token);
+            await serverCtx.BuildBlockWithCode([spam, spam, spam], cancellationToken);
         }
+
+        PrivateKey clientKey = TestItem.PrivateKeyB;
+        await using IContainer client = CreateContainer(clientKey, (cfg, spec) =>
+        {
+            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
+            networkConfig.P2PPort = 1001;
+
+            spec.Genesis.Header.GasLimit = 100000000;
+            spec.Allocations[serverKey.Address] = new ChainSpecAllocation(30.Ether());
+        });
+
+        await serverCtx.StartNetwork(cancellationToken);
+
+        var clientCtx = client.Resolve<BlockchainTestContext>();
+        await clientCtx.StartBlockProcessing(cancellationToken);
+        await clientCtx.StartNetwork(cancellationToken);
+
+        await clientCtx.ConnectTo(server, cancellationToken);
+        await clientCtx.SyncUntilFinished(cancellationToken);
+
     }
 
     /*

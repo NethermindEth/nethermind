@@ -4,11 +4,14 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -21,6 +24,9 @@ using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.State;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.Modules;
 using Nethermind.TxPool;
 
@@ -41,6 +47,9 @@ public class BlockchainTestContext: IAsyncDisposable
     private readonly IBlockProducerRunner _blockProducerRunner;
     private readonly Func<IProtocolsManager> _protocolsManagerFactory;
     private readonly IRlpxHost _rlpxHost;
+    private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ISynchronizer _synchronizer;
+    private readonly ISyncPeerPool _syncPeerPool;
 
     public BlockchainTestContext(
         [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
@@ -55,7 +64,10 @@ public class BlockchainTestContext: IAsyncDisposable
         IBlockProducerRunner blockProducerRunner,
         ProducedBlockSuggester producedBlockSuggester, // Need to be instantiated,
         Func<IProtocolsManager> protocolsManagerFactory,
-        IRlpxHost rlpxHost
+        ISyncModeSelector syncModeSelector,
+        ISynchronizer synchronizer,
+        IRlpxHost rlpxHost,
+        ISyncPeerPool syncPeerPool
     )
     {
         _txPool = txPool;
@@ -69,19 +81,37 @@ public class BlockchainTestContext: IAsyncDisposable
         _blockProductionTrigger = blockProductionTrigger;
         _blockProducerRunner = blockProducerRunner;
         _protocolsManagerFactory = protocolsManagerFactory;
+        _syncModeSelector = syncModeSelector;
+        _synchronizer = synchronizer;
         _rlpxHost = rlpxHost;
+        _syncPeerPool = syncPeerPool;
     }
 
-    public async Task Start(CancellationToken cancellationToken)
+    public async Task StartBlockProcessing(CancellationToken cancellationToken)
     {
-        await _rlpxHost.Init();
         _blockProducerRunner.Start();
         _mainBlockProcessingContext.BlockchainProcessor.Start();
 
         await PrepareGenesis(cancellationToken);
+    }
 
+    public async Task StartNetwork(CancellationToken cancellationToken)
+    {
         // This need the genesis so it need to be resolved after genesis was prepared.
+        // Protocol manager is what listen to rlpx for new connection whicch then send to sync peer pool.
         _protocolsManagerFactory();
+
+        await _rlpxHost.Init();
+
+        // Sync peer pool has a loop that refresh the peer TD and header.
+        _syncPeerPool.Start();
+    }
+
+    public async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
+    {
+        IEnode serverEnode = server.Resolve<IEnode>();
+        Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
+        await _rlpxHost.ConnectAsync(serverNode);
     }
 
     private async Task PrepareGenesis(CancellationToken cancellation)
@@ -99,15 +129,18 @@ public class BlockchainTestContext: IAsyncDisposable
 
     public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
     {
-        long gasLimit = 100000;
+        // 1 000 000 000
+        // long gasLimit = 100000;
 
         Hash256 stateRoot = _blockTree.Head?.StateRoot!;
         UInt256 currentNonce = _worldStateManager.GlobalStateReader.GetNonce(stateRoot, _nodeKey.Address);
         IReleaseSpec spec = _specProvider.GetSpec((_blockTree.Head?.Number) + 1 ?? 0, null);
         Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
             .WithCode(byteCode)
+            // .WithType(TxType.EIP1559)
             .WithNonce(currentNonce++)
             .WithGasLimit(gasLimit)
+            // .WithMaxFeePerGas(1000000000)
             .SignedAndResolved(_ecdsa, _nodeKey, spec.IsEip155Enabled).TestObject)
             .ToArray();
 
@@ -138,5 +171,21 @@ public class BlockchainTestContext: IAsyncDisposable
         await _mainBlockProcessingContext.BlockchainProcessor.StopAsync();
         await _blockProducerRunner.StopAsync();
         await _rlpxHost.Shutdown();
+    }
+
+    public async Task SyncUntilFinished(CancellationToken cancellationToken)
+    {
+        _synchronizer.Start();
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (_syncModeSelector.Current == SyncMode.None) return;
+
+            Console.Error.WriteLine("Sync Mode: " + _syncModeSelector.Current);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
     }
 }
