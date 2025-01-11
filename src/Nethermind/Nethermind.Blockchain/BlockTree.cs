@@ -1578,8 +1578,11 @@ namespace Nethermind.Blockchain
         {
             if (!ShouldPruneHistory())
             {
+                if (_logger.IsInfo) _logger.Info("Historical pruning is not enabled");
                 return;
             }
+
+            if (_logger.IsInfo) _logger.Info("Historical pruning is enabled");
 
             lock (_pruneLock)
             {
