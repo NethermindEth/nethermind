@@ -1603,6 +1603,9 @@ namespace Nethermind.Blockchain
             }
 
             ulong cutoffTimestamp = CalculateCutoffTimestamp();
+
+            if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
+
             DeleteBlocksBeforeTimestamp(cutoffTimestamp);
 
             if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
