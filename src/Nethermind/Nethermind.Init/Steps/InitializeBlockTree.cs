@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -64,6 +65,7 @@ namespace Nethermind.Init.Steps
                 _get.SpecProvider,
                 bloomStorage,
                 _get.Config<ISyncConfig>(),
+                _get.Config<IHistoryConfig>(),
                 _get.LogManager);
 
             ISigner signer = NullSigner.Instance;

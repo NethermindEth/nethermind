@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain
 {
@@ -54,6 +55,9 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+        private readonly IHistoryConfig _historyConfig;
+        private Task? _pruneHistoricalBlocksTask;
+        private readonly object _pruneLock = new();
 
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
@@ -114,6 +118,7 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
+            IHistoryConfig? historyConfig,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -127,6 +132,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _historyConfig = historyConfig ?? throw new ArgumentNullException(nameof(historyConfig));
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
@@ -299,6 +305,8 @@ namespace Nethermind.Blockchain
             {
                 Insert(block.Header, insertHeaderOptions);
             }
+
+            TryPruneHistoricalBlocks();
 
             return AddBlockResult.Added;
         }
@@ -1556,6 +1564,107 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+        }
+
+        private void TryPruneHistoricalBlocks()
+        {
+            if (_historyConfig.HistoryPruneEpochs is null && !_historyConfig.DropPreMerge)
+            {
+                return;
+            }
+
+            lock (_pruneLock)
+            {
+                if (_pruneHistoricalBlocksTask is not null && !_pruneHistoricalBlocksTask.IsCompleted)
+                {
+                    return;
+                }
+
+                _pruneHistoricalBlocksTask = Task.Run(() =>
+                {
+                    try
+                    {
+                        if (Head is null)
+                        {
+                            return;
+                        }
+
+                        // Calculate cutoff block number based on epochs
+                        long epochLength = 32;
+                        long cutoffNumber = Head.Number - ((long)_historyConfig.HistoryPruneEpochs.Value * epochLength);
+
+                        if (_historyConfig.DropPreMerge)
+                        {
+                            // If configured to drop pre-merge blocks, use merge block as cutoff if it's higher
+                            long? mergeBlockNumber = FindMergeBlockNumber();
+                            if (mergeBlockNumber.HasValue && mergeBlockNumber.Value > cutoffNumber)
+                            {
+                                cutoffNumber = mergeBlockNumber.Value;
+                            }
+                        }
+
+                        if (cutoffNumber <= 0)
+                        {
+                            return;
+                        }
+
+                        // Get blocks to delete
+                        Block? cutoffBlock = FindBlock(cutoffNumber, BlockTreeLookupOptions.None);
+                        if (cutoffBlock is null)
+                        {
+                            return;
+                        }
+
+                        using (_chainLevelInfoRepository.StartBatch())
+                        {
+                            foreach ((long blockNumber, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffBlock.Timestamp))
+                            {
+                                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockNumber);
+                                if (chainLevelInfo is not null)
+                                {
+                                    _chainLevelInfoRepository.Delete(blockNumber);
+                                    
+                                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+                                    {
+                                        _blockInfoDb.Delete(blockInfo.BlockHash);
+                                        _blockStore.Delete(blockNumber, blockInfo.BlockHash);
+                                        _headerStore.Delete(blockInfo.BlockHash);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to block {cutoffNumber}");
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error("Error while pruning historical blocks", e);
+                    }
+                });
+            }
+        }
+
+        private long? FindMergeBlockNumber()
+        {
+            // Start from head and move backwards to find first PoW block
+            long currentNumber = Head?.Number ?? 0;
+            while (currentNumber > 0)
+            {
+                BlockHeader? header = FindHeader(currentNumber, BlockTreeLookupOptions.None);
+                if (header is null)
+                {
+                    break;
+                }
+
+                if (!header.IsPoS())
+                {
+                    return currentNumber + 1; // Return first PoS block number
+                }
+
+                currentNumber--;
+            }
+
+            return null;
         }
     }
 }

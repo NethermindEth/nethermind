@@ -22,6 +22,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -87,6 +88,7 @@ namespace Nethermind.Core.Test.Builders
                         _specProvider,
                         BloomStorage,
                         SyncConfig,
+                        new HistoryConfig(),
                         LimboLogs.Instance);
                 }
 

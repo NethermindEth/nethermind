@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -94,5 +95,19 @@ public class BlockStore(IDb blockDb) : IBlockStore
     public void Cache(Block block)
     {
         _blockCache.Set(block.Hash, block);
+    }
+
+    public IEnumerable<(long Number, Hash256 Hash)> GetBlocksOlderThan(ulong timestamp)
+    {
+        foreach ((byte[] _, byte[]? value) in blockDb.GetAll(true))
+        {
+            Block block = _blockDecoder.Decode(value.AsRlpStream());
+            if (block.Timestamp >= timestamp)
+            {
+                break;
+            }
+
+            yield return (block.Number, block.Hash);
+        }
     }
 }
