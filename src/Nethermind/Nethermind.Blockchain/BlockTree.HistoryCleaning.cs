@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -16,11 +17,8 @@ public partial class BlockTree
     {
         if (!ShouldPruneHistory())
         {
-            if (_logger.IsInfo) _logger.Info("Historical pruning is not enabled");
             return;
         }
-
-        if (_logger.IsInfo) _logger.Info("Historical pruning is enabled");
 
         lock (_pruneLock)
         {
@@ -29,14 +27,14 @@ public partial class BlockTree
                 return;
             }
 
-            _pruneHistoryTask = Task.Run(ExecuteHistoryPruning);
+            _pruneHistoryTask = ExecuteHistoryPruningAsync();
         }
     }
 
     private bool ShouldPruneHistory()
         => _historyConfig.HistoryPruneEpochs is not null || _historyConfig.DropPreMerge;
 
-    private void ExecuteHistoryPruning()
+    private async Task ExecuteHistoryPruningAsync()
     {
         if (Head is null)
         {
@@ -47,7 +45,7 @@ public partial class BlockTree
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        DeleteBlocksBeforeTimestamp(cutoffTimestamp);
+        await Task.Run(() => DeleteBlocksBeforeTimestamp(cutoffTimestamp));
 
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
     }
@@ -78,18 +76,32 @@ public partial class BlockTree
     private void DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp)
     {
         BlockAcceptingNewBlocks();
+        int deletedBlocks = 0;
         try
         {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
             using (_chainLevelInfoRepository.StartBatch())
             {
                 foreach ((long _, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
                 {
+                    if (cts.Token.IsCancellationRequested)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                        break;
+                    }
+
                     DeleteBlocks(blockHash);
+                    deletedBlocks++;
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            if (_logger.IsInfo) _logger.Info($"Pruning operation was cancelled at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+        }
         finally
         {
+            if (_logger.IsInfo) _logger.Info($"Completed pruning operation. Deleted {deletedBlocks} blocks.");
             ReleaseAcceptingNewBlocks();
         }
     }
