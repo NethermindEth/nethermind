@@ -29,6 +29,9 @@
     "TargetBlockGasLimit": 17000000,
     "GasToken": "XDAI"
   },
+  "History": {
+    "HistoryPruneEpochs": 82125
+  },
   "Aura": {
     "TxPriorityContractAddress": "0x4100000000000000000000000000000000000000",
     "ForceSealing": true
