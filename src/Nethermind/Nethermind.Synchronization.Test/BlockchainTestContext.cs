@@ -13,6 +13,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -51,6 +53,8 @@ public class BlockchainTestContext: IAsyncDisposable
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISynchronizer _synchronizer;
     private readonly ISyncPeerPool _syncPeerPool;
+
+    private readonly BlockDecoder _blockDecoder = new BlockDecoder();
 
     public BlockchainTestContext(
         [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
@@ -180,12 +184,42 @@ public class BlockchainTestContext: IAsyncDisposable
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
             if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
-
-            Console.Error.WriteLine("Sync Mode: " + _syncModeSelector.Current);
-
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
         }
+    }
+
+    public async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
+    {
+        IBlockProcessingQueue queue = _mainBlockProcessingContext.BlockProcessingQueue;
+        if (!queue.IsEmpty)
+        {
+            await Wait.ForEvent(cancellationToken,
+                e => queue.ProcessingQueueEmpty += e,
+                e => queue.ProcessingQueueEmpty -= e);
+        }
+
+        IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
+        AssertBlockEqual(_blockTree.Head!, otherBlockTree.Head!);
+
+        IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
+        worldStateManager.VerifyTrie(_blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+    }
+
+    private void AssertBlockEqual(Block block1, Block block2)
+    {
+        block1 = ReEncodeBlock(block1);
+        block2 = ReEncodeBlock(block2);
+
+        block1.Should().BeEquivalentTo(block2, static o => o
+            .ComparingByMembers<Transaction>()
+            .Using<Memory<byte>>(static ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+            .WhenTypeIs<Memory<byte>>());
+    }
+
+    private Block ReEncodeBlock(Block block)
+    {
+        using var stream = _blockDecoder.EncodeToNewNettyStream(block);
+        return _blockDecoder.Decode(stream)!;
     }
 }

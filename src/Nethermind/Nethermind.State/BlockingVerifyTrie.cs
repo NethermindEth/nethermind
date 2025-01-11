@@ -65,4 +65,21 @@ internal class BlockingVerifyTrie(
 
         return true;
     }
+
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
+    {
+        // This is to block processing as with halfpath old nodes will be removed
+        using IBlockCommitter? _ = trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
+
+        Hash256 rootNode = stateAtBlock.StateRoot;
+        TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, cancellationToken);
+        if (stats.MissingNodes > 0)
+        {
+            _logger.Error($"Missing node found!");
+        }
+
+        _logger.Info($"Stats after finishing state \n" + stats);
+
+        return stats.MissingNodes == 0;
+    }
 }
