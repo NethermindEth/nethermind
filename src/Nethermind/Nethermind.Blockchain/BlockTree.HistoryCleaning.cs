@@ -94,7 +94,7 @@ public partial class BlockTree
         int deletedBlocks = 0;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_historyConfig.PruningTimeout));
             using (_chainLevelInfoRepository.StartBatch())
             {
                 foreach ((long _, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))

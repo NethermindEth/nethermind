@@ -15,4 +15,10 @@ public interface IHistoryConfig : IConfig
         Description = "Whether to drop pre-merge blocks and receipts.",
         DefaultValue = "false")]
     bool DropPreMerge { get; set; }
+
+    [ConfigItem(
+        Description = "Timeout in milliseconds for each batch of block deletions during history pruning.",
+        DefaultValue = "500",
+        HiddenFromDocs = true)]
+    int PruningTimeout { get; set; }
 }

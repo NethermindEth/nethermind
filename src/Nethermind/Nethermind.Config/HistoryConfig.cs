@@ -7,4 +7,5 @@ public class HistoryConfig : IHistoryConfig
 {
     public ulong? HistoryPruneEpochs { get; set; }
     public bool DropPreMerge { get; set; }
+    public int PruningTimeout { get; set; } = 500;
 }
