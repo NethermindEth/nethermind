@@ -19,7 +19,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -56,6 +55,7 @@ namespace Nethermind.Blockchain
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IHistoryConfig _historyConfig;
+        private readonly IBlocksConfig _blocksConfig;
         private Task? _pruneHistoricalBlocksTask;
         private readonly object _pruneLock = new();
 
@@ -119,6 +119,7 @@ namespace Nethermind.Blockchain
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             IHistoryConfig? historyConfig,
+            IBlocksConfig? blocksConfig,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -133,6 +134,7 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _historyConfig = historyConfig ?? throw new ArgumentNullException(nameof(historyConfig));
+            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
@@ -1589,35 +1591,24 @@ namespace Nethermind.Blockchain
                             return;
                         }
 
-                        // Calculate cutoff block number based on epochs
-                        long epochLength = 32;
-                        long cutoffNumber = Head.Number - ((long)_historyConfig.HistoryPruneEpochs.Value * epochLength);
+                        // Calculate cutoff timestamp based on epochs
+                        const ulong SLOTS_PER_EPOCH = 32;
+                        ulong epochLength = _blocksConfig.SecondsPerSlot * SLOTS_PER_EPOCH;
+                        ulong cutoffTimestamp = Head.Timestamp - (_historyConfig.HistoryPruneEpochs.Value * epochLength);
 
                         if (_historyConfig.DropPreMerge)
                         {
-                            // If configured to drop pre-merge blocks, use merge block as cutoff if it's higher
-                            long? mergeBlockNumber = FindMergeBlockNumber();
-                            if (mergeBlockNumber.HasValue && mergeBlockNumber.Value > cutoffNumber)
+                            // If configured to drop pre-merge blocks, use beacon chain genesis as cutoff if it's later
+                            ulong? beaconGenesisTimestamp = _specProvider.BeaconChainGenesisTimestamp;
+                            if (beaconGenesisTimestamp.HasValue && beaconGenesisTimestamp.Value > cutoffTimestamp)
                             {
-                                cutoffNumber = mergeBlockNumber.Value;
+                                cutoffTimestamp = beaconGenesisTimestamp.Value;
                             }
-                        }
-
-                        if (cutoffNumber <= 0)
-                        {
-                            return;
-                        }
-
-                        // Get blocks to delete
-                        Block? cutoffBlock = FindBlock(cutoffNumber, BlockTreeLookupOptions.None);
-                        if (cutoffBlock is null)
-                        {
-                            return;
                         }
 
                         using (_chainLevelInfoRepository.StartBatch())
                         {
-                            foreach ((long blockNumber, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffBlock.Timestamp))
+                            foreach ((long blockNumber, Hash256 blockHash) in _blockStore.GetBlocksOlderThan(cutoffTimestamp))
                             {
                                 ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockNumber);
                                 if (chainLevelInfo is not null)
@@ -1634,7 +1625,7 @@ namespace Nethermind.Blockchain
                             }
                         }
 
-                        if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to block {cutoffNumber}");
+                        if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
                     }
                     catch (Exception e)
                     {
@@ -1642,29 +1633,6 @@ namespace Nethermind.Blockchain
                     }
                 });
             }
-        }
-
-        private long? FindMergeBlockNumber()
-        {
-            // Start from head and move backwards to find first PoW block
-            long currentNumber = Head?.Number ?? 0;
-            while (currentNumber > 0)
-            {
-                BlockHeader? header = FindHeader(currentNumber, BlockTreeLookupOptions.None);
-                if (header is null)
-                {
-                    break;
-                }
-
-                if (!header.IsPoS())
-                {
-                    return currentNumber + 1; // Return first PoS block number
-                }
-
-                currentNumber--;
-            }
-
-            return null;
         }
     }
 }
