@@ -17,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -130,17 +131,16 @@ public class BlockchainTestContext: IAsyncDisposable
     public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
     {
         // 1 000 000 000
-        // long gasLimit = 100000;
+        long gasLimit = 100000;
 
         Hash256 stateRoot = _blockTree.Head?.StateRoot!;
         UInt256 currentNonce = _worldStateManager.GlobalStateReader.GetNonce(stateRoot, _nodeKey.Address);
         IReleaseSpec spec = _specProvider.GetSpec((_blockTree.Head?.Number) + 1 ?? 0, null);
         Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
             .WithCode(byteCode)
-            // .WithType(TxType.EIP1559)
             .WithNonce(currentNonce++)
             .WithGasLimit(gasLimit)
-            // .WithMaxFeePerGas(1000000000)
+            .WithGasPrice(10.GWei())
             .SignedAndResolved(_ecdsa, _nodeKey, spec.IsEip155Enabled).TestObject)
             .ToArray();
 
@@ -181,7 +181,7 @@ public class BlockchainTestContext: IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (_syncModeSelector.Current == SyncMode.None) return;
+            if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
 
             Console.Error.WriteLine("Sync Mode: " + _syncModeSelector.Current);
 

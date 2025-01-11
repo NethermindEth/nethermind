@@ -27,7 +27,12 @@ public class E2ESyncTests
     {
         IConfigProvider configProvider = new ConfigProvider();
         ChainSpec spec = new ChainSpecLoader(new EthereumJsonSerializer()).LoadEmbeddedOrFromFile("chainspec/foundation.json", default);
-        // spec.Genesis.Header.BaseFeePerGas = 1000000000;
+
+        // Set basefeepergas in genesis or it will fail 1559 validation.
+        spec.Genesis.Header.BaseFeePerGas = 1.GWei();
+
+        // Disable as the built block always don't have widthrawal (it came from engine) so it fail validation.
+        spec.Parameters.Eip4895TransitionTimestamp = null;
 
         configurer.Invoke(configProvider, spec);
 
