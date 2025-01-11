@@ -30,7 +30,7 @@
     "GasToken": "XDAI"
   },
   "History": {
-    "HistoryPruneEpochs": 32
+    "HistoryPruneEpochs": 2
   },
   "Aura": {
     "TxPriorityContractAddress": "0x4100000000000000000000000000000000000000",
