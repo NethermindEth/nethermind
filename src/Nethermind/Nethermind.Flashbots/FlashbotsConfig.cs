@@ -12,4 +12,6 @@ public class FlashbotsConfig : IFlashbotsConfig
 
     public bool EnablePreWarmer { get; set; } = true;
     public bool EnableValidation { get; set; } = false;
+
+    public int? FlashbotsModuleConcurrentInstances { get; set; } = null;
 }

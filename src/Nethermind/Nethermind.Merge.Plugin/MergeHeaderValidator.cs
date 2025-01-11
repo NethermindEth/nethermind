@@ -43,12 +43,6 @@ namespace Nethermind.Merge.Plugin
         }
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
         {
-            BlockHeader? currentHeader;
-            if (header.Hash != null)
-            {
-                currentHeader = _blockTree.FindHeader(header.Hash, BlockTreeLookupOptions.None);
-            }
-
             error = null;
             return _poSSwitcher.IsPostMerge(header)
                 ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle, out error)

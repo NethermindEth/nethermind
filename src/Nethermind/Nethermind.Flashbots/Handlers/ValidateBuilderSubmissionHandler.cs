@@ -45,8 +45,6 @@ public class ValidateSubmissionHandler
 
     private readonly IFlashbotsConfig _flashbotsConfig;
 
-    private readonly IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
-
     private readonly ILogManager _logManager;
     private readonly ISpecProvider _specProvider;
 
@@ -85,7 +83,8 @@ public class ValidateSubmissionHandler
 
         string payloadStr = $"BuilderBlock: {payload}";
 
-        _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length}");
+        if (_logger.IsInfo)
+            _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length}");
 
         if (!payload.TryGetBlock(out Block? block))
         {
@@ -255,7 +254,7 @@ public class ValidateSubmissionHandler
 
         if (ValidateProposerPayment(expectedProfit, useBalanceDiffProfit, feeRecipientBalanceAfter, amtBeforeOrWithdrawn)) return true;
 
-        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.TxReceipts.ToArray(), out error))
+        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, [.. blockReceiptsTracer.TxReceipts], out error))
         {
             return false;
         }
@@ -283,11 +282,11 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        // if (!_blockTree.IsBetterThanHead(block.Header))
-        // {
-        //     error = $"Block {block.Header.Hash} is not better than head";
-        //     return false;
-        // }
+        if (!_blockTree.IsBetterThanHead(block.Header))
+        {
+            error = $"Block {block.Header.Hash} is not better than head";
+            return false;
+        }
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit);
 
@@ -343,8 +342,6 @@ public class ValidateSubmissionHandler
 
     private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, TxReceipt[] receipts, out string? error)
     {
-        // TxReceipt[] receipts = processedBlock.Hash != null ? _receiptStorage.Get(processedBlock.Hash) : [];
-
         if (receipts.Length == 0)
         {
             error = "No proposer payment receipt";
@@ -417,7 +414,7 @@ public class ValidateSubmissionHandler
             new Consensus.Rewards.RewardCalculator(_specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
-            _receiptStorage,
+            NullReceiptStorage.Instance,
             transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(_specProvider, stateProvider),

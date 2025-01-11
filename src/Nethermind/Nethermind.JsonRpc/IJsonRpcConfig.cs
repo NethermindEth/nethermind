@@ -128,15 +128,6 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-
-    [ConfigItem(
-    Description = """
-        The number of concurrent instances for non-sharable calls:
-        - `flashbots_validateBuilderSubmissionV3`
-        This limits the load on the CPU and I/O to reasonable levels. If the limit is exceeded, HTTP 503 is returned along with the JSON-RPC error. Defaults to the number of logical processors.
-        """)]
-    int? FlashbotsModuleConcurrentInstances { get; set; }
-
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }
 

@@ -30,7 +30,7 @@ public class Flashbots : INethermindPlugin
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(
             _api.WorldStateManager ?? throw new ArgumentNullException(nameof(_api.WorldStateManager)),
             _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
-            _api.SpecProvider,
+            _api.SpecProvider ?? throw new ArgumentNullException(nameof(_api.SpecProvider)),
             _api.LogManager
         );
 
@@ -48,7 +48,7 @@ public class Flashbots : INethermindPlugin
 
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterBounded(flashbotsRpcModule,
-            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
+            _flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
 
         return Task.CompletedTask;
     }
