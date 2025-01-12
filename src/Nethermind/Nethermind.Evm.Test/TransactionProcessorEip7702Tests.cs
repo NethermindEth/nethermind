@@ -488,7 +488,7 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
     }
 
-    public static IEnumerable<object[]> OpcodesWithEXT()
+    public static IEnumerable<object[]> OpcodesWithEXTCODE()
     {
         //EXTCODESIZE should return the size of the two bytes of the delegation header
         yield return new object[] {
@@ -521,7 +521,7 @@ internal class TransactionProcessorEip7702Tests
             Eip7702Constants.FirstTwoBytesOfHeader.ToArray()
         };
     }
-    [TestCaseSource(nameof(OpcodesWithEXT))]
+    [TestCaseSource(nameof(OpcodesWithEXTCODE))]
     public void Execute_DelegatedCodeUsesEXTOPCODES_StoresExpectedValue(byte[] code, byte[] expectedValue)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
@@ -622,6 +622,176 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
         Assert.That(actual.ToArray(), Is.EquivalentTo(expected));
+    }
+    public static IEnumerable<object[]> AccountAccessGasCases()
+    {
+        byte[] extcodesizeCode =
+            Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.EXTCODESIZE)
+            .Done;
+        yield return new object[]
+        {
+            extcodesizeCode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow,
+            true,
+            100_000,
+            false
+        };
+        yield return new object[]
+        {
+            extcodesizeCode,
+            23602,
+            true,
+            //Gas limit is set so it doesn't have enough for accessing the account
+            23602,
+            true
+        };
+        yield return new object[]
+        {
+            extcodesizeCode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow,
+            false,
+            100_000,
+            false
+        };
+        byte[] extcodecopyCode =
+            Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.EXTCODECOPY)
+            .Done;
+        yield return new object[]
+        {
+            extcodecopyCode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow
+            + GasCostOf.Base * 3,
+            true,
+            100_000,
+            false
+        };
+        yield return new object[]
+        {
+            extcodecopyCode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow
+            + GasCostOf.Base * 3,
+            false,
+            100_000,
+            false
+        };
+        byte[] extcodehashCode =
+            Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.EXTCODEHASH)
+            .Done;
+        yield return new object[]
+        {
+            extcodehashCode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow,
+            true,
+            100_000,
+            false
+        };
+        yield return new object[]
+        {
+            extcodehashCode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow,
+            false,
+            100_000,
+            false
+        };
+        byte[] callOpcode =
+            Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .PushData(TestItem.AddressA)
+            .PushData(0)
+            .Op(Instruction.CALL)
+            .Done;
+        yield return new object[]
+        {
+            callOpcode,
+            GasCostOf.Transaction
+            + GasCostOf.WarmStateRead
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow * 7,
+            true,
+            100_000,
+            false
+        };
+        yield return new object[]
+        {
+            callOpcode,
+            23621,
+            true,
+            //Gas limit is set so it doesn't have enough for accessing the account
+            23621,
+            true
+        };
+        yield return new object[]
+        {
+            callOpcode,
+            GasCostOf.Transaction
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow * 7,
+            false,
+            100_000,
+            false
+        };
+    }
+    [TestCaseSource(nameof(AccountAccessGasCases))]
+    public void Execute_DiffentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        Address secondDelegation = TestItem.AddressD;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+        _stateProvider.CreateAccount(signer.Address, 0);
+        if (isDelegated)
+        {
+            //Delegation points to nothing
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
+            _stateProvider.InsertCode(signer.Address, delegation, Prague.Instance);
+        }
+
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithTo(codeSource)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+        EstimateGasTracer estimateGasTracer = new();
+        _ = _transactionProcessor.Execute(tx, block.Header, estimateGasTracer);
+
+        Assert.That(estimateGasTracer.GasSpent, Is.EqualTo(expectedGas));
+        if (shouldRunOutOfGas)
+        {
+            Assert.That(estimateGasTracer.Error, Is.EqualTo(EvmExceptionType.OutOfGas.ToString()));
+        }
     }
 
     public static IEnumerable<object[]> CountsAsAccessedCases()
