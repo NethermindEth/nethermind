@@ -784,7 +784,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        EstimateGasTracer estimateGasTracer  = new();
+        EstimateGasTracer estimateGasTracer = new();
         _ = _transactionProcessor.Execute(tx, block.Header, estimateGasTracer);
 
         Assert.That(estimateGasTracer.GasSpent, Is.EqualTo(expectedGas));
