@@ -343,19 +343,6 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                if (blockTx.Type == TxType.SetCode)
-                {
-                    eip7702Txs++;
-
-                    if (blockTx.HasAuthorizationList)
-                    {
-                        foreach (AuthorizationTuple tuple in blockTx.AuthorizationList)
-                        {
-
-                        }
-                    }
-                }
-
                 if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
@@ -543,6 +530,7 @@ namespace Nethermind.TxPool
 
             if (removed is not null)
             {
+                RemovePendingDelegations(removed);
                 EvictedPending?.Invoke(this, new TxEventArgs(removed));
                 // transaction which was on last position in sorted TxPool and was deleted to give
                 // a place for a newly added tx (with higher priority) is now removed from hashCache
@@ -558,6 +546,17 @@ namespace Nethermind.TxPool
             Metrics.TransactionCount = _transactions.Count;
             Metrics.BlobTransactionCount = _blobTransactions.Count;
             return AcceptTxResult.Accepted;
+        }
+
+        private void RemovePendingDelegations(Transaction transaction)
+        {
+            if (transaction.HasAuthorizationList)
+            {
+                foreach (var auth in transaction.AuthorizationList)
+                {
+                    _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce, false);
+                }
+            }
         }
 
         private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
@@ -699,13 +698,7 @@ namespace Nethermind.TxPool
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
 
-                if (transaction.HasAuthorizationList)
-                {
-                    foreach (var auth in transaction.AuthorizationList)
-                    {
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce, false);
-                    }
-                }
+                RemovePendingDelegations(transaction);                
             }
 
             _broadcaster.StopBroadcast(hash);
