@@ -534,7 +534,8 @@ namespace Nethermind.Db
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             {
                 stats.SeekForPrevHit.Include(watch.Elapsed);
-                return DeserializeIndexInfo(iterator.Key(), iterator.Value());
+                IndexInfo index = DeserializeIndexInfo(iterator.Key(), iterator.Value());
+                if (index.Type != IndexType.Final) return index;
             }
             else
             {
