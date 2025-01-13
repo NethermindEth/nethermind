@@ -90,10 +90,12 @@ public class ContractBytecodeSearchVisitor(
 
     public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
     {
-        _logger.Info($"Searching contract at {_currentAddress}");
+        if (_logger.IsInfo) _logger.Info($"Searching contract at {_currentAddress}");
 
         ReadOnlySpan<byte> code = _stateReader.GetCode(codeHash)!;
-        var matchIndices = new List<int>();
+
+        List<int> matchIndices = [];
+        int count = 0;
 
         foreach (ReadOnlySpan<byte> searchCode in _searchBytecodes)
         {
@@ -101,12 +103,13 @@ public class ContractBytecodeSearchVisitor(
             if (index != -1)
             {
                 matchIndices.Add(index);
+                count++;
             }
         }
 
-        if (matchIndices.Count == _searchBytecodes.Length)
+        if (count == _searchBytecodes.Length)
         {
-            _logger.Info($"Found matching contract at {_currentAddress}");
+            if (_logger.IsInfo) _logger.Info($"Found matching contract at {_currentAddress}");
             _results.Add(new ContractSearchResult
             {
                 Address = _currentAddress,
