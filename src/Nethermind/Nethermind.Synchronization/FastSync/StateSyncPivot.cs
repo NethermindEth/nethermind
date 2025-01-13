@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void UpdateHeaderForcefully()
         {
-            if ((_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader.Number)
+            if (_bestHeader is null || (_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }

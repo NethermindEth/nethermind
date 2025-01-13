@@ -185,6 +185,7 @@ public class BlockchainTestContext: IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
+            Console.Error.WriteLine($"The mode is {_syncModeSelector.Current}");
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
         }
     }

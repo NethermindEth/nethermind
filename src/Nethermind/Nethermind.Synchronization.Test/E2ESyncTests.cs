@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Humanizer;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -14,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
@@ -102,6 +102,11 @@ public class E2ESyncTests
         // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
         spec.Parameters.Eip4895TransitionTimestamp = null;
 
+        // 4844 add BlobGasUsed which in the header decoder also imply WithdrawalRoot which would be set to 0 instead of null
+        // which become invalid when using block body with null withdrawal.
+        // Basically, these need merge block builder, or it will fail block validation on download.
+        spec.Parameters.Eip4844TransitionTimestamp = null;
+
         // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
         // message serializer does not check the block header of the receipt for timestam, only block number therefore it will
         // always not encode with Eip658, but the block builder always build with Eip658 as the latest fork activation
@@ -114,6 +119,12 @@ public class E2ESyncTests
         spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(30.Ether());
 
         configurer.Invoke(configProvider, spec);
+
+        IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
+        pruningConfig.Mode = PruningMode.None;
+
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
 
         return new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(configProvider, spec))
@@ -158,7 +169,7 @@ public class E2ESyncTests
         PrivateKey clientKey = TestItem.PrivateKeyB;
         await using IContainer client = CreateContainer(clientKey, (cfg, spec) =>
         {
-            ISyncConfig syncConfig = cfg.GetConfig<ISyncConfig>();
+            SyncConfig syncConfig = (SyncConfig) cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
 
             IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
@@ -166,6 +177,7 @@ public class E2ESyncTests
             BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - 500)!;
             syncConfig.PivotHash = pivot.Hash!.ToString();
             syncConfig.PivotNumber = pivot.Number.ToString();
+            syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = 1002;
