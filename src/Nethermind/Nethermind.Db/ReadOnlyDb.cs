@@ -88,9 +88,9 @@ namespace Nethermind.Db
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
 
-        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
         {
-            return _memDb.GetIterator(isOrdered);
+            return _memDb.GetIterator(isTailing);
         }
 
         public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)

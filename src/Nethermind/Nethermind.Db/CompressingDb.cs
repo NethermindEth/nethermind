@@ -170,9 +170,9 @@ namespace Nethermind.Db
                     tunable.Tune(type);
             }
 
-            public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+            public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
             {
-                return _wrapped.GetIterator(isOrdered);
+                return _wrapped.GetIterator(isTailing);
             }
 
             public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)

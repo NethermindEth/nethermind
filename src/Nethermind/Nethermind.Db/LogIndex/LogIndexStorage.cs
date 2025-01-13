@@ -478,7 +478,7 @@ namespace Nethermind.Db
 
             var options = new IteratorOptions
             {
-                IsOrdered = true,
+                IsTailing = true,
                 LowerBound = dbPrefix
             };
             using IIterator<byte[], byte[]> iterator = db.GetIterator(ref options);

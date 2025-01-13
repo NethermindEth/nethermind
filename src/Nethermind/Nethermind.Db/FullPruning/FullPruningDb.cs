@@ -320,9 +320,9 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
         {
-            return _currentDb.GetIterator(isOrdered);
+            return _currentDb.GetIterator(isTailing);
         }
 
         public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)

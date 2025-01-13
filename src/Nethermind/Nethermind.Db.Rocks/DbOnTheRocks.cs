@@ -842,17 +842,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return GetAllCore(iterator);
     }
 
-    protected internal Iterator CreateIterator(bool isOrdered, ColumnFamilyHandle? ch = null)
+    protected internal Iterator CreateIterator(bool isTailing, ColumnFamilyHandle? ch = null)
     {
-        return CreateIterator(new IteratorOptions { IsOrdered = isOrdered }, ch);
+        return CreateIterator(new IteratorOptions { IsTailing = isTailing }, ch);
     }
 
     protected internal Iterator CreateIterator(IteratorOptions options, ColumnFamilyHandle? ch = null)
     {
         ReadOptions readOptions = new();
-        readOptions.SetTailing(!options.IsOrdered);
-
-        readOptions.SetTotalOrderSeek(true);
+        readOptions.SetTailing(!options.IsTailing);
 
         if (options.LowerBound is {} lowerBound)
             readOptions.SetIterateLowerBound(lowerBound);
@@ -1547,9 +1545,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
-    public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+    public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
     {
-        var iterator = CreateIterator(isOrdered);
+        var iterator = CreateIterator(isTailing);
         return new RocksDbIteratorWrapper(iterator);
     }
 
@@ -1558,9 +1556,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return GetIterator(ref options, null);
     }
 
-    public IIterator<byte[], byte[]> GetIterator(bool isOrdered, ColumnFamilyHandle familyHandle)
+    public IIterator<byte[], byte[]> GetIterator(bool isTailing, ColumnFamilyHandle familyHandle)
     {
-        var options = new IteratorOptions { IsOrdered = isOrdered };
+        var options = new IteratorOptions { IsTailing = isTailing };
         return GetIterator(ref options, familyHandle);
     }
 

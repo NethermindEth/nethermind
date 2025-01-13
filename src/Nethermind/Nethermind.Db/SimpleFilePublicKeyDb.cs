@@ -326,7 +326,7 @@ namespace Nethermind.Db
         {
         }
 
-        public IIterator<byte[], byte[]> GetIterator(bool isOrdered = false)
+        public IIterator<byte[], byte[]> GetIterator(bool isTailing = false)
         {
             throw new NotSupportedException();
         }
