@@ -93,9 +93,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("debug", "migrateReceipts")]
-        public bool MigrateReceipts(long number)
+        public bool MigrateReceipts(long number, bool migrateSingleBlock = false)
         {
-            return NodeManager.Post<bool>("debug_migrateReceipts", number).Result;
+            return NodeManager.Post<bool>("debug_migrateReceipts", number, migrateSingleBlock).Result;
         }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
