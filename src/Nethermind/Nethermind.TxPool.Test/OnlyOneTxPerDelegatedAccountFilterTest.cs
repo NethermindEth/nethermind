@@ -35,11 +35,11 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new ();
+        TxFilteringState state = new();
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));       
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
     [Test]
@@ -72,8 +72,8 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        CodeInfoRepository codeInfoRepository = new ();
-        byte[] code = [..Eip7702Constants.DelegationHeader, ..TestItem.PrivateKeyA.Address.Bytes];
+        CodeInfoRepository codeInfoRepository = new();
+        byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
@@ -148,7 +148,7 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
         TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
-        DelegationCache pendingDelegations = new ();
+        DelegationCache pendingDelegations = new();
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA, 0, true);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), pendingDelegations);
         Transaction transaction = Build.A.Transaction.WithNonce(0).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;

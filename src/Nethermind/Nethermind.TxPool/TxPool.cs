@@ -511,7 +511,7 @@ namespace Nethermind.TxPool
                 : worstTx.GasBottleneck;
 
             bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-            
+
             if (!inserted)
             {
                 // it means it failed on adding to the pool - it is possible when new tx has the same sender

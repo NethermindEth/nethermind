@@ -30,7 +30,7 @@ namespace Nethermind.TxPool.Filters
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
             Transaction[] currentTxs;
-            
+
             if (standardPool.TryGetBucket(tx.SenderAddress!, out currentTxs) || blobPool.TryGetBucket(tx.SenderAddress!, out currentTxs))
             {
                 foreach (Transaction existingTx in currentTxs)

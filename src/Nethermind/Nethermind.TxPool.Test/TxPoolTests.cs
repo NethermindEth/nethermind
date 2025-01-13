@@ -1762,7 +1762,7 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
-            
+
             PrivateKey signer = TestItem.PrivateKeyA;
             _stateProvider.CreateAccount(signer.Address, UInt256.MaxValue);
             byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
@@ -1773,7 +1773,7 @@ namespace Nethermind.TxPool.Test
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(9.GWei())
                 .WithMaxPriorityFeePerGas(9.GWei())
-                .WithGasLimit(GasCostOf.Transaction )
+                .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
 
