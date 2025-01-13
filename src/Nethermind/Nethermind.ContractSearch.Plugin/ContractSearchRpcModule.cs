@@ -41,7 +41,7 @@ public class ContractSearchRpcModule(IBlockTree blockTree, IWorldStateManager wo
 public struct ContractSearchResult
 {
     public Address Address { get; set; }
-    public int[][] MatchIndices { get; set; }
+    public int[] MatchIndices { get; set; }
 }
 
 public class ContractBytecodeSearchVisitor(
@@ -92,15 +92,15 @@ public class ContractBytecodeSearchVisitor(
     {
         _logger.Info($"Searching contract at {_currentAddress}");
 
-        byte[] code = _stateReader.GetCode(codeHash)!;
-        var matchIndices = new List<int[]>();
+        ReadOnlySpan<byte> code = _stateReader.GetCode(codeHash)!;
+        var matchIndices = new List<int>();
 
-        foreach (byte[] searchCode in _searchBytecodes)
+        foreach (ReadOnlySpan<byte> searchCode in _searchBytecodes)
         {
-            IEnumerable<int> indices = FindAllIndices(code, searchCode);
-            if (indices.Any())
+            int index = code.IndexOf(searchCode);
+            if (index != -1)
             {
-                matchIndices.Add([.. indices]);
+                matchIndices.Add(index);
             }
         }
 
@@ -112,19 +112,6 @@ public class ContractBytecodeSearchVisitor(
                 Address = _currentAddress,
                 MatchIndices = [.. matchIndices]
             });
-        }
-    }
-
-    private static IEnumerable<int> FindAllIndices(byte[] source, byte[] pattern)
-    {
-        ReadOnlySpan<byte> sourceSpan = source;
-        ReadOnlySpan<byte> patternSpan = pattern;
-        int currentIndex;
-
-        while ((currentIndex = sourceSpan.IndexOf(patternSpan)) != -1)
-        {
-            yield return currentIndex;
-            sourceSpan = sourceSpan[(currentIndex + 1)..];
         }
     }
 }
