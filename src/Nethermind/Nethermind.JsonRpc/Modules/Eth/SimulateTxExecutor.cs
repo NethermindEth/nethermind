@@ -17,7 +17,7 @@ using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -121,14 +121,14 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 $"Too many blocks provided, node is configured to simulate up to {_blocksLimit} while {call.BlockStateCalls?.Count} were given",
                 ErrorCodes.InvalidParams);
 
-        ulong secondsPerSlot = new BlocksConfig().SecondsPerSlot;
+        secondsPerSlot ??= new BlocksConfig().SecondsPerSlot;
 
         if (call.BlockStateCalls is not null)
         {
             long lastBlockNumber = header.Number;
             ulong lastBlockTime = header.Timestamp;
 
-            using ArrayPoolList<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count, call.BlockStateCalls);
+            using ArrayPoolList<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
 
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
@@ -151,7 +151,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
                 for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
-                    ulong fillBlockTime = lastBlockTime + secondsPerSlot;
+                    ulong fillBlockTime = lastBlockTime + secondsPerSlot ?? 0;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
                         BlockOverrides = new BlockOverride { Number = fillBlockNumber, Time = fillBlockTime },
@@ -178,15 +178,20 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
                 }
                 lastBlockNumber = (long)givenNumber;
+
+                completeBlockStateCalls.Add(blockToSimulate);
             }
-            // sort element of the completeBlockStateCalls by block number
-            completeBlockStateCalls.Sort((a, b) => a.BlockOverrides.Number!.Value.CompareTo(b.BlockOverrides.Number!.Value));
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout); //TODO remove!
         SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
         return Execute(header.Clone(), toProcess, stateOverride, cancellationTokenSource.Token);
+    }
+
+    private void fillDummyBlocksToBlockState()
+    {
+        
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header,
