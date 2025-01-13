@@ -355,15 +355,13 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             return;
         }
 
-        Dictionary<Hash256, byte[]> codes = new();
-        codes[Hash256.Zero] = [];
         if (chainSpecJson.CodeHashes is not null)
         {
             foreach (KeyValuePair<string, byte[]> codeHash in chainSpecJson.CodeHashes)
             {
                 if (ValueKeccak.Compute(codeHash.Value) != new ValueHash256(codeHash.Key)) throw new ArgumentException($"Unexpected code {codeHash.Key}");
-                codes[new(codeHash.Key)] = codeHash.Value;
             }
+            chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
         }
 
         chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
@@ -383,11 +381,12 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             if (account.Value.CodeHash is not null)
             {
-                if (codes is null || !codes.ContainsKey(account.Value.CodeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                string codeHashString = account.Value.CodeHash.ToString();
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.ContainsKey(codeHashString)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
-                    codes[account.Value.CodeHash],
+                    chainSpecJson.CodeHashes[codeHashString],
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());
             }
@@ -396,7 +395,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
-                    account.Value.Code!,
+                    account.Value.Code,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());
             }

@@ -17,7 +17,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public UInt256 Nonce { get; set; }
 
-        public byte[]? Code { get; set; }
+        public byte[] Code { get; set; }
 
         public byte[] Constructor { get; set; }
         public Dictionary<string, string> Storage { get; set; }
