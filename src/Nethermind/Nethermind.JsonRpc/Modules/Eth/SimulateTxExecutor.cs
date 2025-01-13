@@ -189,11 +189,6 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         return Execute(header.Clone(), toProcess, stateOverride, cancellationTokenSource.Token);
     }
 
-    private void fillDummyBlocksToBlockState()
-    {
-        
-    }
-
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
     {
