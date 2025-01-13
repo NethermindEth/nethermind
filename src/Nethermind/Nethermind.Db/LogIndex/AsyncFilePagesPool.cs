@@ -98,7 +98,7 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
     public async ValueTask StopAsync()
     {
         if (_allocatePagesTask == null || _allocatedPool == null || _returnedPool == null)
-            ThrowNotStarted();
+            return;
 
         try
         {
@@ -138,13 +138,17 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
         return _returnedPool.Writer.WriteAsync(offset, CancellationToken);
     }
 
+    private static Channel<T> CreateChannel<T>(int size) => size <= 0
+        ? Channel.CreateUnbounded<T>()
+        : Channel.CreateBounded<T>(size);
+
     private int StartOnce()
     {
         _fileHandle = File.OpenHandle(_filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
         _fileStream = new(_fileHandle, FileAccess.ReadWrite);
 
-        _allocatedPool = Channel.CreateBounded<long>(AllocatedPagesPoolSize);
-        _returnedPool = Channel.CreateBounded<long>(ReturnedPagesPoolSize);
+        _allocatedPool = CreateChannel<long>(AllocatedPagesPoolSize);
+        _returnedPool = CreateChannel<long>(ReturnedPagesPoolSize);
 
         _allocatePagesTask = Task.Run(KeepAllocatingPages, CancellationToken);
 

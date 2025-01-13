@@ -66,7 +66,7 @@ namespace Nethermind.Db
             _tempPagesPool = new AsyncFilePagesPool(TempFilePath, tempPagesDb, PageSize)
             {
                 AllocatedPagesPoolSize = 2048,
-                ReturnedPagesPoolSize = 2048
+                ReturnedPagesPoolSize = -1
             };
 
             // TODO: find best value depending on the storage type?
