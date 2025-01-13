@@ -65,7 +65,7 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<byte> data, int? limit = null)
+    public void Feed(ReadOnlySpan<byte> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -77,9 +77,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<ushort> data, int? limit = null)
+    public void Feed(ReadOnlySpan<ushort> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -91,9 +93,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<short> data, int? limit = null)
+    public void Feed(ReadOnlySpan<short> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -105,9 +109,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<uint> data, int? limit = null)
+    public void Feed(ReadOnlySpan<uint> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -119,9 +125,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<int> data, int? limit = null)
+    public void Feed(ReadOnlySpan<int> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -133,9 +141,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<ulong> data, int? limit = null)
+    public void Feed(ReadOnlySpan<ulong> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -147,9 +157,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<long> data, int? limit = null)
+    public void Feed(ReadOnlySpan<long> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -161,9 +173,11 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<UInt128> data, int? limit = null)
+    public void Feed(ReadOnlySpan<UInt128> data, int? limit = null)
     {
         if (data.Length is 0)
         {
@@ -175,6 +189,8 @@ public ref struct Merkleizer
         }
 
         if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+
+        Feed(_chunks[^1]);
     }
 
     public void Feed(bool value)
@@ -332,7 +348,7 @@ public ref struct Merkleizer
     {
         // TODO: If the above MemoryMarshal.Cast of a single Bytes32, we could use that here
         // (rather than the CreateFromLittleEndian() that wants an (unnecessarily) writeable Span.)
-        // Better yet, just MemoryMarshal.Cast the entire span and pass directly to Merkle.Ize ?
+        // Better yet, just MemoryMarshal.Cast the entire span and pass directly to Merkle.Merkleize ?
         using ArrayPoolSpan<UInt256> input = new(value.Count);
         for (int i = 0; i < value.Count; i++)
         {
