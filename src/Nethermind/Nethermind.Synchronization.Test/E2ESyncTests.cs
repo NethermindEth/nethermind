@@ -8,9 +8,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -27,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -55,7 +58,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
     private int _portNumber = 0;
 
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(10);
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
 
     PrivateKey _serverKey = TestItem.PrivateKeyA;
     IContainer _server = null!;
@@ -251,6 +254,9 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
 
     private class SyncTestContext
     {
+        // This check is really slow (it doubles the test time) so its disabled by default.
+        private const bool CheckBlocksAndReceiptsContent = false;
+
         private readonly PrivateKey _nodeKey;
 
         private readonly IWorldStateManager _worldStateManager;
@@ -258,12 +264,14 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         private readonly ISpecProvider _specProvider;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IBlockTree _blockTree;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ManualTimestamper _timestamper;
         private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly MainBlockProcessingContext _mainBlockProcessingContext;
         private readonly IRlpxHost _rlpxHost;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly ReceiptsMessageSerializer _receiptsMessageSerializer;
         private readonly PsudoNethermindRunner _runner;
 
         public SyncTestContext(
@@ -272,6 +280,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             ISpecProvider specProvider,
             IEthereumEcdsa ecdsa,
             IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
             ManualTimestamper timestamper,
             IManualBlockProductionTrigger blockProductionTrigger,
             MainBlockProcessingContext mainBlockProcessingContext,
@@ -288,11 +297,13 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             _specProvider = specProvider;
             _ecdsa = ecdsa;
             _blockTree = blockTree;
+            _receiptStorage = receiptStorage;
             _timestamper = timestamper;
             _blockProductionTrigger = blockProductionTrigger;
             _syncModeSelector = syncModeSelector;
             _rlpxHost = rlpxHost;
             _runner = runner;
+            _receiptsMessageSerializer = new ReceiptsMessageSerializer(specProvider);
         }
 
         public async Task StartBlockProcessing(CancellationToken cancellationToken)
@@ -305,7 +316,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             await _runner.StartNetwork(cancellationToken);
         }
 
-        public async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
+        private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
             Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
@@ -350,18 +361,17 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             await newBlockTask;
         }
 
-        public async Task SyncUntilFinished(CancellationToken cancellationToken)
+        private async Task SyncUntilFinished(CancellationToken cancellationToken)
         {
-            while (true)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
-                Console.Error.WriteLine($"The mode is {_syncModeSelector.Current}");
-                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-            }
+            if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
+
+            await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
+                (e) => _syncModeSelector.Changed += e,
+                (e) => _syncModeSelector.Changed += e,
+                (evt) => evt.Current == SyncMode.WaitingForBlock);
         }
 
-        public async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
+        private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
             IBlockProcessingQueue queue = _mainBlockProcessingContext.BlockProcessingQueue;
             if (!queue.IsEmpty)
@@ -378,21 +388,62 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             worldStateManager.VerifyTrie(_blockTree.Head!.Header, cancellationToken).Should().BeTrue();
         }
 
-        private void AssertBlockEqual(Block block1, Block block2)
+        private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken)
         {
-            block1 = ReEncodeBlock(block1);
-            block2 = ReEncodeBlock(block2);
+            IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
+            IReceiptStorage otherReceiptStorage = server.Resolve<IReceiptStorage>();
 
-            block1.Should().BeEquivalentTo(block2, static o => o
-                .ComparingByMembers<Transaction>()
-                .Using<Memory<byte>>(static ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
-                .WhenTypeIs<Memory<byte>>());
+            for (int i = 0; i < otherBlockTree.Head?.Number; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Block clientBlock = _blockTree.FindBlock(i)!;
+                TxReceipt[] clientReceipts = _receiptStorage.Get(clientBlock);
+                clientBlock.Should().NotBeNull();
+                clientReceipts.Should().NotBeNull();
+
+                if (CheckBlocksAndReceiptsContent)
+#pragma warning disable CS0162 // Unreachable code detected
+                {
+                    Block serverBlock = otherBlockTree.FindBlock(i)!;
+                    AssertBlockEqual(clientBlock, serverBlock);
+                    TxReceipt[] serverReceipts = otherReceiptStorage.Get(serverBlock);
+                    AssertReceiptsEqual(clientReceipts, serverReceipts);
+                }
+#pragma warning restore CS0162 // Unreachable code detected
+            }
+
+            return ValueTask.CompletedTask;
         }
 
-        private Block ReEncodeBlock(Block block)
+        private void AssertBlockEqual(Block block1, Block block2)
         {
-            using var stream = _blockDecoder.EncodeToNewNettyStream(block);
-            return _blockDecoder.Decode(stream)!;
+            using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
+            using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
+
+            stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
+        }
+
+        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2)
+        {
+            // The network encoding is not the same as storage encoding.
+            EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
+        }
+
+        private byte[] EncodeReceipts(TxReceipt[] receipts)
+        {
+            TxReceipt[][] wrappedReceipts = new[] { receipts };
+            using ReceiptsMessage asReceiptsMessage = new ReceiptsMessage(wrappedReceipts.ToPooledList());
+
+            IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
+            try
+            {
+                _receiptsMessageSerializer.Serialize(bb, asReceiptsMessage);
+                return bb.AsSpan().ToArray();
+            }
+            finally
+            {
+                bb.Release();
+            }
         }
 
         public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken)
@@ -402,6 +453,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             await ConnectTo(server, cancellationToken);
             await SyncUntilFinished(cancellationToken);
             await VerifyHeadWith(server, cancellationToken);
+            await VerifyAllBlocksAndReceipts(server, cancellationToken);
         }
     }
 }

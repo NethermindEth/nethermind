@@ -34,7 +34,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup): Mo
         base.Load(builder);
 
         builder
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error)) // Limbologs actually have IsTrace set to true, so actually slow.
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
