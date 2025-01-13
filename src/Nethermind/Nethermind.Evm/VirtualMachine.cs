@@ -837,16 +837,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         byRef = ref stack.PeekUInt256Ref();
                         if (IsNullRef(ref byRef)) goto StackUnderflow;
-                        if (b.IsZeroOrOne)
+
+                        if (byRef.IsZeroOrOne)
                         {
                             byRef = default;
                         }
                         else
                         {
                             // copy value
-                            b = byRef;
                             As<UInt256, Int256>(ref a)
-                                .Mod(in As<UInt256, Int256>(ref b), out As<UInt256, Int256>(ref byRef));
+                                .Mod(in As<UInt256, Int256>(ref byRef), out As<UInt256, Int256>(ref byRef));
                         }
 
                         break;
