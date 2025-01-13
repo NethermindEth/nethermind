@@ -343,8 +343,9 @@ public ref struct EvmStack<TTracing>
         ref Word v = ref MemoryMarshal.GetReference(_words);
 
         ref Word bottom = ref Unsafe.Add(ref v, Head - depth);
-        ref Word top = ref Unsafe.Add(ref v, Head);
+        ref Word top = ref Unsafe.Add(ref v, Head - 1);
 
+        // ReSharper disable once SwapViaDeconstruction
         Word buffer = bottom;
         bottom = top;
         top = buffer;
