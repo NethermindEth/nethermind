@@ -35,9 +35,6 @@ public class SystemConfigDeriver(
     IOptimismSpecHelper specHelper
 ) : ISystemConfigDeriver
 {
-    private const int SystemTxDataLengthEcotone = 0;
-    private static readonly byte[] ExpectedAddressPadding = new byte[32];
-
     public SystemConfig SystemConfigFromL2Payload(ExecutionPayload l2Payload)
     {
         if (l2Payload.Transactions.Length == 0)
@@ -57,35 +54,15 @@ public class SystemConfigDeriver(
 
         // TODO: all SystemConfig parameters should be encoded in tx.Data();
         ReadOnlySpan<byte> data = depositTx.Data.Value.Span;
-
-        if (data.Length != SystemTxDataLengthEcotone)
-        {
-            throw new ArgumentException("System tx data length is incorrect");
-        }
-
-        uint methodId = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(4));
-        uint baseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(4));
-        uint blobBaseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(4));
-        ulong sequenceNumber = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(8));
-        ulong timestamp = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(8));
-        ulong number = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(8));
-        UInt256 baseFee = new(data.TakeAndMove(32));
-        UInt256 blobBaseFee = new(data.TakeAndMove(32));
-        Hash256 blockHash = new(data.TakeAndMove(32));
-        ReadOnlySpan<byte> addressPadding = data.TakeAndMove(12);
-        if (!addressPadding.SequenceEqual(ExpectedAddressPadding))
-        {
-            throw new ArgumentException("Address padding mismatch");
-        }
-        Address batcherAddress = new(data.TakeAndMove(20));
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, l2Payload.ExtraData);
 
         byte[] scalar = new byte[32];
         scalar[0] = 1;
-        BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], blobBaseFeeScalar);
-        BinaryPrimitives.WriteUInt32BigEndian(scalar[28..32], baseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], l1BlockInfo.BlobBaseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(scalar[28..32], l1BlockInfo.BaseFeeScalar);
         return new SystemConfig()
         {
-            BatcherAddress = batcherAddress,
+            BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = (ulong)l2Payload.GasLimit,
             Scalar = scalar
         };
