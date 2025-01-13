@@ -102,17 +102,20 @@ public class PsudoNethermindModule(IConfigProvider configProvider, ChainSpec spe
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
             .Map<PruningTrieStateFactoryOutput, IWorldStateManager>((o) => o.WorldStateManager)
-            .Map<IWorldStateManager, IStateReader>((m) => m.GlobalStateReader);
+            .Map<IWorldStateManager, IStateReader>((m) => m.GlobalStateReader)
+            .Map<PruningTrieStateFactoryOutput, INodeStorage>((m) => m.NodeStorage);
     }
 
     private class PruningTrieStateFactoryOutput
     {
         public IWorldStateManager WorldStateManager { get; }
+        public INodeStorage NodeStorage { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
             (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, CompositePruningTrigger _) = factory.Build();
             WorldStateManager = worldStateManager;
+            NodeStorage = mainNodeStorage;
         }
     }
 }
