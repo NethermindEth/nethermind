@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -16,10 +17,12 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public UInt256 Nonce { get; set; }
 
-        public byte[] Code { get; set; }
+        public byte[]? Code { get; set; }
 
         public byte[] Constructor { get; set; }
         public Dictionary<string, string> Storage { get; set; }
+
+        public Hash256? CodeHash { get; set; }
 
         public Dictionary<UInt256, byte[]> GetConvertedStorage()
         {
