@@ -17,8 +17,8 @@ public interface IWorldStateManager
 {
     IWorldState GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    bool SupportHashLookup { get; }
     ISnapServer? SnapServer { get; }
+    IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.

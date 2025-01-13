@@ -51,6 +51,13 @@ public class WorldStateManagerTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
-        worldStateManager.SupportHashLookup.Should().Be(hashSupported);
+        if (hashSupported)
+        {
+            worldStateManager.HashServer.Should().NotBeNull();
+        }
+        else
+        {
+            worldStateManager.HashServer.Should().BeNull();
+        }
     }
 }
