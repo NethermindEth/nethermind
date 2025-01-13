@@ -136,13 +136,18 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             inMemoryReceiptStorage.MigratedBlockNumber = 0;
             outMemoryReceiptStorage.MigratedBlockNumber = 0;
 
-            Block blockToMigrate = blockTree.FindBlock(1);
+            Block blockToMigrate = blockTree.FindBlock(2);
+            Block blockNotToMigrate = blockTree.FindBlock(1);
             TxReceipt receiptA = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[0]).TestObject;
             TxReceipt receiptB = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[1]).TestObject;
 
             inMemoryReceiptStorage.Insert(blockToMigrate, new[] { receiptA, receiptB });
 
             outMemoryReceiptStorage.Insert(blockToMigrate, new[] { receiptA });
+
+            inMemoryReceiptStorage.Insert(blockNotToMigrate, new[] { receiptA, receiptB });
+
+            outMemoryReceiptStorage.Insert(blockNotToMigrate, new[] { receiptA });
 
             TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
             TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
@@ -164,17 +169,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 LimboLogs.Instance
             );
 
-            await migration.Run(1, migrateSingleBlock: true);
+            await migration.Run(2, migrateSingleBlock: true);
             if (migration._migrationTask != null)
             {
                 await migration._migrationTask;
             }
 
-            TxReceipt[] outReceipts = outMemoryReceiptStorage.Get(blockToMigrate, recover: false, recoverSender: false);
-            outReceipts.Length.Should().Be(2, "Both receipts (A & B) should be present after migration.");
+            TxReceipt[] outReceiptsMigrate = outMemoryReceiptStorage.Get(blockToMigrate, recover: false, recoverSender: false);
+            TxReceipt[] outReceiptsNotMigrate = outMemoryReceiptStorage.Get(blockNotToMigrate, recover: false, recoverSender: false);
+            outReceiptsMigrate.Length.Should().Be(2, "Both receipts (A & B) should be present after migration.");
+            outReceiptsNotMigrate.Length.Should().Be(1, "Only A receipt should be present after migration.");
 
-            outReceipts.Should().Contain(receiptA)
+            outReceiptsMigrate.Should().Contain(receiptA)
                        .And.Contain(receiptB);
+            outReceiptsNotMigrate.Should().Contain(receiptA)
+                       .And.NotContain(receiptB);
 
             outMemoryReceiptStorage.MigratedBlockNumber.Should().BeGreaterThanOrEqualTo(1);
         }
