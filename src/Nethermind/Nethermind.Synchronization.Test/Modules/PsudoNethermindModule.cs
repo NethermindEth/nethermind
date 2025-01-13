@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
@@ -20,6 +21,7 @@ using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -31,6 +33,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Block = Nethermind.EthStats.Messages.Models.Block;
 using Module = Autofac.Module;
@@ -177,7 +180,30 @@ public class NetworkModule : Module
                 return new NetworkStorage(peersDb, logManager);
             })
 
-            .AddSingleton<IProtocolsManager, ProtocolsManager>()
+            .AddAdvance<ProtocolsManager>(cfg =>
+            {
+                cfg
+                    .As<IProtocolsManager>()
+                    .WithAttributeFiltering()
+                    .SingleInstance()
+                    .OnActivating((m) =>
+                    {
+                        ProtocolsManager protocolManager = m.Instance;
+                        ISyncConfig syncConfig = m.Context.Resolve<ISyncConfig>();
+                        IWorldStateManager worldStateManager = m.Context.Resolve<IWorldStateManager>();
+
+                        if (syncConfig.SnapServingEnabled == true)
+                        {
+                            protocolManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+                        }
+
+                        if (worldStateManager.HashServer is null)
+                        {
+                            protocolManager.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
+                        }
+
+                    });
+            })
 
             ;
 
