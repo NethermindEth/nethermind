@@ -138,7 +138,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             networkConfig.P2PPort = AllocatePort();
         });
 
-        var serverCtx = _server.Resolve<SyncTestContext>();
+        SyncTestContext serverCtx = _server.Resolve<SyncTestContext>();
         await serverCtx.StartBlockProcessing(cancellationToken);
 
         byte[] spam = Prepare.EvmCode
@@ -184,9 +184,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
     [Test]
     public async Task FullSync()
     {
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        cancellationTokenSource.CancelAfter(TestTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyB;
         await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
@@ -195,17 +193,15 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             networkConfig.P2PPort = AllocatePort();
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
     [Test]
     public async Task FastSync()
     {
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        cancellationTokenSource.CancelAfter(TestTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
-        PrivateKey clientKey = TestItem.PrivateKeyB;
+        PrivateKey clientKey = TestItem.PrivateKeyC;
         await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
         {
             SyncConfig syncConfig = (SyncConfig) cfg.GetConfig<ISyncConfig>();
@@ -222,7 +218,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             networkConfig.P2PPort = AllocatePort();
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
     [Test]
@@ -230,11 +226,9 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
     {
         if (mode == NodeMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        cancellationTokenSource.CancelAfter(TestTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
-        PrivateKey clientKey = TestItem.PrivateKeyB;
+        PrivateKey clientKey = TestItem.PrivateKeyD;
         await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
         {
             SyncConfig syncConfig = (SyncConfig) cfg.GetConfig<ISyncConfig>();
@@ -252,7 +246,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             networkConfig.P2PPort = AllocatePort();
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
     private class SyncTestContext

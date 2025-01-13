@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,6 +44,17 @@ namespace Nethermind.Core.Extensions
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Converts <see cref="CancellationToken"/> to a awaitable <see cref="Task"/> when token is cancelled.
+        /// </summary>
+        /// <param name="token"></param>
+        /// <returns></returns>
+        public static CancellationTokenSource ThatCancelAfter(this CancellationTokenSource cts, TimeSpan delay)
+        {
+            cts.CancelAfter(delay);
+            return cts;
         }
     }
 }
