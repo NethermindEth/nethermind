@@ -698,7 +698,7 @@ namespace Nethermind.TxPool
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
 
-                RemovePendingDelegations(transaction);                
+                RemovePendingDelegations(transaction);
             }
 
             _broadcaster.StopBroadcast(hash);
