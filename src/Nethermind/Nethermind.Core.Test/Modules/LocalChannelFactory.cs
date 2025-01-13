@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Local;
-using Nethermind.Core;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 
-namespace Nethermind.Synchronization.Test.Modules;
+namespace Nethermind.Core.Test.Modules;
 
 internal class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
 {

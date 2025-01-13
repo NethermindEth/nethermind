@@ -10,15 +10,14 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
-namespace Nethermind.Synchronization.Test.Modules;
+namespace Nethermind.Core.Test.Modules;
 
-public class BlocktreeModule: Module
+public class BlocktreeModule: Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {

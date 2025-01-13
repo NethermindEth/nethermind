@@ -2,28 +2,44 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Configuration;
+using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
+using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Network.Config;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Synchronization.Test.Modules;
+using Nethermind.State;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test;
 
+[Parallelizable(ParallelScope.All)]
 [TestFixture(NodeMode.Default)]
 [TestFixture(NodeMode.Hash)]
 [TestFixture(NodeMode.NoPruning)]
@@ -36,11 +52,18 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         NoPruning
     }
 
+    private int _portNumber = 0;
+
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(10);
     private static TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
     PrivateKey _serverKey = TestItem.PrivateKeyA;
     IContainer _server = null!;
+
+    private int AllocatePort()
+    {
+        return Interlocked.Increment(ref _portNumber);
+    }
 
     /// <summary>
     /// Common code for all node
@@ -95,7 +118,8 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
 
         return new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(configProvider, spec))
-            .AddModule(new TestEnvironmentModule(nodeKey))
+            .AddModule(new TestEnvironmentModule(nodeKey, nameof(E2ESyncTests) + mode))
+            .AddSingleton<SyncTestContext>()
             .Build();
     }
 
@@ -111,10 +135,10 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         _server = CreateNode(serverKey, (cfg, spec) =>
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = 1000;
+            networkConfig.P2PPort = AllocatePort();
         });
 
-        var serverCtx = _server.Resolve<BlockchainTestContext>();
+        var serverCtx = _server.Resolve<SyncTestContext>();
         await serverCtx.StartBlockProcessing(cancellationToken);
 
         byte[] spam = Prepare.EvmCode
@@ -157,7 +181,6 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         await _server.DisposeAsync();
     }
 
-
     [Test]
     public async Task FullSync()
     {
@@ -169,16 +192,10 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = 1001;
+            networkConfig.P2PPort = AllocatePort();
         });
 
-        var clientCtx = client.Resolve<BlockchainTestContext>();
-        await clientCtx.StartBlockProcessing(cancellationToken);
-        await clientCtx.StartNetwork(cancellationToken);
-
-        await clientCtx.ConnectTo(_server, cancellationToken);
-        await clientCtx.SyncUntilFinished(cancellationToken);
-        await clientCtx.VerifyHeadWith(_server, cancellationToken);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
     }
 
     [Test]
@@ -202,16 +219,10 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = 1002;
+            networkConfig.P2PPort = AllocatePort();
         });
 
-        var clientCtx = client.Resolve<BlockchainTestContext>();
-        await clientCtx.StartBlockProcessing(cancellationToken);
-        await clientCtx.StartNetwork(cancellationToken);
-
-        await clientCtx.ConnectTo(_server, cancellationToken);
-        await clientCtx.SyncUntilFinished(cancellationToken);
-        await clientCtx.VerifyHeadWith(_server, cancellationToken);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
     }
 
     [Test]
@@ -238,83 +249,165 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = 1002;
+            networkConfig.P2PPort = AllocatePort();
         });
 
-        var clientCtx = client.Resolve<BlockchainTestContext>();
-        await clientCtx.StartBlockProcessing(cancellationToken);
-        await clientCtx.StartNetwork(cancellationToken);
-
-        await clientCtx.ConnectTo(_server, cancellationToken);
-        await clientCtx.SyncUntilFinished(cancellationToken);
-        await clientCtx.VerifyHeadWith(_server, cancellationToken);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
     }
 
-    /*
-    private async Task<ProcessingResult?> ValidateBlockAndProcess(IBlockProcessingQueue blockProcessingQueue, IBlockTree blockTree, Block block, ProcessingOptions processingOptions)
+    private class SyncTestContext
     {
-        ProcessingResult? result = null;
+        private readonly PrivateKey _nodeKey;
 
-        TaskCompletionSource<ProcessingResult?> blockProcessedTaskCompletionSource = new();
-        Task<ProcessingResult?> blockProcessed = blockProcessedTaskCompletionSource.Task;
+        private readonly IWorldStateManager _worldStateManager;
+        private readonly ITxPool _txPool;
+        private readonly ISpecProvider _specProvider;
+        private readonly IEthereumEcdsa _ecdsa;
+        private readonly IBlockTree _blockTree;
+        private readonly ManualTimestamper _timestamper;
+        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+        private readonly MainBlockProcessingContext _mainBlockProcessingContext;
+        private readonly IRlpxHost _rlpxHost;
+        private readonly ISyncModeSelector _syncModeSelector;
+        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly PsudoNethermindRunner _runner;
 
-        void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
+        public SyncTestContext(
+            [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
+            IWorldStateManager worldStateManager,
+            ISpecProvider specProvider,
+            IEthereumEcdsa ecdsa,
+            IBlockTree blockTree,
+            ManualTimestamper timestamper,
+            IManualBlockProductionTrigger blockProductionTrigger,
+            MainBlockProcessingContext mainBlockProcessingContext,
+            ITxPool txPool,
+            ISyncModeSelector syncModeSelector,
+            IRlpxHost rlpxHost,
+            PsudoNethermindRunner runner
+        )
         {
-            if (e.BlockHash == block.Hash)
+            _txPool = txPool;
+            _nodeKey = nodeKey;
+            _worldStateManager = worldStateManager;
+            _mainBlockProcessingContext = mainBlockProcessingContext;
+            _specProvider = specProvider;
+            _ecdsa = ecdsa;
+            _blockTree = blockTree;
+            _timestamper = timestamper;
+            _blockProductionTrigger = blockProductionTrigger;
+            _syncModeSelector = syncModeSelector;
+            _rlpxHost = rlpxHost;
+            _runner = runner;
+        }
+
+        public async Task StartBlockProcessing(CancellationToken cancellationToken)
+        {
+            await _runner.StartBlockProcessing(cancellationToken);
+        }
+
+        public async Task StartNetwork(CancellationToken cancellationToken)
+        {
+            await _runner.StartNetwork(cancellationToken);
+        }
+
+        public async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
+        {
+            IEnode serverEnode = server.Resolve<IEnode>();
+            Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
+            await _rlpxHost.ConnectAsync(serverNode);
+        }
+
+        public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
+        {
+            // 1 000 000 000
+            long gasLimit = 100000;
+
+            Hash256 stateRoot = _blockTree.Head?.StateRoot!;
+            UInt256 currentNonce = _worldStateManager.GlobalStateReader.GetNonce(stateRoot, _nodeKey.Address);
+            IReleaseSpec spec = _specProvider.GetSpec((_blockTree.Head?.Number) + 1 ?? 0, null);
+            Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
+                    .WithCode(byteCode)
+                    .WithNonce(currentNonce++)
+                    .WithGasLimit(gasLimit)
+                    .WithGasPrice(10.GWei())
+                    .SignedAndResolved(_ecdsa, _nodeKey, spec.IsEip155Enabled).TestObject)
+                .ToArray();
+
+            await BuildBlockWithTxs(txs, cancellation);
+        }
+
+        private async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
+        {
+            Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellation,
+                (h) => _blockTree.BlockAddedToMain += h,
+                (h) => _blockTree.BlockAddedToMain -= h,
+                (e) => true);
+
+            AcceptTxResult[] txResults = transactions.Select(t => _txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+            foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                blockProcessingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+            }
 
-                if (e.ProcessingResult == ProcessingResult.Exception)
-                {
-                    BlockchainException? exception = new("Block processing threw exception.", e.Exception);
-                    blockProcessedTaskCompletionSource.SetException(exception);
-                    return;
-                }
+            _timestamper.Add(TimeSpan.FromSeconds(1));
+            await _blockProductionTrigger.BuildBlock();
+            await newBlockTask;
+        }
 
-                blockProcessedTaskCompletionSource.TrySetResult(e.ProcessingResult);
+        public async Task SyncUntilFinished(CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
+                Console.Error.WriteLine($"The mode is {_syncModeSelector.Current}");
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             }
         }
 
-        blockProcessingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
-        try
+        public async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            Task timeoutTask = Task.Delay(1.Seconds());
-
-            AddBlockResult addResult = await blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
-
-            result = addResult switch
+            IBlockProcessingQueue queue = _mainBlockProcessingContext.BlockProcessingQueue;
+            if (!queue.IsEmpty)
             {
-                AddBlockResult.InvalidBlock => ProcessingResult.ProcessingError,
-                // if the block is marked as AlreadyKnown by the block tree then it means it has already
-                // been suggested. there are three possibilities, either the block hasn't been processed yet,
-                // the block was processed and returned invalid but this wasn't saved anywhere or the block was
-                // processed and marked as valid.
-                // if marked as processed by the blocktree then return VALID, otherwise null so that it's process a few lines below
-                AddBlockResult.AlreadyKnown => blockTree.WasProcessed(block.Number, block.Hash!) ? ProcessingResult.ProcessingError : null,
-                _ => null
-            };
-
-            if (!result.HasValue)
-            {
-                // we don't know the result of processing the block, either because
-                // it is the first time we add it to the tree or it's AlreadyKnown in
-                // the tree but hasn't yet been processed. if it's the second case
-                // probably the block is already in the processing queue as a result
-                // of a previous newPayload or the block being discovered during syncing
-                // but add it to the processing queue just in case.
-                blockProcessingQueue.Enqueue(block, processingOptions);
-                result = await blockProcessed.TimeoutOn(timeoutTask);
+                await Wait.ForEvent(cancellationToken,
+                    e => queue.ProcessingQueueEmpty += e,
+                    e => queue.ProcessingQueueEmpty -= e);
             }
-        }
-        finally
-        {
-            blockProcessingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+
+            IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
+            AssertBlockEqual(_blockTree.Head!, otherBlockTree.Head!);
+
+            IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
+            worldStateManager.VerifyTrie(_blockTree.Head!.Header, cancellationToken).Should().BeTrue();
         }
 
-        return result;
+        private void AssertBlockEqual(Block block1, Block block2)
+        {
+            block1 = ReEncodeBlock(block1);
+            block2 = ReEncodeBlock(block2);
+
+            block1.Should().BeEquivalentTo(block2, static o => o
+                .ComparingByMembers<Transaction>()
+                .Using<Memory<byte>>(static ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+                .WhenTypeIs<Memory<byte>>());
+        }
+
+        private Block ReEncodeBlock(Block block)
+        {
+            using var stream = _blockDecoder.EncodeToNewNettyStream(block);
+            return _blockDecoder.Decode(stream)!;
+        }
+
+        public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken)
+        {
+            await _runner.StartNetwork(cancellationToken);
+
+            await ConnectTo(server, cancellationToken);
+            await SyncUntilFinished(cancellationToken);
+            await VerifyHeadWith(server, cancellationToken);
+        }
     }
-    */
-
 }

@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -20,13 +19,13 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
 using Nethermind.TxPool;
 
-namespace Nethermind.Synchronization.Test.Modules;
+namespace Nethermind.Core.Test.Modules;
 
 /// <summary>
 /// Module that set up test environment which should make nethermind works without doing any actual IO.
 /// </summary>
 /// <param name="nodeKey"></param>
-public class TestEnvironmentModule(PrivateKey nodeKey): Module
+public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup): Module
 {
     public const string NodeKey = "NodeKey";
 
@@ -38,10 +37,10 @@ public class TestEnvironmentModule(PrivateKey nodeKey): Module
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
-            .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory("test", networkConfig))
+            .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
             .AddSingleton<IDiscoveryApp, NullDiscoveryApp>()
 
-            .AddSingleton<BlockchainTestContext>()
+            .AddSingleton<PsudoNethermindRunner>()
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
 

@@ -19,7 +19,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
@@ -28,9 +27,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 
-namespace Nethermind.Synchronization.Test.Modules;
+namespace Nethermind.Core.Test.Modules;
 
-public class BlockProcessingModule: Module
+public partial class BlockProcessingModule: Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -161,20 +160,6 @@ public class BlockProcessingModule: Module
     private ITxValidator CreateTxValidator(ISpecProvider specProvider)
     {
         return new TxValidator(specProvider.ChainId);
-    }
-
-    public record MainBlockProcessingContext(
-        ILifetimeScope LifetimeScope,
-        BlockchainProcessor BlockchainProcessor,
-        IBlockProcessor BlockProcessor,
-        GenesisLoader GenesisLoader): IAsyncDisposable
-    {
-        public IBlockProcessingQueue BlockProcessingQueue => BlockchainProcessor;
-
-        public async ValueTask DisposeAsync()
-        {
-            await LifetimeScope.DisposeAsync();
-        }
     }
 
     public record BlockProducerContext(
