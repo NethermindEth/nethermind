@@ -137,22 +137,22 @@ public class VisitingTests
         }
     }
 
-    public static IEnumerable<TestCaseData> GetAccountOptions() => GetOptions(false);
-    public static IEnumerable<TestCaseData> GetStorageOptions() => GetOptions(true);
+    private static IEnumerable<TestCaseData> GetAccountOptions() => GetOptions(false);
+    private static IEnumerable<TestCaseData> GetStorageOptions() => GetOptions(true);
 
     private static IEnumerable<TestCaseData> GetOptions(bool expectAccounts)
     {
         yield return new TestCaseData(new VisitingOptions
         {
             ExpectAccounts = expectAccounts
-        }).SetName("Default");
+        });
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
             FullScanMemoryBudget = 1.MiB(),
             ExpectAccounts = expectAccounts
-        }).SetName("Parallel");
+        });
     }
 
     public class AppendingVisitor : ITreeVisitor<AppendingVisitor.PathGatheringContext>
@@ -179,6 +179,15 @@ public class VisitingTests
                 var @new = new byte[Nibbles.Length + 1];
                 Nibbles.CopyTo(@new, 0);
                 @new[Nibbles.Length] = nibble;
+
+                return new PathGatheringContext(@new);
+            }
+
+            public readonly PathGatheringContext Add(in TrieKey nibblePath)
+            {
+                var @new = new byte[Nibbles.Length + nibblePath.Length];
+                Nibbles.CopyTo(@new, 0);
+                nibblePath.CopyTo(@new.AsSpan(Nibbles.Length));
 
                 return new PathGatheringContext(@new);
             }
@@ -213,7 +222,7 @@ public class VisitingTests
 
         public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
-            PathGatheringContext context = nodeContext.Add(node.Key!);
+            PathGatheringContext context = nodeContext.Add(node.Key);
             _paths.Enqueue(context.Nibbles);
         }
 

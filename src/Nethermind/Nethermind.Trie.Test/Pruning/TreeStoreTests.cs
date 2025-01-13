@@ -198,7 +198,7 @@ namespace Nethermind.Trie.Test.Pruning
             long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-            long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize - MemorySizes.SmallObjectOverhead;
+            long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize - MemorySizes.SmallObjectOverhead - MemorySizes.RefSize - MemorySizes.RefSize;
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
@@ -253,7 +253,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 540560L : 610708L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 556672L : 626820L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -617,10 +617,9 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             storage1.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
-            TrieNode a = new(NodeType.Leaf);
+            TrieNode a = new(NodeType.Leaf, key: Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray()));
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             MemDb memDb = new();
@@ -667,10 +666,9 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             storage1.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
-            TrieNode a = new(NodeType.Leaf);
+            TrieNode a = new(NodeType.Leaf, key: Bytes.FromHexString("abc"));
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode b = new(NodeType.Leaf, new byte[1]);
@@ -729,19 +727,17 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             storage1.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
-            TrieNode a = new(NodeType.Leaf);
+            TrieNode a = new(NodeType.Leaf, key: storage1Nib[1..]);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = storage1Nib[1..];
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode storage2 = new(NodeType.Leaf, new byte[32]);
             storage2.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
-            TrieNode b = new(NodeType.Leaf);
+            TrieNode b = new(NodeType.Leaf, key: storage2Nib[1..]);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
-            b.Key = storage2Nib[1..];
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode branch = new(NodeType.Branch);
@@ -861,10 +857,9 @@ namespace Nethermind.Trie.Test.Pruning
         [TestCase(false)]
         public void ReadOnly_store_returns_copies(bool pruning)
         {
-            TrieNode node = new(NodeType.Leaf);
+            TrieNode node = new(NodeType.Leaf, key: Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray()));
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             TreePath emptyPath = TreePath.Empty;
             node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
@@ -890,7 +885,7 @@ namespace Nethermind.Trie.Test.Pruning
             var readOnlyRlp = readOnlyNode.FullRlp;
             readOnlyRlp.Should().BeEquivalentTo(origRlp);
 
-            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
+            readOnlyNode.Key.ToString().Should().Be(originalNode.Key.ToString());
         }
 
         private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage;
@@ -1017,7 +1012,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 552 : 708);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 600 : 756);
         }
 
         [Test]
