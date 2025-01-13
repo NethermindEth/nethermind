@@ -199,6 +199,8 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
+                //await _logIndexStorage.CheckMigratedData();
+
                 var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, BatchSize, token), token);
                 var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);

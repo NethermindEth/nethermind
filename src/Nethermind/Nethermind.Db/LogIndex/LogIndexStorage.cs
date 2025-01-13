@@ -235,6 +235,27 @@ namespace Nethermind.Db
             return blockNumsByKey;
         }
 
+        public Task CheckMigratedData()
+        {
+            using IIterator<byte[], byte[]> addressIterator = _addressDb.GetIterator();
+            using IIterator<byte[], byte[]> topicIterator = _topicsDb.GetIterator();
+
+            // Total: 9244, finalized - 31
+            (Address, IndexInfo)[] addressData = Enumerate(addressIterator).Select(x => (new Address(SplitDbKey(x.key).key), DeserializeIndexInfo(x.key, x.value))).ToArray();
+
+            // Total: 5_654_366
+            // From first 200_000: 1 - 134_083 (0.670415), 2 - 10_486, 3 - 33_551, 4 - 4872, 5 - 4227, 6 - 4764, 7 - 6792, 8 - 609, 9 - 67, 10 - 55
+            // From first 300_000: 1 - 228_553 (0.761843333)
+            // From first 1_000_000: 1 - 875_216 (0.875216)
+            //var topicData = Enumerate(topicIterator).Select(x => (new Hash256(SplitDbKey(x.key).key), DeserializeIndexInfo(x.key, x.value))).ToArray();
+            var topicData = Enumerate(topicIterator).Take(200_000).Select(x => (topic: new Hash256(SplitDbKey(x.key).key), Index: DeserializeIndexInfo(x.key, x.value))).GroupBy(x => x.Index.Length).ToDictionary(g => g.Key, g => g.Count());
+
+            GC.KeepAlive(addressData);
+            GC.KeepAlive(topicData);
+
+            return Task.CompletedTask;
+        }
+
         public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync,
             CancellationToken cancellationToken)
         {
