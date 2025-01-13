@@ -44,12 +44,16 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ILogIndexStorage _logIndexStorage;
         private readonly IInitConfig _initConfig;
         private const int BatchSize = 200;
+        private const int ReportSize = 20_000;
         private readonly Channel<(int blockNumber, TxReceipt[] receipts)[]> _blocksChannel;
 
         private long _totalBlocks;
 
         private readonly SetReceiptsStats _totalStats = new();
         private SetReceiptsStats _lastStats = new();
+
+        private readonly FileInfo _tempFileInfo;
+        private readonly FileInfo _finalFileInfo;
 
         public LogIndexMigration(IApiWithNetwork api) : this(
             api.LogIndexStorage!,
@@ -90,6 +94,8 @@ namespace Nethermind.Init.Steps.Migrations
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
             });
             _progress = new("Log-index Migration", logManager);
+            _tempFileInfo = new(_logIndexStorage.TempFilePath);
+            _finalFileInfo = new(_logIndexStorage.FinalFilePath);
         }
 
         public async Task<bool> Run(long blockNumber)
@@ -160,26 +166,27 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
                     $"\n\t\tKeys per batch: {last.KeysCount:N0} ( {total.KeysCount:N0} on average )" +
-                    $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss}" +
-                    $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average)" +
-                    $"\n\t\tProcessing: {last.ProcessingData} ( {total.ProcessingData} on average)" +
-                    $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average)" +
-                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average)" +
-                    $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average)" +
-                    $"\n\t\tNew indexes: {last.NewDbIndexes:N0} DB ( {total.NewDbIndexes:N0} on average), {last.NewTempIndexes:N0} Temp ( {total.NewTempIndexes:N0} on average), {last.NewTempFromDbIndexes:N0} DB -> Temp ( {total.NewTempFromDbIndexes:N0} on average)" +
+                    $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss} ( {total.SeekForPrevHit} / {total.SeekForPrevMiss} on average )" +
+                    $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average )" +
+                    $"\n\t\tProcessing: {last.ProcessingData} ( {total.ProcessingData} on average )" +
+                    $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average )" +
+                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
+                    $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average )" +
+                    $"\n\t\tNew indexes: {last.NewDbIndexes:N0} DB ( {total.NewDbIndexes:N0} in total ), {last.NewTempIndexes:N0} Temp ( {total.NewTempIndexes:N0} in total ), {last.NewTempFromDbIndexes:N0} DB to Temp ( {total.NewTempFromDbIndexes:N0} in total )" +
                     $"\n\t\tPages total: {pagesStats.PagesAllocated:N0} allocated, {pagesStats.PagesTaken:N0} taken, {pagesStats.PagesReturned:N0} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending" +
-                    $"\n\t\tFiles sizes: {GetFileSize(_logIndexStorage.TempFilePath)} Temp, {GetFileSize(_logIndexStorage.FinalFilePath)} Final"
+                    $"\n\t\tFiles sizes: {GetFileSize(_tempFileInfo)} Temp, {GetFileSize(_finalFileInfo)} Final"
                 );
             }
         }
 
         private static readonly string[] Suffixes = ["B", "KB", "MB", "GB", "TB", "PB"];
 
-        private string GetFileSize(string path)
+        private static string GetFileSize(FileInfo file)
         {
-            int index = 0;
-            double size = new FileInfo(path).Length;
+            file.Refresh();
+            double size = file.Length;
 
+            int index = 0;
             while (size >= 1024 && index < Suffixes.Length - 1)
             {
                 size /= 1024;
@@ -202,7 +209,7 @@ namespace Nethermind.Init.Steps.Migrations
                 //await _logIndexStorage.CheckMigratedData();
 
                 var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, BatchSize, token), token);
-                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
+                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, ReportSize, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
             }
             finally
@@ -255,16 +262,29 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private async Task MigrateBlocks(ChannelReader<(int blockNumber, TxReceipt[] receipts)[]> reader, CancellationToken token)
+        private async Task MigrateBlocks(ChannelReader<(int blockNumber, TxReceipt[] receipts)[]> reader, int reportAt, CancellationToken token)
         {
             try
             {
+                var migratedCount = 0;
+                var watch = Stopwatch.StartNew();
+                var prevElapsed = TimeSpan.Zero;
+
                 foreach ((int blockNumber, TxReceipt[] receipts)[] batch in reader.ReadAllAsync(token).ToEnumerable())
                 {
                     if (token.IsCancellationRequested)
                         return;
 
                     SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
+                    migratedCount += batch.Length;
+
+                    if (reportAt > 0 && migratedCount >= reportAt)
+                    {
+                        TimeSpan elapsed = watch.Elapsed;
+                        _logger.Warn($"Migrated {migratedCount} blocks in {watch.Elapsed} ( +{reportAt} in {watch.Elapsed - prevElapsed} )");
+                        prevElapsed = elapsed;
+                    }
+
                     _lastStats.Combine(runStats);
                     _totalStats.Combine(runStats);
                 }
