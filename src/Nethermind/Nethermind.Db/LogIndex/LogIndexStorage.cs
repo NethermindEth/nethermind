@@ -306,12 +306,17 @@ namespace Nethermind.Db
                     var size => throw new InvalidOperationException($"Unexpected key of {size} bytes.")
                 };
 
-                IndexInfo? indexInfo = GetOrCreateIndex(db, key, blockNums, stats);
+                IndexInfo indexInfo = GetTempIndex(db, key, blockNums, stats) ?? CreateTempIndex(key, blockNums, stats);
+
+                if (blockNums[^1] <= indexInfo.LastBlockNumber)
+                    return;
+
                 bytesBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
                 Span<byte> bytes = Span<byte>.Empty;
 
                 if (indexInfo.Type == IndexType.DB)
                 {
+                    indexInfo.LastBlockNumber = blockNums[^1];
                     SaveIndex(db, indexInfo);
                     return;
                 }
@@ -432,10 +437,10 @@ namespace Nethermind.Db
             db.PutSpan(dbKey, SerializeIndexInfo(indexInfo), WriteFlags.DisableWAL);
         }
 
-        private static IndexInfo CreateDbIndex(byte[] keyPrefix, int blockNum, SetReceiptsStats stats)
+        private static IndexInfo CreateDbIndex(byte[] keyPrefix, SetReceiptsStats stats)
         {
             Interlocked.Increment(ref stats.NewDbIndexes);
-            return IndexInfo.NewDb(keyPrefix, blockNum);
+            return IndexInfo.NewDb(keyPrefix, -1);
         }
 
         private IndexInfo CreateTempIndex(byte[] keyPrefix, SetReceiptsStats stats)
@@ -465,16 +470,23 @@ namespace Nethermind.Db
             return IndexInfo.NewTemp(oldIndex, freePage);
         }
 
-        private IndexInfo GetOrCreateIndex(IDb db, byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
+        private IndexInfo CreateTempIndex(byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
         {
-            var blockNumber = forBlockNums[0];
-            Span<byte> dbKey = new byte[keyPrefix.Length + sizeof(int)];
+            return forBlockNums.Count == 1
+                ? CreateDbIndex(keyPrefix, stats)
+                : CreateTempIndex(keyPrefix, stats);
+        }
+
+        private IndexInfo? GetTempIndex(IDb db, byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
+        {
+            var firstBlockNum = forBlockNums[0];
+            var dbKey = new byte[keyPrefix.Length + sizeof(int)];
 
             // TODO: check if Seek and a few Next (or using reversed data order) will make use of prefix seek
             byte[] dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (as size is not guaranteed)
             Array.Copy(keyPrefix, dbPrefix, keyPrefix.Length);
 
-            CreateDbKey(keyPrefix, blockNumber, dbKey);
+            CreateDbKey(keyPrefix, firstBlockNum, dbKey);
 
             var options = new IteratorOptions
             {
@@ -501,27 +513,14 @@ namespace Nethermind.Db
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             {
                 stats.SeekForPrevHit.Include(watch.Elapsed);
-
-                IndexInfo latestIndex = DeserializeIndexInfo(iterator.Key(), iterator.Value());
-
-                if (latestIndex.Type == IndexType.DB)
-                {
-                    return CreateTempIndex(latestIndex, stats);
-                }
-
-                if (latestIndex.Type == IndexType.Temp)
-                {
-                    return latestIndex;
-                }
+                return DeserializeIndexInfo(iterator.Key(), iterator.Value());
             }
             else
             {
                 stats.SeekForPrevMiss.Include(watch.Elapsed);
             }
 
-            return forBlockNums.Count == 1
-                ? CreateDbIndex(keyPrefix, forBlockNums[0], stats)
-                : CreateTempIndex(keyPrefix, stats);
+            return null;
         }
 
         /// <summary>
@@ -532,6 +531,12 @@ namespace Nethermind.Db
             key.CopyTo(buffer);
             BinaryPrimitives.WriteInt32BigEndian(buffer[key.Length..], blockNumber);
         }
+
+        private static (byte[] key, int blockNumber) SplitDbKey(ReadOnlySpan<byte> dbKey) =>
+        (
+            dbKey[..^sizeof(int)].ToArray(),
+            BinaryPrimitives.ReadInt32BigEndian(dbKey[^sizeof(int)..])
+        );
 
         private static ReadOnlySpan<byte> LoadData(SafeFileHandle fileHandle, IndexInfo indexInfo, Span<byte> buffer)
         {
@@ -586,7 +591,7 @@ namespace Nethermind.Db
             return offset;
         }
 
-        private static byte[] SerializeIndexInfo(IndexInfo index)
+        private byte[] SerializeIndexInfo(IndexInfo index)
         {
             if (index.Type == IndexType.DB)
                 return [];
@@ -594,7 +599,7 @@ namespace Nethermind.Db
             return SerializeIndexInfo(index.Type, index.Offset, index.Length, index.LastBlockNumber);
         }
 
-        private static byte[] SerializeIndexInfo(IndexType type, long offset, int length, int lastBlockNumber)
+        private byte[] SerializeIndexInfo(IndexType type, long offset, int length, int lastBlockNumber)
         {
             if (type != IndexType.Final && length > PageSize / sizeof(int))
                 throw new InvalidOperationException($"Invalid {type} index length ({length}).");
@@ -625,7 +630,7 @@ namespace Nethermind.Db
             return data;
         }
 
-        private static IndexInfo DeserializeIndexInfo(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> data)
+        private IndexInfo DeserializeIndexInfo(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> data)
         {
             var (key, blockNumber) = SplitDbKey(dbKey);
 
@@ -652,12 +657,6 @@ namespace Nethermind.Db
 
             return result;
         }
-
-        private static (byte[] key, int blockNumber) SplitDbKey(ReadOnlySpan<byte> dbKey) =>
-        (
-            dbKey[..^sizeof(int)].ToArray(),
-            BinaryPrimitives.ReadInt32BigEndian(dbKey[^sizeof(int)..])
-        );
 
         private enum IndexType : byte
         {
