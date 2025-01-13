@@ -177,7 +177,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             OntakeTransition = chainSpecJson.Params.OntakeTransition,
             BlobSchedule = chainSpecJson.Params.BlobSchedule,
-            Eip7840DefaultBlobCountFraction = chainSpecJson.Params.Eip7840DefaultBlobCountFraction,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
