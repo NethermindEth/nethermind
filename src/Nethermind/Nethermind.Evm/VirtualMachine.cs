@@ -843,8 +843,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
+                            // copy value
+                            b = byRef;
                             As<UInt256, Int256>(ref a)
-                                .Mod(in As<UInt256, Int256>(ref byRef), out As<UInt256, Int256>(ref byRef));
+                                .Mod(in As<UInt256, Int256>(ref b), out As<UInt256, Int256>(ref byRef));
                         }
 
                         break;
