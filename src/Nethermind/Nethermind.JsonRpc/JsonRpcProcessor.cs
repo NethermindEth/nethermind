@@ -135,7 +135,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         reader = await RecordRequest(reader);
         long startTime = Stopwatch.GetTimestamp();
-        CancellationTokenSource timeoutSource = new(_jsonRpcConfig.Timeout);
+        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
 
         // Handles general exceptions during parsing and validation.
         // Sends an error response and stops the stopwatch.
