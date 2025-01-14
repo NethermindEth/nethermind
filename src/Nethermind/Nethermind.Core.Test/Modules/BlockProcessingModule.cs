@@ -42,7 +42,7 @@ public partial class BlockProcessingModule: Autofac.Module
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessor is not guarenteed
-            .AddComposite<CompositeBlockPreprocessorStep, IBlockPreprocessorStep>()
+            .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
@@ -118,6 +118,8 @@ public partial class BlockProcessingModule: Autofac.Module
             })
             .Map<MainBlockProcessingContext, IBlockProcessingQueue>(ctx => ctx.BlockProcessingQueue)
 
+            .AddSingleton<ISealEngine, SealEngine>()
+
             .Add<BlockProducerEnvFactory>()
             .AddSingleton<BlockProducerContext, ILifetimeScope>((ctx) =>
             {
@@ -128,15 +130,21 @@ public partial class BlockProcessingModule: Autofac.Module
                     producerCtx
                         .AddScoped<ITxSource, TxPoolTxSource>()
                         .AddScoped<ITxFilterPipeline, ILogManager, ISpecProvider, IBlocksConfig>(TxFilterPipelineBuilder.CreateStandardFilteringPipeline)
-                        .AddDecorator<OneTimeChainProcessor, IBlockchainProcessor>()
+                        .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                         .AddScoped(BlockchainProcessor.Options.NoReceipts)
                         .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
+
                         .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-                        .AddDecorator<BlockProductionWithdrawalProcessor, IWithdrawalProcessor>()
+                        .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
+                        .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
+
                         .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
 
                         .AddScoped<IWorldState>(worldState)
+
+                        // TODO: What is this suppose to be?
                         .AddScoped<IBlockProducer, TestBlockProducer>()
+
                         .AddScoped<IBlockProducerRunner, StandardBlockProducerRunner>()
                         .AddScoped<BlockProducerContext>();
                 });

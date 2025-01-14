@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -10,6 +11,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -28,6 +30,10 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
@@ -39,14 +45,13 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.Synchronization.Test;
 
-[Parallelizable(ParallelScope.All)]
-[TestFixture(NodeMode.Default)]
-[TestFixture(NodeMode.Hash)]
-[TestFixture(NodeMode.NoPruning)]
-public class E2ESyncTests(E2ESyncTests.NodeMode mode)
+[Parallelizable(ParallelScope.Children)]
+[TestFixtureSource(nameof(CreateTestCases))]
+public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 {
     public enum NodeMode
     {
@@ -55,10 +60,20 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         NoPruning
     }
 
+    public static IEnumerable<TestFixtureParameters> CreateTestCases()
+    {
+        yield return new TestFixtureParameters(NodeMode.Default, false);
+        yield return new TestFixtureParameters(NodeMode.Hash, false);
+        yield return new TestFixtureParameters(NodeMode.NoPruning, false);
+        yield return new TestFixtureParameters(NodeMode.Default, true);
+        yield return new TestFixtureParameters(NodeMode.Hash, true);
+        yield return new TestFixtureParameters(NodeMode.NoPruning, true);
+    }
+
     private int _portNumber = 0;
 
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(10);
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
+    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
 
     PrivateKey _serverKey = TestItem.PrivateKeyA;
     IContainer _server = null!;
@@ -79,13 +94,9 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         // Set basefeepergas in genesis or it will fail 1559 validation.
         spec.Genesis.Header.BaseFeePerGas = 1.GWei();
 
-        // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
-        spec.Parameters.Eip4895TransitionTimestamp = null;
-
-        // 4844 add BlobGasUsed which in the header decoder also imply WithdrawalRoot which would be set to 0 instead of null
-        // which become invalid when using block body with null withdrawal.
-        // Basically, these need merge block builder, or it will fail block validation on download.
-        spec.Parameters.Eip4844TransitionTimestamp = null;
+        // Needed for generating spam state.
+        spec.Genesis.Header.GasLimit = 100000000;
+        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(30.Ether());
 
         // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
         // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
@@ -94,9 +105,25 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         // TODO: Need to double check which code part does not pass in timestamp from header.
         spec.Parameters.Eip658Transition = 0;
 
-        // Needed for generating spam state.
-        spec.Genesis.Header.GasLimit = 100000000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(30.Ether());
+        if (!isMerge)
+        {
+            // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
+            spec.Parameters.Eip4895TransitionTimestamp = null;
+
+            // 4844 add BlobGasUsed which in the header decoder also imply WithdrawalRoot which would be set to 0 instead of null
+            // which become invalid when using block body with null withdrawal.
+            // Basically, these need merge block builder, or it will fail block validation on download.
+            spec.Parameters.Eip4844TransitionTimestamp = null;
+        }
+        else
+        {
+            spec.Genesis.Header.Difficulty = 10000;
+
+            IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
+            mergeConfig.Enabled = true;
+            mergeConfig.TerminalTotalDifficulty = "10000";
+            mergeConfig.FinalTotalDifficulty = "10000";
+        }
 
         configurer.Invoke(configProvider, spec);
 
@@ -119,10 +146,34 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             }
         }
 
-        return new ContainerBuilder()
+        var builder = new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(configProvider, spec))
-            .AddModule(new TestEnvironmentModule(nodeKey, nameof(E2ESyncTests) + mode))
             .AddSingleton<SyncTestContext>()
+            ;
+
+        if (isMerge)
+        {
+            builder
+                .AddModule(new MergeModule(
+                    configProvider.GetConfig<ITxPoolConfig>(),
+                    configProvider.GetConfig<IMergeConfig>(),
+                    configProvider.GetConfig<IBlocksConfig>()
+                ))
+                .AddSingleton<SyncTestContext, PostMergeSyncTestContext>()
+                ;
+
+        }
+
+        builder
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {mode} {isMerge}"));
+
+        if (isMerge)
+        {
+            builder
+                .AddSingleton<PsudoNethermindRunner, MergePsudoNethermindRunner>();
+        }
+
+        return builder
             .Build();
     }
 
@@ -154,19 +205,10 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
                     .PushData(101)
                     .Op(Instruction.SSTORE)
                     .PushData(100)
-                    .PushData(102)
-                    .Op(Instruction.SSTORE)
-                    .PushData(100)
-                    .PushData(103)
-                    .Op(Instruction.SSTORE)
-                    .PushData(100)
                     .Op(Instruction.SLOAD)
                     .PushData(101)
                     .Op(Instruction.SLOAD)
                     .PushData(102)
-                    .Op(Instruction.SLOAD)
-                    .PushData(103)
-                    .Op(Instruction.SLOAD)
                     .Done)
             .Done;
 
@@ -252,6 +294,84 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
+    private class PostMergeSyncTestContext: SyncTestContext
+    {
+        private readonly IPayloadPreparationService _payloadPreparationService;
+        private readonly IMergeSyncController _mergeSyncController;
+        private readonly IBlockCacheService _blockCacheService;
+
+        public PostMergeSyncTestContext(
+            [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
+            IWorldStateManager worldStateManager,
+            ISpecProvider specProvider,
+            IEthereumEcdsa ecdsa,
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            MainBlockProcessingContext mainBlockProcessingContext,
+            ITxPool txPool, ManualTimestamper timestamper,
+            IManualBlockProductionTrigger manualBlockProductionTrigger,
+            ISyncModeSelector syncModeSelector,
+            IRlpxHost rlpxHost,
+            PsudoNethermindRunner runner,
+            IPayloadPreparationService payloadPreparationService,
+            IMergeSyncController mergeSyncController,
+            IBlockCacheService blockCacheService
+        ) : base(nodeKey, worldStateManager, specProvider, ecdsa, blockTree, receiptStorage, mainBlockProcessingContext, txPool, timestamper, manualBlockProductionTrigger, syncModeSelector, rlpxHost, runner)
+        {
+            _payloadPreparationService = payloadPreparationService;
+            _mergeSyncController = mergeSyncController;
+            _blockCacheService = blockCacheService;
+        }
+
+        protected override async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
+        {
+            Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellation,
+                (h) => _blockTree.BlockAddedToMain += h,
+                (h) => _blockTree.BlockAddedToMain -= h,
+                (e) => true);
+
+            AcceptTxResult[] txResults = transactions.Select(t => _txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+            foreach (AcceptTxResult acceptTxResult in txResults)
+            {
+                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+            }
+            _timestamper.Add(TimeSpan.FromSeconds(1));
+
+            string? payloadId = _payloadPreparationService.StartPreparingPayload(_blockTree.Head?.Header!, new PayloadAttributes()
+            {
+                PrevRandao = Hash256.Zero,
+                SuggestedFeeRecipient = TestItem.AddressA,
+                Withdrawals = [],
+                Timestamp = (ulong)_timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
+            });
+            payloadId.Should().NotBeNullOrEmpty();
+
+            IBlockProductionContext? blockProductionContext = await _payloadPreparationService.GetPayload(payloadId!);
+            blockProductionContext.Should().NotBeNull();
+            blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
+
+            _blockTree.SuggestBlock(blockProductionContext.CurrentBestBlock!).Should().Be(AddBlockResult.Added);
+
+            await newBlockTask;
+        }
+
+        protected override async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
+        {
+            IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
+            Block finalizedBlock = otherBlockTree.FindBlock(otherBlockTree.Head!.Number - 250)!;
+            Block headBlock = otherBlockTree.Head!;
+            _blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
+            _blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
+            _blockCacheService.FinalizedHash = finalizedBlock.Hash!;
+
+            await WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
+            _mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+
+            await base.SyncUntilFinished(server, cancellationToken);
+        }
+    }
+
     private class SyncTestContext
     {
         // This check is really slow (it doubles the test time) so its disabled by default.
@@ -260,19 +380,19 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
         private readonly PrivateKey _nodeKey;
 
         private readonly IWorldStateManager _worldStateManager;
-        private readonly ITxPool _txPool;
         private readonly ISpecProvider _specProvider;
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly IBlockTree _blockTree;
+        protected readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly ManualTimestamper _timestamper;
-        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly MainBlockProcessingContext _mainBlockProcessingContext;
         private readonly IRlpxHost _rlpxHost;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer;
         private readonly PsudoNethermindRunner _runner;
+        protected ITxPool _txPool;
+        protected ManualTimestamper _timestamper;
+        private IManualBlockProductionTrigger _manualBlockProductionTrigger;
 
         public SyncTestContext(
             [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
@@ -281,25 +401,24 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             IEthereumEcdsa ecdsa,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
-            ManualTimestamper timestamper,
-            IManualBlockProductionTrigger blockProductionTrigger,
             MainBlockProcessingContext mainBlockProcessingContext,
             ITxPool txPool,
+            ManualTimestamper timestamper,
+            IManualBlockProductionTrigger manualBlockProductionTrigger,
             ISyncModeSelector syncModeSelector,
             IRlpxHost rlpxHost,
-            PsudoNethermindRunner runner
-        )
+            PsudoNethermindRunner runner)
         {
-            _txPool = txPool;
             _nodeKey = nodeKey;
             _worldStateManager = worldStateManager;
             _mainBlockProcessingContext = mainBlockProcessingContext;
+            _txPool = txPool;
+            _manualBlockProductionTrigger = manualBlockProductionTrigger;
+            _timestamper = timestamper;
             _specProvider = specProvider;
             _ecdsa = ecdsa;
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
-            _timestamper = timestamper;
-            _blockProductionTrigger = blockProductionTrigger;
             _syncModeSelector = syncModeSelector;
             _rlpxHost = rlpxHost;
             _runner = runner;
@@ -342,7 +461,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             await BuildBlockWithTxs(txs, cancellation);
         }
 
-        private async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
+        protected virtual async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
         {
             Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
                 cancellation,
@@ -357,18 +476,32 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             }
 
             _timestamper.Add(TimeSpan.FromSeconds(1));
-            await _blockProductionTrigger.BuildBlock();
+            await _manualBlockProductionTrigger.BuildBlock();
             await newBlockTask;
         }
 
-        private async Task SyncUntilFinished(CancellationToken cancellationToken)
+        protected async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
         {
-            if (_syncModeSelector.Current == SyncMode.WaitingForBlock) return;
+            if (modeCheck(_syncModeSelector.Current)) return;
 
             await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
                 (e) => _syncModeSelector.Changed += e,
                 (e) => _syncModeSelector.Changed += e,
-                (evt) => evt.Current == SyncMode.WaitingForBlock);
+                (evt) => modeCheck(evt.Current));
+        }
+
+        protected virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
+        {
+            await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
+
+            // Wait until head match
+            BlockHeader serverHead = server.Resolve<IBlockTree>().Head?.Header!;
+            if (_blockTree.Head?.Number == serverHead?.Number) return;
+            await Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellationToken,
+                (h) => _blockTree.BlockAddedToMain += h,
+                (h) => _blockTree.BlockAddedToMain -= h,
+                (e) => e.Block.Number == serverHead?.Number);
         }
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
@@ -382,6 +515,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             }
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
+
             AssertBlockEqual(_blockTree.Head!, otherBlockTree.Head!);
 
             IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
@@ -451,7 +585,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode)
             await _runner.StartNetwork(cancellationToken);
 
             await ConnectTo(server, cancellationToken);
-            await SyncUntilFinished(cancellationToken);
+            await SyncUntilFinished(server, cancellationToken);
             await VerifyHeadWith(server, cancellationToken);
             await VerifyAllBlocksAndReceipts(server, cancellationToken);
         }

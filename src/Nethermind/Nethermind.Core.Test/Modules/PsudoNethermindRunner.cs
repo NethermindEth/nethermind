@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Events;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
@@ -61,7 +62,7 @@ public class PsudoNethermindRunner(IComponentContext ctx): IAsyncDisposable
         await newHeadTask;
     }
 
-    public async Task StartNetwork(CancellationToken cancellationToken)
+    public virtual async Task StartNetwork(CancellationToken cancellationToken)
     {
         // This need the genesis so it need to be resolved after genesis was prepared.
         IBlockTree blockTree = ctx.Resolve<IBlockTree>();
@@ -83,5 +84,17 @@ public class PsudoNethermindRunner(IComponentContext ctx): IAsyncDisposable
         await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
         await (_blockProducerRunner?.StopAsync() ?? Task.CompletedTask);
         await (_rlpxHost?.Shutdown() ?? Task.CompletedTask);
+    }
+}
+
+public class MergePsudoNethermindRunner(IComponentContext ctx) : PsudoNethermindRunner(ctx)
+{
+    private readonly IComponentContext _ctx = ctx;
+
+    public override Task StartNetwork(CancellationToken cancellationToken)
+    {
+        _ctx.Resolve<PivotUpdator>();
+
+        return base.StartNetwork(cancellationToken);
     }
 }

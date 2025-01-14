@@ -4,6 +4,7 @@
 using System.Net;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
@@ -70,5 +71,14 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup): Mo
                 };
             });
 
+        builder
+            .RegisterBuildCallback((cfg) =>
+            {
+                ISyncConfig syncConfig = cfg.Resolve<ISyncConfig>();
+                syncConfig.GCOnFeedFinished = false;
+                syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
+                syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
+                syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
+            });
     }
 }

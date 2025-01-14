@@ -268,16 +268,23 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddComposite<TComposite, T>(this ContainerBuilder builder) where T : class where TComposite : T
+    public static ContainerBuilder AddComposite<T, TComposite>(this ContainerBuilder builder) where T : class where TComposite : T
     {
         builder.RegisterComposite<TComposite, T>();
 
         return builder;
     }
 
-    public static ContainerBuilder AddDecorator<TDecorator, T>(this ContainerBuilder builder) where T : class where TDecorator : T
+    public static ContainerBuilder AddDecorator<T, TDecorator>(this ContainerBuilder builder) where T : class where TDecorator : T
     {
         builder.RegisterDecorator<TDecorator, T>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddDecorator<T>(this ContainerBuilder builder, Func<IComponentContext, T, T> decoratorFunc) where T : class
+    {
+        builder.RegisterDecorator<T>((ctx, _param, before) => decoratorFunc(ctx, before));
 
         return builder;
     }
