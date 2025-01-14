@@ -16,7 +16,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using InvalidOperationException = System.InvalidOperationException;
 
 namespace Nethermind.Db
 {
@@ -73,7 +72,7 @@ namespace Nethermind.Db
             };
         }
 
-        // TODO: remove check!
+        // TODO: remove if unused
         static IEnumerable<(TKey key, TValue value)> Enumerate<TKey, TValue>(IIterator<TKey, TValue> iterator)
         {
             iterator.SeekToFirst();
@@ -150,7 +149,7 @@ namespace Nethermind.Db
                         }
                         else
                         {
-                            decompressedBlockNumbers = new int[PageSize / 4];
+                            decompressedBlockNumbers = new int[PageSize / sizeof(int)];
                             decompressedBlockNumbers = Decompress(data, decompressedBlockNumbers).ToArray();
                         }
 
@@ -323,7 +322,7 @@ namespace Nethermind.Db
                 {
                     Address.Size => _addressDb,
                     Hash256.Size => _topicsDb,
-                    var size => throw new InvalidOperationException($"Unexpected key of {size} bytes.")
+                    var size => throw ValidationException($"Unexpected key of {size} bytes.")
                 };
 
                 IndexInfo indexInfo = GetTempIndex(db, key, blockNums, stats) ?? CreateTempIndex(key, blockNums, stats);
@@ -391,7 +390,7 @@ namespace Nethermind.Db
                 await foreach (IndexInfo indexInfo in reader.ReadAllAsync(cancellationToken))
                 {
                     if (indexInfo.Type != IndexType.Temp)
-                        throw new InvalidOperationException("Non-temp index should not be finalized.");
+                        throw ValidationException("Non-temp index should not be finalized.");
 
                     ReadOnlySpan<byte> data = LoadData(TempFileHandle, indexInfo, dataBuffer);
                     ReadOnlySpan<byte> compressed = Compress(data, compressBuffer);
@@ -400,13 +399,13 @@ namespace Nethermind.Db
                     // TODO: remove check!
                     // ReadOnlySpan<int> test = Decompress(compressed, new int[PageSize / sizeof(int)]);
                     // if (!test.SequenceEqual(MemoryMarshal.Cast<byte, int>(data)))
-                    //     throw new InvalidOperationException("Invalid data compression/decompression.");
+                    //     throw ValidationException("Invalid data compression/decompression.");
 
                     (byte[] dbKey, IDb db) = indexInfo.Key.Length switch
                     {
                         Address.Size => (addressKey, _addressDb),
                         Hash256.Size => (topicKey, _topicsDb),
-                        var size => throw new InvalidOperationException($"Unexpected index size of {size} bytes.")
+                        var size => throw ValidationException($"Unexpected index size of {size} bytes.")
                     };
 
                     CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(TempFileHandle, blockNumberBytes), dbKey);
@@ -429,13 +428,13 @@ namespace Nethermind.Db
         private void WriteBytes(IndexInfo indexInfo, Span<byte> bytes, SetReceiptsStats stats)
         {
             if (indexInfo.Type != IndexType.Temp)
-                throw new InvalidOperationException("Non-temp index should not be written to.");
+                throw ValidationException("Non-temp index should not be written to.");
 
             if (indexInfo.ByteLengthRemaining < bytes.Length)
-                throw new InvalidOperationException($"Index has less bytes remaining ({indexInfo.ByteLengthRemaining}) than attempted to store ({bytes.Length}).");
+                throw ValidationException($"Index has less bytes remaining ({indexInfo.ByteLengthRemaining}) than attempted to store ({bytes.Length}).");
 
             if (bytes.Length == 0 || bytes.Length % sizeof(int) != 0)
-                throw new InvalidOperationException($"Invalid bytes length ({bytes.Length}).");
+                throw ValidationException($"Invalid bytes length ({bytes.Length}).");
 
             // TODO: remove check!
             // if (bytes.Length == sizeof(int))
@@ -476,7 +475,7 @@ namespace Nethermind.Db
         private IndexInfo CreateTempIndex(IndexInfo oldIndex, SetReceiptsStats stats)
         {
             if (oldIndex.Type != IndexType.DB)
-                throw new InvalidOperationException($"Attempt to create a temp index from an invalid type ({oldIndex.Type}).");
+                throw ValidationException($"Attempt to create a temp index from an invalid type ({oldIndex.Type}).");
 
             // TODO: improve awaiting
             long freePage = _tempPagesPool.TakePageAsync().WaitResult();
@@ -525,7 +524,7 @@ namespace Nethermind.Db
             //     if (iterator.Valid() && iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             //     {
             //         //var data = Enumerate(db.GetIterator(ref options)).Select(x => x.key.ToHexString()).ToArray();
-            //         throw new InvalidOperationException("Invalid iterator behaviour.");
+            //         throw ValidationException("Invalid iterator behaviour.");
             //     }
             // }
 
@@ -601,6 +600,10 @@ namespace Nethermind.Db
                 length = TurboPFor.p4nd1enc256v32(blockNumbersPtr, blockNumbers.Length, compressedPtr);
             }
 
+            // TODO: remove check!
+            if (length > PageSize)
+                throw ValidationException($"Compressed data is too large ({length} bytes).");
+
             return buffer[..length];
         }
 
@@ -622,8 +625,8 @@ namespace Nethermind.Db
 
         private byte[] SerializeIndexInfo(IndexType type, long offset, int length, int lastBlockNumber)
         {
-            if (type != IndexType.Final && length > PageSize / sizeof(int))
-                throw new InvalidOperationException($"Invalid {type} index length ({length}).");
+            if (length > PageSize / (type == IndexType.Final ? 1 : sizeof(int)))
+                throw ValidationException($"Invalid {type} index length ({length}).");
 
             byte[] data = new byte[
                 1 +
@@ -645,7 +648,7 @@ namespace Nethermind.Db
             // if (deserialized.Type != type || deserialized.Offset != offset ||
             //     deserialized.Length != length || deserialized.LastBlockNumber != lastBlockNumber)
             // {
-            //     throw new InvalidOperationException($"Invalid index serialization/deserialization.");
+            //     throw ValidationException("Invalid index serialization/deserialization.");
             // }
 
             return data;
@@ -673,11 +676,14 @@ namespace Nethermind.Db
                 result.LastBlockNumber < 0 ||
                 result.Offset < 0)
             {
-                throw new InvalidOperationException("Invalid deserialized index.");
+                throw ValidationException("Invalid deserialized index.");
             }
 
             return result;
         }
+
+        // used for data validation, TODO: remove, replace with tests
+        private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
         private enum IndexType : byte
         {
@@ -699,7 +705,7 @@ namespace Nethermind.Db
 
             public int ByteLength => Type != IndexType.Final ? Length * sizeof(int) : Length;
             public long? Position => Type != IndexType.DB ? Offset + ByteLength : -1;
-            public int LengthRemaining => PageSize / 4 - Length;
+            public int LengthRemaining => PageSize / sizeof(int) - Length;
             public int ByteLengthRemaining => IsTemp ? LengthRemaining * sizeof(int) : 0;
 
             public IndexInfo(byte[] key, IndexType type, long offset, int length, int lastBlockNumber)
