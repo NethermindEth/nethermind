@@ -793,7 +793,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            UInt256.Divide(in a, in byRef, out byRef);
+                            // Copy required, UInt256.Divide clears the out ref before assigning, we can't in byRef, out byRef
+                            b = byRef;
+                            UInt256.Divide(in a, in b, out byRef);
                         }
                         break;
                     }
