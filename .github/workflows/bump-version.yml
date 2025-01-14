@@ -8,7 +8,6 @@ on:
 jobs:
   bump-version:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/heads/release/')
     
     steps:
       - name: Checkout repository
