@@ -45,7 +45,7 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
         if (processExitSource is not null)
         {
-            _blockingVerifyTrie = new BlockingVerifyTrie(_readOnlyTrieStore, GlobalStateReader , _codeDb!, processExitSource!, logManager);
+            _blockingVerifyTrie = new BlockingVerifyTrie(_readOnlyTrieStore, GlobalStateReader, _codeDb!, processExitSource!, logManager);
         }
     }
 
