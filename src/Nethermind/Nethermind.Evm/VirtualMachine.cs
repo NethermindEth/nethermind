@@ -711,6 +711,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
+        // Whenever using the byRef for peeking stack, ensure that underlying U(Int256) operation does not override the output ref first
         ref UInt256 byRef = ref NullRef<UInt256>();
         ref Word byRefWord = ref NullRef<Word>();
 
@@ -793,7 +794,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            // Copy required, UInt256.Divide clears the out ref before assigning, we can't in byRef, out byRef
+                            // Copy required, result overwritten before
                             b = byRef;
                             UInt256.Divide(in a, in b, out byRef);
                         }
@@ -869,7 +870,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            UInt256.AddMod(a, b, byRef, out byRef);
+                            // Copy required, result overwritten before
+                            c = byRef;
+                            UInt256.AddMod(a, b, c, out byRef);
                         }
 
                         break;
@@ -883,14 +886,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         byRef = ref stack.PeekUInt256Ref();
                         if (IsNullRef(ref byRef)) goto StackUnderflow;
 
-                        if (c.IsZero)
+                        if (byRef.IsZero)
                         {
                             // NOP
                             // byRef = default;
                         }
                         else
                         {
-                            UInt256.MultiplyMod(in a, in b, in byRef, out byRef);
+                            // Copy required, result overwritten before
+                            c = byRef;
+                            UInt256.MultiplyMod(in a, in b, in c, out byRef);
                         }
 
                         break;
@@ -1127,7 +1132,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = vmState.Memory.LoadSpan(in a, b);
 
                         // Compute the KECCAK256 directly to the stack slot
-                        KeccakCache.ComputeTo(bytes, out As<Vector256<byte>, ValueHash256>(ref stack.PushRef()));
+                        byRefWord = ref stack.PushRef();
+                        KeccakCache.ComputeTo(bytes, out As<Vector256<byte>, ValueHash256>(ref byRefWord));
+                        Endianness.Reshuffle(ref byRefWord);
+
                         break;
                     }
                 case Instruction.ADDRESS:
