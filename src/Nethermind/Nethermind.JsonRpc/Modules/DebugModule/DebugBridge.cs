@@ -100,7 +100,7 @@ public class DebugBridge : IDebugBridge
     public Task<bool> MigrateReceipts(long blockNumber, bool migrateSingleBlock = false)
     {
         if (migrateSingleBlock)
-            return _receiptsMigration.Run(blockNumber, migrateSingleBlock);
+            return _receiptsMigration.Run(blockNumber);
         else
             return _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
     }
