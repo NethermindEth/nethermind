@@ -1,0 +1,52 @@
+name: Bump Version on Release Branch Creation
+
+on:
+  create:
+    branches:
+      - 'release/*'
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/heads/release/')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version and bump
+        id: version
+        run: |
+          # Extract current version from release branch name
+          RELEASE_VERSION=$(echo ${{ github.ref }} | sed 's/.*release\///')
+          
+          # Extract version components
+          MAJOR=$(echo $RELEASE_VERSION | cut -d. -f1)
+          MINOR=$(echo $RELEASE_VERSION | cut -d. -f2)
+          
+          # Always increment minor version
+          NEW_MINOR=$((MINOR + 1))
+          NEW_VERSION="$MAJOR.$NEW_MINOR.0"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+          # Update version in Directory.Build.props
+          sed -i "s/<VersionPrefix>.*<\/VersionPrefix>/<VersionPrefix>$NEW_VERSION<\/VersionPrefix>/" src/Nethermind/Directory.Build.props
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to ${{ steps.version.outputs.new_version }}-unstable"
+          title: "Bump version to ${{ steps.version.outputs.new_version }}-unstable"
+          body: |
+            Automated version bump after creating release branch.
+            - Bumped version to ${{ steps.version.outputs.new_version }}-unstable
+          branch: "chore/bump-version-${{ steps.version.outputs.new_version }}"
+          base: "master"
+          delete-branch: true
+
+permissions:
+  contents: write
+  pull-requests: write
