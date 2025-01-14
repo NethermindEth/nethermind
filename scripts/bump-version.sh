@@ -14,6 +14,113 @@ update_version() {
     rm -f "${file_path}.bak"
 }
 
+# Create a temporary Directory.Build.props for testing
+create_test_file() {
+    local version=$1
+    local test_file=$(mktemp)
+    cat > "$test_file" << EOF
+<Project>
+  <PropertyGroup>
+    <VersionPrefix>$version</VersionPrefix>
+    <VersionSuffix>unstable</VersionSuffix>
+  </PropertyGroup>
+</Project>
+EOF
+    echo "$test_file"
+}
+
+# Function to run a test case
+run_test() {
+    local test_name=$1
+    local branch_name=$2
+    local current_version=$3
+    local expected_version=$4
+    local should_succeed=${5:-true}
+    
+    echo "🧪 Testing: $test_name"
+    echo "Branch: $branch_name"
+    echo "Current version: $current_version"
+    echo "Expected version: $expected_version"
+    echo "Should succeed: $should_succeed"
+    
+    # Create test file
+    local test_file=$(create_test_file "$current_version")
+    
+    # Run bump_version and capture output
+    if output=$(bump_version "$branch_name" "$test_file" 2>&1); then
+        if [ "$should_succeed" = true ]; then
+            echo "✅ Command succeeded as expected"
+        else
+            echo "❌ Command succeeded but should have failed"
+            rm -f "$test_file"
+            return 1
+        fi
+    else
+        if [ "$should_succeed" = false ]; then
+            echo "✅ Command failed as expected"
+            rm -f "$test_file"
+            return 0
+        else
+            echo "❌ Command failed but should have succeeded"
+            echo "Error: $output"
+            rm -f "$test_file"
+            return 1
+        fi
+    fi
+    
+    # Verify the results
+    if [ "$should_succeed" = true ]; then
+        # Get final version from file
+        local final_version=$(get_version "$test_file")
+        
+        if [ "$final_version" = "$expected_version" ]; then
+            echo "✅ Version updated correctly"
+        else
+            echo "❌ Version mismatch. Expected: $expected_version, Got: $final_version"
+            rm -f "$test_file"
+            return 1
+        fi
+    fi
+    
+    rm -f "$test_file"
+    echo "-------------------"
+    return 0
+}
+
+# Function to run all tests
+run_tests() {
+    echo "🧪 Running tests..."
+    local failed=0
+
+    # Test successful cases
+    run_test "Regular minor version bump" \
+        "refs/heads/release/1.31.0" "1.31.0" "1.32.0" || failed=1
+
+    run_test "Major version bump" \
+        "refs/heads/release/2.0.0" "2.0.0" "2.1.0" || failed=1
+
+    run_test "Skip when version already set" \
+        "refs/heads/release/1.31.0" "1.32.0" "1.32.0" || failed=1
+
+    # Test failure cases
+    run_test "Invalid branch name (patch version)" \
+        "refs/heads/release/1.31.1" "1.31.1" "1.32.0" false || failed=1
+
+    run_test "Invalid branch name (wrong format)" \
+        "refs/heads/releases/1.31.0" "1.31.0" "1.32.0" false || failed=1
+
+    run_test "Invalid branch name (feature branch)" \
+        "refs/heads/feature/something" "1.31.0" "1.32.0" false || failed=1
+
+    if [ $failed -eq 0 ]; then
+        echo "✅ All tests passed!"
+        return 0
+    else
+        echo "❌ Some tests failed!"
+        return 1
+    fi
+}
+
 # Main function to handle version bumping
 bump_version() {
     local branch_name=$1
@@ -68,8 +175,27 @@ bump_version() {
     echo "new_version=$new_version"
 }
 
-# If script is run directly (not sourced), execute with provided arguments
+# Show usage if no arguments provided
+show_usage() {
+    echo "Usage:"
+    echo "  $0 <branch-name> <props-path>    # Run version bump"
+    echo "  $0 --test                        # Run tests"
+    echo ""
+    echo "Examples:"
+    echo "  $0 refs/heads/release/1.40.0 src/Nethermind/Directory.Build.props"
+    echo "  $0 --test"
+}
+
+# Main script execution
 if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
-    bump_version "$@"
-    exit $?
+    if [ "$1" = "--test" ]; then
+        run_tests
+        exit $?
+    elif [ $# -eq 0 ]; then
+        show_usage
+        exit 1
+    else
+        bump_version "$@"
+        exit $?
+    fi
 fi
