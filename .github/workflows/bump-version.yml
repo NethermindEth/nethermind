@@ -16,36 +16,18 @@ jobs:
           ref: master
           fetch-depth: 0
 
-      - name: Extract version and bump
+      - name: Run version bump script
         id: version
         run: |
-          # Extract current version from release branch name
-          RELEASE_VERSION=$(echo ${{ github.ref }} | sed 's/.*release\///')
+          chmod +x ./scripts/bump-version.sh
+          ./scripts/bump-version.sh "${{ github.ref }}" "src/Nethermind/Directory.Build.props" > version_output.txt
           
-          # Extract version components
-          MAJOR=$(echo $RELEASE_VERSION | cut -d. -f1)
-          MINOR=$(echo $RELEASE_VERSION | cut -d. -f2)
-          
-          # Always increment minor version
-          NEW_MINOR=$((MINOR + 1))
-          NEW_VERSION="$MAJOR.$NEW_MINOR.0"
-          
-          # Get current version from the file
-          CURRENT_VERSION=$(grep -o '<VersionPrefix>.*</VersionPrefix>' src/Nethermind/Directory.Build.props | sed 's/<VersionPrefix>\(.*\)<\/VersionPrefix>/\1/')
-          
-          # Only proceed if versions are different
-          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
-            echo "Version $NEW_VERSION is already set in Directory.Build.props, skipping..."
-            echo "needs_update=false" >> $GITHUB_OUTPUT
-          else
-            echo "Updating version from $CURRENT_VERSION to $NEW_VERSION"
-            echo "needs_update=true" >> $GITHUB_OUTPUT
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            
-            # Update version in Directory.Build.props
-            sed -i "s/<VersionPrefix>.*<\/VersionPrefix>/<VersionPrefix>$NEW_VERSION<\/VersionPrefix>/" src/Nethermind/Directory.Build.props
-          fi
+          # Read the output and set step outputs
+          while IFS= read -r line; do
+            if [[ $line =~ ^(needs_update|current_version|new_version)= ]]; then
+              echo "$line" >> $GITHUB_OUTPUT
+            fi
+          done < version_output.txt
 
       - name: Create GitHub app token
         if: steps.version.outputs.needs_update == 'true'
