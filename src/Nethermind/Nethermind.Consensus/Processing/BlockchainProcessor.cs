@@ -285,6 +285,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 _stats.Start();
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
 
+                block.AccountChanges?.Dispose();
+                processedBlock?.AccountChanges?.Dispose();
+
                 if (processedBlock is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
