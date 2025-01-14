@@ -70,11 +70,11 @@ internal class TransactionProcessorEip4844Tests
             .WithBaseFeePerGas(1)
             .TestObject;
 
-        _transactionProcessor.CallAndRestore(blobTx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.CallAndRestore(blobTx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         UInt256 deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
         Assert.That(deltaBalance, Is.EqualTo(UInt256.Zero));
 
-        _transactionProcessor.Execute(blobTx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.Execute(blobTx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
 
         return deltaBalance;
@@ -107,12 +107,12 @@ internal class TransactionProcessorEip4844Tests
             TestName = $"Blob gas consumed for 1 blob, with {nameof(Transaction.MaxFeePerBlobGas)} more than needed",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Eip4844Constants.BlobGasPriceUpdateFraction, 0ul)
+        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Eip4844Constants.BlobGasPriceUpdateFraction, 2ul)
+        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking and some {nameof(Transaction.Value)}",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2 + 2),
@@ -131,7 +131,7 @@ internal class TransactionProcessorEip4844Tests
             TestName = $"Rejected if balance is not enough to cover {nameof(Transaction.Value)} also, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob), 1, 10ul, (ulong)Eip4844Constants.BlobGasPriceUpdateFraction, 0ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
         {
             TestName = $"Rejected if balance is not enough due to blob gas price hiking, all funds are returned",
             ExpectedResult = UInt256.Zero,

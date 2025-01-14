@@ -7,4 +7,6 @@ public class ChainSpecBlobCountJson
 {
     public ulong Target { get; set; }
     public ulong Max { get; set; }
+
+    public ulong BaseFeeUpdateFraction { get; set; }
 }

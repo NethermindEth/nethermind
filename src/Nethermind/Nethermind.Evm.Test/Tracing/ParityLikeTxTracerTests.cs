@@ -796,7 +796,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction,new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -804,7 +804,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction,new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -812,7 +812,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, traceTypes);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction,new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -820,7 +820,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-        _ = _processor.Execute(transaction, block.Header, tracer);
+        _ = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 }
