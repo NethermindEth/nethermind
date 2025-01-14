@@ -351,11 +351,15 @@ namespace Nethermind.Synchronization.Test
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
 
+            IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+            worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);
+
             ContainerBuilder builder = new ContainerBuilder();
             builder
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton<IReceiptConfig>(new ReceiptConfig())
+                .AddSingleton<IWorldStateManager>(worldStateManager)
                 .AddSingleton(dbProvider)
                 .AddSingleton(blockStore)
                 .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))

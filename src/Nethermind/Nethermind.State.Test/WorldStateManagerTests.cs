@@ -47,7 +47,7 @@ public class WorldStateManagerTests
         ITrieStore trieStore = Substitute.For<ITrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
-        readOnlyTrieStore.Scheme.Returns(keyScheme);
+        trieStore.Scheme.Returns(keyScheme);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
