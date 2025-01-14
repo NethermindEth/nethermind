@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
@@ -30,7 +31,7 @@ public class AuRaMergeBlockProcessor(
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
     ILogManager logManager,
-    IBlockTree blockTree,
+    IBlockFinder blockTree,
     IWithdrawalProcessor withdrawalProcessor,
     ITransactionProcessor transactionProcessor,
     IAuRaValidator? validator,

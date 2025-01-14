@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 public class EncodingTest
 {
     [Test]
-    public void Test1()
+    public void Test_ComplexStructure_EncodingRoundTrip()
     {
         ComplexStruct test = new()
         {

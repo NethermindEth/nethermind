@@ -6,9 +6,6 @@ using System.Collections;
 
 namespace Nethermind.Serialization.Ssz;
 
-/// <summary>
-/// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz
-/// </summary>
 public static partial class Ssz
 {
     public static void Encode(Span<byte> span, BitArray? vector)

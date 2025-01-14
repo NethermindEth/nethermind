@@ -44,7 +44,7 @@ public partial class SszGenerator : IIncrementalGenerator
                 if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
                 {
                     var foundTypes = new List<SszType>(SszType.BasicTypes);
-                    return (SszType.From(context.SemanticModel, foundTypes, context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
+                    return (SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
                 }
             }
         }
@@ -52,8 +52,8 @@ public partial class SszGenerator : IIncrementalGenerator
     }
 
     const string Whitespace = "/**/";
-    static Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
-    static Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
+    static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
+    static readonly Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
     public static string FixWhitespace(string data) => OpeningWhiteSpaceRegex.Replace(
                                                         ClosingWhiteSpaceRegex.Replace(
                                                             string.Join("\n", data.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Contains(Whitespace) ? "" : x)),
@@ -238,7 +238,7 @@ public partial class SszEncoding
             Merkleize(container[i], out subRoots[i]);
         }}
 {Whitespace}
-        Merkle.Ize(out root, subRoots);
+        Merkle.Merkleize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
@@ -314,14 +314,14 @@ public partial class SszEncoding
 {Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
 {Whitespace}
 {Shift(2, decl.Members.Select(m =>
-            {
-                if (m.IsVariable) encodeOffsetIndex++;
-                string result = m.IsVariable ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), offset{encodeOffsetIndex});"
-                                                : m.HandledByStd ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name});"
-                                                                 : $"Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name});";
-                encodeStaticOffset += m.StaticLength;
-                return result;
-            }))}
+{
+    if (m.IsVariable) encodeOffsetIndex++;
+    string result = m.IsVariable ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, 4), offset{encodeOffsetIndex});"
+                                    : m.HandledByStd ? $"SszLib.Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name});"
+                                                     : $"Encode(data.Slice({encodeStaticOffset}, {m.StaticLength}), container.{m.Name});";
+    encodeStaticOffset += m.StaticLength;
+    return result;
+}))}
 {Whitespace}
 {Shift(2, variables.Select((m, i) => (m.Type.IsStruct ? "" : $"if (container.{m.Name} is not null) ") + $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), container.{m.Name}{(m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"))}
     }}
@@ -416,15 +416,15 @@ public partial class SszEncoding
         }")}
         Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
 {Shift(2, decl.Members.Select(m =>
-{
-    if (m.IsVariable) offsetIndex++;
-    string result = m.HandledByStd ? $"merkleizer.Feed(container.{m.Name}{(m.Kind == Kind.List || m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
-                                    : m.Kind == Kind.List ? $"MerkleizeList(container.{m.Name}, {m.Limit}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);"
-                                                          : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);"
-                                                                                  : $"Merkleize(container.{m.Name}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);";
-    offset += m.StaticLength;
-    return result;
-}))}
+            {
+                if (m.IsVariable) offsetIndex++;
+                string result = m.HandledByStd ? $"merkleizer.Feed(container.{m.Name}{(m.Kind == Kind.List || m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
+                                                : m.Kind == Kind.List ? $"MerkleizeList(container.{m.Name}, {m.Limit}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);"
+                                                                      : m.Kind == Kind.Vector ? $"MerkleizeVector(container.{m.Name}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);"
+                                                                                              : $"Merkleize(container.{m.Name}, out UInt256 {VarName(m.Name)}Root); merkleizer.Feed({VarName(m.Name)}Root);";
+                offset += m.StaticLength;
+                return result;
+            }))}
         merkleizer.CalculateRoot(out root);
     }}
 {Whitespace}
@@ -442,7 +442,7 @@ public partial class SszEncoding
             Merkleize(container[i], out subRoots[i]);
         }}
 {Whitespace}
-        Merkle.Ize(out root, subRoots);
+        Merkle.Merkleize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
@@ -623,7 +623,7 @@ public partial class SszEncoding
             Merkleize(container[i], out subRoots[i]);
         }}
 {Whitespace}
-        Merkle.Ize(out root, subRoots);
+        Merkle.Merkleize(out root, subRoots);
     }}
 {Whitespace}
     public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
@@ -641,7 +641,9 @@ public partial class SszEncoding
 }}
 ");
 #if DEBUG
+#pragma warning disable RS1035 // Allow console for debugging
             Console.WriteLine(WithLineNumbers(result, false));
+#pragma warning restore RS1035
 #endif
             return result;
         }

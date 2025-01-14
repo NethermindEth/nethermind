@@ -316,7 +316,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
 
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
-            .Register(ctx => ctx
+            .Register(static ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
@@ -338,7 +338,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .SingleInstance();
 
         builder
-            .Map<IReceiptStorage, IReceiptFinder>((storage) => storage)
+            .Map<IReceiptStorage, IReceiptFinder>(static (storage) => storage)
             .AddSingleton<ISyncServer, SyncServer>();
     }
 

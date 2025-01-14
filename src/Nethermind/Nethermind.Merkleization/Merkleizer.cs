@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -60,119 +61,125 @@ public ref struct Merkleizer
 
     public void Feed(long value)
     {
-        Merkle.Ize(out _chunks[^1], value);
+        Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Span<byte> bytes, int? limit = null)
+    public void Feed(Span<byte> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], data);
         }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<short> bytes, int? limit = null)
+
+    public void Feed(Span<ushort> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<short, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<ushort, byte>(data));
         }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<ushort> bytes, int? limit = null)
+
+    public void Feed(Span<short> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<ushort, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<short, byte>(data));
         }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<int> bytes, int? limit = null)
+
+    public void Feed(Span<uint> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<int, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<uint, byte>(data));
         }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<uint> bytes, int? limit = null)
+
+    public void Feed(Span<int> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<uint, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<int, byte>(data));
         }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<long> bytes, int? limit = null)
+
+    public void Feed(Span<ulong> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<long, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<ulong, byte>(data));
         }
-        if (limit is not null)
-        {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
-        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
-    public void Feed(Span<ulong> bytes, int? limit = null)
+
+    public void Feed(Span<long> data, int? limit = null)
     {
-        if (bytes.Length is not 0)
+        if (data.Length is 0)
         {
-            FeedAtLevel(MemoryMarshal.Cast<ulong, UInt256>(bytes)[0], 0);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            FeedAtLevel(UInt256.Zero, 0);
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<long, byte>(data));
         }
-        if (limit is not null)
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
+    }
+
+    public void Feed(Span<UInt128> data, int? limit = null)
+    {
+        if (data.Length is 0)
         {
-            Merkle.MixIn(ref _chunks[^1], limit.Value);
+            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
+        else
+        {
+            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<UInt128, byte>(data));
+        }
+
+        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
     }
 
     public void Feed(bool value)
     {
-        Merkle.Ize(out _chunks[^1], value);
+        Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
 
@@ -196,12 +203,12 @@ public ref struct Merkleizer
 
     public void Feed(uint value)
     {
-        Merkle.Ize(out _chunks[^1], value);
+        Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
     public void Feed(int value)
     {
-        Merkle.Ize(out _chunks[^1], value);
+        Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
     public void Feed(int? value)
@@ -210,13 +217,13 @@ public ref struct Merkleizer
         {
             return;
         }
-        Merkle.Ize(out _chunks[^1], value.Value);
+        Merkle.Merkleize(out _chunks[^1], value.Value);
         Feed(_chunks[^1]);
     }
 
     public void Feed(ulong value)
     {
-        Merkle.Ize(out _chunks[^1], value);
+        Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
 
@@ -227,7 +234,7 @@ public ref struct Merkleizer
             return;
         }
 
-        Merkle.Ize(out _chunks[^1], value);
+        Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
     }
 
@@ -238,7 +245,7 @@ public ref struct Merkleizer
             return;
         }
 
-        Merkle.IzeBits(out _chunks[^1], value, limit);
+        Merkle.MerkleizeBits(out _chunks[^1], value, limit);
         Feed(_chunks[^1]);
     }
 
@@ -249,7 +256,7 @@ public ref struct Merkleizer
         byte[] bytes = new byte[(vector.Length + 7) / 8];
         vector.CopyTo(bytes, 0);
 
-        Merkle.Ize(out _chunks[^1], bytes);
+        Merkle.Merkleize(out _chunks[^1], bytes);
         Feed(_chunks[^1]);
     }
 
@@ -264,8 +271,27 @@ public ref struct Merkleizer
         byte[] bytes = new byte[(list.Length + 7) / 8];
         list.CopyTo(bytes, 0);
 
-        Merkle.Ize(out _chunks[^1], bytes, chunkCount);
+        Merkle.Merkleize(out _chunks[^1], bytes, chunkCount);
         Merkle.MixIn(ref _chunks[^1], list.Length);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(IReadOnlyList<byte[]> value, ulong maxLength)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+
+        for (int i = 0; i < value.Count; i++)
+        {
+            Merkle.Merkleize(out subRoots[i], value[i]);
+        }
+
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], value.Count);
         Feed(_chunks[^1]);
     }
 
@@ -276,404 +302,19 @@ public ref struct Merkleizer
             return;
         }
 
-        using ArrayPoolList<UInt256> subRoots = new ArrayPoolList<UInt256>((int)maxLength);
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count());
+        int i = 0;
+
         foreach (ReadOnlyMemory<byte> memory in value)
         {
-            Merkle.Ize(out UInt256 root, memory.Span);
-            subRoots.Add(root);
+            Merkle.Merkleize(out UInt256 root, memory.Span);
+            subRoots[i++] = root;
         }
 
-        Merkle.Ize(out _chunks[^1], subRoots.AsSpan(), maxLength);
-        Merkle.MixIn(ref _chunks[^1], subRoots.Count);
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], subRoots.Length);
         Feed(_chunks[^1]);
     }
-
-    //public void Feed(BlsPublicKey? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value.Bytes);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(BlsSignature? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value.Bytes);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(ValidatorIndex value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<ProposerSlashing> value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<AttesterSlashing> value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<Validator> value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<Attestation> value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<PendingAttestation> value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<SignedVoluntaryExit> value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Eth1Data[]? value, uint maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Length];
-    //    for (int i = 0; i < value.Length; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Length);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IReadOnlyList<Deposit> value, uint maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(ValidatorIndex[]? value, uint maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<ValidatorIndex, ulong>(value.AsSpan()), maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Length);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Gwei[]? value, ulong maxLength)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<Gwei, ulong>(value.AsSpan()), maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Length);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Gwei[]? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], MemoryMarshal.Cast<Gwei, ulong>(value.AsSpan()));
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(CommitteeIndex value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value.Number);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Epoch value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Fork? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Eth1Data? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Checkpoint? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(BeaconBlockHeader value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(SignedBeaconBlockHeader value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(BeaconBlockBody? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(VoluntaryExit value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(AttestationData? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(IndexedAttestation? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(DepositData? value)
-    //{
-    //    if (value is null)
-    //    {
-    //        return;
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], value);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Ref<DepositData> value)
-    //{
-    //    if (value.Root is null)
-    //    {
-    //        if (value.Item is null)
-    //        {
-    //            return;
-    //        }
-
-    //        Merkle.Ize(out _chunks[^1], value);
-    //        value.Root = new Root(_chunks[^1]);
-    //        Feed(_chunks[^1]);
-    //    }
-    //    else
-    //    {
-    //        Feed(value.Root);
-    //    }
-    //}
-
-    //public static UInt256 GetSubroot(DepositData depositData)
-    //{
-    //    Merkle.Ize(out UInt256 subRoot, depositData);
-    //    return subRoot;
-    //}
-
-    // public void Feed(List<DepositData> value, ulong maxLength)
-    // {
-    //     Merkle.Ize(out _chunks[^1], value, maxLength);
-    //     Merkle.MixIn(ref _chunks[^1], value.Count);
-    //     Feed(_chunks[^1]);
-    // }
-
-    //public void Feed(List<Ref<DepositData>> value, ulong maxLength)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(List<DepositData> value, ulong maxLength)
-    //{
-    //    UInt256[] subRoots = new UInt256[value.Count];
-    //    for (int i = 0; i < value.Count; i++)
-    //    {
-    //        Merkle.Ize(out subRoots[i], value[i]);
-    //    }
-
-    //    Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-    //    Merkle.MixIn(ref _chunks[^1], value.Count);
-    //    Feed(_chunks[^1]);
-    //}
-
-
-    //public void Feed(ForkVersion value)
-    //{
-    //    Span<byte> padded = stackalloc byte[32];
-    //    value.AsSpan().CopyTo(padded);
-    //    Merkle.Ize(out _chunks[^1], padded);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Gwei value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value.Amount);
-    //    Feed(_chunks[^1]);
-    //}
-
-    //public void Feed(Slot value)
-    //{
-    //    Merkle.Ize(out _chunks[^1], value.Number);
-    //    Feed(_chunks[^1]);
-    //}
 
     public void Feed(Bytes32 value)
     {
@@ -692,26 +333,41 @@ public ref struct Merkleizer
         // TODO: If the above MemoryMarshal.Cast of a single Bytes32, we could use that here
         // (rather than the CreateFromLittleEndian() that wants an (unnecessarily) writeable Span.)
         // Better yet, just MemoryMarshal.Cast the entire span and pass directly to Merkle.Ize ?
-        UInt256[] input = new UInt256[value.Count];
+        using ArrayPoolSpan<UInt256> input = new(value.Count);
         for (int i = 0; i < value.Count; i++)
         {
-            Merkle.Ize(out input[i], value[i]);
+            Merkle.Merkleize(out input[i], value[i]);
         }
 
-        Merkle.Ize(out _chunks[^1], input);
+        Merkle.Merkleize(out _chunks[^1], input);
         Feed(_chunks[^1]);
     }
 
     public void Feed(IReadOnlyList<Bytes32> value, ulong maxLength)
     {
-        // TODO: If UInt256 is the correct memory layout
-        UInt256[] subRoots = new UInt256[value.Count];
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+
         for (int i = 0; i < value.Count; i++)
         {
-            Merkle.Ize(out subRoots[i], value[i]);
+            Merkle.Merkleize(out subRoots[i], value[i]);
         }
 
-        Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], value.Count);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(IReadOnlyList<ulong> value, ulong maxLength)
+    {
+        // TODO: If UInt256 is the correct memory layout
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+
+        for (int i = 0; i < value.Count; i++)
+        {
+            Merkle.Merkleize(out subRoots[i], value[i]);
+        }
+
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
         Merkle.MixIn(ref _chunks[^1], value.Count);
         Feed(_chunks[^1]);
     }
@@ -732,25 +388,25 @@ public ref struct Merkleizer
 
     public void Feed(IReadOnlyList<Root> value)
     {
-        UInt256[] input = new UInt256[value.Count];
+        using ArrayPoolSpan<UInt256> input = new(value.Count);
         for (int i = 0; i < value.Count; i++)
         {
-            Merkle.Ize(out input[i], value[i]);
+            Merkle.Merkleize(out input[i], value[i]);
         }
 
-        Merkle.Ize(out _chunks[^1], input);
+        Merkle.Merkleize(out _chunks[^1], input);
         Feed(_chunks[^1]);
     }
 
     public void Feed(IReadOnlyList<Root> value, ulong maxLength)
     {
-        UInt256[] subRoots = new UInt256[value.Count];
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
         for (int i = 0; i < value.Count; i++)
         {
-            Merkle.Ize(out subRoots[i], value[i]);
+            Merkle.Merkleize(out subRoots[i], value[i]);
         }
 
-        Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
         Merkle.MixIn(ref _chunks[^1], value.Count);
         Feed(_chunks[^1]);
     }

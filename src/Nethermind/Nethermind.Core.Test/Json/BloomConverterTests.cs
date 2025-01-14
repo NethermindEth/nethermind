@@ -13,21 +13,21 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Null_values()
         {
-            TestConverter(null!, (bloom, bloom1) => bloom == bloom1, new BloomConverter());
+            TestConverter(null!, static (bloom, bloom1) => bloom == bloom1, new BloomConverter());
         }
 
         [Test]
         public void Empty_bloom()
         {
-            TestConverter(Bloom.Empty, (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
+            TestConverter(Bloom.Empty, static (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
         }
 
         [Test]
         public void Full_bloom()
         {
             TestConverter(
-                new Bloom(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray()),
-                (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
+                new Bloom(Enumerable.Range(0, 255).Select(static i => (byte)i).ToArray()),
+                static (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
         }
     }
 }

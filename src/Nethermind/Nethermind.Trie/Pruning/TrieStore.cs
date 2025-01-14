@@ -323,12 +323,15 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_pruningStrategy.PruningEnabled)
         {
+            while (!Monitor.TryEnter(_dirtyNodesLock, TimeSpan.FromSeconds(10)))
+            {
+                if (_logger.IsInfo) _logger.Info("Waiting for state to be unlocked.");
+            }
+
             if (_currentBlockCommitter is not null)
             {
                 throw new InvalidOperationException("Cannot start a new block commit when an existing one is still not closed");
             }
-
-            Monitor.Enter(_dirtyNodesLock);
         }
 
         _currentBlockCommitter = new BlockCommitter(this, CreateCommitSet(blockNumber));
@@ -1004,13 +1007,13 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
             void ClearCommitSetQueue()
             {
-                while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+                while (CommitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
                 {
-                    if (!_commitSetQueue.TryDequeue(out commitSet)) break;
+                    if (!CommitSetQueue.TryDequeue(out commitSet)) break;
                     if (!commitSet.IsSealed)
                     {
                         // Oops
-                        _commitSetQueue.Enqueue(commitSet);
+                        CommitSetQueue.Enqueue(commitSet);
                         break;
                     }
 
@@ -1019,7 +1022,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            if (!(_commitSetQueue?.IsEmpty ?? true))
+            if (!CommitSetQueue.IsEmpty)
             {
                 // We persist outside of lock first.
                 ClearCommitSetQueue();

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/sepolia.json",
     "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
@@ -17,10 +18,10 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 7232000,
-    "PivotHash": "0xaba01051626ddd4dbbad35822f8eab9491b308002674260940ddf76fc48bc23d",
+    "PivotNumber": 7470000,
+    "PivotHash": "0xa44d2c4d0a3776c8b19a4a6d707b9162dcb2c064d8f4ad6fd9aab06c92d07fc4",
     "PivotTotalDifficulty": "17000018015853232",
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": 10000000000
   },
   "Blocks": {
     "TargetBlockGasLimit": 36000000

@@ -120,7 +120,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         bootstrap.Group(new MultithreadEventLoopGroup(1));
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            bootstrap.ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork));
+            bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
         else
             bootstrap.Channel<SocketDatagramChannel>();
 
