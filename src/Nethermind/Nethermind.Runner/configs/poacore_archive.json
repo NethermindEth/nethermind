@@ -18,7 +18,6 @@
   },
   "Receipt": {
     "TxLookupLimit": 0
-
   },
   "Bloom": {
     "IndexLevelBucketSizes": [ 16, 16, 16, 16 ]
