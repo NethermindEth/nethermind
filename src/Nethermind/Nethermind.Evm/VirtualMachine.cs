@@ -951,6 +951,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         int position = 31 - (int)a;
 
                         byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
+
                         Endianness.Reshuffle(ref byRefWord);
 
                         sbyte sign = (sbyte)byRefWord[position];
