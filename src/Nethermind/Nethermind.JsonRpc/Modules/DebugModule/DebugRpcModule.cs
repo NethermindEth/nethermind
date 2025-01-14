@@ -147,8 +147,8 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber, bool migrateSingleBlock = false) =>
-        ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber, migrateSingleBlock));
+    public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) =>
+        ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber));
 
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
     {

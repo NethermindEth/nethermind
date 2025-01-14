@@ -117,68 +117,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        [Test]
-        public async Task SingleBlockMigration_RestoresMissingReceipt()
-        {
-            IReceiptConfig receiptConfig = new ReceiptConfig
-            {
-                StoreReceipts = true,
-                ReceiptsMigration = true,
-                CompactReceiptStore = false 
-            };
-
-            var blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(3);
-            IBlockTree blockTree = blockTreeBuilder.TestObject;
-            IChainLevelInfoRepository chainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository;
-
-            InMemoryReceiptStorage inMemoryReceiptStorage = new(true);
-            InMemoryReceiptStorage outMemoryReceiptStorage = new(true);
-            inMemoryReceiptStorage.MigratedBlockNumber = 0;
-            outMemoryReceiptStorage.MigratedBlockNumber = 0;
-
-            Block blockToMigrate = blockTree.FindBlock(1);
-            TxReceipt receiptA = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[0]).TestObject;
-            TxReceipt receiptB = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[1]).TestObject;
-
-            inMemoryReceiptStorage.Insert(blockToMigrate, new[] { receiptA, receiptB });
-
-            outMemoryReceiptStorage.Insert(blockToMigrate, new[] { receiptA });
-
-            TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
-            TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
-            TestMemDb txIndexDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Transactions);
-
-            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
-
-            TestReceiptStorage testStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage);
-
-            var migration = new ReceiptMigration(
-                testStorage,
-                blockTree,
-                syncModeSelector,
-                chainLevelInfoRepository,
-                receiptConfig,
-                receiptColumnDb,
-                Substitute.For<IReceiptsRecovery>(),
-                LimboLogs.Instance
-            );
-
-            await migration.Run(1, migrateSingleBlock: true);
-            if (migration._migrationTask != null)
-            {
-                await migration._migrationTask;
-            }
-
-            TxReceipt[] outReceipts = outMemoryReceiptStorage.Get(blockToMigrate, recover: false, recoverSender: false);
-            outReceipts.Length.Should().Be(2, "Both receipts (A & B) should be present after migration.");
-
-            outReceipts.Should().Contain(receiptA)
-                       .And.Contain(receiptB);
-
-            outMemoryReceiptStorage.MigratedBlockNumber.Should().BeGreaterThanOrEqualTo(1);
-        }
-
         private class TestReceiptStorage : IReceiptStorage
         {
             private readonly IReceiptStorage _inStorage;

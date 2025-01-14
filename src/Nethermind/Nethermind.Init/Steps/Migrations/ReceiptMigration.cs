@@ -89,13 +89,13 @@ namespace Nethermind.Init.Steps.Migrations
             _progressLogger = new ProgressLogger("Receipts migration", logManager);
         }
 
-        public async Task<bool> Run(long blockNumber, bool migrateSingleBlock = false)
+        public async Task<bool> Run(long blockNumber)
         {
             _cancellationTokenSource?.Cancel();
-            await(_migrationTask ?? Task.CompletedTask);
+            await (_migrationTask ?? Task.CompletedTask);
             _cancellationTokenSource = new CancellationTokenSource();
             _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
-            _migrationTask = DoRun(_cancellationTokenSource.Token, migrateSingleBlock);
+            _migrationTask = DoRun(_cancellationTokenSource.Token);
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
         public async Task Run(CancellationToken cancellationToken)
@@ -110,7 +110,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private async Task DoRun(CancellationToken cancellationToken, bool migrateSingleBlock = false)
+        private async Task DoRun(CancellationToken cancellationToken)
         {
             if (_receiptConfig.StoreReceipts)
             {
@@ -123,36 +123,30 @@ namespace Nethermind.Init.Steps.Migrations
                         (arg) => CanMigrate(arg.Current));
                 }
 
-                RunIfNeeded(cancellationToken, migrateSingleBlock);
+                RunIfNeeded(cancellationToken);
             }
         }
 
         private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
-        private void RunIfNeeded(CancellationToken cancellationToken, bool migrateSingleBlock)
+        private void RunIfNeeded(CancellationToken cancellationToken)
         {
             // Note, it start in decreasing order from this high number.
             long migrateToBlockNumber = _receiptStorage.MigratedBlockNumber == long.MaxValue
                 ? _syncModeSelector.Current.NotSyncing()
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
-                : migrateSingleBlock
-                    ? _receiptStorage.MigratedBlockNumber
-                    : _receiptStorage.MigratedBlockNumber - 1;
-
+                : _receiptStorage.MigratedBlockNumber - 1;
             _toBlock = migrateToBlockNumber;
 
             _logger.Warn($"Running migration to {_toBlock}");
 
-            if (_toBlock > 0 || migrateSingleBlock)
+            if (_toBlock > 0)
             {
                 _stopwatch = Stopwatch.StartNew();
                 try
                 {
-                    if (migrateSingleBlock)
-                        MigrateSingleBlock(_toBlock);
-                    else
-                        RunMigration(cancellationToken);
+                    RunMigration(cancellationToken);
                 }
                 catch (Exception e)
                 {
@@ -229,36 +223,6 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_logger.IsInfo) _logger.Info(GetLogMessage("finished"));
             }
-        }
-
-        public void MigrateSingleBlock(long blockNumber)
-        {
-            ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
-            if (level?.MainChainBlock == null)
-            {
-                _logger.Warn($"Could not find main chain block for block #{blockNumber}.");
-                return;
-            }
-            Hash256 blockHash = level.MainChainBlock.BlockHash;
-
-            Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            if (block == null)
-            {
-                _logger.Debug($"Block #{blockNumber} not found in block tree, using empty block placeholder.");
-                block = GetMissingBlock(blockNumber, blockHash);
-            }
-
-            _logger.Info($"Migrating receipts for block #{blockNumber}.");
-            MigrateBlock(block);
-
-            if (ReferenceEquals(block, EmptyBlock))
-            {
-                ReturnMissingBlock(block);
-            }
-
-            _receiptsDb.Compact();
-            _txIndexDb.Compact();
-            _receiptsBlockDb.Compact();
         }
 
         Block GetMissingBlock(long i, Hash256? blockHash)

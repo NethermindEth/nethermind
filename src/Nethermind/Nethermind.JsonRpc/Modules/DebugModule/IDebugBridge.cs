@@ -31,7 +31,7 @@ public interface IDebugBridge
     ChainLevelInfo GetLevelInfo(long number);
     int DeleteChainSlice(long startNumber, bool force = false);
     void UpdateHeadBlock(Hash256 blockHash);
-    Task<bool> MigrateReceipts(long blockNumber, bool migrateSingleBlock = false);
+    Task<bool> MigrateReceipts(long blockNumber);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSymmary GetCurrentSyncStage();
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);

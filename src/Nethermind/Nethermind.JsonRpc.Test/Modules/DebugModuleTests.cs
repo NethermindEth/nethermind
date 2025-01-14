@@ -389,13 +389,12 @@ public class DebugModuleTests
         debugTraceCall.Should().BeEquivalentTo(expected);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Migrate_receipts(bool migrateSingleBlock)
+    [Test]
+    public async Task Migrate_receipts()
     {
         debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100, migrateSingleBlock);
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);
     }
 
