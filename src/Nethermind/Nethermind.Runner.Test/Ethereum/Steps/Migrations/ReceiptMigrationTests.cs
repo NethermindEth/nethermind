@@ -23,7 +23,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
-    [TestFixture]
     public class ReceiptMigrationTests
     {
         [TestCase(null, 0, false, false, false, false)] // No change to migrate
@@ -105,7 +104,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             if (wasMigrated)
             {
-                int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
+                int blockNum = commandStartBlockNumber ?? (chainLength - 1);
                 int txCount = blockNum * 2;
                 txDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
