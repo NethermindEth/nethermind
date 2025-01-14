@@ -30,7 +30,7 @@
     },
     "Gnosis": {
       "commandName": "Project",
-      "commandLineArgs": "-c gnosis --data-dir .data --Init.DiagnosticMode=RpcDb --Init.RpcDbUrl=http://192.241.95.142:8545 --log DEBUG",
+      "commandLineArgs": "-c gnosis --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
