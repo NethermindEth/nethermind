@@ -16,6 +16,6 @@ public class AssertionsSetup
     [OneTimeSetUp]
     public void RunBeforeAnyTests()
     {
-        AssertionOptions.AssertEquivalencyUsing(static options => options.Excluding(static c => c.Name == nameof(BlockHeader.MaybeParent)));
+        AssertionConfiguration.Current.Equivalency.Modify(static options => options.Excluding(static c => c.Name == nameof(BlockHeader.MaybeParent)));
     }
 }

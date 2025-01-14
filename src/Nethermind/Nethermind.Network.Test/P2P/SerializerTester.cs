@@ -15,7 +15,7 @@ namespace Nethermind.Network.Test.P2P
 {
     public static class SerializerTester
     {
-        public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null, Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? additionallyExcluding = null) where T : P2PMessage
+        public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null, Func<EquivalencyOptions<T>, EquivalencyOptions<T>>? additionallyExcluding = null) where T : P2PMessage
         {
             IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
             IByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
@@ -27,7 +27,7 @@ namespace Nethermind.Network.Test.P2P
                 // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
                 deserialized.Should().BeEquivalentTo(message, options =>
                 {
-                    EquivalencyAssertionOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength");
+                    EquivalencyOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength");
                     return (additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded)
                         .Using<Memory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
                         .WhenTypeIs<Memory<byte>>();

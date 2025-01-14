@@ -17,7 +17,7 @@ public class AssertionsSetup
     [OneTimeSetUp]
     public void RunBeforeAnyTests()
     {
-        AssertionOptions.AssertEquivalencyUsing(static options =>
+        AssertionConfiguration.Current.Equivalency.Modify(static options =>
             {
                 options
                     .Using<Memory<byte>>(static context =>

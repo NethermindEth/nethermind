@@ -513,7 +513,7 @@ public class PersistentReceiptStorageTests
         return (block, receipts);
     }
 
-    private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts)
+    private EquivalencyOptions<TxReceipt> ReceiptCompareOpt(EquivalencyOptions<TxReceipt> opts)
     {
         return opts
             .Excluding(static su => su.Error);
