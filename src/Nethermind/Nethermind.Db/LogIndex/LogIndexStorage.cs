@@ -43,8 +43,11 @@ namespace Nethermind.Db
         private readonly IFilePagesPool _tempPagesPool;
 
         // TODO: ensure class is singleton
-        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism = -1)
+        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism = 0)
         {
+            if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be greater than 1.", nameof(ioParallelism));
+            _ioParallelism = ioParallelism;
+
             TempFilePath = Path.Combine(baseDbPath, FolderName, TempFileName);
             FinalFilePath = Path.Combine(baseDbPath, FolderName, FinalFileName);
 
@@ -68,10 +71,6 @@ namespace Nethermind.Db
                 AllocatedPagesPoolSize = 2048,
                 ReturnedPagesPoolSize = -1
             };
-
-            // TODO: find best value depending on the storage type?
-            if (ioParallelism <= 0) ioParallelism = Environment.ProcessorCount;
-            _ioParallelism = ioParallelism;
         }
 
         // TODO: remove check!
