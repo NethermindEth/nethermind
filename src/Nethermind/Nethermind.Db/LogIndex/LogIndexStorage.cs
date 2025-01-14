@@ -41,6 +41,9 @@ namespace Nethermind.Db
 
         private readonly IFilePagesPool _tempPagesPool;
 
+        // used for state/data validation, TODO: remove, replace with tests
+        private static readonly bool EnableStateChecks = false;
+
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism = 0)
         {
@@ -276,10 +279,6 @@ namespace Nethermind.Db
 
             try
             {
-                // TODO: remove check!
-                // var counter = dictionary.GroupBy(d => d.Value.Count).ToDictionary(g => g.Key, g => g.Count());
-                // GC.KeepAlive(counter);
-
                 var watch = Stopwatch.StartNew();
                 Parallel.ForEach(
                     dictionary, new() { MaxDegreeOfParallelism = _ioParallelism },
@@ -289,12 +288,6 @@ namespace Nethermind.Db
 
                 _lastKnownBlock = Math.Max(_lastKnownBlock, batch.Max(b => b.BlockNumber));
             }
-            // TODO: remove check!
-            // catch (Exception exception)
-            // {
-            //     GC.KeepAlive(exception);
-            //     throw;
-            // }
             finally
             {
                 finalizeQueue.Writer.Complete();
@@ -403,10 +396,12 @@ namespace Nethermind.Db
                     ReadOnlySpan<byte> compressed = Compress(data, compressBuffer);
                     long offset = Append(_finalFileStream, compressed);
 
-                    // TODO: remove check!
-                    // ReadOnlySpan<int> test = Decompress(compressed, new int[PageSize / sizeof(int)]);
-                    // if (!test.SequenceEqual(MemoryMarshal.Cast<byte, int>(data)))
-                    //     throw ValidationException("Invalid data compression/decompression.");
+                    if (EnableStateChecks)
+                    {
+                        ReadOnlySpan<int> test = Decompress(compressed, new int[PageSize / sizeof(int)]);
+                        if (!test.SequenceEqual(MemoryMarshal.Cast<byte, int>(data)))
+                            throw ValidationException("Invalid data compression/decompression.");
+                    }
 
                     (byte[] dbKey, IDb db) = indexInfo.Key.Length switch
                     {
@@ -443,10 +438,6 @@ namespace Nethermind.Db
             if (bytes.Length == 0 || bytes.Length % sizeof(int) != 0)
                 throw ValidationException($"Invalid bytes length ({bytes.Length}).");
 
-            // TODO: remove check!
-            // if (bytes.Length == sizeof(int))
-            //     GC.KeepAlive(indexInfo);
-
             long position = indexInfo.Position!.Value;
             RandomAccess.Write(TempFileHandle, bytes, position);
             indexInfo.Length += bytes.Length / sizeof(int);
@@ -481,8 +472,8 @@ namespace Nethermind.Db
 
         private IndexInfo CreateTempIndex(IndexInfo oldIndex, SetReceiptsStats stats)
         {
-            if (oldIndex.Type != IndexType.DB)
-                throw ValidationException($"Attempt to create a temp index from an invalid type ({oldIndex.Type}).");
+            if (oldIndex.Type != IndexType.DB || oldIndex.LastBlockNumber < 0)
+                throw ValidationException($"Attempt to create a temp index from an unsuitable existing index.");
 
             // TODO: improve awaiting
             long freePage = _tempPagesPool.TakePageAsync().WaitResult();
@@ -524,16 +515,15 @@ namespace Nethermind.Db
             var watch = Stopwatch.StartNew();
             iterator.SeekForPrev(dbKey);
 
-            // TODO: remove check!
-            // if (!iterator.Valid())
-            // {
-            //     iterator.Seek(dbKey.ToArray());
-            //     if (iterator.Valid() && iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
-            //     {
-            //         //var data = Enumerate(db.GetIterator(ref options)).Select(x => x.key.ToHexString()).ToArray();
-            //         throw ValidationException("Invalid iterator behaviour.");
-            //     }
-            // }
+            if (EnableStateChecks && !iterator.Valid())
+            {
+                iterator.Seek(dbKey.ToArray());
+                if (iterator.Valid() && iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
+                {
+                    //var data = Enumerate(db.GetIterator(ref options)).Select(x => x.key.ToHexString()).ToArray();
+                    throw ValidationException("Invalid iterator behaviour.");
+                }
+            }
 
             if (iterator.Valid() && // Found key is less than or equal to the requested one
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
@@ -606,7 +596,6 @@ namespace Nethermind.Db
                 length = TurboPFor.p4nd1enc256v32(blockNumbersPtr, blockNumbers.Length, compressedPtr);
             }
 
-            // TODO: remove check!
             if (length > PageSize)
                 throw ValidationException($"Compressed data is too large ({length} bytes).");
 
@@ -649,13 +638,15 @@ namespace Nethermind.Db
             BinaryPrimitives.WriteInt32BigEndian(span[(valIndex += sizeof(long))..], length);
             BinaryPrimitives.WriteInt32BigEndian(span[(valIndex += sizeof(int))..], lastBlockNumber);
 
-            // TODO: remove check!
-            // IndexInfo deserialized = DeserializeIndexInfo(new byte[Address.Size + sizeof(int)], data);
-            // if (deserialized.Type != type || deserialized.Offset != offset ||
-            //     deserialized.Length != length || deserialized.LastBlockNumber != lastBlockNumber)
-            // {
-            //     throw ValidationException("Invalid index serialization/deserialization.");
-            // }
+            if(EnableStateChecks)
+            {
+                IndexInfo deserialized = DeserializeIndexInfo(new byte[Address.Size + sizeof(int)], data);
+                if (deserialized.Type != type || deserialized.Offset != offset ||
+                    deserialized.Length != length || deserialized.LastBlockNumber != lastBlockNumber)
+                {
+                    throw ValidationException("Invalid index serialization/deserialization.");
+                }
+            }
 
             return data;
         }
@@ -678,9 +669,10 @@ namespace Nethermind.Db
             );
 
             if (!Enum.IsDefined(result.Type) ||
-                result.Length > PageSize / sizeof(int) ||
+                result.ByteLength > PageSize ||
                 result.LastBlockNumber < 0 ||
-                result.Offset < 0)
+                result.Offset < 0 ||
+                (result.Type != IndexType.Final && result.LengthRemaining <= 0))
             {
                 throw ValidationException("Invalid deserialized index.");
             }
@@ -711,7 +703,14 @@ namespace Nethermind.Db
 
             public int ByteLength => Type != IndexType.Final ? Length * sizeof(int) : Length;
             public long? Position => Type != IndexType.DB ? Offset + ByteLength : -1;
-            public int LengthRemaining => PageSize / sizeof(int) - Length;
+
+            public int LengthRemaining => Type switch
+            {
+                IndexType.DB => LastBlockNumber < 0 ? 1 : 0,
+                IndexType.Temp => PageSize / sizeof(int) - Length,
+                _ => 0
+            };
+
             public int ByteLengthRemaining => IsTemp ? LengthRemaining * sizeof(int) : 0;
 
             public IndexInfo(byte[] key, IndexType type, long offset, int length, int lastBlockNumber)
