@@ -179,10 +179,10 @@ namespace Nethermind.Db
 
         // TODO: try to minimize number of allocations
         private Dictionary<byte[], List<int>>? BuildProcessingDictionary(
-            (int blockNumber, TxReceipt[] receipts)[] batch, SetReceiptsStats stats, CancellationToken cancellationToken
+            BlockReceipts[] batch, SetReceiptsStats stats, CancellationToken cancellationToken
         )
         {
-            if (batch[^1].blockNumber <= _lastKnownBlock)
+            if (batch[^1].BlockNumber <= _lastKnownBlock)
                 return null;
 
             var watch = Stopwatch.StartNew();
@@ -258,11 +258,11 @@ namespace Nethermind.Db
         public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync,
             CancellationToken cancellationToken)
         {
-            return SetReceiptsAsync([(blockNumber, receipts)], isBackwardSync, cancellationToken);
+            return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync, cancellationToken);
         }
 
         public async Task<SetReceiptsStats> SetReceiptsAsync(
-            (int blockNumber, TxReceipt[] receipts)[] batch, bool isBackwardSync, CancellationToken cancellationToken
+            BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken
         )
         {
             await _tempPagesPool.StartAsync();
@@ -288,7 +288,7 @@ namespace Nethermind.Db
                 );
                 stats.ProcessingData.Include(watch.Elapsed);
 
-                _lastKnownBlock = Math.Max(_lastKnownBlock, batch.Max(b => b.blockNumber));
+                _lastKnownBlock = Math.Max(_lastKnownBlock, batch.Max(b => b.BlockNumber));
             }
             // TODO: remove check!
             // catch (Exception exception)

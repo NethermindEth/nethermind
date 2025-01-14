@@ -10,6 +10,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Db;
 
+public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipts);
+
 public interface ILogIndexStorage : IAsyncDisposable
 {
     int GetLastKnownBlockNumber();
@@ -18,7 +20,7 @@ public interface ILogIndexStorage : IAsyncDisposable
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     Task CheckMigratedData();
     Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
-    Task<SetReceiptsStats> SetReceiptsAsync((int blockNumber, TxReceipt[] receipts)[] batch, bool isBackwardSync, CancellationToken cancellationToken);
+    Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken);
 
     PagesStats PagesStats { get; }
     string TempFilePath { get; }

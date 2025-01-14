@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -45,7 +44,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IInitConfig _initConfig;
         private const int BatchSize = 200;
         private const int ReportSize = 20_000;
-        private readonly Channel<(int blockNumber, TxReceipt[] receipts)[]> _blocksChannel;
+        private readonly Channel<BlockReceipts[]> _blocksChannel;
 
         private long _totalBlocks;
 
@@ -89,7 +88,7 @@ namespace Nethermind.Init.Steps.Migrations
             _recovery = recovery;
             _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
-            _blocksChannel = Channel.CreateBounded<(int blockNumber, TxReceipt[] receipts)[]>(new BoundedChannelOptions(1000 / BatchSize)
+            _blocksChannel = Channel.CreateBounded<BlockReceipts[]>(new BoundedChannelOptions(1000 / BatchSize)
             {
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
             });
@@ -208,8 +207,8 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 //await _logIndexStorage.CheckMigratedData();
 
-                var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, BatchSize, token), token);
-                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, ReportSize, token), token);
+                var iterateTask = Task.Run(() => QueueBlocks(_blocksChannel.Writer, token), token);
+                var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
             }
             finally
@@ -226,10 +225,8 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private async Task QueueBlocks(ChannelWriter<(int blockNumber, TxReceipt[] receipts)[]> writer, int batchSize, CancellationToken token)
+        private async Task QueueBlocks(ChannelWriter<BlockReceipts[]> writer, CancellationToken token)
         {
-            List<(int blockNumber, TxReceipt[] receipts)> batch = new(batchSize);
-
             try
             {
                 // const int startFrom = 0;
@@ -237,15 +234,12 @@ namespace Nethermind.Init.Steps.Migrations
                 const int startFrom = 750_000 + 18_000 + 33_000; // Where slowdown starts
                 // const int startFrom = 2_000_000; // Average blocks
                 // const int startFrom = 2_000_000 + 180_000; // Very log-dense blocks
-                foreach (Block block in GetBlocksForMigration(token, startFrom))
+                _totalBlocks = _blockTree.BestKnownNumber - startFrom;
+
+                for (long i = startFrom; i < _blockTree.BestKnownNumber; i += BatchSize)
                 {
-                    TxReceipt[] receipts = _receiptStorage.Get(block, false);
-
-                    batch.Add(((int)block.Number, receipts));
-                    if (batch.Count < batchSize) continue;
-
-                    await writer.WriteAsync(batch.ToArray(), token);
-                    batch.Clear();
+                    BlockReceipts[] batch = GetBlocks(i, Math.Min(i + BatchSize, _blockTree.BestKnownNumber), token);
+                    await writer.WriteAsync(batch, token);
                 }
             }
             catch (OperationCanceledException canceledEx) when (canceledEx.CancellationToken == token)
@@ -262,27 +256,29 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private async Task MigrateBlocks(ChannelReader<(int blockNumber, TxReceipt[] receipts)[]> reader, int reportAt, CancellationToken token)
+        private async Task MigrateBlocks(ChannelReader<BlockReceipts[]> reader, CancellationToken token)
         {
             try
             {
-                var migratedCount = 0;
+                var (migrated, prevMigrated) = (0, 0);
                 var watch = Stopwatch.StartNew();
                 var prevElapsed = TimeSpan.Zero;
 
-                foreach ((int blockNumber, TxReceipt[] receipts)[] batch in reader.ReadAllAsync(token).ToEnumerable())
+                foreach (BlockReceipts[] batch in reader.ReadAllAsync(token).ToEnumerable())
                 {
                     if (token.IsCancellationRequested)
                         return;
 
                     SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
-                    migratedCount += batch.Length;
+                    migrated += batch.Length;
 
-                    if (reportAt > 0 && migratedCount >= reportAt)
+                    if (ReportSize > 0 && (migrated - prevMigrated) >= ReportSize)
                     {
                         TimeSpan elapsed = watch.Elapsed;
-                        _logger.Warn($"Migrated {migratedCount} blocks in {watch.Elapsed} ( +{reportAt} in {watch.Elapsed - prevElapsed} )");
+                        _logger.Warn($"Migrated {migrated} blocks in {elapsed} ( +{migrated - prevMigrated} in {elapsed - prevElapsed} )");
+
                         prevElapsed = elapsed;
+                        prevMigrated = migrated;
                     }
 
                     _lastStats.Combine(runStats);
@@ -295,26 +291,21 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private IEnumerable<Block> GetBlocksForMigration(CancellationToken token, int startFrom)
+        private BlockReceipts[] GetBlocks(long from, long to, CancellationToken token)
         {
-            _totalBlocks = _blockTree.BestKnownNumber - startFrom;
-
-            // TODO: start from 0!
-            for (long i = startFrom; i < _blockTree.BestKnownNumber - 1; i++)
+            var batch = new BlockReceipts[to - from];
+            Parallel.For(from, to, new()
             {
-                if (token.IsCancellationRequested)
-                {
-                    if (_logger.IsInfo) _logger.Info("LogIndexMigration cancelled");
-                    yield break;
-                }
+                CancellationToken = token,
+                MaxDegreeOfParallelism = _receiptConfig.ReceiptsMigrationIOParallelism
+            }, i =>
+            {
+                Block block = _blockTree.FindBlock(i) ?? GetMissingBlock(i);
+                TxReceipt[] receipts = _receiptStorage.Get(block, false);
+                batch[(int)(i - from)] = new((int)block.Number, receipts);
+            });
 
-                if (_receiptStorage.MigratedBlockNumber > i)
-                {
-                    _receiptStorage.MigratedBlockNumber = i;
-                }
-
-                yield return _blockTree.FindBlock(i) ?? GetMissingBlock(i);
-            }
+            return batch;
         }
 
         Block GetMissingBlock(long i)
