@@ -344,7 +344,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         CancellationTokenRegistration reg = default;
         if (cancellationToken.CanBeCanceled)
         {
-            reg = cancellationToken.UnsafeRegister(state => ((CountingStreamPipeWriter)state!).Cancel(), this);
+            reg = cancellationToken.UnsafeRegister(static state => ((CountingStreamPipeWriter)state!).Cancel(), this);
         }
 
         if (_tailBytesBuffered > 0)

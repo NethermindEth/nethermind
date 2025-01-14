@@ -16,7 +16,7 @@ namespace Nethermind.Trie
         {
             if (output.Length != ByteLength(path)) throw new ArgumentOutOfRangeException(nameof(output));
 
-            output[0] = (byte)(isLeaf ? 0x20 : 0x000);
+            output[0] = (byte)(isLeaf ? 0x20 : 0x00);
             if (path.Length % 2 != 0)
             {
                 output[0] += (byte)(0x10 + path[0]);

@@ -20,10 +20,10 @@ namespace Nethermind.Core.Test.Json
         [TestCase(NumberConversion.Decimal)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
-            TestConverter(null, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(null, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
 
         [Test]

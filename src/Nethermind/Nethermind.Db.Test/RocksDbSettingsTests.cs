@@ -18,7 +18,7 @@ namespace Nethermind.Db.Test
 
             DbSettings settings2 = settings.Clone("Name2", "Path2");
             settings2.Should().BeEquivalentTo(settings,
-                o => o.Excluding(s => s.DbName).Excluding(s => s.DbPath));
+                static o => o.Excluding(static s => s.DbName).Excluding(static s => s.DbPath));
             settings2.DbName.Should().Be("Name2");
             settings2.DbPath.Should().Be("Path2");
         }

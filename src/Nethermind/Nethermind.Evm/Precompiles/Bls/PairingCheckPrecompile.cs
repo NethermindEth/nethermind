@@ -23,11 +23,11 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     private PairingCheckPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(0x11);
+    public static Address Address { get; } = Address.FromNumber(0xf);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
 
     [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

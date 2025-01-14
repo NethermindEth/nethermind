@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -135,7 +136,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
-                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => st.IncludeInTrace);
+                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(static st => st.IncludeInTrace);
                 if (action.IncludeInTrace)
                 {
                     _currentAction.Subtraces.Add(action);
@@ -187,7 +188,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -202,7 +203,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Action!.Result!.Output = output;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
