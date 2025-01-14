@@ -112,6 +112,16 @@ run_tests() {
     run_test "Invalid branch name (feature branch)" \
         "refs/heads/feature/something" "1.31.0" "1.32.0" false || failed=1
 
+    # Additional test cases
+    run_test "Skip when higher version already set" \
+        "refs/heads/release/1.31.0" "1.40.0" "1.32.0" || failed=1
+
+    run_test "Skip when same minor version already set" \
+        "refs/heads/release/1.32.0" "1.32.0" "1.33.0" || failed=1
+
+    run_test "Invalid branch name (no patch zero)" \
+        "refs/heads/release/1.31.1" "1.31.0" "1.32.0" false || failed=1
+
     if [ $failed -eq 0 ]; then
         echo "✅ All tests passed!"
         return 0
