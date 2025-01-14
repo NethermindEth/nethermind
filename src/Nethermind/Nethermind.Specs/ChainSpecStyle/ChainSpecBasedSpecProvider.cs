@@ -259,11 +259,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 spec.TargetBlobCount = blobCount.Target;
                 spec.MaxBlobCount = blobCount.Max;
+                spec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
             }
             else
             {
                 spec.TargetBlobCount = 3;
                 spec.MaxBlobCount = 6;
+                spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionCancun;
             }
         }
 
