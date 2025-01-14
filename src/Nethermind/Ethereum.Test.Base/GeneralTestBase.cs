@@ -136,7 +136,7 @@ namespace Ethereum.Test.Base
             TransactionResult? txResult = null;
             if (txIsValid)
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec.BlobBaseFeeUpdateFraction), txTracer);
+                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
             else
             {

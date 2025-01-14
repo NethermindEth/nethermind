@@ -66,7 +66,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, new BlockExecutionContext(header, spec.BlobBaseFeeUpdateFraction), tracer);
+            processor.Execute(transaction, new BlockExecutionContext(header, spec), tracer);
         }
     }
 }
