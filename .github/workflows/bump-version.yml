@@ -3,7 +3,7 @@ name: Bump Version on Release Branch Creation
 on:
   create:
     branches:
-      - 'release/*'
+      - 'release/*.*.0'
 
 jobs:
   bump-version:
@@ -13,6 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: master
           fetch-depth: 0
 
       - name: Extract version and bump
@@ -28,23 +29,49 @@ jobs:
           # Always increment minor version
           NEW_MINOR=$((MINOR + 1))
           NEW_VERSION="$MAJOR.$NEW_MINOR.0"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           
-          # Update version in Directory.Build.props
-          sed -i "s/<VersionPrefix>.*<\/VersionPrefix>/<VersionPrefix>$NEW_VERSION<\/VersionPrefix>/" src/Nethermind/Directory.Build.props
+          # Get current version from the file
+          CURRENT_VERSION=$(grep -o '<VersionPrefix>.*</VersionPrefix>' src/Nethermind/Directory.Build.props | sed 's/<VersionPrefix>\(.*\)<\/VersionPrefix>/\1/')
+          
+          # Only proceed if versions are different
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+            echo "Version $NEW_VERSION is already set in Directory.Build.props, skipping..."
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          else
+            echo "Updating version from $CURRENT_VERSION to $NEW_VERSION"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            
+            # Update version in Directory.Build.props
+            sed -i "s/<VersionPrefix>.*<\/VersionPrefix>/<VersionPrefix>$NEW_VERSION<\/VersionPrefix>/" src/Nethermind/Directory.Build.props
+          fi
+
+      - name: Create GitHub app token
+        if: steps.version.outputs.needs_update == 'true'
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: bump version to ${{ steps.version.outputs.new_version }}-unstable"
-          title: "Bump version to ${{ steps.version.outputs.new_version }}-unstable"
-          body: |
-            Automated version bump after creating release branch.
-            - Bumped version to ${{ steps.version.outputs.new_version }}-unstable
-          branch: "chore/bump-version-${{ steps.version.outputs.new_version }}"
-          base: "master"
-          delete-branch: true
+        if: steps.version.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          head_branch="chore/bump-version-${{ steps.version.outputs.new_version }}"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add src/Nethermind/Directory.Build.props
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}-unstable"
+          git push origin $head_branch
+          gh pr create -B master -H $head_branch \
+            -t "Bump version to ${{ steps.version.outputs.new_version }}-unstable" \
+            -b "Automated version bump after creating release branch.
+                - Bumped version from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}-unstable" \
+            -l version-bump
 
 permissions:
   contents: write
