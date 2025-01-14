@@ -51,6 +51,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
+        private long _from = 0;
 
         public ReceiptMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
@@ -89,12 +90,17 @@ namespace Nethermind.Init.Steps.Migrations
             _progressLogger = new ProgressLogger("Receipts migration", logManager);
         }
 
-        public async Task<bool> Run(long blockNumber)
+        // Actually start running it.
+        public async Task<bool> Run(long from, long to)
         {
             _cancellationTokenSource?.Cancel();
             await (_migrationTask ?? Task.CompletedTask);
             _cancellationTokenSource = new CancellationTokenSource();
-            _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
+
+            // The MigratedBlockNumber is the actual "To"
+            _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, to), (_blockTree.Head?.Number ?? 0)) + 1;
+            _from = from;
+
             _migrationTask = DoRun(_cancellationTokenSource.Token);
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
@@ -104,6 +110,7 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_receiptConfig.ReceiptsMigration)
                 {
+                    _from = 0; // From is not configured by this method, but need to be reset.
                     ResetMigrationIndexIfNeeded();
                     await DoRun(cancellationToken);
                 }
@@ -266,7 +273,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            for (long i = _toBlock - 1; i > 0; i--)
+            for (long i = _toBlock; i > _from; i--)
             {
                 if (token.IsCancellationRequested)
                 {
@@ -295,6 +302,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (notNullReceipts.Length == 0) return;
 
+            // This should set the new rlp and tx index depending on config.
             _receiptStorage.Insert(block, notNullReceipts);
 
             // I guess some old schema need this

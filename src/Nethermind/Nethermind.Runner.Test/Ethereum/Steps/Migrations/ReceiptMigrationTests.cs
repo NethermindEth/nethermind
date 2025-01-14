@@ -93,7 +93,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             if (commandStartBlockNumber.HasValue)
             {
-                _ = migration.Run(commandStartBlockNumber.Value);
+                _ = migration.Run(0, commandStartBlockNumber.Value);
                 await migration._migrationTask!;
             }
             else
