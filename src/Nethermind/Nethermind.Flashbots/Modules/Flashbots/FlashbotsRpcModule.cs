@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Flashbots.Data;
@@ -18,7 +19,7 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
         _validateSubmissionHandler = validateSubmissionHandler;
     }
 
-    Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) =>
+    Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(ICollection<BuilderBlockValidationRequest> @params) =>
         _validateSubmissionHandler.ValidateSubmission(@params);
 
 }

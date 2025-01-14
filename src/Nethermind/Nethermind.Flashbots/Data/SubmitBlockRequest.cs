@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Merge.Plugin.Data;
+using Newtonsoft.Json;
 
 namespace Nethermind.Flashbots.Data;
 
@@ -16,7 +17,10 @@ public class SubmitBlockRequest
         _blobsBundle = blobsBundle;
         Message = message;
     }
+    [JsonProperty("execution_payload")]
     public ExecutionPayloadV3 ExecutionPayload => _executionPayload;
+    [JsonProperty("blobs_bundle")]
     public BlobsBundleV1 BlobsBundle => _blobsBundle;
+    [JsonProperty("mesage")]
     public BidTrace Message { get; }
 }
