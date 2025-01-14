@@ -20,7 +20,6 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 

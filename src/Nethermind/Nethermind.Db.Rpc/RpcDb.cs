@@ -97,7 +97,7 @@ namespace Nethermind.Db.Rpc
             byte[] value = null;
             if (response.Result is not null)
             {
-                var jsonElement = (JsonElement)response.Result;
+                JsonElement jsonElement = (JsonElement)response.Result;
                 string rawHex = jsonElement.GetString();
                 value = Bytes.FromHexString(rawHex);
                 if (_recordDb is not null)
