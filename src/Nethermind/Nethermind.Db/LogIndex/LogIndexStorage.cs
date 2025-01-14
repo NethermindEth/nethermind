@@ -325,10 +325,17 @@ namespace Nethermind.Db
                     var size => throw ValidationException($"Unexpected key of {size} bytes.")
                 };
 
-                IndexInfo indexInfo = GetTempIndex(db, key, blockNums, stats) ?? CreateTempIndex(key, blockNums, stats);
+                IndexInfo? indexInfo = GetIndex(db, key, blockNums, stats);
 
-                if (blockNums[^1] <= indexInfo.LastBlockNumber)
+                if (indexInfo != null && blockNums[^1] <= indexInfo.LastBlockNumber)
                     return;
+
+                indexInfo = indexInfo?.Type switch
+                {
+                    IndexType.DB => CreateTempIndex(indexInfo, stats),
+                    IndexType.Temp => indexInfo,
+                    _ => CreateTempIndex(key, blockNums, stats)
+                };
 
                 bytesBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
                 Span<byte> bytes = Span<byte>.Empty;
@@ -496,7 +503,7 @@ namespace Nethermind.Db
                 : CreateTempIndex(keyPrefix, stats);
         }
 
-        private IndexInfo? GetTempIndex(IDb db, byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
+        private IndexInfo? GetIndex(IDb db, byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
         {
             var firstBlockNum = forBlockNums[0];
             var dbKey = new byte[keyPrefix.Length + sizeof(int)];
@@ -532,8 +539,7 @@ namespace Nethermind.Db
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             {
                 stats.SeekForPrevHit.Include(watch.Elapsed);
-                IndexInfo index = DeserializeIndexInfo(iterator.Key(), iterator.Value());
-                if (index.Type != IndexType.Final) return index;
+                return DeserializeIndexInfo(iterator.Key(), iterator.Value());
             }
             else
             {
