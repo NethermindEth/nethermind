@@ -121,14 +121,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (_receiptConfig.StoreReceipts)
             {
-                if (!CanMigrate(_syncModeSelector.Current))
-                {
-                    await Wait.ForEventCondition<SyncModeChangedEventArgs>(
-                        cancellationToken,
-                        (e) => _syncModeSelector.Changed += e,
-                        (e) => _syncModeSelector.Changed -= e,
-                        (arg) => CanMigrate(arg.Current));
-                }
+                await _syncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
 
                 RunIfNeeded(cancellationToken);
             }
