@@ -298,9 +298,9 @@ namespace Nethermind.Init.Steps.Migrations
             // This should set the new rlp and tx index depending on config.
             _receiptStorage.Insert(block, notNullReceipts);
 
-            // I guess some old schema need this
+            // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
-                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Transactions);
+                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Default);
                 for (int i = 0; i < notNullReceipts.Length; i++)
                 {
                     writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;
