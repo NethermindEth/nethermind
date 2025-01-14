@@ -18,5 +18,5 @@ public interface IFlashbotsRpcModule : IRpcModule
         IsImplemented = true)]
 
     Task<ResultWrapper<FlashbotsResult>> flashbots_validateBuilderSubmissionV3(
-        ICollection<BuilderBlockValidationRequest> @params);
+        BuilderBlockValidationRequest @params);
 }

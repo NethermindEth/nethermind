@@ -67,13 +67,8 @@ public class ValidateSubmissionHandler
         _flashbotsConfig = flashbotsConfig;
     }
 
-    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(ICollection<BuilderBlockValidationRequest> requests)
+    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
-        var request = requests.FirstOrDefault();
-        if (request == null)
-        {
-            return FlashbotsResult.Invalid("emppty request");
-        }
 
         ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload;
 
