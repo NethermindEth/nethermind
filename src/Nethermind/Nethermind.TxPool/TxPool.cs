@@ -448,7 +448,8 @@ namespace Nethermind.TxPool
                     {
                         foreach (var auth in tx.AuthorizationList)
                         {
-                            _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
+                            if (auth.Authority is not null)
+                                _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
                         }
                     }
                     // Clear proper snapshot
@@ -555,7 +556,8 @@ namespace Nethermind.TxPool
             {
                 foreach (var auth in transaction.AuthorizationList)
                 {
-                    _pendingDelegations.DecrementDelegationCount(auth.Authority!, auth.Nonce);
+                    if (auth.Authority is not null)
+                        _pendingDelegations.DecrementDelegationCount(auth.Authority!, auth.Nonce);
                 }
             }
         }

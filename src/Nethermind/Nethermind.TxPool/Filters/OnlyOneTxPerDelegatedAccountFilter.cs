@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             Transaction[] currentTxs;
 
-            //Transactios from the same source can only have blob transactions or another type 
+            //Transactios from the same source can only be either blob transactions or some other type 
             if (standardPool.TryGetBucket(tx.SenderAddress!, out currentTxs) || blobPool.TryGetBucket(tx.SenderAddress!, out currentTxs))
             {
                 foreach (Transaction existingTx in currentTxs)
