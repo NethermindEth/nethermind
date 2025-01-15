@@ -68,15 +68,8 @@ public class ValidateSubmissionHandler
         _flashbotsConfig = flashbotsConfig;
     }
 
-    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(List<BuilderBlockValidationRequest> requests)
+    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
-
-        var request = requests.FirstOrDefault();
-        if (request == null)
-        {
-            return FlashbotsResult.Invalid("Requests list is empty");
-        }
-
         ExecutionPayloadV3 payload = request.ExecutionPayload;
 
         if (request.ParentBeaconBlockRoot is null)

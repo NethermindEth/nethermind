@@ -19,7 +19,7 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
         _validateSubmissionHandler = validateSubmissionHandler;
     }
 
-    Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(List<BuilderBlockValidationRequest> @params) =>
+    Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) =>
         _validateSubmissionHandler.ValidateSubmission(@params);
 
 }
