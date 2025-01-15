@@ -35,7 +35,7 @@ public class BlobGasCalculatorTests
     {
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(testCase.excessBlobGas).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, out UInt256 blobBaseFee);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, Eip4844Constants.BlobGasPriceUpdateFractionCancun, out UInt256 blobBaseFee);
 
         Assert.That(success, Is.True);
         Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
@@ -47,7 +47,7 @@ public class BlobGasCalculatorTests
         var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(ulong.MaxValue).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out UInt256 blobBaseFee);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, Eip4844Constants.BlobGasPriceUpdateFractionCancun, out UInt256 blobBaseFee);
 
         Assert.That(success, Is.False);
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));

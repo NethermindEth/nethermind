@@ -259,11 +259,28 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 spec.TargetBlobCount = blobCount.Target;
                 spec.MaxBlobCount = blobCount.Max;
+                if (blobCount.BaseFeeUpdateFraction == 0)
+                {
+                    if (fork.Name == "Cancun")
+                    {
+                        spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionCancun;
+                    }
+                    else if (fork.Name == "Prague")
+                    {
+                        spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionPrague;
+                    }
+                }
+                else
+                {
+                    spec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
+                }
+
             }
             else
             {
                 spec.TargetBlobCount = 3;
                 spec.MaxBlobCount = 6;
+                spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionCancun;
             }
         }
 

@@ -8,11 +8,14 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 
@@ -39,12 +42,13 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(GetBlobBaseFeeTestCases))]
     public async Task<string> Eth_blobBaseFee_ShouldGiveCorrectResult(ulong? excessBlobGas)
     {
-        using Context ctx = await Context.Create();
+        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        using Context ctx = await Context.Create(specProvider);
         Block[] blocks = [
             Build.A.Block.WithNumber(0).WithExcessBlobGas(excessBlobGas).TestObject,
         ];
         BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
 
         return await ctx.Test.TestEthRpc("eth_blobBaseFee");
     }
