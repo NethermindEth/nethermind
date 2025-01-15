@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
@@ -57,7 +58,6 @@ public interface IAdminRpcModule : IRpcModule
         IsImplemented = true)]
     ResultWrapper<string> admin_dataDir();
 
-
     [JsonRpcMethod(Description = "[DEPRECATED]",
         IsImplemented = false)]
     ResultWrapper<bool> admin_setSolc();
@@ -67,4 +67,16 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<PruningStatus> admin_prune();
+
+    [JsonRpcMethod(Description = "True if state root for the block is available",
+        EdgeCaseHint = "",
+        ExampleResponse = "\"Starting\"",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block);
+
+    [JsonRpcMethod(Description = "Runs VerifyTrie.",
+        EdgeCaseHint = "",
+        ExampleResponse = "\"Starting\"",
+        IsImplemented = true)]
+    ResultWrapper<string> admin_verifyTrie(BlockParameter block);
 }
