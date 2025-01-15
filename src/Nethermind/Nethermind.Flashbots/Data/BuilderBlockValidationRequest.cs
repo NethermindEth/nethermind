@@ -1,18 +1,35 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data;
 using Newtonsoft.Json;
 
 namespace Nethermind.Flashbots.Data;
 
 public class BuilderBlockValidationRequest
 {
-    /// <summary>
-    /// The block hash of the parent beacon block.
-    /// <see cref=https://github.com/flashbots/builder/blob/df9c765067d57ab4b2d0ad39dbb156cbe4965778/eth/block-validation/api.go#L198"/>
-    /// </summary>
-    [System.Text.Json.Serialization.JsonRequired]
+
+    [JsonProperty("withdrawals_root")]
+    [JsonRequired]
+    public required Hash256 WithdrawalsRoot { get; set; }
+
+    [JsonProperty("execution_payload")]
+    [JsonRequired]
+    public required ExecutionPayloadV3 ExecutionPayload { get; set; }
+
+    [JsonProperty("blobs_bundle")]
+    [JsonRequired]
+    public required BlobsBundleV1 BlobsBundle { get; set; }
+
+    [JsonProperty("mesage")]
+    [JsonRequired]
+    public required BidTrace Message { get; set; }
+
+    [JsonRequired]
     [JsonProperty("parent_beacon_block_root")]
     public required Hash256 ParentBeaconBlockRoot { get; set; }
 
@@ -20,8 +37,13 @@ public class BuilderBlockValidationRequest
     [System.Text.Json.Serialization.JsonRequired]
     public long RegisterGasLimit { get; set; }
 
-    [System.Text.Json.Serialization.JsonRequired]
-    [JsonProperty("block_request")]
+    [JsonProperty("signature")]
+    [JsonRequired]
+    public required Hash256 Signature { get; set; }
 
-    public required SubmitBlockRequest BlockRequest { get; set; }
+    [JsonProperty("withdrawals")]
+    [JsonRequired]
+    public required List<Withdrawal> Withdrawals { get; set; }
 }
+
+

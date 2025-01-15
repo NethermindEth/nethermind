@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
 using Nethermind.Core.Crypto;
+using Withdrawal = Nethermind.Core.Withdrawal;
 
 namespace Nethermind.Flashbots.Handlers;
 
@@ -67,10 +68,16 @@ public class ValidateSubmissionHandler
         _flashbotsConfig = flashbotsConfig;
     }
 
-    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
+    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(List<BuilderBlockValidationRequest> requests)
     {
 
-        ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload;
+        var request = requests.FirstOrDefault();
+        if (request == null)
+        {
+            return FlashbotsResult.Invalid("Requests list is empty");
+        }
+
+        ExecutionPayloadV3 payload = request.ExecutionPayload;
 
         if (request.ParentBeaconBlockRoot is null)
         {
@@ -80,7 +87,7 @@ public class ValidateSubmissionHandler
         payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
 
 
-        BlobsBundleV1 blobsBundle = request.BlockRequest.BlobsBundle;
+        BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
         string payloadStr = $"BuilderBlock: {payload}";
 
@@ -93,7 +100,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid($"Block {payload} coud not be parsed as a block");
         }
 
-        if (block is not null && !ValidateBlock(block, request.BlockRequest.Message, request.RegisterGasLimit, out string? error))
+        if (block is not null && !ValidateBlock(block, request.Message, request.RegisterGasLimit, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
