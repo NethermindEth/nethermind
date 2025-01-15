@@ -39,7 +39,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IBlockFinder _blockFinder;
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly TimeSpan _cancellationTokenTimeout;
         private readonly IStateReader _stateReader;
         private readonly IOverridableTxProcessorSource _env;
 
@@ -51,14 +50,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _env = env ?? throw new ArgumentNullException(nameof(env));
-            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
 
         public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env)
             : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env) { }
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
-            types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
+            types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
 
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
@@ -106,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = new(header, txs, []);
             IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t)));
         }
 
         /// <summary>
@@ -186,7 +184,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(traceTypes1));
 
             // ReSharper disable once CoVariantArrayConversion
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t, true)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(txTraces.Select(static t => new ParityTxTraceFromReplay(t, true)));
         }
 
         /// <summary>
@@ -298,21 +296,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            CancellationToken cancellationToken = timeout.Token;
             _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            CancellationToken cancellationToken = timeout.Token;
             _tracer.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+
+        private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
+            _jsonRpcConfig.BuildTimeoutCancellationToken();
     }
 }

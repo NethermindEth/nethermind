@@ -41,7 +41,7 @@ public static class NLogConfigurator
             }
 
             // // // re-initialize single target
-            loggingConfiguration.AllTargets?.OfType<SeqTarget>().ForEach(t => t.Dispose());
+            loggingConfiguration.AllTargets?.OfType<SeqTarget>().ForEach(static t => t.Dispose());
             LogManager.ReconfigExistingLoggers();
         }
     }

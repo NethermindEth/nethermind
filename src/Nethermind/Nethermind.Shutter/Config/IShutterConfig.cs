@@ -145,7 +145,7 @@ public interface IShutterConfig : IConfig
 
         try
         {
-            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(addr => Multiaddress.Decode(addr)).ToArray();
+            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(static addr => Multiaddress.Decode(addr)).ToArray();
         }
         catch (NotSupportedException e)
         {

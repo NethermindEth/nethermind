@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastSync
     public class StateSyncPivot
     {
         private readonly IBlockTree _blockTree;
-        private BlockHeader _bestHeader;
+        private BlockHeader? _bestHeader;
         private readonly ILogger _logger;
         private readonly ISyncConfig _syncConfig;
 
@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public BlockHeader GetPivotHeader()
+        public BlockHeader? GetPivotHeader()
         {
             if (_bestHeader is null || (_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
             {
@@ -68,7 +68,13 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = _blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number + MultiSyncModeSelector.FastSyncLag - _syncConfig.StateMinDistanceFromHead, 0);
+            long targetBlockNumber = bestSuggestedHeader.Number + MultiSyncModeSelector.FastSyncLag - _syncConfig.StateMinDistanceFromHead;
+            targetBlockNumber = Math.Max(targetBlockNumber, 0);
+            // The new pivot must be at least one block after the sync pivot as the forward downloader does not
+            // download the block at the sync pivot which may cause state not found error if state was downloaded
+            // at exactly sync pivot.
+            targetBlockNumber = Math.Max(targetBlockNumber, _syncConfig.PivotNumberParsed + 1);
+
             BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {

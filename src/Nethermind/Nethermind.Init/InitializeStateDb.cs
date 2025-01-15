@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -87,7 +88,7 @@ public class InitializeStateDb : IStep
             syncConfig.DownloadBodiesInFastSync = true;
         }
 
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb;
+        IDb codeDb = getApi.DbProvider.CodeDb;
         IKeyValueStoreWithBatching stateDb = getApi.DbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
@@ -185,6 +186,8 @@ public class InitializeStateDb : IStep
             getApi.DbProvider,
             getApi.LogManager);
 
+        setApi.BlockingVerifyTrie = new BlockingVerifyTrie(mainWorldTrieStore, stateManager.GlobalStateReader, codeDb!, getApi.ProcessExit!, getApi.LogManager);
+
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
@@ -199,9 +202,12 @@ public class InitializeStateDb : IStep
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
             _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-            Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-            TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager, _api.ProcessExit!.Token);
-            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+            BlockHeader? head = getApi.BlockTree!.Head?.Header;
+            if (head is not null)
+            {
+                setApi.BlockingVerifyTrie.TryStartVerifyTrie(head);
+                _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
+            }
         }
 
         // Init state if we need system calls before actual processing starts
