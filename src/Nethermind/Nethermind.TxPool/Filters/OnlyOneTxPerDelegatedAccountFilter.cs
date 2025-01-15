@@ -23,14 +23,13 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
 
             if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
-            {
                 return AcceptTxResult.PendingDelegation;
-            }
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
             Transaction[] currentTxs;
 
+            //Transactios from the same source can only have blob transactions or another type 
             if (standardPool.TryGetBucket(tx.SenderAddress!, out currentTxs) || blobPool.TryGetBucket(tx.SenderAddress!, out currentTxs))
             {
                 foreach (Transaction existingTx in currentTxs)

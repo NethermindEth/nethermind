@@ -20,7 +20,16 @@ internal sealed class DelegationCache
         return _pendingDelegations.ContainsKey(KeyMask(key, nonce));
     }
 
-    public void IncrementDelegationCount(AddressAsKey key, UInt256 nonce, bool increment)
+    public void DecrementDelegationCount(AddressAsKey key, UInt256 nonce)
+    {
+        InternalIncrement(key, nonce, false);
+    }
+    public void IncrementDelegationCount(AddressAsKey key, UInt256 nonce)
+    {
+        InternalIncrement(key, nonce, true);
+    }
+
+    private void InternalIncrement(AddressAsKey key, UInt256 nonce, bool increment)
     {
         UInt256 addressPlusNonce = KeyMask(key, nonce);
 
@@ -37,8 +46,8 @@ internal sealed class DelegationCache
         if (lastCount == 0)
         {
             //Remove() is threadsafe and only removes if the count is the same as the updated one
-            ((ICollection<KeyValuePair<AddressAsKey, int>>)_pendingDelegations).Remove(
-                new KeyValuePair<AddressAsKey, int>(key, lastCount));
+            ((ICollection<KeyValuePair<UInt256, int>>)_pendingDelegations).Remove(
+                new KeyValuePair<UInt256, int>(addressPlusNonce, lastCount));
         }
     }
 
