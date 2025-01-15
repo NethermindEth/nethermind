@@ -264,7 +264,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     if (fork.Name == "Cancun")
                     {
                         spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionCancun;
-                    } else if (fork.Name == "Prague")
+                    }
+                    else if (fork.Name == "Prague")
                     {
                         spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionPrague;
                     }

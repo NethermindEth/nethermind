@@ -80,7 +80,7 @@ namespace Nethermind.Evm.Test
 
             transaction.GasPrice = 20.GWei();
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
             Assert.That(tracer.Refund, Is.EqualTo(refund));
             AssertGas(tracer, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), refund));

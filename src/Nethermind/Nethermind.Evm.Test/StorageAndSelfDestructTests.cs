@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(initTx,new BlockExecutionContext(block.Header, Spec), initTracer);
+            _processor.Execute(initTx, new BlockExecutionContext(block.Header, Spec), initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
             ParityLikeTxTracer tracer1 = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
