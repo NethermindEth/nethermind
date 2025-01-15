@@ -33,7 +33,7 @@ namespace Nethermind.TxPool
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
-                var transactionsOrderedByNonce = group.Value.OrderBy(t => t.Nonce);
+                var transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
 
                 foreach (var transaction in transactionsOrderedByNonce)
                 {

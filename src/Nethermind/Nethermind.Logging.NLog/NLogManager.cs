@@ -112,7 +112,7 @@ namespace Nethermind.Logging.NLog
         }
 
         private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
-            configurationLoggingRules.SelectMany(r => r.Targets).Distinct().ToArray();
+            configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
 
         private static void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
