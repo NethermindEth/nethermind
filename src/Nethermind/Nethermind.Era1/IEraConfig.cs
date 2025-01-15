@@ -27,4 +27,7 @@ public interface IEraConfig : IConfig
 
     [ConfigItem(Description = "Network name used for era directory naming. When null, it will imply from chain spec.", DefaultValue = "null", HiddenFromDocs = true)]
     string? NetworkName { get; set; }
+
+    [ConfigItem(Description = "Maximum concurrency. Set to 0 to use logical core count. Lowering this may improve performance in some configuration.", DefaultValue = "0", HiddenFromDocs = true)]
+    int Concurrency { get; set; }
 }

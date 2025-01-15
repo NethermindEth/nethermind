@@ -70,7 +70,12 @@ public class EraExporter(
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
 
-        await Parallel.ForEachAsync(epochIdxs, cancellation, async (epochIdx, cancel) =>
+        await Parallel.ForEachAsync(epochIdxs, new ParallelOptions()
+        {
+            MaxDegreeOfParallelism = (eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency),
+            CancellationToken = cancellation
+        },
+        async (epochIdx, cancel) =>
         {
             await WriteEpoch(epochIdx);
         });

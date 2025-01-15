@@ -130,7 +130,7 @@ public class EraImporter(
                 partitionStartBlocks.Enqueue(blockNumber);
             }
 
-            Task[] importTasks = Enumerable.Range(0, 8).Select((_) =>
+            Task[] importTasks = Enumerable.Range(0, (eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency)).Select((_) =>
             {
                 return Task.Run(async () =>
                 {

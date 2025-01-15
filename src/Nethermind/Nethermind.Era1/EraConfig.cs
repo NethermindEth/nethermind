@@ -14,4 +14,5 @@ public class EraConfig : IEraConfig
     public string? TrustedAccumulatorFile { get; set; }
     public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
     public string? NetworkName { get; set; }
+    public int Concurrency { get; set; }
 }
