@@ -10,14 +10,14 @@ public class SetReceiptsStats
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
 
-    public ExecTimeStats SeekForPrevHit { get; set; } = new();
-    public ExecTimeStats SeekForPrevMiss { get; set; } = new();
-    public ExecTimeStats BuildingDictionary { get; set; } = new();
-    public ExecTimeStats ProcessingData { get; set; } = new();
-    public ExecTimeStats WaitingForFinalization { get; set; } = new();
-    public ExecTimeStats FlushingDbs { get; set; } = new();
-    public AverageStats KeysCount { get; set; } = new();
-    public AverageStats BytesWritten { get; set; } = new();
+    public ExecTimeStats SeekForPrevHit { get; } = new();
+    public ExecTimeStats SeekForPrevMiss { get; } = new();
+    public ExecTimeStats BuildingDictionary { get; } = new();
+    public ExecTimeStats ProcessingData { get; } = new();
+    public ExecTimeStats WaitingForFinalization { get; } = new();
+    public ExecTimeStats FlushingDbs { get; } = new();
+    public AverageStats KeysCount { get; } = new();
+    public AverageStats BytesWritten { get; } = new();
     public long NewDbIndexes;
     public long NewTempIndexes;
     public long NewTempFromDbIndexes;

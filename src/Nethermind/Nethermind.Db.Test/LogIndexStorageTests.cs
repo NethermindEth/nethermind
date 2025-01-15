@@ -46,7 +46,7 @@ namespace Nethermind.Db.Test
 
             _logger = LimboLogs.Instance.GetClassLogger();
 
-            _logIndexStorage = new(_columnsDb, _logger, _dbPath);
+            _logIndexStorage = new(_columnsDb, _logger, _dbPath, 8);
             _tempFilePath = _logIndexStorage.TempFilePath;
             _finalFilePath = _logIndexStorage.FinalFilePath;
         }

@@ -45,7 +45,7 @@ namespace Nethermind.Db
         private static readonly bool EnableStateChecks = false;
 
         // TODO: ensure class is singleton
-        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism = 0)
+        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism)
         {
             if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be greater than 1.", nameof(ioParallelism));
             _ioParallelism = ioParallelism;
