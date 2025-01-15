@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Messages;
 public static class BlockErrorMessages
@@ -13,8 +14,8 @@ public static class BlockErrorMessages
     public const string InsufficientMaxFeePerBlobGas =
         "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee.";
 
-    public const string InvalidLogsBloom =
-        "InvalidLogsBloom: Logs bloom in header does not match.";
+    public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
+        $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
     public static string InvalidTxRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
@@ -34,20 +35,20 @@ public static class BlockErrorMessages
     public const string WithdrawalsNotEnabled =
         "WithdrawalsNotEnabled: Block body cannot have withdrawals.";
 
-    public const string InvalidReceiptsRoot =
-        "InvalidReceiptsRoot: Receipts root in header does not match.";
+    public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
+        $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
 
-    public const string InvalidStateRoot =
-        "InvalidStateRoot: State root in header does not match.";
+    public static string InvalidStateRoot(Hash256 expected, Core.Crypto.Hash256 actual) =>
+        $"InvalidStateRoot: State root in header does not match. Expected {expected}, got {actual}";
 
-    public const string InvalidParentBeaconBlockRoot =
-        "InvalidParentBeaconBlockRoot: Beacon block root in header does not match.";
+    public static string InvalidParentBeaconBlockRoot(Hash256 expected, Hash256 actual) =>
+        $"InvalidParentBeaconBlockRoot: Beacon block root in header does not match. Expected {expected}, got {actual}";
 
     public const string BlobGasPriceOverflow =
         "BlobGasPriceOverflow: Overflow in excess blob gas.";
 
-    public const string InvalidHeaderHash =
-        "InvalidHeaderHash: Header hash does not match.";
+    public static string InvalidHeaderHash(Hash256 expected, Hash256 actual) =>
+        $"InvalidHeaderHash: Header hash does not match. Expected {expected}, got {actual}";
 
     public const string InvalidExtraData =
         "InvalidExtraData: Extra data in header is not valid.";
@@ -73,8 +74,8 @@ public static class BlockErrorMessages
     public const string InvalidBlockNumber =
         "InvalidBlockNumber: Block number does not match the parent.";
 
-    public const string InvalidBaseFeePerGas =
-        "InvalidBaseFeePerGas: Does not match calculated.";
+    public static string InvalidBaseFeePerGas(UInt256? expected, UInt256 actual) =>
+        $"InvalidBaseFeePerGas: Does not match calculated. Expected {expected}, got {actual}";
 
     public const string NotAllowedBlobGasUsed =
         "NotAllowedBlobGasUsed: Cannot be set.";
@@ -91,19 +92,17 @@ public static class BlockErrorMessages
     public static string InvalidTxInBlock(int i) =>
         $"InvalidTxInBlock: Tx at index {i} in body.";
 
-    public const string HeaderGasUsedMismatch =
-        "HeaderGasUsedMismatch: Gas used in header does not match calculated.";
+    public static string HeaderGasUsedMismatch(long expected, long actual) =>
+        $"HeaderGasUsedMismatch: Gas used in header does not match calculated. Expected {expected}, got {actual}";
 
-    //Block's blob gas used in header is above the limit.
     public static readonly string BlobGasUsedAboveBlockLimit =
         "BlockBlobGasExceeded: A block cannot have more than {0} blob gas.";
 
-    //Block's excess blob gas in header is incorrect.
-    public const string IncorrectExcessBlobGas =
-        "HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated.";
+    public static string IncorrectExcessBlobGas(ulong? expected, ulong? actual) =>
+        $"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated. Expected {expected}, got {actual}";
 
-    public const string HeaderBlobGasMismatch =
-        "HeaderBlobGasMismatch: Blob gas in header does not match calculated.";
+    public static string HeaderBlobGasMismatch(ulong? expected, ulong? actual) =>
+        $"HeaderBlobGasMismatch: Blob gas in header does not match calculated. Expected {expected}, got {actual}";
 
     public const string InvalidTimestamp =
         "InvalidTimestamp: Timestamp in header cannot be lower than ancestor.";
@@ -117,8 +116,15 @@ public static class BlockErrorMessages
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
 
-    public static string MissingRequests => "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.";
-    public static string RequestsNotEnabled => "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
-    public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) => $"InvalidRequestsHash: Requests hash hash mismatch in block: expected {expected}, got {actual}";
-    public static string InvalidRequestsOrder => "InvalidRequestsOrder: Requests are not in the correct order in block.";
+    public const string MissingRequests =
+        "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.";
+
+    public const string RequestsNotEnabled =
+        "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
+
+    public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) =>
+        $"InvalidRequestsHash: Requests hash hash mismatch in block: expected {expected}, got {actual}";
+
+    public const string InvalidRequestsOrder =
+        "InvalidRequestsOrder: Requests are not in the correct order in block.";
 }

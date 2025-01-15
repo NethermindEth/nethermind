@@ -36,9 +36,9 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
             return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable);
 
-        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         TProcessing? toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, cancellationTokenSource.Token);
+        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
     }
 
     protected abstract TProcessing Prepare(TRequest call);
