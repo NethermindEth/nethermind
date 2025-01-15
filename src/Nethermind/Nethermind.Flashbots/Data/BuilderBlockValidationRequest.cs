@@ -39,7 +39,7 @@ public class BuilderBlockValidationRequest
 
     [JsonProperty("signature")]
     [JsonRequired]
-    public required Hash256 Signature { get; set; }
+    public required string Signature { get; set; }
 
     [JsonProperty("withdrawals")]
     [JsonRequired]
