@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -9,6 +11,84 @@ namespace Nethermind.Specs.ChainSpecStyle;
 
 public class ChainParameters
 {
+
+    private static readonly Dictionary<string, Func<ChainParameters, ulong?>> HardforkToEips = new()
+    {
+        { "Dencun", cp => cp.Eip4844TransitionTimestamp },
+        { "Cancun", cp => cp.Eip4788TransitionTimestamp },
+        { "EIP-1153", cp => cp.Eip1153TransitionTimestamp },
+        { "EIP-5656", cp => cp.Eip5656TransitionTimestamp },
+        { "EIP-6780", cp => cp.Eip6780TransitionTimestamp }
+    };
+
+
+    public static Func<ChainParameters, ulong?>? GetHardforkMapping(string hardfork)
+    {
+        return HardforkToEips.TryGetValue(hardfork, out var mapping) ? mapping : null;
+    }
+
+    public ulong? DencunTransitionTimestamp
+    {
+        get
+        {
+            if (AreHardforkTimestampsEqual(
+                "Dencun", "Cancun", "EIP-1153",
+                "EIP-5656", "EIP-6780"))
+            {
+                return Eip4844TransitionTimestamp;
+            }
+
+            return null;
+        }
+        set
+        {
+            Eip4844TransitionTimestamp = value;
+            Eip4788TransitionTimestamp = value;
+            Eip1153TransitionTimestamp = value;
+            Eip5656TransitionTimestamp = value;
+            Eip6780TransitionTimestamp = value;
+        }
+    }
+
+
+    public ulong? CancunTransitionTimestamp
+    {
+        get
+        {
+            if (AreHardforkTimestampsEqual(
+                "Dencun", "Cancun", "EIP-1153",
+                "EIP-5656", "EIP-6780"))
+            {
+                return Eip4844TransitionTimestamp;
+            }
+            return null;
+        }
+        set
+        {
+            Eip4844TransitionTimestamp = value;
+            Eip4788TransitionTimestamp = value;
+            Eip1153TransitionTimestamp = value;
+            Eip5656TransitionTimestamp = value;
+            Eip6780TransitionTimestamp = value;
+        }
+    }
+
+    public bool AreHardforkTimestampsEqual(params string[] hardforks)
+    {
+        if (hardforks.Length == 0) return false;
+        ulong? firstTimestamp = HardforkToEips[hardforks[0]](this);
+        foreach (var hardfork in hardforks)
+        {
+            if (HardforkToEips[hardfork](this) != firstTimestamp)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+
     public long? MaxCodeSize { get; set; }
     public long? MaxCodeSizeTransition { get; set; }
     public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
