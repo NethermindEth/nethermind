@@ -151,7 +151,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
                 for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
-                    ulong fillBlockTime = lastBlockTime + secondsPerSlot ?? 0;
+                    ulong fillBlockTime = lastBlockTime + secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
                         BlockOverrides = new BlockOverride { Number = fillBlockNumber, Time = fillBlockTime },
