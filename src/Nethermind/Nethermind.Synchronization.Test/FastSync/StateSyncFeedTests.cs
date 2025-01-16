@@ -459,11 +459,5 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("END");
         }
-
-        [Test]
-        public void ShouldForceResetPivot_OnRestart()
-        {
-
-        }
     }
 }
