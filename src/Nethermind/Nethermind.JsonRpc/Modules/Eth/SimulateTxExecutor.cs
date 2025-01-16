@@ -48,6 +48,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
                         asLegacy!.EnsureDefaults(_gasCapBudget);
                         _gasCapBudget -= asLegacy.Gas!.Value;
+                        if (_gasCapBudget < 0) _gasCapBudget = 0;
 
                         Transaction tx = callTransactionModel.ToTransaction();
                         tx.ChainId = _blockchainBridge.GetChainId();
