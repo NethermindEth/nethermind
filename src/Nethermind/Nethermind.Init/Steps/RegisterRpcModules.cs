@@ -125,7 +125,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Enode);
 
         ManualPruningTrigger pruningTrigger = new();
-        _api.PruningTrigger.Add(pruningTrigger);
+        _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
 
         AdminRpcModule adminRpcModule = new(
@@ -133,8 +133,7 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            _api.BlockingVerifyTrie!,
-            _api.WorldStateManager.GlobalStateReader,
+            _api.WorldStateManager,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,
