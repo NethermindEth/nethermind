@@ -31,6 +31,10 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.Synchronization.FastBlocks;
+using System.Transactions;
+using Newtonsoft.Json.Schema;
+using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Init.Steps;
 
@@ -172,15 +176,15 @@ public class RegisterRpcModules : IStep
 
         _api.JsonRpcLocalStats = jsonRpcLocalStats;
 
-        SubscriptionFactory subscriptionFactory = new(
-            _api.LogManager,
-            _api.BlockTree,
-            _api.TxPool,
-            _api.ReceiptMonitor,
-            _api.FilterStore,
-            _api.EthSyncingInfo!,
-            _api.SpecProvider,
-            rpcModuleProvider.Serializer);
+        SubscriptionFactory subscriptionFactory = new();
+
+        // Register the standard subscription types in the dictionary
+        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(SubscriptionType.NewHeads, (jsonRpcDuplexClient, args) =>
+            new NewHeadSubscription(jsonRpcDuplexClient, _api.BlockTree, _api.LogManager, _api.SpecProvider, args));
+        subscriptionFactory.RegisterSubscriptionType<Filter?>(SubscriptionType.Logs, (jsonRpcDuplexClient, filter) => new LogsSubscription(jsonRpcDuplexClient, _api.ReceiptMonitor, _api.FilterStore, _api.BlockTree, _api.LogManager, filter));
+        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(SubscriptionType.NewPendingTransactions, (jsonRpcDuplexClient, args) => new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _api.TxPool, _api.SpecProvider, _api.LogManager, args));
+        subscriptionFactory.RegisterSubscriptionType(SubscriptionType.DroppedPendingTransactions, (jsonRpcDuplexClient) => new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _api.TxPool, _api.LogManager));
+        subscriptionFactory.RegisterSubscriptionType(SubscriptionType.Syncing, (jsonRpcDuplexClient) => new SyncingSubscription(jsonRpcDuplexClient, _api.BlockTree, _api.EthSyncingInfo, _api.LogManager));
 
         _api.SubscriptionFactory = subscriptionFactory;
 
