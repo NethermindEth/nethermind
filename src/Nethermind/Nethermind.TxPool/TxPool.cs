@@ -444,14 +444,7 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
-                    if (tx.HasAuthorizationList)
-                    {
-                        foreach (var auth in tx.AuthorizationList)
-                        {
-                            if (auth.Authority is not null)
-                                _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
-                        }
-                    }
+                    AddPendingDelegations(tx);
                     // Clear proper snapshot
                     if (tx.SupportsBlobs)
                         _blobTransactionSnapshot = null;
@@ -461,6 +454,18 @@ namespace Nethermind.TxPool
             }
 
             return accepted;
+        }
+
+        private void AddPendingDelegations(Transaction tx)
+        {
+            if (tx.HasAuthorizationList)
+            {
+                foreach (var auth in tx.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
+                }
+            }
         }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
