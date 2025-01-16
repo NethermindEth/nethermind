@@ -54,9 +54,7 @@ namespace Nethermind.Synchronization.Test
             pruningConfig.Mode = PruningMode.Full;
 
             IContainer container = new ContainerBuilder()
-                .AddModule(new PsudoNethermindModule(new ChainSpec(), configProvider, new TestLogManager()))
-                .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(OldStyleFullSynchronizerTests)))
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance))
+                .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockTree>(_blockTree)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton<ISealValidator>(Always.Valid)
