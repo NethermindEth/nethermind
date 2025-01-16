@@ -263,11 +263,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     if (fork.Name == "Cancun")
                     {
-                        spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionCancun;
+                        spec.BlobBaseFeeUpdateFraction = Cancun.Instance.BlobBaseFeeUpdateFraction;
                     }
                     else if (fork.Name == "Prague")
                     {
-                        spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionPrague;
+                        spec.BlobBaseFeeUpdateFraction = Prague.Instance.BlobBaseFeeUpdateFraction;
                     }
                 }
                 else
@@ -280,7 +280,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 spec.TargetBlobCount = 3;
                 spec.MaxBlobCount = 6;
-                spec.BlobBaseFeeUpdateFraction = Eip4844Constants.BlobGasPriceUpdateFractionCancun;
+                spec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
             }
         }
 

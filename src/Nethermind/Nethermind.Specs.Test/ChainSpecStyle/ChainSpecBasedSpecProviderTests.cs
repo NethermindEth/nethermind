@@ -284,7 +284,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         Assert.Multiple(() =>
         {
-            Assert.That(CancunGnosis.Instance.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
             Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
             Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(131072));
