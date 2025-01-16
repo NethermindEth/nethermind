@@ -30,6 +30,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
@@ -147,7 +148,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
         }
 
         var builder = new ContainerBuilder()
-            .AddModule(new PsudoNethermindModule(configProvider, spec))
+            .AddModule(new PsudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddSingleton<SyncTestContext>()
             ;
 

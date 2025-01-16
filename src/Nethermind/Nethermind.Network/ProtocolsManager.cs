@@ -85,7 +85,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
-            [KeyFilter("PeersDb")] INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,

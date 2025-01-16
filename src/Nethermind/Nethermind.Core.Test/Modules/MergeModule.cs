@@ -64,16 +64,16 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddSingleton<BeaconSync>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
             .AddSingleton<IBeaconPivot, BeaconPivot>()
-            .Bind<IBeaconPivot, IPivot>()
-            .Bind<BeaconSync, IMergeSyncController>()
-            .Bind<BeaconSync, IBeaconSyncStrategy>()
+            .Bind<IPivot, IBeaconPivot>()
+            .Bind<IMergeSyncController, BeaconSync>()
+            .Bind<IBeaconSyncStrategy, BeaconSync>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .AddSingleton<PivotUpdator>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()
-            .AddScoped<IBlockImprovementContextFactory, IBlockProducer>(CreateBlockImprovementContextFactory)
+            .AddScoped<IBlockImprovementContextFactory, IBlockProducer>(blockProducer => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot)))
             .AddDecorator<IBlockProducer>((ctx, currentBlockProducer) =>
             {
                 PostMergeBlockProducer postMerge = ctx.Resolve<PostMergeBlockProducer>();
@@ -83,7 +83,7 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<ISealEngine, SealEngine>()
             .AddSingleton<IPayloadPreparationService>((ctx) =>
             {
-                var blockProducerContext = ctx.Resolve<BlockProcessingModule.BlockProducerContext>().LifetimeScope;
+                var blockProducerContext = ctx.Resolve<BlockProducerContext>().LifetimeScope;
 
                 return new PayloadPreparationService(
                     blockProducerContext.Resolve<PostMergeBlockProducer>(),
@@ -109,11 +109,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             builder
                 .AddSingleton<IBlockImprovementContextFactory>(CreateBoostBlockImprovementContextFactory);
         }
-    }
-
-    IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
-    {
-        return new BlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot));
     }
 
     IBlockImprovementContextFactory CreateBoostBlockImprovementContextFactory(IComponentContext ctx)

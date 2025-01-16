@@ -32,7 +32,7 @@ public class BlocktreeModule: Autofac.Module
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, IDbProvider, ITxPoolConfig>(CreateBlobTxStorage)
             .AddSingleton<IBlockTree, BlockTree>()
-            .Bind<IBlockTree, IBlockFinder>()
+            .Bind<IBlockFinder, IBlockTree>()
             ;
     }
 

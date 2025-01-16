@@ -30,43 +30,41 @@ namespace Nethermind.Core.Test.Modules;
 /// </summary>
 /// <param name="configProvider"></param>
 /// <param name="spec"></param>
-public class PsudoNethermindModule(IConfigProvider configProvider, ChainSpec spec) : Module
+public class PsudoNethermindModule(ChainSpec spec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        base.Load(builder);
-        ConfigureWorldStateManager(builder);
+        ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
 
+        base.Load(builder);
         builder
-            .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddModule(new AppInputModule(spec, configProvider, logManager))
+
+            .AddModule(new SynchronizerModule(syncConfig))
             .AddModule(new NetworkModule())
             .AddModule(new DbModule())
+            .AddModule(new WorldStateModule())
             .AddModule(new BlocktreeModule())
             .AddModule(new BlockProcessingModule())
             .AddSource(new ConfigRegistrationSource())
 
+            // Environments
             .AddSingleton<DisposableStack>()
-            .AddSingleton<IEthereumEcdsa, ISpecProvider>((spec) => new EthereumEcdsa(spec.ChainId))
             .AddSingleton<ITimerFactory, TimerFactory>()
-
-            .AddSingleton<IBackgroundTaskScheduler>((ctx) =>
-            {
-                MainBlockProcessingContext blockProcessingContext = ctx.Resolve<MainBlockProcessingContext>();
-                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-
-                return new BackgroundTaskScheduler(
-                    blockProcessingContext.BlockProcessor,
-                    initConfig.BackgroundTaskConcurrency,
-                    logManager);
-            })
-            .AddSingleton(configProvider)
-            .AddSingleton<ChainSpec>(spec)
-            .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
+                blockProcessingContext.BlockProcessor,
+                initConfig.BackgroundTaskConcurrency,
+                logManager))
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+
+            // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
+            .AddSingleton<IEthereumEcdsa>(new EthereumEcdsa(spec.ChainId))
+            .Bind<IEcdsa, IEthereumEcdsa>()
+            .AddSingleton<IEciesCipher, EciesCipher>()
             ;
 
 
@@ -81,27 +79,19 @@ public class PsudoNethermindModule(IConfigProvider configProvider, ChainSpec spe
         });
     }
 
-    private void ConfigureWorldStateManager(ContainerBuilder builder)
+    // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.
+    private class AppInputModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager): Module
     {
-        builder
-            .AddSingleton<PruningTrieStateFactory>()
-            .AddSingleton<PruningTrieStateFactoryOutput>()
-
-            .Map<PruningTrieStateFactoryOutput, IWorldStateManager>((o) => o.WorldStateManager)
-            .Map<IWorldStateManager, IStateReader>((m) => m.GlobalStateReader)
-            .Map<PruningTrieStateFactoryOutput, INodeStorage>((m) => m.NodeStorage);
-    }
-
-    private class PruningTrieStateFactoryOutput
-    {
-        public IWorldStateManager WorldStateManager { get; }
-        public INodeStorage NodeStorage { get; }
-
-        public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
+        protected override void Load(ContainerBuilder builder)
         {
-            (IWorldStateManager worldStateManager, INodeStorage mainNodeStorage, CompositePruningTrigger _) = factory.Build();
-            WorldStateManager = worldStateManager;
-            NodeStorage = mainNodeStorage;
+            base.Load(builder);
+
+            builder
+                .AddSingleton(configProvider)
+                .AddSingleton<ChainSpec>(chainSpec)
+                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+                ;
         }
     }
 }

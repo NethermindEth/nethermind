@@ -12,6 +12,11 @@ using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Core;
 
+/// <summary>
+/// DSL to make autofac module a lot cleaner.
+/// The template convention is similar to microsoft's IServiceCollection where the TService is the first template argument
+/// which make it easy identify which service the line is declaring.
+/// </summary>
 public static class ContainerBuilderExtensions
 {
     /// <summary>
@@ -319,7 +324,7 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder Map<TFrom, TTo>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull where TTo : notnull
+    public static ContainerBuilder Map<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull where TTo : notnull
     {
         builder.Register(mapper)
             .As<TTo>()
@@ -328,7 +333,7 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder Bind<TFrom, TTo>(this ContainerBuilder builder) where TFrom : TTo where TTo : notnull
+    public static ContainerBuilder Bind<TTo, TFrom>(this ContainerBuilder builder) where TFrom : TTo where TTo : notnull
     {
         builder.Register(static (it) => it.Resolve<TFrom>())
             .As<TTo>()

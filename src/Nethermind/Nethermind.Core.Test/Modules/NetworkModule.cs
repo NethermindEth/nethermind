@@ -45,10 +45,6 @@ public class NetworkModule : Module
             .AddSingleton<ISessionMonitor, SessionMonitor>()
             .AddSingleton<IRlpxHost, RlpxHost>()
             .AddSingleton<IHandshakeService, HandshakeService>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
-
-            .AddSingleton<IEthereumEcdsa, ISpecProvider>(specProvider => new EthereumEcdsa(specProvider.ChainId))
-            .Bind<IEthereumEcdsa, IEcdsa>()
 
             .AddSingleton<IMessageSerializationService, ICryptoRandom, ISpecProvider>((cryptoRandom, specProvider) =>
             {
@@ -72,12 +68,12 @@ public class NetworkModule : Module
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
 
-            .AddKeyedSingleton<INetworkStorage>("PeersDb", (ctx) =>
+            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
             {
                 IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                 ILogManager logManager = ctx.Resolve<ILogManager>();
 
-                string dbName = "PeersDB";
+                string dbName = INetworkStorage.PeerDb;
                 IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                     ? new MemDb(dbName)
                     : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),

@@ -352,7 +352,7 @@ public class InitializeNetwork : IStep
         await _api.StaticNodesManager.InitAsync();
 
         // ToDo: PeersDB is registered outside dbProvider
-        string dbName = "PeersDB";
+        string dbName = INetworkStorage.PeerDb;
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
             ? new MemDb(dbName)
             : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
