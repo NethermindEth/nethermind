@@ -334,16 +334,13 @@ public class InitializeNetwork : IStep
         _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
-            _api.NodeKey.PublicKey,
-            _networkConfig.ProcessingThreadCount,
-            _networkConfig.P2PPort,
-            _networkConfig.LocalIp,
-            _networkConfig.ConnectTimeoutMs,
+            _api.Enode!,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
+            _networkConfig,
             _api.LogManager,
-            TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs)
+            null
         );
 
         await _api.RlpxPeer.Init();
