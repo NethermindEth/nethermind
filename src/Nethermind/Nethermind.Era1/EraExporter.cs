@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
+
 public class EraExporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
