@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal class ContractMetadata
+public class ContractMetadata
 {
     public CodeInfo TargetCodeInfo { get; set; }
     public OpcodeInfo[] Opcodes { get; set; }
@@ -17,7 +17,7 @@ internal class ContractMetadata
     public byte[][] EmbeddedData { get; set; }
 }
 
-internal class SegmentMetadata
+public class SegmentMetadata
 {
     public OpcodeInfo[] Segment { get; set; }
     public Range Boundaries => Segment[0].ProgramCounter..(Segment[^1].ProgramCounter + Segment[^1].Metadata.AdditionalBytes);
@@ -26,7 +26,7 @@ internal class SegmentMetadata
     public int[] Jumpdests { get; set; }
 }
 
-internal class SubSegmentMetadata
+public class SubSegmentMetadata
 {
     public int Start { get; set; }
     public int End { get; set; }

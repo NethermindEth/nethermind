@@ -67,14 +67,6 @@ internal static class FullAOT
 
         LocalBuilder evmState = constructorIL.DeclareLocal(typeof(EvmState));
 
-        LocalBuilder metadataLocal = constructorIL.DeclareLocal(typeof(ContractMetadata));
-
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_1);
-        constructorIL.Emit(OpCodes.Dup);
-        constructorIL.Emit(OpCodes.Stloc, metadataLocal);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_METADATA]);
-
         constructorIL.Emit(OpCodes.Ldarg_0);
         constructorIL.Emit(OpCodes.Ldarg_2);
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_WORLSTATE]);
@@ -84,7 +76,7 @@ internal static class FullAOT
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_SPEC_PROVIDER]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarga_S, 4);
+        constructorIL.Emit(OpCodes.Ldarg_S, 4);
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_BLOCKHASH_PROVIDER]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
@@ -92,15 +84,14 @@ internal static class FullAOT
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_CODEINFO_REPOSITORY]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, metadataLocal);
+        constructorIL.Emit(OpCodes.Ldarg_1);
         constructorIL.Emit(OpCodes.Call, typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.EmbeddedData)).GetMethod);
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_IMMEDIATES_DATA]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldloc, metadataLocal);
+        constructorIL.Emit(OpCodes.Ldarg_1);
         constructorIL.Emit(OpCodes.Call, typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.TargetCodeInfo)).GetMethod);
         constructorIL.Emit(OpCodes.Call, typeof(CodeInfo).GetProperty(nameof(CodeInfo.MachineCode)).GetMethod);
-        constructorIL.Emit(OpCodes.Call, typeof(ReadOnlyMemory<byte>).GetMethod(nameof(ReadOnlyMemory<byte>.ToArray)));
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_MACHINECODE]);
 
         constructorIL.Emit(OpCodes.Ret);
@@ -334,7 +325,9 @@ internal static class FullAOT
         method.MarkLabel(exit);
 
         envLoader.LoadResult(method, locals, true);
-        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ShouldAbort)));
+        method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
+        method.LoadConstant((int)ContractState.Halted);
+        method.CompareEqual();
         method.Return();
 
         // isContinuation

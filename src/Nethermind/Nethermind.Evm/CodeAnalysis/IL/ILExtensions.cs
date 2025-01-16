@@ -75,7 +75,10 @@ public class Locals<T>(Emit<T> method) : IDisposable
     {
         if (AddtionalLocals.ContainsKey(name))
         {
-            method.LoadLocal(AddtionalLocals[name]);
+            if(byAddress)
+                method.LoadLocalAddress(AddtionalLocals[name]);
+            else
+                method.LoadLocal(AddtionalLocals[name]);
             return true;
         }
         return false;

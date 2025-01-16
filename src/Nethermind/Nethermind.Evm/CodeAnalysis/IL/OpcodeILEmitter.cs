@@ -1705,7 +1705,6 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             Label indexTooLarge = method.DefineLabel();
                             Label endOfOpcode = method.DefineLabel();
                             using Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
-
                             envLoader.LoadTxContext(method, locals, true);
                             method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
                             method.StoreLocal(byteMatrix);
@@ -1759,8 +1758,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.StoreLocal(locals.int64A);
 
                             envLoader.LoadBlockhashProvider(method, locals, false);
-                            envLoader.LoadBlockContext(method, locals, true);
-                            method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+                            envLoader.LoadHeader(method, locals, false);
 
                             method.LoadLocalAddress(locals.int64A);
                             method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
