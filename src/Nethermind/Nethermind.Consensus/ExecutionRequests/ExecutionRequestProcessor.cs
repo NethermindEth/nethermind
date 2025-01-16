@@ -123,8 +123,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction,
-            new BlockExecutionContext(block.Header, forceBlobBaseFee: 0), tracer);
+        _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header), tracer);
 
         if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
         {

@@ -27,7 +27,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
     {
         Native4ByteTracer tracer = new Native4ByteTracer(GethTraceOptions.Default);
         (Block block, Transaction transaction) = input is null ? PrepareTx(Activation, 100000, code) : PrepareTx(Activation, 100000, code, input, value);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, block.Header, tracer);
         return tracer.BuildResult();
     }
 
