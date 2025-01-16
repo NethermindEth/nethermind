@@ -103,6 +103,8 @@ public partial class BlockProcessingModule: Autofac.Module
             // Something else entirely. Just some wrapper over things.
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
             .AddSingleton<ProducedBlockSuggester>()
+            .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
+
             ;
     }
 

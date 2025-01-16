@@ -8,6 +8,7 @@ using System.Reflection;
 using Autofac;
 using Autofac.Builder;
 using Autofac.Core;
+using Autofac.Core.Resolving.Pipeline;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Core;
@@ -338,6 +339,43 @@ public static class ContainerBuilderExtensions
         builder.Register(static (it) => it.Resolve<TFrom>())
             .As<TTo>()
             .ExternallyOwned();
+
+        return builder;
+    }
+
+    public static ContainerBuilder OnActivate<TService>(this ContainerBuilder builder, Action<TService, ResolveRequestContext> action) where TService : class
+    {
+        builder
+            .RegisterServiceMiddleware<TService>(PipelinePhase.ServicePipelineEnd, (ctx, act) =>
+            {
+                act(ctx);
+                // At this point, it should has been resolved
+                action(((TService)ctx.Instance!), ctx);
+            });
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Resolve `TResolve` when `TService` is also resolved. Used for when `TResolve` need to do something
+    /// as a side effect, probably with some event to `TService`.
+    /// Note: If `TResolve` depends on `TService` indirectly, there will be a stack overflow. Specify a direct
+    /// `TService` to avoid that.
+    /// </summary>
+    /// <param name="builder"></param>
+    /// <typeparam name="TResolve"></typeparam>
+    /// <typeparam name="TService"></typeparam>
+    /// <returns></returns>
+    public static ContainerBuilder ResolveOnServiceActivation<TResolve, TService>(this ContainerBuilder builder) where TService : class where TResolve : notnull
+    {
+        builder
+            .OnActivate<TService>((service, ctx) =>
+            {
+                ctx.ActivationScope.Resolve<TResolve>(
+                    ctx.Parameters
+                        .Concat([TypedParameter.From((TService)service!)])
+                );
+            });
 
         return builder;
     }

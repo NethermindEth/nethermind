@@ -25,6 +25,8 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -42,6 +44,10 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
             .AddSingleton<IInvalidChainTracker, InvalidChainTracker>()
+            .OnActivate<MainBlockProcessingContext>(((context, componentContext) =>
+            {
+                componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
+            }))
 
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
@@ -69,7 +75,10 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .Bind<IBeaconSyncStrategy, BeaconSync>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
+            .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
+
             .AddSingleton<PivotUpdator>()
+            .ResolveOnServiceActivation<PivotUpdator, ISyncModeSelector>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()
@@ -81,28 +90,24 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
                 return new MergeBlockProducer(currentBlockProducer, postMerge, posSwitcher);
             })
             .AddDecorator<ISealEngine, SealEngine>()
-            .AddSingleton<IPayloadPreparationService>((ctx) =>
+            .AddSingleton<IPayloadPreparationService, BlockProducerContext>((producerContext) =>
             {
-                var blockProducerContext = ctx.Resolve<BlockProducerContext>().LifetimeScope;
-
+                ILifetimeScope ctx = producerContext.LifetimeScope;
                 return new PayloadPreparationService(
-                    blockProducerContext.Resolve<PostMergeBlockProducer>(),
-                    blockProducerContext.Resolve<IBlockImprovementContextFactory>(),
+                    ctx.Resolve<PostMergeBlockProducer>(),
+                    ctx.Resolve<IBlockImprovementContextFactory>(),
                     ctx.Resolve<ITimerFactory>(),
                     ctx.Resolve<ILogManager>(),
                     TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot));
             })
-
             ;
 
         if (txPoolConfig.BlobsSupport.SupportsReorgs())
         {
-            // Need to be resolved at sometime on start... probably.
             builder
-                .AddSingleton<ProcessedTransactionsDbCleaner>();
+                .AddSingleton<ProcessedTransactionsDbCleaner>()
+                .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockFinalizationManager>();
         }
-
-        // TODO: _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
 
         if (!string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
         {

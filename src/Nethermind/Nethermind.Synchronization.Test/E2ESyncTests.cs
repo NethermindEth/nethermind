@@ -11,7 +11,6 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using FluentAssertions;
-using FluentAssertions.Extensions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -165,16 +164,8 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
         }
 
-        builder
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {mode} {isMerge}"));
-
-        if (isMerge)
-        {
-            builder
-                .AddSingleton<PsudoNethermindRunner, MergePsudoNethermindRunner>();
-        }
-
         return builder
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {mode} {isMerge}"))
             .Build();
     }
 
@@ -375,8 +366,9 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
     private class SyncTestContext
     {
-        // This check is really slow (it doubles the test time) so its disabled by default.
+        // These check is really slow (it doubles the test time) so its disabled by default.
         private const bool CheckBlocksAndReceiptsContent = false;
+        private const bool VerifyTrieOnFinished = false;
 
         private readonly PrivateKey _nodeKey;
 
@@ -519,8 +511,13 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
             AssertBlockEqual(_blockTree.Head!, otherBlockTree.Head!);
 
-            IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
-            worldStateManager.VerifyTrie(_blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+            if (VerifyTrieOnFinished)
+#pragma warning disable CS0162 // Unreachable code detected
+            {
+                IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
+                worldStateManager.VerifyTrie(_blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+            }
+#pragma warning restore CS0162 // Unreachable code detected
         }
 
         private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken)

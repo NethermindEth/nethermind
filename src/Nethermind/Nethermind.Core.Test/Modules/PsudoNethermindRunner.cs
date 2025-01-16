@@ -8,9 +8,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core.Events;
-using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
@@ -30,8 +28,6 @@ public class PsudoNethermindRunner(IComponentContext ctx): IAsyncDisposable
 
     public async Task StartBlockProcessing(CancellationToken cancellationToken)
     {
-        ctx.Resolve<ProducedBlockSuggester>(); // Need to be instantiated, or it wont suggest produced block.
-
         _blockProducerRunner ??= ctx.Resolve<IBlockProducerRunner>();
         _blockProducerRunner.Start();
 
@@ -84,17 +80,5 @@ public class PsudoNethermindRunner(IComponentContext ctx): IAsyncDisposable
         await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
         await (_blockProducerRunner?.StopAsync() ?? Task.CompletedTask);
         await (_rlpxHost?.Shutdown() ?? Task.CompletedTask);
-    }
-}
-
-public class MergePsudoNethermindRunner(IComponentContext ctx) : PsudoNethermindRunner(ctx)
-{
-    private readonly IComponentContext _ctx = ctx;
-
-    public override Task StartNetwork(CancellationToken cancellationToken)
-    {
-        _ctx.Resolve<PivotUpdator>();
-
-        return base.StartNetwork(cancellationToken);
     }
 }
