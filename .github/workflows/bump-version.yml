@@ -1,22 +1,22 @@
-name: Bump Version on Release Branch Creation
+name: Bump up version
 
 on:
   create:
-    branches:
-      - 'release/*.*.0'
+    branches: ['release/*.*.0']
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   bump-version:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: master
-          fetch-depth: 0
 
-      - name: Run version bump script
+      - name: Bump up the version
         id: version
         run: |
           chmod +x ./scripts/bump-version.sh
@@ -37,7 +37,7 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Create Pull Request
+      - name: Create pull request
         if: steps.version.outputs.needs_update == 'true'
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
@@ -47,14 +47,9 @@ jobs:
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git checkout -b $head_branch
           git add src/Nethermind/Directory.Build.props
-          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}-unstable"
+          git commit -m "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable"
           git push origin $head_branch
           gh pr create -B master -H $head_branch \
-            -t "Bump version to ${{ steps.version.outputs.new_version }}-unstable" \
-            -b "Automated version bump after creating release branch.
-                - Bumped version from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}-unstable" \
-            -l version-bump
-
-permissions:
-  contents: write
-  pull-requests: write
+            -t "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable" \
+            -b "Automated version bump-up from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}-unstable" \
+            -l "version bump"
