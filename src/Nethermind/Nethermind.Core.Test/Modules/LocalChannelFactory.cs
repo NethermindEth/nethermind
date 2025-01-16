@@ -32,7 +32,7 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
         return new LocalClientChannel(networkGroup, LocalEndpoint);
     }
 
-    private class LocalClientChannel(string networkGroup, IPEndPoint localIPEndpoint): LocalChannel
+    private class LocalClientChannel(string networkGroup, IPEndPoint localIPEndpoint) : LocalChannel
     {
         public override Task ConnectAsync(EndPoint remoteAddress, EndPoint localAddress)
         {
@@ -66,7 +66,7 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
         }
     }
 
-    private class LocalServerChannelInterceptor(string networkGroup): LocalServerChannel
+    private class LocalServerChannelInterceptor(string networkGroup) : LocalServerChannel
     {
         protected override void DoBind(EndPoint localAddress)
         {

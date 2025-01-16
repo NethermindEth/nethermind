@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test.Modules;
 /// Module that set up test environment which should make nethermind works without doing any actual IO.
 /// </summary>
 /// <param name="nodeKey"></param>
-public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup): Module
+public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : Module
 {
     public const string NodeKey = "NodeKey";
 

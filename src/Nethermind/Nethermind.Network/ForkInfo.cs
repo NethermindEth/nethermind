@@ -22,7 +22,7 @@ namespace Nethermind.Network
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
         private readonly bool _hasTimestampFork;
 
-        public ForkInfo(ISpecProvider specProvider, ISyncServer syncServer): this(specProvider, syncServer.Genesis.Hash)
+        public ForkInfo(ISpecProvider specProvider, ISyncServer syncServer) : this(specProvider, syncServer.Genesis.Hash)
         {
         }
 

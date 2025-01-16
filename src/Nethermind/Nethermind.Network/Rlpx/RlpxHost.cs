@@ -67,7 +67,8 @@ namespace Nethermind.Network.Rlpx
             logManager,
             TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs),
             channelFactory
-        ) {}
+        )
+        { }
 
         public RlpxHost(
             IMessageSerializationService serializationService,
@@ -308,8 +309,8 @@ namespace Nethermind.Network.Rlpx
             TimeSpan quietPeriod = TimeSpan.FromMilliseconds(100);
             TimeSpan nettyCloseTimeout = TimeSpan.FromMilliseconds(1000);
             Task closingTask = Task.WhenAll(
-                _bossGroup is not null? _bossGroup.ShutdownGracefullyAsync(quietPeriod, nettyCloseTimeout) : Task.CompletedTask,
-                _workerGroup is not null? _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout) : Task.CompletedTask);
+                _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(quietPeriod, nettyCloseTimeout) : Task.CompletedTask,
+                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout) : Task.CompletedTask);
 
             // below comment may arise from not understanding the quiet period but the resolution is correct
             // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing

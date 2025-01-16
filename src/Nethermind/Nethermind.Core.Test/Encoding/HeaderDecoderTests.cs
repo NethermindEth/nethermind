@@ -214,7 +214,7 @@ public class HeaderDecoderTests
                 .WithWithdrawalsRoot(new Hash256("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"))
                 .WithBlobGasUsed(0)
                 .TestObject;
-            ;
+        ;
 
         Rlp rlp = Rlp.Encode(header);
         _ = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());

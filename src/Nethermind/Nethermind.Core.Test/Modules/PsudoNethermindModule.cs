@@ -79,7 +79,7 @@ public class PsudoNethermindModule(ChainSpec spec, IConfigProvider configProvide
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.
-    private class AppInputModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager): Module
+    private class AppInputModule(ChainSpec chainSpec, IConfigProvider configProvider, ILogManager logManager) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {

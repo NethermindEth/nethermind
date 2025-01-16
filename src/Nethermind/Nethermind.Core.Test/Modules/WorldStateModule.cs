@@ -8,7 +8,7 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class WorldStateModule: Module
+public class WorldStateModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

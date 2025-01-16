@@ -141,17 +141,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 // Um... nothing?
                 break;
             case DbMode.Hash:
-            {
-                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
-                break;
-            }
+                {
+                    IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                    initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
+                    break;
+                }
             case DbMode.NoPruning:
-            {
-                IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
-                pruningConfig.Mode = PruningMode.None;
-                break;
-            }
+                {
+                    IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
+                    pruningConfig.Mode = PruningMode.None;
+                    break;
+                }
         }
 
         var builder = new ContainerBuilder()
@@ -251,7 +251,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         PrivateKey clientKey = TestItem.PrivateKeyC;
         await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
         {
-            SyncConfig syncConfig = (SyncConfig) cfg.GetConfig<ISyncConfig>();
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
 
             IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
@@ -278,7 +278,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         PrivateKey clientKey = TestItem.PrivateKeyD;
         await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
         {
-            SyncConfig syncConfig = (SyncConfig) cfg.GetConfig<ISyncConfig>();
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
             syncConfig.SnapSync = true;
 
@@ -365,7 +365,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IBlockCacheService blockCacheService,
         IMergeSyncController mergeSyncController,
         ITestEnv preMergeTestEnv
-    ): ITestEnv
+    ) : ITestEnv
     {
         public async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
         {

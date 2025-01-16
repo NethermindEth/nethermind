@@ -27,7 +27,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public partial class BlockProcessingModule: Autofac.Module
+public partial class BlockProcessingModule : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -49,7 +49,7 @@ public partial class BlockProcessingModule: Autofac.Module
             {
                 IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-                return new CodeInfoRepository (preBlockCaches?.PrecompileCache);
+                return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {

@@ -76,7 +76,7 @@ public static class ContainerBuilderExtensions
             {
                 MethodInfo factoryMethodInfo = factoryMethod.Method;
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
                     ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
                     : ctx.Resolve<TArg0>();
 
@@ -94,10 +94,10 @@ public static class ContainerBuilderExtensions
             {
                 MethodInfo factoryMethodInfo = factoryMethod.Method;
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
                     ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
                     : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter2
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
                     ? ctx.ResolveKeyed<TArg1>(keyFilter2.Key)
                     : ctx.Resolve<TArg1>();
 
@@ -176,10 +176,10 @@ public static class ContainerBuilderExtensions
             {
                 MethodInfo factoryMethodInfo = factoryMethod.Method;
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter0
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter0
                     ? ctx.ResolveKeyed<TArg0>(keyFilter0.Key)
                     : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter1
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
                     ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
                     : ctx.Resolve<TArg1>();
 
@@ -198,13 +198,13 @@ public static class ContainerBuilderExtensions
             {
                 MethodInfo factoryMethodInfo = factoryMethod.Method;
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter0
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter0
                     ? ctx.ResolveKeyed<TArg0>(keyFilter0.Key)
                     : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter1
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
                     ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
                     : ctx.Resolve<TArg1>();
-                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter2
+                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
                     ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
                     : ctx.Resolve<TArg2>();
 
@@ -223,7 +223,7 @@ public static class ContainerBuilderExtensions
             {
                 MethodInfo factoryMethodInfo = factoryMethod.Method;
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is {} keyFilter
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
                     ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
                     : ctx.Resolve<TArg0>();
 

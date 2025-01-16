@@ -31,7 +31,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, IBlocksConfig blocksConfig): Module
+public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

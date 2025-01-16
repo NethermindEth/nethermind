@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test.Modules;
 /// component later anyway.
 /// </summary>
 /// <param name="configProvider"></param>
-public class TestNethermindModule(IConfigProvider configProvider): Module
+public class TestNethermindModule(IConfigProvider configProvider) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
