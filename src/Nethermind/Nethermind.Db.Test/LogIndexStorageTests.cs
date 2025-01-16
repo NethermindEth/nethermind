@@ -86,9 +86,7 @@ namespace Nethermind.Db.Test
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            using IIterator<byte[], byte[]> iterator = addressDb.GetIterator(true);
-
-            Enumerate(iterator)
+            Enumerate(addressDb)
                 .Select(x => new Address(x.key[..Address.Size])).ToHashSet()
                 .Should().BeEquivalentTo([address1, address2]);
         }
@@ -169,9 +167,7 @@ namespace Nethermind.Db.Test
 
             // Assert
             IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
-            using IIterator<byte[], byte[]> iterator = topicDb.GetIterator(true);
-
-            Enumerate(iterator)
+            Enumerate(topicDb)
                 .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
                 .Should().BeEquivalentTo([topic1, topic2]);
         }
@@ -201,12 +197,9 @@ namespace Nethermind.Db.Test
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
 
-            using IIterator<byte[], byte[]> addressIterator = addressDb.GetIterator(true);
-            using IIterator<byte[], byte[]> topicIterator = topicDb.GetIterator(true);
-
             Enumerable.Concat<object>(
-                    Enumerate(addressIterator).Select(x => new Address(x.key[..Address.Size])).ToHashSet(),
-                    Enumerate(topicIterator).Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
+                    Enumerate(addressDb).Select(x => new Address(x.key[..Address.Size])).ToHashSet(),
+                    Enumerate(topicDb).Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
                 ).ToArray()
                 .Should().BeEquivalentTo(new object[] { address, topic });
         }
@@ -220,54 +213,29 @@ namespace Nethermind.Db.Test
             int blockNumber = 100;
             var receipts = new[]
             {
-        new TxReceipt
-        {
-            Logs = new List<LogEntry>
-            {
-                new(address, [], []),
-                new(Address.Zero, [], [topic])
-            }.ToArray()
-        }
-    };
+                new TxReceipt
+                {
+                    Logs = new List<LogEntry>
+                    {
+                        new(address, [], []),
+                        new(Address.Zero, [], [topic])
+                    }.ToArray()
+                }
+            };
 
             // Act
             await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
 
             // Assert
-            var addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            var topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
+            IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
+            Enumerate(addressDb)
+                .Select(x => new Address(x.key[..Address.Size])).ToHashSet()
+                .Should().BeEquivalentTo([Address.Zero, address]);
 
-            bool foundAddress = false;
-            bool foundTopic = false;
-
-            using (var iterator = addressDb.GetIterator(true))
-            {
-                while (iterator.Valid())
-                {
-                    var key = iterator.Key();
-                    if (key.AsSpan(0, 20).SequenceEqual(address.Bytes))
-                    {
-                        foundAddress = true;
-                    }
-                    iterator.Next();
-                }
-            }
-
-            using (var iterator = topicDb.GetIterator(true))
-            {
-                while (iterator.Valid())
-                {
-                    var key = iterator.Key();
-                    if (key.AsSpan(0, 32).SequenceEqual(topic.Bytes.ToArray()))
-                    {
-                        foundTopic = true;
-                    }
-                    iterator.Next();
-                }
-            }
-
-            foundAddress.Should().BeTrue();
-            foundTopic.Should().BeTrue();
+            IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
+            Enumerate(topicDb)
+                .Select(x => new Hash256(x.key[..Hash256.Size])).ToHashSet()
+                .Should().BeEquivalentTo([topic]);
         }
 
         [Test]
@@ -422,7 +390,7 @@ namespace Nethermind.Db.Test
             }
         }
 
-        private static IEnumerable<(TKey key, TValue value)> Enumerate<TKey, TValue>(IIterator<TKey, TValue> iterator)
+        private static IEnumerable<(byte[] key, byte[] value)> Enumerate(IIterator<byte[], byte[]> iterator)
         {
             iterator.SeekToFirst();
             while (iterator.Valid())
@@ -430,6 +398,12 @@ namespace Nethermind.Db.Test
                 yield return (iterator.Key(), iterator.Value());
                 iterator.Next();
             }
+        }
+
+        private static IEnumerable<(byte[] key, byte[] value)> Enumerate(IDb db)
+        {
+            // TODO: dispose iterator?
+            return Enumerate(db.GetIterator(true));
         }
     }
 }
