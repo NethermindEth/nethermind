@@ -187,6 +187,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         Eip4844Constants.OverrideIfAny(
             chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
+            chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
             chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
 
