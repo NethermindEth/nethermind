@@ -27,7 +27,7 @@ public class EraStep : IStep
             .AddModule(new EraModule())
             .Build();
 
-        _api.DisposeStack.Push((IAsyncDisposable) container);
+        _api.DisposeStack.Push((IAsyncDisposable)container);
         _api.AdminEraService = container.Resolve<IAdminEraService>();
 
         await container.Resolve<EraCliRunner>().Run(cancellationToken);
