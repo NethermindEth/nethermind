@@ -58,7 +58,7 @@ public class PsudoNethermindRunner(IComponentContext ctx): IAsyncDisposable
         await newHeadTask;
     }
 
-    public virtual async Task StartNetwork(CancellationToken cancellationToken)
+    public async Task StartNetwork(CancellationToken cancellationToken)
     {
         // This need the genesis so it need to be resolved after genesis was prepared.
         IBlockTree blockTree = ctx.Resolve<IBlockTree>();

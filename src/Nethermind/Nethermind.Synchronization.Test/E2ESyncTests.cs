@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -148,7 +149,9 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
         var builder = new ContainerBuilder()
             .AddModule(new PsudoNethermindModule(spec, configProvider, new TestLogManager()))
+            .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
+            .AddSingleton<ITestEnv, PreMergeTestEnv>()
             ;
 
         if (isMerge)
@@ -159,7 +162,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
                     configProvider.GetConfig<IMergeConfig>(),
                     configProvider.GetConfig<IBlocksConfig>()
                 ))
-                .AddSingleton<SyncTestContext, PostMergeSyncTestContext>()
+                .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
 
         }
@@ -286,153 +289,166 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
-    private class PostMergeSyncTestContext: SyncTestContext
+    // Post and pre merge have slightly different operation for these.
+    private interface ITestEnv
     {
-        private readonly IPayloadPreparationService _payloadPreparationService;
-        private readonly IMergeSyncController _mergeSyncController;
-        private readonly IBlockCacheService _blockCacheService;
+        Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation);
+        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken);
+        Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken);
+    }
 
-        public PostMergeSyncTestContext(
-            [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
-            IWorldStateManager worldStateManager,
-            ISpecProvider specProvider,
-            IEthereumEcdsa ecdsa,
-            IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
-            MainBlockProcessingContext mainBlockProcessingContext,
-            ITxPool txPool, ManualTimestamper timestamper,
-            IManualBlockProductionTrigger manualBlockProductionTrigger,
-            ISyncModeSelector syncModeSelector,
-            IRlpxHost rlpxHost,
-            PsudoNethermindRunner runner,
-            IPayloadPreparationService payloadPreparationService,
-            IMergeSyncController mergeSyncController,
-            IBlockCacheService blockCacheService
-        ) : base(nodeKey, worldStateManager, specProvider, ecdsa, blockTree, receiptStorage, mainBlockProcessingContext, txPool, timestamper, manualBlockProductionTrigger, syncModeSelector, rlpxHost, runner)
-        {
-            _payloadPreparationService = payloadPreparationService;
-            _mergeSyncController = mergeSyncController;
-            _blockCacheService = blockCacheService;
-        }
-
-        protected override async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
+    private class PreMergeTestEnv(
+        IBlockTree blockTree,
+        ITxPool txPool,
+        ManualTimestamper timestamper,
+        IManualBlockProductionTrigger manualBlockProductionTrigger,
+        ISyncModeSelector syncModeSelector
+    ) : ITestEnv
+    {
+        public virtual async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
         {
             Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
                 cancellation,
-                (h) => _blockTree.BlockAddedToMain += h,
-                (h) => _blockTree.BlockAddedToMain -= h,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
                 (e) => true);
 
-            AcceptTxResult[] txResults = transactions.Select(t => _txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+            AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
                 acceptTxResult.Should().Be(AcceptTxResult.Accepted);
             }
-            _timestamper.Add(TimeSpan.FromSeconds(1));
 
-            string? payloadId = _payloadPreparationService.StartPreparingPayload(_blockTree.Head?.Header!, new PayloadAttributes()
+            timestamper.Add(TimeSpan.FromSeconds(1));
+            await manualBlockProductionTrigger.BuildBlock();
+            await newBlockTask;
+        }
+
+
+        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
+        {
+            await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
+
+            // Wait until head match
+            BlockHeader serverHead = server.Resolve<IBlockTree>().Head?.Header!;
+            if (blockTree.Head?.Number == serverHead?.Number) return;
+            await Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellationToken,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
+                (e) => e.Block.Number == serverHead?.Number);
+        }
+
+        public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
+        {
+            if (modeCheck(syncModeSelector.Current)) return;
+
+            await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
+                h => syncModeSelector.Changed += h,
+                h => syncModeSelector.Changed -= h,
+                (e) => modeCheck(e.Current));
+        }
+    }
+
+    private class PostMergeTestEnv(
+        IBlockTree blockTree,
+        ITxPool txPool,
+        ManualTimestamper timestamper,
+        IPayloadPreparationService payloadPreparationService,
+        IBlockCacheService blockCacheService,
+        IMergeSyncController mergeSyncController,
+        ITestEnv preMergeTestEnv
+    ): ITestEnv
+    {
+        public async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
+        {
+            Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
+                cancellation,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
+                (e) => true);
+
+            AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+            foreach (AcceptTxResult acceptTxResult in txResults)
+            {
+                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+            }
+            timestamper.Add(TimeSpan.FromSeconds(1));
+
+            string? payloadId = payloadPreparationService.StartPreparingPayload(blockTree.Head?.Header!, new PayloadAttributes()
             {
                 PrevRandao = Hash256.Zero,
                 SuggestedFeeRecipient = TestItem.AddressA,
                 Withdrawals = [],
-                Timestamp = (ulong)_timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
+                Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
             payloadId.Should().NotBeNullOrEmpty();
 
-            IBlockProductionContext? blockProductionContext = await _payloadPreparationService.GetPayload(payloadId!);
+            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!);
             blockProductionContext.Should().NotBeNull();
             blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
 
-            _blockTree.SuggestBlock(blockProductionContext.CurrentBestBlock!).Should().Be(AddBlockResult.Added);
+            blockTree.SuggestBlock(blockProductionContext.CurrentBestBlock!).Should().Be(AddBlockResult.Added);
 
             await newBlockTask;
         }
 
-        protected override async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
+        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
         {
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
             Block finalizedBlock = otherBlockTree.FindBlock(otherBlockTree.Head!.Number - 250)!;
             Block headBlock = otherBlockTree.Head!;
-            _blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
-            _blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
-            _blockCacheService.FinalizedHash = finalizedBlock.Hash!;
+            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
+            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
+            blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
-            await WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
-            _mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+            await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
+            mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
 
-            await base.SyncUntilFinished(server, cancellationToken);
+            await preMergeTestEnv.SyncUntilFinished(server, cancellationToken);
+        }
+
+        public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
+        {
+            await preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
         }
     }
 
-    private class SyncTestContext
+    private class SyncTestContext(
+        [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
+        IWorldStateManager worldStateManager,
+        ISpecProvider specProvider,
+        IEthereumEcdsa ecdsa,
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        MainBlockProcessingContext mainBlockProcessingContext,
+        ITestEnv testEnv,
+        IRlpxHost rlpxHost,
+        PsudoNethermindRunner runner,
+        ImmediateDisconnectFailure immediateDisconnectFailure)
     {
         // These check is really slow (it doubles the test time) so its disabled by default.
         private const bool CheckBlocksAndReceiptsContent = false;
         private const bool VerifyTrieOnFinished = false;
 
-        private readonly PrivateKey _nodeKey;
-
-        private readonly IWorldStateManager _worldStateManager;
-        private readonly ISpecProvider _specProvider;
-        private readonly IEthereumEcdsa _ecdsa;
-        protected readonly IBlockTree _blockTree;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly MainBlockProcessingContext _mainBlockProcessingContext;
-        private readonly IRlpxHost _rlpxHost;
-        private readonly ISyncModeSelector _syncModeSelector;
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
-        private readonly ReceiptsMessageSerializer _receiptsMessageSerializer;
-        private readonly PsudoNethermindRunner _runner;
-        protected ITxPool _txPool;
-        protected ManualTimestamper _timestamper;
-        private IManualBlockProductionTrigger _manualBlockProductionTrigger;
-
-        public SyncTestContext(
-            [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
-            IWorldStateManager worldStateManager,
-            ISpecProvider specProvider,
-            IEthereumEcdsa ecdsa,
-            IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
-            MainBlockProcessingContext mainBlockProcessingContext,
-            ITxPool txPool,
-            ManualTimestamper timestamper,
-            IManualBlockProductionTrigger manualBlockProductionTrigger,
-            ISyncModeSelector syncModeSelector,
-            IRlpxHost rlpxHost,
-            PsudoNethermindRunner runner)
-        {
-            _nodeKey = nodeKey;
-            _worldStateManager = worldStateManager;
-            _mainBlockProcessingContext = mainBlockProcessingContext;
-            _txPool = txPool;
-            _manualBlockProductionTrigger = manualBlockProductionTrigger;
-            _timestamper = timestamper;
-            _specProvider = specProvider;
-            _ecdsa = ecdsa;
-            _blockTree = blockTree;
-            _receiptStorage = receiptStorage;
-            _syncModeSelector = syncModeSelector;
-            _rlpxHost = rlpxHost;
-            _runner = runner;
-            _receiptsMessageSerializer = new ReceiptsMessageSerializer(specProvider);
-        }
+        private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
 
         public async Task StartBlockProcessing(CancellationToken cancellationToken)
         {
-            await _runner.StartBlockProcessing(cancellationToken);
+            await runner.StartBlockProcessing(cancellationToken);
         }
 
         public async Task StartNetwork(CancellationToken cancellationToken)
         {
-            await _runner.StartNetwork(cancellationToken);
+            await runner.StartNetwork(cancellationToken);
         }
 
         private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
             Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
-            await _rlpxHost.ConnectAsync(serverNode);
+            await rlpxHost.ConnectAsync(serverNode);
         }
 
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
@@ -440,66 +456,23 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
             // 1 000 000 000
             long gasLimit = 100000;
 
-            Hash256 stateRoot = _blockTree.Head?.StateRoot!;
-            UInt256 currentNonce = _worldStateManager.GlobalStateReader.GetNonce(stateRoot, _nodeKey.Address);
-            IReleaseSpec spec = _specProvider.GetSpec((_blockTree.Head?.Number) + 1 ?? 0, null);
+            Hash256 stateRoot = blockTree.Head?.StateRoot!;
+            UInt256 currentNonce = worldStateManager.GlobalStateReader.GetNonce(stateRoot, nodeKey.Address);
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
                     .WithNonce(currentNonce++)
                     .WithGasLimit(gasLimit)
                     .WithGasPrice(10.GWei())
-                    .SignedAndResolved(_ecdsa, _nodeKey, spec.IsEip155Enabled).TestObject)
+                    .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
 
-            await BuildBlockWithTxs(txs, cancellation);
-        }
-
-        protected virtual async Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation)
-        {
-            Task newBlockTask = Wait.ForEventCondition<BlockReplacementEventArgs>(
-                cancellation,
-                (h) => _blockTree.BlockAddedToMain += h,
-                (h) => _blockTree.BlockAddedToMain -= h,
-                (e) => true);
-
-            AcceptTxResult[] txResults = transactions.Select(t => _txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
-            foreach (AcceptTxResult acceptTxResult in txResults)
-            {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
-            }
-
-            _timestamper.Add(TimeSpan.FromSeconds(1));
-            await _manualBlockProductionTrigger.BuildBlock();
-            await newBlockTask;
-        }
-
-        protected async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
-        {
-            if (modeCheck(_syncModeSelector.Current)) return;
-
-            await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
-                (e) => _syncModeSelector.Changed += e,
-                (e) => _syncModeSelector.Changed += e,
-                (evt) => modeCheck(evt.Current));
-        }
-
-        protected virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
-        {
-            await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
-
-            // Wait until head match
-            BlockHeader serverHead = server.Resolve<IBlockTree>().Head?.Header!;
-            if (_blockTree.Head?.Number == serverHead?.Number) return;
-            await Wait.ForEventCondition<BlockReplacementEventArgs>(
-                cancellationToken,
-                (h) => _blockTree.BlockAddedToMain += h,
-                (h) => _blockTree.BlockAddedToMain -= h,
-                (e) => e.Block.Number == serverHead?.Number);
+            await testEnv.BuildBlockWithTxs(txs, cancellation);
         }
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            IBlockProcessingQueue queue = _mainBlockProcessingContext.BlockProcessingQueue;
+            IBlockProcessingQueue queue = mainBlockProcessingContext.BlockProcessingQueue;
             if (!queue.IsEmpty)
             {
                 await Wait.ForEvent(cancellationToken,
@@ -509,13 +482,13 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
 
-            AssertBlockEqual(_blockTree.Head!, otherBlockTree.Head!);
+            AssertBlockEqual(blockTree.Head!, otherBlockTree.Head!);
 
             if (VerifyTrieOnFinished)
 #pragma warning disable CS0162 // Unreachable code detected
             {
                 IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
-                worldStateManager.VerifyTrie(_blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+                worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
             }
 #pragma warning restore CS0162 // Unreachable code detected
         }
@@ -528,8 +501,8 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
             for (int i = 0; i < otherBlockTree.Head?.Number; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Block clientBlock = _blockTree.FindBlock(i)!;
-                TxReceipt[] clientReceipts = _receiptStorage.Get(clientBlock);
+                Block clientBlock = blockTree.FindBlock(i)!;
+                TxReceipt[] clientReceipts = receiptStorage.Get(clientBlock);
                 clientBlock.Should().NotBeNull();
                 clientReceipts.Should().NotBeNull();
 
@@ -580,12 +553,41 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
         public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken)
         {
-            await _runner.StartNetwork(cancellationToken);
+            await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
+            {
+                await runner.StartNetwork(token);
+                await ConnectTo(server, token);
+                await testEnv.SyncUntilFinished(server, token);
+                await VerifyHeadWith(server, token);
+                await VerifyAllBlocksAndReceipts(server, token);
+            }, cancellationToken);
+        }
+    }
 
-            await ConnectTo(server, cancellationToken);
-            await SyncUntilFinished(server, cancellationToken);
-            await VerifyHeadWith(server, cancellationToken);
-            await VerifyAllBlocksAndReceipts(server, cancellationToken);
+    // For failing test when disconnect is disconnected. Make test fail faster instead of waiting for timeout.
+    private class ImmediateDisconnectFailure : IDisconnectsAnalyzer
+    {
+        private string? DisconnectFailure = null;
+        private CancellationTokenSource _cts = new CancellationTokenSource();
+
+        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
+        {
+            DisconnectFailure = $"{reason.ToString()} {details}";
+            _cts.Cancel();
+        }
+
+        public async Task WatchForDisconnection(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            try
+            {
+                await act(cts.Token);
+                if (DisconnectFailure != null) Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (DisconnectFailure != null) Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+            }
         }
     }
 }
