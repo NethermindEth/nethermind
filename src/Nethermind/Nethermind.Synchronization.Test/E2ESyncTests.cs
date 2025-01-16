@@ -50,11 +50,17 @@ using NUnit.Framework.Internal;
 
 namespace Nethermind.Synchronization.Test;
 
+/// <summary>
+/// End to end sync test.
+/// For each configuration, create a server with some spam transactions.
+/// </summary>
+/// <param name="dbMode"></param>
+/// <param name="isPostMerge"></param>
 [Parallelizable(ParallelScope.Children)]
 [TestFixtureSource(nameof(CreateTestCases))]
-public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
+public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 {
-    public enum NodeMode
+    public enum DbMode
     {
         Default,
         Hash,
@@ -63,21 +69,22 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
     {
-        yield return new TestFixtureParameters(NodeMode.Default, false);
-        yield return new TestFixtureParameters(NodeMode.Hash, false);
-        yield return new TestFixtureParameters(NodeMode.NoPruning, false);
-        yield return new TestFixtureParameters(NodeMode.Default, true);
-        yield return new TestFixtureParameters(NodeMode.Hash, true);
-        yield return new TestFixtureParameters(NodeMode.NoPruning, true);
+        yield return new TestFixtureParameters(DbMode.Default, false);
+        yield return new TestFixtureParameters(DbMode.Hash, false);
+        yield return new TestFixtureParameters(DbMode.NoPruning, false);
+        yield return new TestFixtureParameters(DbMode.Default, true);
+        yield return new TestFixtureParameters(DbMode.Hash, true);
+        yield return new TestFixtureParameters(DbMode.NoPruning, true);
     }
-
-    private int _portNumber = 0;
 
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(10);
     private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private const int ChainLength = 1000;
+    private const int HeadPivotDistance = 500;
 
-    PrivateKey _serverKey = TestItem.PrivateKeyA;
-    IContainer _server = null!;
+    private int _portNumber = 0;
+    private PrivateKey _serverKey = TestItem.PrivateKeyA;
+    private IContainer _server = null!;
 
     private int AllocatePort()
     {
@@ -106,7 +113,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
         // TODO: Need to double check which code part does not pass in timestamp from header.
         spec.Parameters.Eip658Transition = 0;
 
-        if (!isMerge)
+        if (!isPostMerge)
         {
             // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
             spec.Parameters.Eip4895TransitionTimestamp = null;
@@ -128,18 +135,18 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
         configurer.Invoke(configProvider, spec);
 
-        switch (mode)
+        switch (dbMode)
         {
-            case NodeMode.Default:
+            case DbMode.Default:
                 // Um... nothing?
                 break;
-            case NodeMode.Hash:
+            case DbMode.Hash:
             {
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
                 break;
             }
-            case NodeMode.NoPruning:
+            case DbMode.NoPruning:
             {
                 IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
                 pruningConfig.Mode = PruningMode.None;
@@ -154,7 +161,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
             ;
 
-        if (isMerge)
+        if (isPostMerge)
         {
             builder
                 .AddModule(new MergeModule(
@@ -168,7 +175,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
         }
 
         return builder
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {mode} {isMerge}"))
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .Build();
     }
 
@@ -207,7 +214,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
                     .Done)
             .Done;
 
-        for (int i = 0; i < 1000; i++)
+        for (int i = 0; i < ChainLength; i++)
         {
             await serverCtx.BuildBlockWithCode([spam, spam, spam], cancellationToken);
         }
@@ -249,7 +256,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
             IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
             long serverHeadNumber = serverBlockTree.Head!.Number;
-            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - 500)!;
+            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
             syncConfig.PivotHash = pivot.Hash!.ToString();
             syncConfig.PivotNumber = pivot.Number.ToString();
             syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
@@ -264,7 +271,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
     [Test]
     public async Task SnapSync()
     {
-        if (mode == NodeMode.Hash) Assert.Ignore("Hash db does not support snap sync");
+        if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
@@ -277,7 +284,7 @@ public class E2ESyncTests(E2ESyncTests.NodeMode mode, bool isMerge)
 
             IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
             long serverHeadNumber = serverBlockTree.Head!.Number;
-            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - 500)!;
+            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
             syncConfig.PivotHash = pivot.Hash!.ToString();
             syncConfig.PivotNumber = pivot.Number.ToString();
             syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
