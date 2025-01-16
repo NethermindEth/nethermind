@@ -23,7 +23,7 @@ jobs:
         run: |
           chmod +x ./scripts/bump-version.sh
           ./scripts/bump-version.sh "${{ github.ref }}" "src/Nethermind/Directory.Build.props" > version_output.txt
-          
+         
           # Read the output and set step outputs
           while IFS= read -r line; do
             if [[ $line =~ ^(needs_update|current_version|new_version)= ]]; then
