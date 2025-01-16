@@ -18,9 +18,7 @@ public class SetReceiptsStats
     public ExecTimeStats FlushingDbs { get; } = new();
     public AverageStats KeysCount { get; } = new();
     public AverageStats BytesWritten { get; } = new();
-    public long NewDbIndexes;
     public long NewTempIndexes;
-    public long NewTempFromDbIndexes;
 
     public void Combine(SetReceiptsStats other)
     {
@@ -37,8 +35,6 @@ public class SetReceiptsStats
         FlushingDbs.Combine(other.FlushingDbs);
         KeysCount.Combine(other.KeysCount);
         BytesWritten.Combine(other.BytesWritten);
-        NewDbIndexes += other.NewDbIndexes;
         NewTempIndexes += other.NewTempIndexes;
-        NewTempFromDbIndexes += other.NewTempFromDbIndexes;
     }
 }

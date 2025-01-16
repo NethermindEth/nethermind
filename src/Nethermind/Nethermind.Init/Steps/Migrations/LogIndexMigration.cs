@@ -171,7 +171,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average )" +
                     $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
                     $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average )" +
-                    $"\n\t\tNew indexes: {last.NewDbIndexes:N0} DB ( {total.NewDbIndexes:N0} in total ), {last.NewTempIndexes:N0} Temp ( {total.NewTempIndexes:N0} in total ), {last.NewTempFromDbIndexes:N0} DB to Temp ( {total.NewTempFromDbIndexes:N0} in total )" +
+                    $"\n\t\tNew indexes: {last.NewTempIndexes:N0} Temp ( {total.NewTempIndexes:N0} in total )" +
                     $"\n\t\tPages total: {pagesStats.PagesAllocated:N0} allocated, {pagesStats.PagesTaken:N0} taken, {pagesStats.PagesReturned:N0} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending" +
                     $"\n\t\tFiles sizes: {GetFileSize(_tempFileInfo)} Temp, {GetFileSize(_finalFileInfo)} Final"
                 );
