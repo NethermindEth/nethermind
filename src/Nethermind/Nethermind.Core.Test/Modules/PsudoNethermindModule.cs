@@ -35,7 +35,6 @@ public class PsudoNethermindModule(ChainSpec spec, IConfigProvider configProvide
     protected override void Load(ContainerBuilder builder)
     {
         ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
-        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
 
         base.Load(builder);
         builder
@@ -52,7 +51,7 @@ public class PsudoNethermindModule(ChainSpec spec, IConfigProvider configProvide
             // Environments
             .AddSingleton<DisposableStack>()
             .AddSingleton<ITimerFactory, TimerFactory>()
-            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
+            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext, IInitConfig>((blockProcessingContext, initConfig) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
                 initConfig.BackgroundTaskConcurrency,
                 logManager))
