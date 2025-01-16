@@ -37,7 +37,11 @@ namespace Nethermind.Db
         private readonly IDb _topicsDb;
         private readonly ILogger _logger;
         private readonly int _ioParallelism;
+        private const int BlockNumSize = sizeof(int);
         private const int PageSize = 4096;
+        private const int IndexDataMaxCount = 8 - 1;
+        private const int PageDataMaxCount = PageSize / BlockNumSize;
+
 
         private readonly IFilePagesPool _tempPagesPool;
 
@@ -125,14 +129,14 @@ namespace Nethermind.Db
                 {
                     ReadOnlySpan<byte> firstKey = iterator.Key().AsSpan();
 
-                    int currentLowestBlockNumber = BinaryPrimitives.ReadInt32BigEndian(firstKey.Slice(keyPrefix.Length));
+                    int currentLowestBlockNumber = GetBlockNumber(firstKey);
 
                     iterator.Next();
                     int? nextLowestBlockNumber;
                     if (iterator.Valid() && iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
                     {
                         ReadOnlySpan<byte> nextKey = iterator.Key().AsSpan();
-                        nextLowestBlockNumber = BinaryPrimitives.ReadInt32BigEndian(nextKey.Slice(keyPrefix.Length));
+                        nextLowestBlockNumber = GetBlockNumber(nextKey);
                     }
                     else
                     {
@@ -141,7 +145,7 @@ namespace Nethermind.Db
 
                     if (nextLowestBlockNumber > from && currentLowestBlockNumber <= to)
                     {
-                        IndexInfo? indexInfo = DeserializeIndexInfo(firstKey, db.Get(firstKey));
+                        var indexInfo = IndexInfo.Deserialize(firstKey, db.Get(firstKey));
                         SafeFileHandle fileHandle = indexInfo.IsTemp ? _tempPagesPool.FileHandle : _finalFileHandle;
                         ReadOnlySpan<byte> data = LoadData(fileHandle, indexInfo, indexBuffer);
 
@@ -242,14 +246,14 @@ namespace Nethermind.Db
             using IIterator<byte[], byte[]> topicIterator = _topicsDb.GetIterator();
 
             // Total: 9244, finalized - 31
-            (Address, IndexInfo)[] addressData = Enumerate(addressIterator).Select(x => (new Address(SplitDbKey(x.key).key), DeserializeIndexInfo(x.key, x.value))).ToArray();
+            (Address, IndexInfo)[] addressData = Enumerate(addressIterator).Select(x => (new Address(SplitDbKey(x.key).key), IndexInfo.Deserialize(x.key, x.value))).ToArray();
 
             // Total: 5_654_366
             // From first 200_000: 1 - 134_083 (0.670415), 2 - 10_486, 3 - 33_551, 4 - 4872, 5 - 4227, 6 - 4764, 7 - 6792, 8 - 609, 9 - 67, 10 - 55
             // From first 300_000: 1 - 228_553 (0.761843333)
             // From first 1_000_000: 1 - 875_216 (0.875216)
             //var topicData = Enumerate(topicIterator).Select(x => (new Hash256(SplitDbKey(x.key).key), DeserializeIndexInfo(x.key, x.value))).ToArray();
-            var topicData = Enumerate(topicIterator).Take(200_000).Select(x => (topic: new Hash256(SplitDbKey(x.key).key), Index: DeserializeIndexInfo(x.key, x.value))).GroupBy(x => x.Index.Length).ToDictionary(g => g.Key, g => g.Count());
+            var topicData = Enumerate(topicIterator).Take(200_000).Select(x => (topic: new Hash256(SplitDbKey(x.key).key), Index: IndexInfo.Deserialize(x.key, x.value))).GroupBy(x => x.Index.TotalValuesCount).ToDictionary(g => g.Key, g => g.Count());
 
             GC.KeepAlive(addressData);
             GC.KeepAlive(topicData);
@@ -307,7 +311,7 @@ namespace Nethermind.Db
 
         private void SaveBlockNumbersByKey(byte[] key, IReadOnlyList<int> blockNums, SetReceiptsStats stats, ChannelWriter<IndexInfo> finalizeQueue)
         {
-            byte[]? bytesBuffer = null;
+            byte[]? writeBuffer = null;
 
             try
             {
@@ -323,52 +327,49 @@ namespace Nethermind.Db
                 if (indexInfo != null && blockNums[^1] <= indexInfo.LastBlockNumber)
                     return;
 
-                indexInfo = indexInfo?.Type switch
-                {
-                    IndexType.DB => CreateTempIndex(indexInfo, stats),
-                    IndexType.Temp => indexInfo,
-                    _ => CreateTempIndex(key, blockNums, stats)
-                };
+                if (indexInfo?.Type != IndexType.Temp)
+                    indexInfo = null;
 
-                bytesBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
-                Span<byte> bytes = Span<byte>.Empty;
-
-                if (indexInfo.Type == IndexType.DB)
-                {
-                    indexInfo.LastBlockNumber = blockNums[^1];
-                    SaveIndex(db, indexInfo);
-                    return;
-                }
+                int writeCount = 0;
+                writeBuffer = ArrayPool<byte>.Shared.Rent(IndexDataMaxCount * BlockNumSize);
 
                 foreach (var blockNum in blockNums)
                 {
                     indexInfo ??= CreateTempIndex(key, stats);
 
-                    if (blockNum <= indexInfo.LastBlockNumber)
+                    if (indexInfo.LastBlockNumber is {} lastIndexNum && blockNum <= lastIndexNum)
                         continue;
 
-                    bytes = bytesBuffer.AsSpan(0, bytes.Length + sizeof(int));
-                    BinaryPrimitives.WriteInt32LittleEndian(bytes[^sizeof(int)..], blockNum);
+                    BinaryPrimitives.WriteInt32LittleEndian(writeBuffer.AsSpan(writeCount * BlockNumSize), blockNum);
+                    writeCount += 1;
 
-                    if (indexInfo.ByteLengthRemaining == bytes.Length)
+                    if (indexInfo.TotalValuesCount + writeCount == PageDataMaxCount)
                     {
-                        WriteBytes(indexInfo, bytes, stats);
-                        bytes = Span<byte>.Empty;
+                        indexInfo.AddData(writeBuffer.AsSpan(..(writeCount * BlockNumSize)));
+                        writeCount = 0;
 
                         finalizeQueue.TryWrite(indexInfo);
                         indexInfo = null;
                     }
+
+                    else if (indexInfo.DataValuesCount + writeCount > IndexDataMaxCount)
+                    {
+                        indexInfo.AddData(writeBuffer.AsSpan(..(writeCount * BlockNumSize)));
+                        writeCount = 0;
+
+                        StoreIndexData(indexInfo, stats);
+                    }
                 }
 
-                if (indexInfo != null && bytes.Length != 0)
-                {
-                    WriteBytes(indexInfo, bytes, stats);
+                if (writeBuffer is { Length: > 0 } && indexInfo != null)
+                    indexInfo.AddData(writeBuffer.AsSpan(..(writeCount * BlockNumSize)));
+
+                if (indexInfo != null)
                     SaveIndex(db, indexInfo);
-                }
             }
             finally
             {
-                if (bytesBuffer != null) ArrayPool<byte>.Shared.Return(bytesBuffer);
+                if (writeBuffer != null) ArrayPool<byte>.Shared.Return(writeBuffer);
             }
         }
 
@@ -392,6 +393,9 @@ namespace Nethermind.Db
                     if (indexInfo.Type != IndexType.Temp)
                         throw ValidationException("Non-temp index should not be finalized.");
 
+                    var blockNumber = indexInfo.GetLowestBlockNumber(TempFileHandle, blockNumberBytes)
+                        ?? throw ValidationException("Attempt to finalize index without starting block.");
+
                     ReadOnlySpan<byte> data = LoadData(TempFileHandle, indexInfo, dataBuffer);
                     ReadOnlySpan<byte> compressed = Compress(data, compressBuffer);
                     long offset = Append(_finalFileStream, compressed);
@@ -410,11 +414,15 @@ namespace Nethermind.Db
                         var size => throw ValidationException($"Unexpected index size of {size} bytes.")
                     };
 
-                    CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(TempFileHandle, blockNumberBytes), dbKey);
-                    db.PutSpan(dbKey, SerializeIndexInfo(IndexType.Final, offset, compressed.Length, indexInfo.LastBlockNumber), WriteFlags.DisableWAL);
+                    CreateDbKey(indexInfo.Key, blockNumber, dbKey);
+                    var finalIndexData = IndexInfo.Serialize(IndexType.Final, new FileRef(offset, compressed.Length), indexInfo.LastBlockNumber, []);
+                    db.PutSpan(dbKey, finalIndexData, WriteFlags.DisableWAL);
 
-                    // TODO: improve awaiting
-                    _tempPagesPool.ReturnPageAsync(indexInfo.Offset).Wait();
+                    if (indexInfo.File is { } fileRef)
+                    {
+                        // TODO: improve awaiting
+                        _tempPagesPool.ReturnPageAsync(fileRef.Offset).Wait();
+                    }
                 }
 
                 await _finalFileStream.FlushAsync(cancellationToken);
@@ -427,77 +435,59 @@ namespace Nethermind.Db
             }
         }
 
-        private void WriteBytes(IndexInfo indexInfo, Span<byte> bytes, SetReceiptsStats stats)
+        private void StoreIndexData(IndexInfo indexInfo, SetReceiptsStats stats)
         {
-            if (indexInfo.Type != IndexType.Temp)
-                throw ValidationException("Non-temp index should not be written to.");
+            if (indexInfo.Type == IndexType.Final)
+                throw ValidationException("Attempt to add data to finalized index.");
 
-            if (indexInfo.ByteLengthRemaining < bytes.Length)
-                throw ValidationException($"Index has less bytes remaining ({indexInfo.ByteLengthRemaining}) than attempted to store ({bytes.Length}).");
+            if (indexInfo.TotalValuesCount > PageDataMaxCount)
+                throw ValidationException($"Attempt to write more blocks that page can fit ({indexInfo.TotalValuesCount}).");
 
-            if (bytes.Length == 0 || bytes.Length % sizeof(int) != 0)
-                throw ValidationException($"Invalid bytes length ({bytes.Length}).");
+            if (indexInfo.DataValuesCount == 0)
+                throw ValidationException("Attempt to write index without data.");
 
-            long position = indexInfo.Position!.Value;
-            RandomAccess.Write(TempFileHandle, bytes, position);
-            indexInfo.Length += bytes.Length / sizeof(int);
-            indexInfo.LastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(bytes[^sizeof(int)..]);
+            // Allocate file page if needed
+            if (indexInfo.File is not {} oldFileRef)
+            {
+                // TODO: improve awaiting
+                long freePage = _tempPagesPool.TakePageAsync().WaitResult();
+                indexInfo.File = oldFileRef = new(freePage);
+            }
+
+            var bytes = indexInfo.Data;
+            RandomAccess.Write(TempFileHandle, bytes, oldFileRef.Position);
+            indexInfo.File = new FileRef(oldFileRef, bytes.Length);
+            indexInfo.ClearData();
 
             stats.BytesWritten.Include(bytes.Length);
         }
 
         private void SaveIndex(IDb db, IndexInfo indexInfo)
         {
+            if (indexInfo.LastBlockNumber < indexInfo.TotalValuesCount - 1)
+                throw ValidationException("Index last block number is too small.");
+
             Span<byte> blockNumberBytes = stackalloc byte[sizeof(int)];
             Span<byte> dbKey = stackalloc byte[indexInfo.Key.Length + sizeof(int)];
-            CreateDbKey(indexInfo.Key, indexInfo.LowestBlockNumber(TempFileHandle, blockNumberBytes), dbKey);
-            db.PutSpan(dbKey, SerializeIndexInfo(indexInfo), WriteFlags.DisableWAL);
-        }
 
-        private static IndexInfo CreateDbIndex(byte[] keyPrefix, SetReceiptsStats stats)
-        {
-            Interlocked.Increment(ref stats.NewDbIndexes);
-            return IndexInfo.NewDb(keyPrefix, -1);
+            var blockNumber = indexInfo.GetLowestBlockNumber(TempFileHandle, blockNumberBytes)
+                ?? throw ValidationException("Attempt to save index without starting block.");
+
+            CreateDbKey(indexInfo.Key, blockNumber, dbKey);
+            db.PutSpan(dbKey, indexInfo.Serialize(), WriteFlags.DisableWAL);
         }
 
         private IndexInfo CreateTempIndex(byte[] keyPrefix, SetReceiptsStats stats)
         {
-            // TODO: improve awaiting
-            long freePage = _tempPagesPool.TakePageAsync().WaitResult();
-
             // TODO: Save index offset to DB immediately after obtaining the page
             Interlocked.Increment(ref stats.NewTempIndexes);
-            return IndexInfo.NewTemp(keyPrefix, freePage, 0, -1);
-        }
-
-        private IndexInfo CreateTempIndex(IndexInfo oldIndex, SetReceiptsStats stats)
-        {
-            if (oldIndex.Type != IndexType.DB || oldIndex.LastBlockNumber < 0)
-                throw ValidationException($"Attempt to create a temp index from an unsuitable existing index.");
-
-            // TODO: improve awaiting
-            long freePage = _tempPagesPool.TakePageAsync().WaitResult();
-
-            Span<byte> oldIndexData = stackalloc byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(oldIndexData, oldIndex.LastBlockNumber);
-            RandomAccess.Write(_tempPagesPool.FileHandle, oldIndexData, freePage);
-
-            // TODO: Save index offset to DB immediately after obtaining the page
-            Interlocked.Increment(ref stats.NewTempFromDbIndexes);
-            return IndexInfo.NewTemp(oldIndex, freePage);
-        }
-
-        private IndexInfo CreateTempIndex(byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
-        {
-            return forBlockNums.Count == 1
-                ? CreateDbIndex(keyPrefix, stats)
-                : CreateTempIndex(keyPrefix, stats);
+            return IndexInfo.Temp(keyPrefix);
         }
 
         private IndexInfo? GetIndex(IDb db, byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
         {
             var firstBlockNum = forBlockNums[0];
-            var dbKey = new byte[keyPrefix.Length + sizeof(int)];
+            var dbKey = new byte[keyPrefix.Length + BlockNumSize];
 
             // TODO: check if Seek and a few Next (or using reversed data order) will make use of prefix seek
             byte[] dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (as size is not guaranteed)
@@ -529,7 +519,7 @@ namespace Nethermind.Db
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             {
                 stats.SeekForPrevHit.Include(watch.Elapsed);
-                return DeserializeIndexInfo(iterator.Key(), iterator.Value());
+                return IndexInfo.Deserialize(iterator.Key(), iterator.Value());
             }
             else
             {
@@ -540,31 +530,53 @@ namespace Nethermind.Db
         }
 
         /// <summary>
-        /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="buffer"/>
+        /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="dbKey"/>
         /// </summary>
-        private static void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
+        private static void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
         {
-            key.CopyTo(buffer);
-            BinaryPrimitives.WriteInt32BigEndian(buffer[key.Length..], blockNumber);
+            key.CopyTo(dbKey);
+            SetBlockNumber(dbKey, blockNumber);
         }
 
         private static (byte[] key, int blockNumber) SplitDbKey(ReadOnlySpan<byte> dbKey) =>
         (
-            dbKey[..^sizeof(int)].ToArray(),
-            BinaryPrimitives.ReadInt32BigEndian(dbKey[^sizeof(int)..])
+            dbKey[..^BlockNumSize].ToArray(),
+            GetBlockNumber(dbKey)
         );
+
+        // RocksDB uses big-endian (lexicographic) ordering
+        private static int GetBlockNumber(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
+        private static void SetBlockNumber(Span<byte> dbKey, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKey[^BlockNumSize..], blockNumber);
+
+        private static byte[] Combine(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+        {
+            var result = new byte[first.Length + second.Length];
+            first.CopyTo(result.AsSpan());
+            second.CopyTo(result.AsSpan(first.Length..));
+            return result;
+        }
 
         private static ReadOnlySpan<byte> LoadData(SafeFileHandle fileHandle, IndexInfo indexInfo, Span<byte> buffer)
         {
-            if (indexInfo.Type == IndexType.DB)
+            var length = 0;
+
+            if (indexInfo.File is { } fileRef)
             {
-                BinaryPrimitives.WriteInt32LittleEndian(buffer, indexInfo.LastBlockNumber);
-                return buffer[..sizeof(int)];
+                var fileLength = indexInfo.FileByteLength;
+                RandomAccess.Read(fileHandle, buffer[..fileLength], fileRef.Offset);
+                length += fileLength;
             }
 
-            int count = indexInfo.ByteLength;
-            RandomAccess.Read(fileHandle, buffer[..count], indexInfo.Offset);
-            return buffer[..count];
+            if (indexInfo.Data is { Length: > 0 } data)
+            {
+                data.AsSpan().CopyTo(buffer[length..]);
+                length += data.Length;
+            }
+
+            if (length > PageSize)
+                throw ValidationException($"Invalid size of loaded data ({length}).");
+
+            return buffer[..length];
         }
 
         private static int BinarySearch(ReadOnlySpan<int> blocks, int from)
@@ -610,141 +622,209 @@ namespace Nethermind.Db
             return offset;
         }
 
-        private byte[] SerializeIndexInfo(IndexInfo index)
-        {
-            if (index.Type == IndexType.DB)
-                return [];
-
-            return SerializeIndexInfo(index.Type, index.Offset, index.Length, index.LastBlockNumber);
-        }
-
-        private byte[] SerializeIndexInfo(IndexType type, long offset, int length, int lastBlockNumber)
-        {
-            if (length > PageSize / (type == IndexType.Final ? 1 : sizeof(int)))
-                throw ValidationException($"Invalid {type} index length ({length}).");
-
-            byte[] data = new byte[
-                1 +
-                sizeof(long) +
-                sizeof(int) +
-                sizeof(int)
-            ]; // TODO: use Array pool
-
-            var valIndex = 0;
-            Span<byte> span = data.AsSpan();
-
-            data[0] = (byte)type;
-            BinaryPrimitives.WriteInt64BigEndian(span[(valIndex += 1)..], offset);
-            BinaryPrimitives.WriteInt32BigEndian(span[(valIndex += sizeof(long))..], length);
-            BinaryPrimitives.WriteInt32BigEndian(span[(valIndex += sizeof(int))..], lastBlockNumber);
-
-            if(EnableStateChecks)
-            {
-                IndexInfo deserialized = DeserializeIndexInfo(new byte[Address.Size + sizeof(int)], data);
-                if (deserialized.Type != type || deserialized.Offset != offset ||
-                    deserialized.Length != length || deserialized.LastBlockNumber != lastBlockNumber)
-                {
-                    throw ValidationException("Invalid index serialization/deserialization.");
-                }
-            }
-
-            return data;
-        }
-
-        private IndexInfo DeserializeIndexInfo(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> data)
-        {
-            var (key, blockNumber) = SplitDbKey(dbKey);
-
-            if (data.Length == 0)
-                return IndexInfo.NewDb(key, blockNumber);
-
-            var valIndex = 0;
-
-            IndexInfo result = new(
-                key,
-                type: (IndexType)data[0],
-                offset: BinaryPrimitives.ReadInt64BigEndian(data[(valIndex += 1)..]),
-                length: BinaryPrimitives.ReadInt32BigEndian(data[(valIndex += sizeof(long))..]),
-                lastBlockNumber: BinaryPrimitives.ReadInt32BigEndian(data[(valIndex += sizeof(int))..])
-            );
-
-            if (!Enum.IsDefined(result.Type) ||
-                result.ByteLength > PageSize ||
-                result.LastBlockNumber < 0 ||
-                result.Offset < 0 ||
-                (result.Type != IndexType.Final && result.LengthRemaining <= 0))
-            {
-                throw ValidationException("Invalid deserialized index.");
-            }
-
-            return result;
-        }
-
         // used for data validation, TODO: remove, replace with tests
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
-        private enum IndexType : byte
+        internal enum IndexType : byte
         {
-            DB = 0,
             Temp = 1,
             Final = 2
         }
 
-        // TODO: make ref struct?
-        private class IndexInfo
+        internal readonly struct FileRef(long offset, int length = 0)
         {
-            public byte[] Key { get; private init; }
-            public IndexType Type { get; private init; }
-            public bool IsTemp => Type != IndexType.Final;
-            public long Offset { get; private init; }
+            public static int Size => sizeof(long) + sizeof(int);
 
-            public int Length { get; set; }
-            public int LastBlockNumber { get; set; }
+            public long Offset { get; } = offset;
+            public int Length { get; } = length; // in bytes
+            public long Position => Offset + Length;
 
-            public int ByteLength => Type != IndexType.Final ? Length * sizeof(int) : Length;
-            public long? Position => Type != IndexType.DB ? Offset + ByteLength : -1;
+            public FileRef(FileRef prev, int length) : this(prev.Offset, prev.Length + length) { }
 
-            public int LengthRemaining => Type switch
+            public void Serialize(Span<byte> buffer)
             {
-                IndexType.DB => LastBlockNumber < 0 ? 1 : 0,
-                IndexType.Temp => PageSize / sizeof(int) - Length,
-                _ => 0
-            };
+                BinaryPrimitives.WriteInt64LittleEndian(buffer, Offset);
+                BinaryPrimitives.WriteInt32LittleEndian(buffer[sizeof(long)..], Length);
+            }
 
-            public int ByteLengthRemaining => IsTemp ? LengthRemaining * sizeof(int) : 0;
+            public static FileRef Deserialize(ReadOnlySpan<byte> data) => new(
+                BinaryPrimitives.ReadInt64LittleEndian(data),
+                BinaryPrimitives.ReadInt32LittleEndian(data[sizeof(long)..])
+            );
+        }
 
-            public IndexInfo(byte[] key, IndexType type, long offset, int length, int lastBlockNumber)
+        // TODO: make ref struct or make different implementations depending on Type
+        internal class IndexInfo
+        {
+            public byte[] Key { get; }
+            public IndexType Type { get; }
+            public FileRef? File { get; set; }
+            public int? LastBlockNumber { get; private set; }
+            public byte[] Data { get; private set; }
+            public bool IsTemp => Type == IndexType.Temp;
+
+            public int FileByteLength => File?.Length ?? 0;
+
+            public int FileValuesCount
+            {
+                get
+                {
+                    if (Type == IndexType.Final) return PageSize / BlockNumSize;
+                    return FileByteLength / BlockNumSize;
+                }
+            }
+
+            public int DataValuesCount => Data.Length / BlockNumSize;
+
+            public int TotalValuesCount => FileValuesCount + DataValuesCount;
+
+            private IndexInfo(byte[] key, IndexType type, FileRef? fileRef, int? lastBlockNumber, byte[] data)
             {
                 Key = key;
                 Type = type;
-                Offset = offset;
-                Length = length;
+                File = fileRef;
                 LastBlockNumber = lastBlockNumber;
+                Data = data;
             }
 
-            public static IndexInfo NewDb(byte[] key, int lastBlockNumber) =>
-                new(key, IndexType.DB, -1, 0, lastBlockNumber);
+            /// <summary>
+            /// Index with a single value stored to DB and nothing saved to a file.
+            /// </summary>
+            public static IndexInfo Temp(byte[] key, int lastBlockNumber) =>
+                new(key, IndexType.Temp, null, lastBlockNumber, lastBlockNumber.ToLittleEndianByteArray());
 
-            public static IndexInfo NewTemp(byte[] key, long offset, int length, int lastBlockNumber) =>
-                new(key, IndexType.Temp, offset, length, lastBlockNumber);
+            /// <summary>
+            /// New index with no blocks added yet.
+            /// </summary>
+            public static IndexInfo Temp(byte[] key) =>
+                new(key, IndexType.Temp, null, null, []);
 
-            public static IndexInfo NewTemp(IndexInfo oldIndex, long offset) =>
-                new(oldIndex.Key, IndexType.Temp, offset, 1, oldIndex.LastBlockNumber);
+            private int? _lowestBlockNumber;
 
-            private int _lowestBlockNumber = -1;
-
-            public int LowestBlockNumber(SafeFileHandle fileHandle, Span<byte> buffer)
+            public int? GetLowestBlockNumber(SafeFileHandle fileHandle, Span<byte> buffer)
             {
-                if (Type == IndexType.DB)
+                if (TotalValuesCount <= 1)
                     return LastBlockNumber;
 
-                if (_lowestBlockNumber < 0)
+                if (File is not {} fileRef)
+                    return Data.Length > 0 ? BinaryPrimitives.ReadInt32LittleEndian(Data) : null;
+
+                if (_lowestBlockNumber == null)
                 {
-                    RandomAccess.Read(fileHandle, buffer[..4], Offset);
+                    RandomAccess.Read(fileHandle, buffer[..4], fileRef.Offset);
                     _lowestBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(buffer);
                 }
 
                 return _lowestBlockNumber;
+            }
+
+            public void AddData(Span<byte> data)
+            {
+                if (data.Length == 0)
+                    return;
+
+                Data = Data.Length == 0 ? data.ToArray() : Combine(Data, data);
+                LastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(Data.AsSpan(^BlockNumSize..));
+            }
+
+            public void ClearData()
+            {
+                Data = [];
+            }
+
+            // TODO: use protobuf?
+            public static byte[] Serialize(IndexType type, FileRef? fileRef, int? lastBlockNumber, byte[] data)
+            {
+                if (type == IndexType.Temp && !fileRef.HasValue && data.Length == BlockNumSize)
+                    return []; // Minimize size for indexes pointing to a single value
+
+                if (data.Length % BlockNumSize != 0 || data.Length / BlockNumSize > IndexDataMaxCount)
+                    throw ValidationException($"Invalid {type} index length ({data.Length}).");
+
+                byte[] result = new byte[
+                    1 + // Type
+                    1 + // FileRef nullability
+                    (fileRef != null ? FileRef.Size : 0) + // FileRef
+                    sizeof(int) + // LastBlockNumber
+                    data.Length // Data
+                ]; // TODO: use Array pool
+
+                var valIndex = 0;
+                var span = result.AsSpan();
+
+                // Type
+                result[valIndex++] = (byte)type;
+
+                // FileRef
+                span[valIndex++] = (byte)(fileRef != null ? 1 : 0);
+                if (fileRef.HasValue)
+                {
+                    fileRef.Value.Serialize(span[valIndex..]);
+                    valIndex += FileRef.Size;
+                }
+
+                // LastBlockNumber
+                BinaryPrimitives.WriteInt32LittleEndian(
+                    span[valIndex..],
+                    lastBlockNumber ?? -1
+                );
+                valIndex += sizeof(int);
+
+                // Data
+                data.CopyTo(result.AsSpan(valIndex..));
+
+                if(EnableStateChecks)
+                {
+                    IndexInfo deserialized = Deserialize(new byte[Address.Size + sizeof(int)], result);
+                    if (deserialized.Type != type || !Equals(deserialized.File, fileRef) ||
+                        deserialized.LastBlockNumber != lastBlockNumber || !deserialized.Data.SequenceEqual(data))
+                        throw ValidationException("Invalid index serialization/deserialization.");
+                }
+
+                return result;
+            }
+
+            public byte[] Serialize() => Serialize(Type, File, LastBlockNumber, Data);
+
+            public static IndexInfo Deserialize(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> bytes)
+            {
+                var (key, blockNumber) = SplitDbKey(dbKey);
+
+                if (bytes.Length == 0)
+                    return Temp(key, blockNumber);
+
+                var valIndex = 0;
+
+                // Type
+                var type = (IndexType)bytes[valIndex++];
+
+                // FileRef
+                FileRef? fileRef = null;
+                var hasFileRef = bytes[valIndex++] == 1;
+                if (hasFileRef)
+                {
+                    fileRef = FileRef.Deserialize(bytes[valIndex..]);
+                    valIndex += FileRef.Size;
+                }
+
+                // LastBlockNumber
+                int? lastBlockNumber = BinaryPrimitives.ReadInt32LittleEndian(bytes[valIndex..]) is var num && num != -1 ? num : null;
+                valIndex += sizeof(int);
+
+                // Data
+                var data = bytes[valIndex..].ToArray();
+
+                IndexInfo result = new(key, type, fileRef, lastBlockNumber, data);
+
+                if (!Enum.IsDefined(result.Type) ||
+                    result.FileByteLength > PageSize ||
+                    result.LastBlockNumber < 0 ||
+                    (result.IsTemp && result.FileByteLength > PageSize))
+                {
+                    throw ValidationException("Invalid deserialized index.");
+                }
+
+                return result;
             }
         }
     }
