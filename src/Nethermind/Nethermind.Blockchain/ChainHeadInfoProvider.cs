@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

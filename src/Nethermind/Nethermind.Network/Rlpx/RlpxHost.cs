@@ -222,7 +222,6 @@ namespace Nethermind.Network.Rlpx
 
                 _ = connectTask.ContinueWith(async c =>
                 {
-                    Console.Error.WriteLine($"Thee err could be {c.Exception}");
                     if (connectTask.IsCompletedSuccessfully)
                     {
                         await c.Result.DisconnectAsync();
@@ -235,7 +234,6 @@ namespace Nethermind.Network.Rlpx
             delayCancellation.Cancel();
             if (connectTask.IsFaulted)
             {
-                Console.Error.WriteLine($"Got err {connectTask.Exception}");
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");

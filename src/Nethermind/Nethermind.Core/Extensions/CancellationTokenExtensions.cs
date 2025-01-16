@@ -47,10 +47,8 @@ namespace Nethermind.Core.Extensions
         }
 
         /// <summary>
-        /// Converts <see cref="CancellationToken"/> to a awaitable <see cref="Task"/> when token is cancelled.
+        /// DSL for `CancelAfter`.
         /// </summary>
-        /// <param name="token"></param>
-        /// <returns></returns>
         public static CancellationTokenSource ThatCancelAfter(this CancellationTokenSource cts, TimeSpan delay)
         {
             cts.CancelAfter(delay);
