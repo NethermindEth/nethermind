@@ -22,7 +22,7 @@ public class Eip4844Constants
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
-    public static UInt256 DefaultBlobGasPriceUpdateFraction{ get; private set; } = 3338477;
+    public static UInt256 DefaultBlobGasPriceUpdateFraction { get; private set; } = 3338477;
 
     /// <summary>
     /// Gets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei.
