@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
@@ -30,7 +29,6 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
-using Nethermind.Synchronization.FastBlocks;
 
 namespace Nethermind.Init.Steps;
 
