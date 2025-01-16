@@ -54,9 +54,10 @@ internal sealed class DelegationCache
     private static UInt256 KeyMask(AddressAsKey key, UInt256 nonce)
     {
         //A nonce cannot exceed 2^64-1 and an address is 20 bytes, so we can pack them together in one u256
-        UInt256 addressPlusNonce = new(key.Value.Bytes);
-        nonce <<= 64 * 3;
-        addressPlusNonce += nonce;
-        return addressPlusNonce;
+        ref byte baseRef = ref key.Value.Bytes[0];
+        return new UInt256(Unsafe.ReadUnaligned<ulong>(ref baseRef),
+          Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref baseRef, 8)),
+          Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref baseRef, 16)),
+          nonce.u1);
     }
 }
