@@ -17,25 +17,20 @@ public class PeerAddDropResponse
     public PeerAddDropResponse(PeerInfo peerInfo, string subscripionType, string? e)
     {
         Type = subscripionType;
-        PeerId = peerInfo.Id;
-        LocalAddr = peerInfo.Host;
-        RemoteAddr = peerInfo.Address;
-        Err = e;
+        Peer = peerInfo.Id;
+        Local = peerInfo.Host;
+        Remote = peerInfo.Address;
+        Error = e;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("type")]
     public string Type { get; set; }
 
-    [JsonPropertyName("peer")]
-    public string PeerId { get; set; }
+    public string Peer { get; set; }
 
-    [JsonPropertyName("local")]
-    public string LocalAddr { get; set; }
+    public string Local { get; set; }
 
-    [JsonPropertyName("remote")]
-    public string RemoteAddr { get; set; }
+    public string Remote { get; set; }
 
-    [JsonPropertyName("error")]
-    public string? Err { get; set; }
+    public string? Error { get; set; }
 }
