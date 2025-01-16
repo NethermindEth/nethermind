@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Test
     [Explicit]
     public partial class ConsensusHelperTests
     {
-        private static readonly Func<EquivalencyOptions<ReceiptForRpc>, EquivalencyOptions<ReceiptForRpc>> ReceiptOptions = static options => options.WithStrictOrdering()
+        private static readonly Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>> ReceiptOptions = static options => options.WithStrictOrdering()
                 .IncludingNestedObjects()
                 .Including(static r => r.TransactionHash)
                 .Including(static r => r.TransactionIndex)
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Test
         private static async Task Compare<T>(IConsensusDataSource<T> source1,
             IConsensusDataSource<T> source2,
             bool compareJson,
-            Func<EquivalencyOptions<T>, EquivalencyOptions<T>>? options = null)
+            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
         {
 
             if (compareJson)
@@ -185,7 +185,7 @@ namespace Nethermind.JsonRpc.Test
         private static async Task CompareCollection<T>(IConsensusDataSource<IEnumerable<T>> source1,
             IConsensusDataSource<IEnumerable<T>> source2,
             bool compareJson,
-            Func<EquivalencyOptions<T>, EquivalencyOptions<T>>? options = null)
+            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
         {
 
             if (compareJson)
