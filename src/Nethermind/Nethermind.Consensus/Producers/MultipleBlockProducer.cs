@@ -53,14 +53,14 @@ namespace Nethermind.Consensus.Producers
             {
                 blocksWithProducers = produceTasks
                     .Zip(_blockProducers)
-                    .Where(t => t.First.IsCompletedSuccessfully)
-                    .Select(t => (t.First.Result, t.Second));
+                    .Where(static t => t.First.IsCompletedSuccessfully)
+                    .Select(static t => (t.First.Result, t.Second));
             }
 
             Block? bestBlock = _bestBlockPicker.GetBestBlock(blocksWithProducers);
             if (bestBlock is not null)
             {
-                if (produceTasks.Count(t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
+                if (produceTasks.Count(static t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
                 {
                     if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
                 }

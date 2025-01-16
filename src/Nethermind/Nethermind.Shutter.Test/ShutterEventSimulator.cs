@@ -223,16 +223,16 @@ public class ShutterEventSimulator
 
     private DecryptionKeys ToDecryptionKeys(List<(byte[] IdentityPreimage, byte[] Key)> rawKeys, ulong txPointer, int signatureCount)
     {
-        rawKeys.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        rawKeys.Sort(static (a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
         rawKeys.Insert(0, ([], []));
 
-        var keys = rawKeys.Select(k => new Key()
+        var keys = rawKeys.Select(static k => new Key()
         {
             Identity = ByteString.CopyFrom(k.IdentityPreimage),
             Key_ = ByteString.CopyFrom(k.Key),
         }).ToList();
 
-        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = rawKeys.Select(k => (ReadOnlyMemory<byte>)k.IdentityPreimage);
+        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = rawKeys.Select(static k => (ReadOnlyMemory<byte>)k.IdentityPreimage);
         List<int> randomIndices = Enumerable.Range(0, TestItem.PublicKeys.Length).Shuffle(_rnd).ToList();
 
         List<ulong> signerIndices = [];

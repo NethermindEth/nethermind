@@ -125,13 +125,15 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Enode);
 
         ManualPruningTrigger pruningTrigger = new();
-        _api.PruningTrigger.Add(pruningTrigger);
+        _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
+
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
+            _api.WorldStateManager,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,
@@ -193,8 +195,8 @@ public class RegisterRpcModules : IStep
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 
-        if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
-        ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
+        if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
+        ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
 
         await Task.CompletedTask;
     }
@@ -214,7 +216,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
+            _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
@@ -285,8 +287,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         return new TraceModuleFactory(
-            _api.WorldStateManager.TrieStore,
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,

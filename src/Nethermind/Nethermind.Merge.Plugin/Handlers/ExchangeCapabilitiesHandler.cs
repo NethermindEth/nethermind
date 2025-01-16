@@ -27,7 +27,7 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
         IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
         CheckCapabilities(methods, capabilities);
 
-        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Where(x => x.Value.Enabled).Select(x => x.Key));
+        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Where(static x => x.Value.Enabled).Select(static x => x.Key));
     }
 
     private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)

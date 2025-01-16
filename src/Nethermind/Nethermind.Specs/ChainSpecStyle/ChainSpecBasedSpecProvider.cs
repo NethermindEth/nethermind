@@ -38,9 +38,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
             }
 
-            AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
-            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
-            AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
+            AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
+            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
+            AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -233,6 +233,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
+            releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsOntakeEnabled = (chainSpec.Parameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
 

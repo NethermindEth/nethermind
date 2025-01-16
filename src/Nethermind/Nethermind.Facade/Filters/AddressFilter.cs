@@ -102,6 +102,6 @@ namespace Nethermind.Blockchain.Filters
             return bloom.Matches(AddressBloomExtract);
         }
 
-        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(a => Bloom.GetExtract(a)).ToArray();
+        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(static a => Bloom.GetExtract(a)).ToArray();
     }
 }

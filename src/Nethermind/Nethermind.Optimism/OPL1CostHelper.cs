@@ -99,7 +99,7 @@ public class OPL1CostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAdd
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        long zeroCount = encoded.Count(b => b == 0);
+        long zeroCount = encoded.Count(static b => b == 0);
         long nonZeroCount = encoded.Length - zeroCount;
         // Add pre-EIP-3529 overhead
         nonZeroCount += isRegolith ? 0 : OptimismConstants.PreRegolithNonZeroCountOverhead;

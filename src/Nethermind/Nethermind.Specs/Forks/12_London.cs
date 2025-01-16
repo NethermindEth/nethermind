@@ -21,6 +21,6 @@ namespace Nethermind.Specs.Forks
             Eip1559TransitionBlock = 12965000;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new London());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new London());
     }
 }

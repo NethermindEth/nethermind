@@ -199,7 +199,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             }
 
             jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
-                .Where((url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
+                .Where(static (url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
         else
@@ -213,7 +213,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         JsonRpcUrlCollection urlCollection = new(_api.LogManager, _api.Config<IJsonRpcConfig>(), false);
         bool hasEngineApiConfigured = urlCollection
             .Values
-            .Any(rpcUrl => rpcUrl.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
+            .Any(static rpcUrl => rpcUrl.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
 
         if (!hasEngineApiConfigured)
         {

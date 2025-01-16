@@ -114,7 +114,7 @@ public class LogFinderTests
         var logFilter = AllBlockFilter().Build();
         var logs = _logFinder.FindLogs(logFilter).ToArray();
         logs.Length.Should().Be(5);
-        var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
+        var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         // indexes[0].Should().Be(0);
         // indexes[1].Should().Be(1);
         // indexes[2].Should().Be(0);
@@ -130,7 +130,7 @@ public class LogFinderTests
         LogFilter logFilter = AllBlockFilter().Build();
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
         logs.Length.Should().Be(5);
-        var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
+        var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         // indexes[0].Should().Be(0);
         // indexes[1].Should().Be(1);
         // indexes[2].Should().Be(0);
@@ -241,7 +241,7 @@ public class LogFinderTests
 
         var logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        var blockNumbers = logs.Select((log) => log.BlockNumber).ToArray();
+        var blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
         Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
     }
 

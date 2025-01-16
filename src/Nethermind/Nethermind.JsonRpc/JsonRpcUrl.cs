@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
                    IsAuthenticated == other.IsAuthenticated &&
-                   EnabledModules.OrderBy(t => t).SequenceEqual(other.EnabledModules.OrderBy(t => t),
+                   EnabledModules.OrderBy(static t => t).SequenceEqual(other.EnabledModules.OrderBy(static t => t),
                        StringComparer.InvariantCultureIgnoreCase);
         }
 

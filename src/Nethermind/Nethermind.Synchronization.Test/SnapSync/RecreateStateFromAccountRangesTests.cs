@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -325,19 +324,19 @@ public class RecreateStateFromAccountRangesTests
         }
 
         HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path).Should().BeFalse();
-        HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeFalse();
+        HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeTrue(); //expect leaves exactly at limit path to be included
         HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
         HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
 
-        UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
-        between2and3 += 5;
+        UInt256 between1and2 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
+        between1and2 += 5;
 
-        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+        HasMoreChildren(new Hash256(between1and2.ToBigEndian())).Should().BeFalse();
 
-        between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
+        UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
         between2and3 -= 1;
 
-        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+        HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeTrue();
     }
 
     [Test]

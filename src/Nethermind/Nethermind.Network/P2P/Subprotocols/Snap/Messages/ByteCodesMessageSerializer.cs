@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             long requestId = rlpStream.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(stream => stream.DecodeByteArray());
+            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray());
 
             return new ByteCodesMessage(result) { RequestId = requestId };
         }

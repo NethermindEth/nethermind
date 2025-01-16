@@ -36,7 +36,7 @@ public static class EnumExtensions
         int[] valuesBinary = values.Cast<int>().ToArray();
 #pragma warning restore CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
 
-        int[] valuesInverted = valuesBinary.Select(v => ~v).ToArray();
+        int[] valuesInverted = valuesBinary.Select(static v => ~v).ToArray();
         int max = 0;
         for (int i = 0; i < valuesBinary.Length; i++)
         {

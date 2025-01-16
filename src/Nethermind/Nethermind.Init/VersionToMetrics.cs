@@ -21,7 +21,7 @@ public static class VersionToMetrics
 
             var versions = version
                 .Split('.')
-                .Select(v => int.Parse(v))
+                .Select(static v => int.Parse(v))
                 .ToArray();
 
             return versions.Length == 3

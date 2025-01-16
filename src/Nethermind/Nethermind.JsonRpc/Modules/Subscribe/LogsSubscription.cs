@@ -108,7 +108,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                             {
                                 yield return new FilterLog(
                                     logIndex,
-                                    j,
                                     receipt,
                                     receiptLog,
                                     removed);

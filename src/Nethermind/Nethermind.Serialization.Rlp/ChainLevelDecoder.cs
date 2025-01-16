@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            if (item.BlockInfos.Any(t => t is null))
+            if (item.BlockInfos.Any(static t => t is null))
             {
                 throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
             }

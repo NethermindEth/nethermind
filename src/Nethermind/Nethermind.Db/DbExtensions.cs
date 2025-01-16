@@ -16,7 +16,7 @@ namespace Nethermind.Db
 
         public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueHash256> keys)
         {
-            var k = keys.Select(k => k.Bytes.ToArray()).ToArray();
+            var k = keys.Select(static k => k.Bytes.ToArray()).ToArray();
             return db[k];
         }
 

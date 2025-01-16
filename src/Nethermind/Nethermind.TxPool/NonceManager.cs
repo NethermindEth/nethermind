@@ -22,14 +22,14 @@ public class NonceManager : INonceManager
     public NonceLocker ReserveNonce(Address address, out UInt256 reservedNonce)
     {
         AddressNonceManager addressNonceManager =
-            _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
+            _addressNonceManagers.GetOrAdd(address, static _ => new AddressNonceManager());
         return addressNonceManager.ReserveNonce(_accounts.GetNonce(address), out reservedNonce);
     }
 
     public NonceLocker TxWithNonceReceived(Address address, UInt256 nonce)
     {
         AddressNonceManager addressNonceManager =
-            _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
+            _addressNonceManagers.GetOrAdd(address, static _ => new AddressNonceManager());
         return addressNonceManager.TxWithNonceReceived(nonce);
     }
 

@@ -42,7 +42,7 @@ public class SerializationTestBase
 
     protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
     {
-        TestRoundtrip(item, (a, b) => a!.Equals(b), converter, description);
+        TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
     }
 
     protected void TestRoundtrip<T>(T item, string description)

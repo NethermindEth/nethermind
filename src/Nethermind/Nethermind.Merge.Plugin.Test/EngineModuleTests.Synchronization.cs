@@ -466,7 +466,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
@@ -501,7 +501,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
@@ -537,7 +537,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 

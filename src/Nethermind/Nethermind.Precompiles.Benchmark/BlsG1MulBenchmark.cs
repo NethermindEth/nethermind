@@ -11,7 +11,7 @@ public class BlsG1MulBenchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
-        G1MulPrecompile.Instance
+        G1MSMPrecompile.Instance
     };
 
     protected override string InputsDirectory => "blsg1mul";

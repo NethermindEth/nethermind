@@ -9,7 +9,7 @@ using System.Threading;
 namespace Nethermind.Core.Threading;
 public class ZeroContentionCounter
 {
-    private readonly ThreadLocal<BoxedLong> _threadLocal = new(() => new BoxedLong(), trackAllValues: true);
+    private readonly ThreadLocal<BoxedLong> _threadLocal = new(static () => new BoxedLong(), trackAllValues: true);
 
     private static readonly Func<ThreadLocal<BoxedLong>, long> _totalDelegate = CreateTotalDelegate();
 

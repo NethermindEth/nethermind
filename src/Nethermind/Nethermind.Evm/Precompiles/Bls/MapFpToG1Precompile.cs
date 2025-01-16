@@ -20,7 +20,7 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x12);
+    public static Address Address { get; } = Address.FromNumber(0x10);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 5500L;
 

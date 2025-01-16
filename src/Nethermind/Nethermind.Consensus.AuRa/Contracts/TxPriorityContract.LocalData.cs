@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 get => _priorities;
                 set => _priorities = (value ?? []).Select(
-                    d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                    static d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
             }
 
             public Destination[] MinGasPrices
@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 set
                 {
                     _minGasPrices = (value ?? []).Select(
-                        d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                        static d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
                 }
             }
 

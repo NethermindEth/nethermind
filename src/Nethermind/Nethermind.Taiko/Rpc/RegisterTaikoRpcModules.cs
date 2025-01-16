@@ -36,7 +36,6 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
         StepDependencyException.ThrowIfNull(_api.L1OriginStore);
@@ -80,11 +79,9 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
 
         TaikoTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,

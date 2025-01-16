@@ -62,7 +62,7 @@ public partial class EngineModuleTests
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain => new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(1)),
+            static chain => new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(1)),
             timePerSlot, mergeConfig);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -267,7 +267,7 @@ public partial class EngineModuleTests
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 10 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()),
+            static chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()),
             timePerSlot, mergeConfig, delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
@@ -283,11 +283,11 @@ public partial class EngineModuleTests
         await Task.Delay(timePerSlot / 2);
 
         improvementContextFactory.CreatedContexts.Count.Should().BeInRange(3, 5);
-        improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(i => i.Disposed);
+        improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(static i => i.Disposed);
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        improvementContextFactory.CreatedContexts.Should().OnlyContain(i => i.Disposed);
+        improvementContextFactory.CreatedContexts.Should().OnlyContain(static i => i.Disposed);
     }
 
     [Test, Retry(3)]

@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test.Json
         [TestCase(new byte[] { 1 })]
         public void Test_roundtrip(byte[]? bytes)
         {
-            TestConverter(bytes, (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
+            TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
         }
 
         [Test]
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test.Json
                     bytes[j] = (byte)j;
                 }
 
-                TestConverter(bytes, (before, after) => Bytes.AreEqual(before, after), converter);
+                TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), converter);
             }
         }
 

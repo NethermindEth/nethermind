@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             parityNetPeers.Active = _peerManager.ActivePeers.Count;
             parityNetPeers.Connected = _peerManager.ConnectedPeers.Count;
             parityNetPeers.Max = _peerManager.MaxActivePeers;
-            parityNetPeers.Peers = _peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray();
+            parityNetPeers.Peers = _peerManager.ActivePeers.Select(static p => new PeerInfo(p)).ToArray();
             return ResultWrapper<ParityNetPeers>.Success(parityNetPeers);
         }
     }

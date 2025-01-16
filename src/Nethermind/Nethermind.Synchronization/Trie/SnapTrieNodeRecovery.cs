@@ -29,7 +29,7 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
         requestAccountAndStoragePaths.Group.Length switch
         {
             1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}",
-            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1).Select(g => g.ToHexString()))}",
+            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1).Select(static g => g.ToHexString()))}",
             _ => "",
         };
 

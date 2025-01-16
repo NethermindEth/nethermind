@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void WarnAboutProcessingGaps(ChainLevelInfo chainLevelInfo)
         {
-            bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(b => b.WasProcessed) ?? false;
+            bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(static b => b.WasProcessed) ?? false;
             if (thisLevelWasProcessed)
             {
                 if (_processingGapStart is not null)

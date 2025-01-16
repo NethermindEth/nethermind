@@ -122,7 +122,7 @@ namespace Nethermind.Hive
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
-            string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
+            string[] files = Directory.GetFiles(blocksDir).OrderBy(static x => x).ToArray();
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
             foreach (string file in files)

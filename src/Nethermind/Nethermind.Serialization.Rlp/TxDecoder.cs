@@ -21,7 +21,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     static TxDecoder()
     {
         TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
-        Instance = new TxDecoder(() => TxObjectPool.Get());
+        Instance = new TxDecoder(static () => TxObjectPool.Get());
         Rlp.RegisterDecoder(typeof(Transaction), Instance);
     }
 }
@@ -35,7 +35,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
-        Func<T> factory = transactionFactory ?? (() => new T());
+        Func<T> factory = transactionFactory ?? (static () => new T());
         RegisterDecoder(new LegacyTxDecoder<T>(factory));
         RegisterDecoder(new AccessListTxDecoder<T>(factory));
         RegisterDecoder(new EIP1559TxDecoder<T>(factory));

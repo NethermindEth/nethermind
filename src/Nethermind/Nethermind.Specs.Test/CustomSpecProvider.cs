@@ -26,11 +26,11 @@ public class CustomSpecProvider : SpecProviderBase, ISpecProvider
         NetworkId = networkId;
         ChainId = chainId;
 
-        (ForkActivation Activation, IReleaseSpec Spec)[] orderedTransitions = transitions.OrderBy(r => r.Activation).ToArray();
+        (ForkActivation Activation, IReleaseSpec Spec)[] orderedTransitions = transitions.OrderBy(static r => r.Activation).ToArray();
 
         LoadTransitions(orderedTransitions);
 
-        TransitionActivations = orderedTransitions.Select(t => t.Activation).ToArray();
+        TransitionActivations = orderedTransitions.Select(static t => t.Activation).ToArray();
     }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -50,7 +50,7 @@ public class CustomSpecProvider : SpecProviderBase, ISpecProvider
     {
         get
         {
-            (ForkActivation forkActivation, IReleaseSpec? daoRelease) = _blockTransitions.SingleOrDefault(t => t.Spec == Dao.Instance);
+            (ForkActivation forkActivation, IReleaseSpec? daoRelease) = _blockTransitions.SingleOrDefault(static t => t.Spec == Dao.Instance);
             return daoRelease is not null ? forkActivation.BlockNumber : null;
         }
     }

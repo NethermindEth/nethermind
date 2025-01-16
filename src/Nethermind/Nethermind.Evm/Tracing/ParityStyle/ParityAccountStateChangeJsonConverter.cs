@@ -152,7 +152,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         writer.WriteStartObject();
         if (value.Storage is not null)
         {
-            foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(s => s.Key))
+            foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(static s => s.Key))
             {
                 string trimmedKey = pair.Key.ToString("x64");
                 trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);

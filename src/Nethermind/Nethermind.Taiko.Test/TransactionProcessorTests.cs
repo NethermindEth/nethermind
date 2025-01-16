@@ -26,7 +26,7 @@ public class TransactionProcessorTests
 {
     private readonly OverridableReleaseSpec _spec;
     private readonly ISpecProvider _specProvider;
-    private IEthereumEcdsa _ethereumEcdsa;
+    private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
     private WorldState? _stateProvider;
 

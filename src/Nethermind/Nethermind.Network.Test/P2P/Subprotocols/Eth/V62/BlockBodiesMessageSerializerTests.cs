@@ -19,9 +19,9 @@ public class BlockBodiesMessageSerializerTests
     public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies),
-        additionallyExcluding: (o) =>
-            o.Excluding(c => c.Name == nameof(Transaction.SenderAddress))
-                .Excluding(c => c.Name == nameof(Transaction.NetworkWrapper)));
+        additionallyExcluding: static (o) =>
+            o.Excluding(static c => c.Name == nameof(Transaction.SenderAddress))
+                .Excluding(static c => c.Name == nameof(Transaction.NetworkWrapper)));
 
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)
@@ -33,7 +33,7 @@ public class BlockBodiesMessageSerializerTests
         foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
         {
             if (body is null) continue;
-            foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))
+            foreach (Transaction tx in body.Transactions.Where(static t => t.SupportsBlobs))
             {
                 Assert.That(tx.NetworkWrapper, Is.Null);
             }

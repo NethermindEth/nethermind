@@ -57,7 +57,7 @@ public class WebSocketExtensionsTests
 
             if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
             {
-                Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(() => throw new Exception());
+                Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(static () => throw new Exception());
                 a.Start();
                 return a;
             }
@@ -95,7 +95,7 @@ public class WebSocketExtensionsTests
         SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
         await webSocketsClient.ReceiveLoopAsync();
-        await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(ba => ba.Count == 2 * 4096 + 1024));
+        await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 2 * 4096 + 1024));
     }
 
     class Disposable : IDisposable
@@ -114,10 +114,10 @@ public class WebSocketExtensionsTests
         WebSocketMock mock = new(receiveResult);
 
         var processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) => new List<JsonRpcResult>()
+        processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
         {
             (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
-            (JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) =>
+            (JsonRpcResult.Collection(new JsonRpcBatchResult(static (e, c) =>
                 new List<JsonRpcResult.Entry>()
             {
                 new(new JsonRpcResponse(), new RpcReport()),
@@ -140,7 +140,7 @@ public class WebSocketExtensionsTests
             null,
             30.MB());
 
-        webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(async x =>
+        webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
         {
             var par = x.Arg<JsonRpcResult>();
             return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
@@ -169,7 +169,7 @@ public class WebSocketExtensionsTests
         SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
         await webSocketsClient.ReceiveLoopAsync();
-        await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(ba => ba.Count == 1234));
+        await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 1234));
     }
 
     [Test]
@@ -188,7 +188,7 @@ public class WebSocketExtensionsTests
         SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>("TestClient", new WebSocketMessageStream(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
         await webSocketsClient.ReceiveLoopAsync();
-        await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(ba => ba.Count == 6 * 2000 + 1));
+        await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 6 * 2000 + 1));
     }
 
     [Test]

@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Processing;
 public class OverridableTxProcessingScope(
     IOverridableCodeInfoRepository codeInfoRepository,
     ITransactionProcessor transactionProcessor,
-    OverridableWorldState worldState,
+    IOverridableWorldState worldState,
     Hash256 originalStateRoot
 ) : IOverridableTxProcessingScope
 {

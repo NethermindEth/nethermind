@@ -194,11 +194,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlock = new((long)0);
             blockTree.FindBlock(newestBlock).Returns(noTxBlock);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(x => (double)x).ToArray();
+            double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(static x => (double)x).ToArray();
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, rewardPercentiles);
 
-            UInt256[] expectedRewardsUInt256 = expectedRewards.Select(x => (UInt256)x).ToArray();
+            UInt256[] expectedRewardsUInt256 = expectedRewards.Select(static x => (UInt256)x).ToArray();
             resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedRewardsUInt256);
         }
 
@@ -298,7 +298,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentiles);
 
-            UInt256[] expectedUInt256 = expected.Select(x => (UInt256)x).ToArray();
+            UInt256[] expectedUInt256 = expected.Select(static x => (UInt256)x).ToArray();
             resultWrapper.Data.Reward!.Count.Should().Be(1);
             resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
         }
@@ -342,7 +342,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     using ResultWrapper<FeeHistoryResults> resultWrapper =
                         feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentilesArray[i]);
 
-                    UInt256[] expectedUInt256 = expectedArray[i].Select(x => (UInt256)x).ToArray();
+                    UInt256[] expectedUInt256 = expectedArray[i].Select(static x => (UInt256)x).ToArray();
                     resultWrapper.Data.Reward!.Count.Should().Be(1);
                     resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
                 }

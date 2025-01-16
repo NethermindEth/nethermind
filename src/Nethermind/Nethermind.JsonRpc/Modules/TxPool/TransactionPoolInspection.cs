@@ -12,8 +12,8 @@ namespace Nethermind.JsonRpc.Modules.TxPool
     {
         public TxPoolInspection(TxPoolInfo info)
         {
-            Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => GetTransactionSummary(v.Value)));
-            Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => GetTransactionSummary(v.Value)));
+            Pending = info.Pending.ToDictionary(static k => k.Key, static k => k.Value.ToDictionary(static v => v.Key, static v => GetTransactionSummary(v.Value)));
+            Queued = info.Queued.ToDictionary(static k => k.Key, static k => k.Value.ToDictionary(static v => v.Key, static v => GetTransactionSummary(v.Value)));
         }
 
         public Dictionary<AddressAsKey, Dictionary<ulong, string>> Pending { get; set; }

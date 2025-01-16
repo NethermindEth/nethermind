@@ -23,22 +23,16 @@ public sealed class OptimismBaseFeeCalculator(
         if (parent.Timestamp >= holoceneTimestamp)
         {
             // NOTE: This operation should never fail since headers should be valid at this point.
-            if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out _))
+            if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out var error))
             {
-                throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: missing {nameof(EIP1559Parameters)}");
+                throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
             }
 
-            spec = eip1559Params.IsZero()
-                ? new OverridableEip1559Spec(specFor1559)
-                {
-                    ElasticityMultiplier = Eip1559Constants.DefaultElasticityMultiplier,
-                    BaseFeeMaxChangeDenominator = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator
-                }
-                : new OverridableEip1559Spec(specFor1559)
-                {
-                    ElasticityMultiplier = eip1559Params.Elasticity,
-                    BaseFeeMaxChangeDenominator = eip1559Params.Denominator
-                };
+            spec = new OverridableEip1559Spec(specFor1559)
+            {
+                ElasticityMultiplier = eip1559Params.Elasticity,
+                BaseFeeMaxChangeDenominator = eip1559Params.Denominator
+            };
         }
 
         return baseFeeCalculator.Calculate(parent, spec);

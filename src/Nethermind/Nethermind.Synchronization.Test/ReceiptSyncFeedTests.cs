@@ -116,8 +116,8 @@ public class ReceiptSyncFeedTests
         using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
 
         req.Infos
-            .Where((bi) => bi is not null)
-            .Select((bi) => bi!.BlockNumber)
+            .Where(static (bi) => bi is not null)
+            .Select(static (bi) => bi!.BlockNumber)
             .Take(4)
             .Should()
             .BeEquivalentTo([

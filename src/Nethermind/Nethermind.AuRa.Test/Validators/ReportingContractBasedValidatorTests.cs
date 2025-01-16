@@ -140,7 +140,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressC, (UInt256)header.Number);
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressD, (UInt256)header.Number);
             context.ReportingValidatorContract.Received(0).ReportBenign(NodeAddress, (UInt256)header.Number);
-            context.TxSender.Received(3).SendTransaction(Arg.Is<Transaction>(t => t is GeneratedTransaction), TxHandlingOptions.ManagedNonce);
+            context.TxSender.Received(3).SendTransaction(Arg.Is<Transaction>(static t => t is GeneratedTransaction), TxHandlingOptions.ManagedNonce);
         }
 
         [Test]

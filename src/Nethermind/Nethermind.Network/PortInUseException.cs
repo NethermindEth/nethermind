@@ -20,7 +20,7 @@ public class PortInUseException : IOException
 
     public PortInUseException(Exception exception, params string[] urls) : this(exception, GetPorts(urls)) { }
 
-    private static int[] GetPorts(string[] urls) => urls.Select(u => new Uri(u).Port).ToArray();
+    private static int[] GetPorts(string[] urls) => urls.Select(static u => new Uri(u).Port).ToArray();
 
     private static string GetReason(params int[] ports)
     {

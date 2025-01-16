@@ -215,8 +215,8 @@ namespace Nethermind.Consensus.Producers
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {
             IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(g => g.Value)
-                .Select(g => g.GetEnumerator())
+                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
+                .Select(static g => g.GetEnumerator())
                 .ToArray();
 
             try

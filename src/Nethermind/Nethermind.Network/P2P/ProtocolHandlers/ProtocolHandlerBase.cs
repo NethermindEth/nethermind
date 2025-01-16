@@ -93,22 +93,32 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected async Task CheckProtocolInitTimeout()
         {
-            Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
-
-            if (firstTask != receivedInitMsgTask)
+            try
             {
-                if (Logger.IsTrace)
+                Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
+                CancellationTokenSource delayCancellation = new();
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
+
+                if (firstTask != receivedInitMsgTask)
                 {
-                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
-                }
+                    if (Logger.IsTrace)
+                    {
+                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
+                    }
 
-                Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                    Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                }
+                else
+                {
+                    delayCancellation.Cancel();
+                }
             }
-            else
+            catch (Exception e)
             {
-                delayCancellation.Cancel();
+                if (Logger.IsError)
+                {
+                    Logger.Error("Error during p2pProtocol handler timeout logic", e);
+                }
             }
         }
 

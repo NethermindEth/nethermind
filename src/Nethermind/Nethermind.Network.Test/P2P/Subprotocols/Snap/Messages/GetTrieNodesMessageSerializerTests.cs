@@ -98,7 +98,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             GetTrieNodesMessageSerializer serializer = new();
 
-            GetTrieNodesMessage? msg = serializer.Deserialize(data);
+            using GetTrieNodesMessage? msg = serializer.Deserialize(data);
             byte[] recode = serializer.Serialize(msg);
 
             recode.Should().BeEquivalentTo(data);

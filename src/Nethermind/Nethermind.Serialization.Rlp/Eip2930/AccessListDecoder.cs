@@ -200,8 +200,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         private static int GetContentLength(AccessList accessList)
         {
             return accessList
-                .Select(entry => new AccessItemLengths(entry.StorageKeys.Count()))
-                .Sum(lengths => lengths.SequenceLength);
+                .Select(static entry => new AccessItemLengths(entry.StorageKeys.Count()))
+                .Sum(static lengths => lengths.SequenceLength);
         }
     }
 }

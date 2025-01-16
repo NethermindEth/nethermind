@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;

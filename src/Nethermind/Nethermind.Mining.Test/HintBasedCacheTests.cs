@@ -29,7 +29,7 @@ public class HintBasedCacheTests
     [Test]
     public void Without_hint_return_null()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
         for (uint i = 0; i < 1000; i++)
         {
             Assert.That(hintBasedCache.Get(i), Is.Null);
@@ -56,7 +56,7 @@ public class HintBasedCacheTests
     [Test]
     public void Sync_hint_and_get()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 200000, 200000);
         Assert.That(hintBasedCache.Get((uint)(200000 / Ethash.EpochLength)), Is.Not.Null);
     }

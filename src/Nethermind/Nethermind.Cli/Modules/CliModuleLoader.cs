@@ -75,7 +75,7 @@ namespace Nethermind.Cli.Modules
             MethodsByModules[cliModuleAttribute.ModuleName] = new List<string>();
 
             var methods = module.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-            foreach (MethodInfo methodInfo in methods.OrderBy(m => m.Name))
+            foreach (MethodInfo methodInfo in methods.OrderBy(static m => m.Name))
             {
                 var cliProperty = methodInfo.GetCustomAttribute<CliPropertyAttribute>();
                 var cliFunction = methodInfo.GetCustomAttribute<CliFunctionAttribute>();
@@ -113,7 +113,7 @@ namespace Nethermind.Cli.Modules
                     else
                     {
                         _cliConsole.WriteKeyword($"  {objectName}");
-                        _cliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+                        _cliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(static p => p.Name))})");
 
                         MethodsByModules[objectName].Add(itemName + "(");
                         AddMethod(instance!, itemName, nativeDelegate);

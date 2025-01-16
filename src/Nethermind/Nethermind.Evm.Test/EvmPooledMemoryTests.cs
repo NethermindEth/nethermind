@@ -234,11 +234,11 @@ public class MyTracer : ITxTracer, IDisposable
 
     public string lastmemline;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
     }
 
@@ -264,7 +264,7 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
-        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
+        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
     }
 
     public void SetOperationMemorySize(ulong newSize)

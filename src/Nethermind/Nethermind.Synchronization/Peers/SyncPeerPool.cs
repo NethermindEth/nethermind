@@ -711,7 +711,7 @@ namespace Nethermind.Synchronization.Peers
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
+            Parallel.ForEach(_peers, static p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
 
             _peerRefreshQueue.Writer.TryComplete();
             _refreshLoopCancellation.Dispose();

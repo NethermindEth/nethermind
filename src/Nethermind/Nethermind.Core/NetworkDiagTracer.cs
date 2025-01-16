@@ -31,7 +31,7 @@ namespace Nethermind.Core
             {
                 Interval = 60000
             };
-            timer.Elapsed += (_, _) => DumpEvents();
+            timer.Elapsed += static (_, _) => DumpEvents();
             timer.Start();
         }
 
@@ -58,7 +58,7 @@ namespace Nethermind.Core
         private static void Add(IPEndPoint? farAddress, string line)
         {
             string address = farAddress?.Address.MapToIPv4().ToString() ?? "null";
-            ConcurrentQueue<string> queue = _events.GetOrAdd(address, _ => new ConcurrentQueue<string>());
+            ConcurrentQueue<string> queue = _events.GetOrAdd(address, static _ => new ConcurrentQueue<string>());
             queue.Enqueue(line);
         }
 

@@ -96,7 +96,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         var hash = txHash.Bytes[..4].ToHexString(true);
         var index = 0;
         var suffix = string.Create(8, Random.Shared,
-            (chars, rand) =>
+            static (chars, rand) =>
             {
                 for (var i = 0; i < chars.Length; i++)
                     chars[i] = _alphabet[rand.Next(0, _alphabet.Length)];

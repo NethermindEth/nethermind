@@ -58,6 +58,7 @@ using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Api
 {
@@ -76,11 +77,10 @@ namespace Nethermind.Api
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider!, WorldStateManager!.TrieStore, LogManager);
 
             // TODO: reuse the same trie cache here
             OverridableTxProcessingEnv txProcessingEnv = new(
-                overridableWorldStateManager,
+                WorldStateManager!.CreateOverridableWorldScope(),
                 readOnlyTree,
                 SpecProvider!,
                 LogManager);
@@ -197,15 +197,15 @@ namespace Nethermind.Api
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
-        public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
+        public INodeStorage? MainNodeStorage { get; set; }
+        public CompositePruningTrigger? PruningTrigger { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITrieStore? TrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -242,7 +242,6 @@ namespace Nethermind.Api
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
-        public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
 

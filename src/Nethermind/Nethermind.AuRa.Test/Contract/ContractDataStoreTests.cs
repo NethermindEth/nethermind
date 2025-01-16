@@ -183,7 +183,7 @@ public class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA, TestItem.AddressC });
         Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, [], out Arg.Any<IEnumerable<Address>>())
-            .Returns(x =>
+            .Returns(static x =>
             {
                 x[2] = Array.Empty<Address>();
                 return false;

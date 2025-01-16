@@ -22,7 +22,7 @@ namespace Nethermind.Core
             builder.AppendLine();
             builder.AppendLine("======================== Nethermind initialization completed ========================");
 
-            foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(ni => ni.Key))
+            foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(static ni => ni.Key))
             {
                 builder.AppendLine($"{key} {value}");
             }

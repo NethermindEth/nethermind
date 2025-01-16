@@ -16,7 +16,7 @@ namespace Nethermind.Specs.Forks
             IsTimeAdjustmentPostOlympic = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Frontier());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Frontier());
 
     }
 }

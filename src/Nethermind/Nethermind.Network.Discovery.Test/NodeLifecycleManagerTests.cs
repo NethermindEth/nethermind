@@ -171,13 +171,13 @@ public class NodeLifecycleManagerTests
 
         Node[] firstNodes = TestItem.PublicKeys
             .Take(12)
-            .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+            .Select(static pubkey => new Node(pubkey, "127.0.0.2", 0))
             .ToArray();
         NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
         Node[] secondNodes = TestItem.PublicKeys
             .Skip(12)
             .Take(4)
-            .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+            .Select(static pubkey => new Node(pubkey, "127.0.0.2", 0))
             .ToArray();
         NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
 

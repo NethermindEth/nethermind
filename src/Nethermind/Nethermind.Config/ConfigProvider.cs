@@ -65,7 +65,7 @@ public class ConfigProvider : IConfigProvider
     public void Initialize()
     {
         Type type = typeof(IConfig);
-        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(x => x.IsInterface);
+        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
 
         foreach (Type @interface in interfaces)
         {

@@ -21,9 +21,9 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x13);
+    public static Address Address { get; } = Address.FromNumber(0x11);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 75000;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 23800L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 

@@ -515,7 +515,7 @@ public class SessionTests
         session.InitiateDisconnect(DisconnectReason.Other);
 
         session.ReceiveMessage(new Packet("p2p", 3, []));
-        p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+        p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "p2p" && p.PacketType == 3));
     }
 
     [Test]
@@ -580,16 +580,16 @@ public class SessionTests
 
         byte[] data = new byte[10];
         session.ReceiveMessage(new Packet("---", 3, data));
-        p2p.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+        p2p.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "p2p" && p.PacketType == 3));
 
         session.ReceiveMessage(new Packet("---", 11, data));
-        aaa.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "aaa" && p.PacketType == 1));
+        aaa.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "aaa" && p.PacketType == 1));
 
         session.ReceiveMessage(new Packet("---", 21, data));
-        bbb.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "bbb" && p.PacketType == 1));
+        bbb.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "bbb" && p.PacketType == 1));
 
         session.ReceiveMessage(new Packet("---", 25, data));
-        ccc.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "ccc" && p.PacketType == 0));
+        ccc.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "ccc" && p.PacketType == 0));
 
         session.ReceiveMessage(new Packet("---", 100, data));
 

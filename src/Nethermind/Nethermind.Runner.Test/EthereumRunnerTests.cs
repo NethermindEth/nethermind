@@ -32,7 +32,7 @@ public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
     {
-        AssemblyLoadContext.Default.Resolving += (_, _) => null;
+        AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
     private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);

@@ -65,11 +65,26 @@ namespace Nethermind.Db
         {
             if (value is null)
             {
-                _cacheSpan.TryRemove(key, out _);
+                if (_cacheSpan.TryRemove(key, out _))
+                {
+                    _hasPendingChanges = true;
+                }
+                return;
             }
-            else
+
+            bool setValue = true;
+            if (_cacheSpan.TryGetValue(key, out var existingValue))
             {
-                _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                if (!Bytes.AreEqual(existingValue, value))
+                {
+                    setValue = false;
+                }
+            }
+
+            if (setValue)
+            {
+                _cacheSpan[key] = value;
+                _hasPendingChanges = true;
             }
         }
 
@@ -77,8 +92,10 @@ namespace Nethermind.Db
 
         public void Remove(ReadOnlySpan<byte> key)
         {
-            _hasPendingChanges = true;
-            _cacheSpan.TryRemove(key, out _);
+            if (_cacheSpan.TryRemove(key, out _))
+            {
+                _hasPendingChanges = true;
+            }
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)

@@ -302,7 +302,7 @@ jobs:
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          action: "destroy-machine"
+          action: "destroy-machine-async"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}

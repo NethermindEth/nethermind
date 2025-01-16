@@ -125,7 +125,7 @@ namespace Nethermind.Db
             public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
 
             public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _wrapped.GetAll(ordered)
-                .Select(kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
+                .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
             public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
                 _wrapped.GetAllKeys(ordered).Select(Decompress);

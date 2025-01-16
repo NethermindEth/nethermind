@@ -34,7 +34,7 @@ namespace Nethermind.HealthChecks
             {
                 CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
                 if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
-                string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
+                string description = FormatMessages(healthResult.Messages.Select(static x => x.LongMessage));
                 if (healthResult.Healthy)
                     return Task.FromResult(HealthCheckResult.Healthy(description, CreateData(healthResult)));
 
@@ -57,9 +57,9 @@ namespace Nethermind.HealthChecks
 
         private static string FormatMessages(IEnumerable<string> messages)
         {
-            if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
+            if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
             {
-                var joined = string.Join(". ", messages.Where(x => !string.IsNullOrWhiteSpace(x)));
+                var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
                 if (!string.IsNullOrWhiteSpace(joined))
                 {
                     return joined + ".";

@@ -181,7 +181,7 @@ public class NodesLocator : INodesLocator
         IEnumerable<Node?> nodesToSend,
         ISet<Hash256> alreadyTriedNodes)
     {
-        foreach (Node? node in nodesToSend.Where(n => n is not null))
+        foreach (Node? node in nodesToSend.Where(static n => n is not null))
         {
             alreadyTriedNodes.Add(node!.IdHash);
             yield return SendFindNode(node, searchedNodeId);
@@ -205,7 +205,7 @@ public class NodesLocator : INodesLocator
 
     private void LogNodeTable()
     {
-        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.AnyBondedItems());
+        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(static x => x.AnyBondedItems());
         StringBuilder sb = new();
 
         int length = 0;

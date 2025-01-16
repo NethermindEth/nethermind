@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Data
                 Bloom = LogsBloom,
                 Error = Error,
                 Index = (int)TransactionIndex,
-                Logs = Logs.Select(l => l.ToLogEntry()).ToArray(),
+                Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
                 Recipient = To,
                 Sender = From,
                 BlockHash = BlockHash,

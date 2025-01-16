@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            await using IContainer container = PrepareDownloader(dbContext, mock => mock.MaxResponseLength = 1);
+            await using IContainer container = PrepareDownloader(dbContext, static mock => mock.MaxResponseLength = 1);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 

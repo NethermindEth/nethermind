@@ -387,7 +387,7 @@ namespace Nethermind.Core.Test
                 {
                     var thisArray = GenerateRandom(length);
                     var valueArray = GenerateRandom(length);
-                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte)b).ToArray();
+                    var resultArray = thisArray.Zip(valueArray, static (b1, b2) => b1 | b2).Select(static b => (byte)b).ToArray();
                     return new TestCaseData(thisArray, valueArray, resultArray);
                 }
 

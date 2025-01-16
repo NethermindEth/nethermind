@@ -27,7 +27,7 @@ namespace Nethermind.KeyStore
         public MemKeyStore(PrivateKey[] privateKeys, string ketStoreDir)
         {
             _privateKeys =
-                new Dictionary<Address, PrivateKey>(privateKeys.Select(pk =>
+                new Dictionary<Address, PrivateKey>(privateKeys.Select(static pk =>
                     new KeyValuePair<Address, PrivateKey>(pk.Address, pk)));
             _ketStoreDir = ketStoreDir;
         }

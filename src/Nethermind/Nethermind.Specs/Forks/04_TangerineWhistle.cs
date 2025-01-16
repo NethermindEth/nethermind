@@ -16,6 +16,6 @@ namespace Nethermind.Specs.Forks
             IsEip150Enabled = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new TangerineWhistle());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new TangerineWhistle());
     }
 }

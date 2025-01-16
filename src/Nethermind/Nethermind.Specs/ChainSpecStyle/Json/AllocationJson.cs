@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -21,9 +22,11 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public byte[] Constructor { get; set; }
         public Dictionary<string, string> Storage { get; set; }
 
+        public Hash256? CodeHash { get; set; }
+
         public Dictionary<UInt256, byte[]> GetConvertedStorage()
         {
-            return Storage?.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
+            return Storage?.ToDictionary(static s => Bytes.FromHexString(s.Key).ToUInt256(), static s => Bytes.FromHexString(s.Value));
         }
     }
 }

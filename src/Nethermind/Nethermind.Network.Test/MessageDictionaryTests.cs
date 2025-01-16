@@ -96,7 +96,7 @@ public class MessageDictionaryTests
             _testMessageDictionary.Send(CreateRequest(i));
         }
 
-        _testMessageDictionary.Invoking((dictionary) => dictionary.Send(CreateRequest(33)))
+        _testMessageDictionary.Invoking(static (dictionary) => dictionary.Send(CreateRequest(33)))
             .Should()
             .Throw<InvalidOperationException>();
     }

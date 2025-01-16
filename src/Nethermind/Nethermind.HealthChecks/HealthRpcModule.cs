@@ -27,7 +27,7 @@ namespace Nethermind.HealthChecks
         public ResultWrapper<NodeStatusResult> health_nodeStatus()
         {
             CheckHealthResult checkHealthResult = _nodeHealthService.CheckHealth();
-            IEnumerable<string> messages = checkHealthResult.Messages.Select(x => x.Message);
+            IEnumerable<string> messages = checkHealthResult.Messages.Select(static x => x.Message);
             NodeStatusResult result = new()
             {
                 Healthy = checkHealthResult.Healthy,

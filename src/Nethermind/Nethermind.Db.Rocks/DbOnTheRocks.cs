@@ -1621,7 +1621,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         {
             private bool _disposed = false;
 
-            public ManagedIterators() : base(() => new IteratorHolder(), trackAllValues: true)
+            public ManagedIterators() : base(static () => new IteratorHolder(), trackAllValues: true)
             {
             }
 

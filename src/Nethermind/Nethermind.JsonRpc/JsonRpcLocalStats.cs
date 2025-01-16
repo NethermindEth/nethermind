@@ -60,8 +60,8 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 
         BuildReport();
 
-        MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
-        MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
+        MethodStats methodStats = _currentStats.GetOrAdd(report.Method, static _ => new MethodStats());
+        MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, static _ => new MethodStats());
 
         long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
 
@@ -143,7 +143,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
             _reportStringBuilder.AppendLine(ReportHeader);
             _reportStringBuilder.AppendLine(_divider);
             MethodStats total = new();
-            foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(kv => kv.Key))
+            foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(static kv => kv.Key))
             {
                 total.AvgTimeOfSuccesses = total.Successes + methodStats.Value.Successes == 0
                     ? 0

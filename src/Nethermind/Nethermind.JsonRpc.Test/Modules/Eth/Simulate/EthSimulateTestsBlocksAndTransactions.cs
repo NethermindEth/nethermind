@@ -81,7 +81,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data.Count, Is.EqualTo(7));
 
         SimulateBlockResult blockResult = data.Last();
-        blockResult.Calls.Select(c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
+        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
 
     }
 

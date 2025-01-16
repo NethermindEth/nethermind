@@ -30,7 +30,7 @@ public class ContainerBuilderExtensionsTests
         IContainer sp = new ContainerBuilder()
             .AddScoped<MainComponent>()
             .AddScoped<MainComponentDependency>()
-            .RegisterNamedComponentInItsOwnLifetime<MainComponent>("custom", cfg =>
+            .RegisterNamedComponentInItsOwnLifetime<MainComponent>("custom", static cfg =>
             {
                 // Override it in custom
                 cfg.AddScoped<MainComponentDependency, MainComponentDependencySubClass>();

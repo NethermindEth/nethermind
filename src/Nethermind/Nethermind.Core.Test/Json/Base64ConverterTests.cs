@@ -24,7 +24,7 @@ public class Base64ConverterTests : ConverterTestBase<byte[]?>
     {
         TestConverter(
             value,
-            (before, after) => (before is null && after is null) || (before is not null && after is not null && before.SequenceEqual(after)),
+            static (before, after) => (before is null && after is null) || (before is not null && after is not null && before.SequenceEqual(after)),
             new Base64Converter());
     }
 }
