@@ -322,7 +322,7 @@ namespace Nethermind.Db
                     var size => throw ValidationException($"Unexpected key of {size} bytes.")
                 };
 
-                IndexInfo? indexInfo = GetIndex(db, key, blockNums, stats);
+                IndexInfo? indexInfo = GetIndex(db, key, stats);
 
                 if (indexInfo != null && blockNums[^1] <= indexInfo.LastBlockNumber)
                     return;
@@ -484,16 +484,15 @@ namespace Nethermind.Db
             return IndexInfo.Temp(keyPrefix);
         }
 
-        private IndexInfo? GetIndex(IDb db, byte[] keyPrefix, IReadOnlyList<int> forBlockNums, SetReceiptsStats stats)
+        private IndexInfo? GetIndex(IDb db, byte[] keyPrefix, SetReceiptsStats stats)
         {
-            var firstBlockNum = forBlockNums[0];
             var dbKey = new byte[keyPrefix.Length + BlockNumSize];
 
             // TODO: check if Seek and a few Next (or using reversed data order) will make use of prefix seek
             byte[] dbPrefix = new byte[dbKey.Length]; // TODO: check if ArrayPool will work (as size is not guaranteed)
             Array.Copy(keyPrefix, dbPrefix, keyPrefix.Length);
 
-            CreateDbKey(keyPrefix, firstBlockNum, dbKey);
+            CreateDbKey(keyPrefix, int.MaxValue, dbKey);
 
             var options = new IteratorOptions
             {
