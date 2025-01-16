@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
 
-            using IOverridableTxProcessingScope? scope = stateOverride != null ? _env.BuildAndOverride(header, stateOverride) : null;
+            using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(header, stateOverride);
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1));
