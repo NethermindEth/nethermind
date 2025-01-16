@@ -42,7 +42,8 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IReceiptsRecovery _recovery;
         private readonly ILogIndexStorage _logIndexStorage;
         private readonly IInitConfig _initConfig;
-        private const int BatchSize = 200;
+        private const int BatchSize = 250;
+        private const int QueueSize = 1_000;
         private const int ReportSize = 20_000;
         private readonly Channel<BlockReceipts[]> _blocksChannel;
 
@@ -88,7 +89,7 @@ namespace Nethermind.Init.Steps.Migrations
             _recovery = recovery;
             _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
-            _blocksChannel = Channel.CreateBounded<BlockReceipts[]>(new BoundedChannelOptions(1000 / BatchSize)
+            _blocksChannel = Channel.CreateBounded<BlockReceipts[]>(new BoundedChannelOptions(QueueSize / BatchSize)
             {
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
             });
