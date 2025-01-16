@@ -3,6 +3,8 @@ name: Bump up version
 on:
   create:
     branches: ['release/*.*.0']
+  push:
+    branches: [test/version-bump] 
 
 permissions:
   contents: write
