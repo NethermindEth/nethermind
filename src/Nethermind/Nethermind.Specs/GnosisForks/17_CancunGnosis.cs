@@ -14,6 +14,7 @@ public class CancunGnosis : Forks.Cancun
     {
         MaxBlobCount = 2;
         TargetBlobCount = 1;
+        BlobBaseFeeUpdateFraction = 1112826;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new CancunGnosis());

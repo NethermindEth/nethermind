@@ -22,7 +22,7 @@ public class Eip4844Constants
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
-    public static UInt256 BlobGasPriceUpdateFraction { get; private set; } = 3338477;
+    public static UInt256 DefaultBlobGasPriceUpdateFraction { get; private set; } = 3338477;
 
     /// <summary>
     /// Gets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei.
@@ -32,13 +32,8 @@ public class Eip4844Constants
 
 
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
-    public static void OverrideIfAny(
-        UInt256? blobGasPriceUpdateFraction = null,
-        UInt256? minBlobGasPrice = null)
+    public static void OverrideIfAny(UInt256? minBlobGasPrice = null)
     {
-        if (blobGasPriceUpdateFraction.HasValue)
-            BlobGasPriceUpdateFraction = blobGasPriceUpdateFraction.Value;
-
         if (minBlobGasPrice.HasValue)
             MinBlobGasPrice = minBlobGasPrice.Value;
     }
