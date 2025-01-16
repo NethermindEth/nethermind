@@ -185,9 +185,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                                                    ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
         chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
 
-        Eip4844Constants.OverrideIfAny(
-            chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
-            chainSpec.Parameters.Eip4844MinBlobGasPrice);
+        Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)

@@ -257,19 +257,25 @@ public class BlockchainBridgeTests
         Transaction tx = postEip4844
             ? Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
+                .WithMaxFeePerGas(effectiveGasPrice)
                 .WithType(TxType.Blob)
                 .WithMaxFeePerBlobGas(2)
                 .WithBlobVersionedHashes(2)
                 .TestObject
             : Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
+                .WithMaxFeePerGas(effectiveGasPrice)
                 .TestObject;
         Block block = postEip4844
             ? Build.A.Block
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
                 .WithTransactions(tx)
                 .WithExcessBlobGas(2)
                 .TestObject
             : Build.A.Block
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
                 .WithTransactions(tx)
                 .TestObject;
         TxReceipt receipt = Build.A.Receipt
