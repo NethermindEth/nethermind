@@ -24,24 +24,24 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IReadOnlyTrieStore _trieStore;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculatorSource _rewardCalculatorSource;
-    private readonly IReceiptStorage _receiptStorage;
+    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
+    protected readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly IConfigProvider _configProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogManager _logManager;
-    private readonly IBlockPreprocessorStep _recoveryStep;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly ILogManager _logManager;
+    protected readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IReadOnlyDbProvider _dbProvider;
-    private readonly IReadOnlyBlockTree _blockTree;
+    protected readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
+    private readonly IWorldStateManager _worldStateManager;
 
     public DebugModuleFactory(
-        IReadOnlyTrieStore trieStore,
+        IWorldStateManager worldStateManager,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -57,7 +57,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IFileSystem fileSystem,
         ILogManager logManager)
     {
-        _trieStore = trieStore;
+        _worldStateManager = worldStateManager;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -76,24 +76,14 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
     public override IDebugRpcModule Create()
     {
-        OverridableWorldStateManager worldStateManager = new(_dbProvider, _trieStore, _logManager);
+        IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
         OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
         BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, scope.WorldState);
-        ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-            scope,
-            _blockValidator,
-            _recoveryStep,
-            _rewardCalculatorSource.Get(scope.TransactionProcessor),
-            _receiptStorage,
-            _specProvider,
-            _blockTree,
-            worldStateManager.GlobalStateReader,
-            _logManager,
-            transactionsExecutor);
+        ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
@@ -118,5 +108,21 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _badBlockStore);
 
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
+    }
+
+    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
+        IOverridableWorldScope worldStateManager, BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor)
+    {
+        return new ReadOnlyChainProcessingEnv(
+            scope,
+            _blockValidator,
+            _recoveryStep,
+            _rewardCalculatorSource.Get(scope.TransactionProcessor),
+            _receiptStorage,
+            _specProvider,
+            _blockTree,
+            worldStateManager.GlobalStateReader,
+            _logManager,
+            transactionsExecutor);
     }
 }

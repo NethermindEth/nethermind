@@ -138,7 +138,7 @@ namespace Nethermind.Db.Blooms
 
         public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => Contains(fromBlockNumber) && Contains(toBlockNumber);
 
-        public IEnumerable<Average> Averages => _storageLevels.Select(l => l.Average);
+        public IEnumerable<Average> Averages => _storageLevels.Select(static l => l.Average);
 
         public void Store(long blockNumber, Bloom bloom)
         {
@@ -161,7 +161,7 @@ namespace Nethermind.Db.Blooms
         public void Migrate(IEnumerable<BlockHeader> headers)
         {
             var batchSize = _storageLevels.First().LevelElementSize;
-            (BloomStorageLevel Level, Bloom Bloom)[] levelBlooms = _storageLevels.SkipLast(1).Select(l => (l, new Bloom())).ToArray();
+            (BloomStorageLevel Level, Bloom Bloom)[] levelBlooms = _storageLevels.SkipLast(1).Select(static l => (l, new Bloom())).ToArray();
             BloomStorageLevel lastLevel = _storageLevels.Last();
 
             long i = 0;
@@ -283,7 +283,7 @@ namespace Nethermind.Db.Blooms
                 }
             }
 
-            private static uint CountBits(Bloom bloom) => bloom.Bytes.AsSpan().CountBits();
+            private static uint CountBits(Bloom bloom) => bloom.Bytes.CountBits();
 
             public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
 
@@ -381,7 +381,7 @@ namespace Nethermind.Db.Blooms
                     levels.Add(level);
                 }
 
-                return levels.Select(l => (l, l.CreateReader())).AsParallel().ToArray();
+                return levels.Select(static l => (l, l.CreateReader())).AsParallel().ToArray();
             }
 
             public void Reset()

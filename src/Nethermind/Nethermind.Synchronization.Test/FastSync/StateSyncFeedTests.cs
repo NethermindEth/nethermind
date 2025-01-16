@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            await using IContainer container = PrepareDownloader(dbContext, mock => mock.MaxResponseLength = 1);
+            await using IContainer container = PrepareDownloader(dbContext, static mock => mock.MaxResponseLength = 1);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -197,13 +197,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        [Repeat(TestRepeatCount)]
-        public async Task When_saving_root_goes_asleep()
+        public async Task When_saving_root_goes_asleep_and_then_restart_to_new_tree_when_reactivated()
         {
             DbContext dbContext = new(_logger, _logManager);
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit();
-
 
             dbContext.CompareTrees("BEGIN");
 

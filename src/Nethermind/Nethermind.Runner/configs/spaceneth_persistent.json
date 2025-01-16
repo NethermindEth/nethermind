@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "EnableUnsecuredDevWallet": true,
     "KeepDevWalletInMemory": true,
@@ -24,8 +25,25 @@
     "Host": "127.0.0.1",
     "Port": 8545,
     "EnabledModules": [
-      "Admin", "Clique", "Consensus", "Db", "Debug", "Deposit", "Erc20", "Eth", "Evm",
-      "Net", "Nft", "Parity", "Personal", "Proof", "Subscribe", "Trace", "TxPool", "Vault", "Web3"
+      "Admin",
+      "Clique",
+      "Consensus",
+      "Db",
+      "Debug",
+      "Deposit",
+      "Erc20",
+      "Eth",
+      "Evm",
+      "Net",
+      "Nft",
+      "Parity",
+      "Personal",
+      "Proof",
+      "Subscribe",
+      "Trace",
+      "TxPool",
+      "Vault",
+      "Web3"
     ]
   },
   "TxPool": {

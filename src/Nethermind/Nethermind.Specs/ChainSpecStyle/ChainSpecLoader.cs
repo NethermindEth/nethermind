@@ -56,7 +56,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
     {
         long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
+            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
             if (allocation is null) return null;
             KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
             if (pricing.Length > 0)
@@ -142,6 +142,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
             OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
+            OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
@@ -159,6 +160,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
             DepositContractAddress = chainSpecJson.Params.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
             Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
+            Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
             Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
             Eip7251ContractAddress = chainSpecJson.Params.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
@@ -353,6 +355,15 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             return;
         }
 
+        if (chainSpecJson.CodeHashes is not null)
+        {
+            foreach (KeyValuePair<string, byte[]> codeHash in chainSpecJson.CodeHashes)
+            {
+                if (ValueKeccak.Compute(codeHash.Value) != new ValueHash256(codeHash.Key)) throw new ArgumentException($"Unexpected code {codeHash.Key}");
+            }
+            chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
+        }
+
         chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
         foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
         {
@@ -361,12 +372,33 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 continue;
             }
 
-            chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
-                account.Value.Balance ?? UInt256.Zero,
-                account.Value.Nonce,
-                account.Value.Code,
-                account.Value.Constructor,
-                account.Value.GetConvertedStorage());
+            if (account.Value.CodeHash is not null && account.Value.Code is not null)
+            {
+                throw new ArgumentException("CodeHash and Code are both not null");
+            }
+
+            Address address = new(account.Key);
+
+            if (account.Value.CodeHash is not null)
+            {
+                string codeHashString = account.Value.CodeHash.ToString();
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.ContainsKey(codeHashString)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                chainSpec.Allocations[address] = new ChainSpecAllocation(
+                    account.Value.Balance ?? UInt256.Zero,
+                    account.Value.Nonce,
+                    chainSpecJson.CodeHashes[codeHashString],
+                    account.Value.Constructor,
+                    account.Value.GetConvertedStorage());
+            }
+            else
+            {
+                chainSpec.Allocations[address] = new ChainSpecAllocation(
+                    account.Value.Balance ?? UInt256.Zero,
+                    account.Value.Nonce,
+                    account.Value.Code,
+                    account.Value.Constructor,
+                    account.Value.GetConvertedStorage());
+            }
         }
     }
 

@@ -15,5 +15,5 @@ public class Paris : GrayGlacier
         Name = "Paris";
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Paris());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Paris());
 }

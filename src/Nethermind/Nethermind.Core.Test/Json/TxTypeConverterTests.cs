@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test.Json
         [TestCaseSource(typeof(TxTypeSource), nameof(TxTypeSource.Any))]
         public void Test_roundtrip(TxType arg)
         {
-            TestConverter(arg, (before, after) => before.Equals(after), new TxTypeConverter());
+            TestConverter(arg, static (before, after) => before.Equals(after), new TxTypeConverter());
         }
     }
 }

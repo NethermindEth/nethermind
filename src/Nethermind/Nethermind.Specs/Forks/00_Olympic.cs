@@ -33,6 +33,6 @@ namespace Nethermind.Specs.Forks
             DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Olympic());
     }
 }

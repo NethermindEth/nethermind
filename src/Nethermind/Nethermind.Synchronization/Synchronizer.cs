@@ -240,8 +240,9 @@ namespace Nethermind.Synchronization
         {
             _syncCancellation?.Cancel();
 
-            await Task.WhenAny(
-                Task.Delay(FeedsTerminationTimeout),
+            Task timeout = Task.Delay(FeedsTerminationTimeout);
+            Task completedFirst = await Task.WhenAny(
+                timeout,
                 Task.WhenAll(
                     fullSyncComponent.Feed.FeedTask,
                     fastSyncComponent.Feed.FeedTask,
@@ -250,6 +251,11 @@ namespace Nethermind.Synchronization
                     fastHeaderComponent.Feed.FeedTask,
                     oldBodiesComponent.Feed.FeedTask,
                     oldReceiptsComponent.Feed.FeedTask));
+
+            if (completedFirst == timeout)
+            {
+                if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+            }
 
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
@@ -310,7 +316,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
 
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
-            .Register(ctx => ctx
+            .Register(static ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
@@ -332,7 +338,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .SingleInstance();
 
         builder
-            .Map<IReceiptStorage, IReceiptFinder>((storage) => storage)
+            .Map<IReceiptStorage, IReceiptFinder>(static (storage) => storage)
             .AddSingleton<ISyncServer, SyncServer>();
     }
 

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/joc-mainnet.json",
     "GenesisHash": "0x1b54bfa6846a13aacc57066840ec10d1b74b06870539bbc8a3d1b19bdc566733",
@@ -11,9 +12,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 14670000,
-    "PivotHash": "0x608525796e84b63d4758442ddbe0f5f78b8cb395c99760f09ab3d1d4f0fb6dca",
-    "PivotTotalDifficulty": "28692401"
+    "PivotNumber": 15400000,
+    "PivotHash": "0xd9ecf4e26c0d202604214380577cddbff04f9c8d4af6847d10259474818649a0",
+    "PivotTotalDifficulty": "29717066"
   },
   "Metrics": {
     "NodeName": "JOC-Mainnet"

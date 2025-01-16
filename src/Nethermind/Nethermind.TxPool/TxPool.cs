@@ -127,6 +127,7 @@ namespace Nethermind.TxPool
             _preHashFilters =
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
+                new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
                 new PriorityFeeTooLowFilter(_logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
@@ -408,9 +409,11 @@ namespace Nethermind.TxPool
             }
         }
 
+        public bool AcceptTxWhenNotSynced { get; set; }
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (_headInfo.IsSyncing) return AcceptTxResult.Syncing;
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) return AcceptTxResult.Syncing;
 
             Metrics.PendingTransactionsReceived++;
 
