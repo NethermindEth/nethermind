@@ -19,6 +19,7 @@ public class SetReceiptsStats
     public AverageStats KeysCount { get; } = new();
     public AverageStats BytesWritten { get; } = new();
     public long NewTempIndexes;
+    public long NewFinalIndexes;
 
     public void Combine(SetReceiptsStats other)
     {
@@ -36,5 +37,6 @@ public class SetReceiptsStats
         KeysCount.Combine(other.KeysCount);
         BytesWritten.Combine(other.BytesWritten);
         NewTempIndexes += other.NewTempIndexes;
+        NewFinalIndexes += other.NewFinalIndexes;
     }
 }

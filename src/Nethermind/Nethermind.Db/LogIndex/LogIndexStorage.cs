@@ -279,7 +279,7 @@ namespace Nethermind.Db
                 return stats;
 
             var finalizeQueue = Channel.CreateUnbounded<IndexInfo>();
-            Task finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, cancellationToken);
+            Task finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, stats, cancellationToken);
 
             try
             {
@@ -377,7 +377,7 @@ namespace Nethermind.Db
 
         private SafeFileHandle TempFileHandle => _tempPagesPool.FileHandle;
 
-        private async Task KeepFinalizingIndexes(ChannelReader<IndexInfo> reader, CancellationToken cancellationToken)
+        private async Task KeepFinalizingIndexes(ChannelReader<IndexInfo> reader, SetReceiptsStats stats, CancellationToken cancellationToken)
         {
             byte[] blockNumberBytes = ArrayPool<byte>.Shared.Rent(sizeof(int));
             byte[] dataBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
@@ -417,6 +417,8 @@ namespace Nethermind.Db
                     CreateDbKey(indexInfo.Key, blockNumber, dbKey);
                     var finalIndexData = IndexInfo.Serialize(IndexType.Final, new FileRef(offset, compressed.Length), indexInfo.LastBlockNumber, []);
                     db.PutSpan(dbKey, finalIndexData, WriteFlags.DisableWAL);
+
+                    Interlocked.Increment(ref stats.NewFinalIndexes);
 
                     if (indexInfo.File is { } fileRef)
                     {
