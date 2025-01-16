@@ -208,7 +208,7 @@ namespace Nethermind.Network.Discovery.Test
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
-            Stopwatch.GetElapsedTime(startTime).Should().BeGreaterOrEqualTo(TimeSpan.FromSeconds(0.9));
+            Stopwatch.GetElapsedTime(startTime).Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(0.9));
         }
     }
 }

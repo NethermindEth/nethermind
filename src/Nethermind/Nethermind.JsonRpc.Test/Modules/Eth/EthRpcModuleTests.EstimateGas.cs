@@ -107,7 +107,7 @@ public partial class EthRpcModuleTests
 
         var gasUsedAccessList = (long)Bytes.FromHexString(gasUsedCreateAccessList!).ToUInt256();
         var gasUsedEstimate = (long)Bytes.FromHexString(gasUsedEstimateGas!).ToUInt256();
-        Assert.That(gasUsedEstimate, Is.EqualTo(gasUsedAccessList).Within(1.5).Percent);
+        Assert.That(gasUsedEstimate, Is.EqualTo((double)gasUsedAccessList).Within(1.5).Percent);
     }
 
     [TestCase(true, 0xeee7, 0xf71b)]
