@@ -63,12 +63,15 @@ namespace Nethermind.Synchronization.Test
             Pivot pivot = new(syncConfig);
 
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
+            IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+            worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);
 
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new SynchronizerModule(syncConfig))
                 .AddModule(new DbModule())
                 .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
+                .AddSingleton<IWorldStateManager>(worldStateManager)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton(_blockTree)
                 .AddSingleton(_receiptStorage)

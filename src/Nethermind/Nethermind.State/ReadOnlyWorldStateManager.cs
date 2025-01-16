@@ -53,8 +53,8 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public bool SupportHashLookup => _readOnlyTrieStore.Scheme == INodeStorage.KeyScheme.Hash;
     public ISnapServer? SnapServer => new SnapServer.SnapServer(_readOnlyTrieStore, _codeDb, GlobalStateReader, _logManager);
+    public virtual IReadOnlyKeyValueStore? HashServer => null;
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {

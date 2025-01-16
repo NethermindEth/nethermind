@@ -33,6 +33,8 @@ public class WorldStateManager(
 
     public override IWorldState GlobalWorldState => worldState;
 
+    public override IReadOnlyKeyValueStore? HashServer => trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : trieStore.TrieNodeRlpStore;
+
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
         add => trieStore.ReorgBoundaryReached += value;

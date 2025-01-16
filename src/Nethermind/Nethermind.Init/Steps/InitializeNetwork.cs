@@ -399,7 +399,7 @@ public class InitializeNetwork : IStep
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
-        if (!_api.WorldStateManager!.SupportHashLookup)
+        if (_api.WorldStateManager!.HashServer is null)
         {
             _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }
