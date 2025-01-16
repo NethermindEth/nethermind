@@ -52,7 +52,6 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly IWorldState? _state = stateProvider;
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider) ?? throw new ArgumentNullException(nameof(stateProvider));
     private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
