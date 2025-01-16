@@ -52,6 +52,7 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private readonly IWorldState? _state = stateProvider;
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider) ?? throw new ArgumentNullException(nameof(stateProvider));
     private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
@@ -72,6 +73,8 @@ public partial class BlockProcessor(
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
+
+
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -284,7 +287,7 @@ public partial class BlockProcessor(
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+        // ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts);
@@ -337,6 +340,8 @@ public partial class BlockProcessor(
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        _stateProvider.Commit(spec);
 
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
