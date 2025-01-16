@@ -22,7 +22,7 @@ jobs:
         id: version
         run: |
           chmod +x ./scripts/bump-version.sh
-          ./scripts/bump-version.sh "refs/heads/release/1.31.3" "src/Nethermind/Directory.Build.props" > version_output.txt
+          ./scripts/bump-version.sh "refs/heads/release/1.31.0" "src/Nethermind/Directory.Build.props" > version_output.txt
          
           # Read the output and set step outputs
           while IFS= read -r line; do
