@@ -21,7 +21,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
-namespace Nethermind.Synchronization.SnapSync;
+namespace Nethermind.State.SnapServer;
 
 public interface ISnapServer
 {

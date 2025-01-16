@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -17,14 +16,14 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class BlockingVerifyTrie(
+internal class BlockingVerifyTrie(
     ITrieStore trieStore,
     IStateReader stateReader,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IProcessExitSource exitSource,
     ILogManager logManager) : IBlockingVerifyTrie
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<VerifyStateOnStateSyncFinished>();
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockingVerifyTrie>();
 
     private bool _alreadyRunning = false;
 

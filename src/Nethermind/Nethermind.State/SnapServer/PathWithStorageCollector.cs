@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 
-namespace Nethermind.Synchronization.SnapSync;
+namespace Nethermind.State.SnapServer;
 
 public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
 {
