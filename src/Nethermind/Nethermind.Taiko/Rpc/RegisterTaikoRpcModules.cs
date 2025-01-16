@@ -6,10 +6,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Init.Steps;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.Logging;
 using System;
 
 namespace Nethermind.Taiko.Rpc;
@@ -17,12 +15,10 @@ namespace Nethermind.Taiko.Rpc;
 public class RegisterTaikoRpcModules : RegisterRpcModules
 {
     private readonly TaikoNethermindApi _api;
-    private readonly ILogger _logger;
 
     public RegisterTaikoRpcModules(INethermindApi api) : base(api)
     {
         _api = (TaikoNethermindApi)api;
-        _logger = api.LogManager.GetClassLogger();
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -82,7 +78,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
 
         TaikoTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
-            _api.BlockTree,
+            _api.BlockTree.AsReadOnly(),
             _jsonRpcConfig,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
