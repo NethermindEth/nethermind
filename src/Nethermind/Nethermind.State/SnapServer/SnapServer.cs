@@ -18,26 +18,24 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.SnapSync;
+namespace Nethermind.State.SnapServer;
 
 public class SnapServer : ISnapServer
 {
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
-    private readonly ILastNStateRootTracker _stateRootTracker;
+    private readonly IStateReader _stateReader;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
@@ -51,11 +49,11 @@ public class SnapServer : ISnapServer
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, IStateReader stateReader, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        _stateRootTracker = stateRootTracker;
+        _stateReader = stateReader;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
 
@@ -68,7 +66,7 @@ public class SnapServer : ISnapServer
 
     private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        return !_stateRootTracker.HasStateRoot(stateRoot.ToCommitment());
+        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment());
     }
 
     public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)

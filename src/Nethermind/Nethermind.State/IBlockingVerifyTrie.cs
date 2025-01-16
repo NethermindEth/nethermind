@@ -5,7 +5,6 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public interface IBlockingVerifyTrie
+internal interface IBlockingVerifyTrie
 {
-    bool TryStartVerifyTrie(BlockHeader stateAtBlock);
 }
