@@ -42,18 +42,6 @@ namespace Nethermind.Synchronization.FastSync
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
 
-            if (_logger.IsDebug)
-            {
-                if (_bestHeader is not null)
-                {
-                    var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
-                    if (currentHeader.StateRoot != _bestHeader.StateRoot)
-                    {
-                        _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
-                    }
-                }
-            }
-
             return _bestHeader;
         }
 
