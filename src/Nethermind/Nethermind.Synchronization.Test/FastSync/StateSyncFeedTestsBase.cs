@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree, StateSyncPivot stateSyncPivot)
+        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree)
         {
             public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
             public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
@@ -172,8 +172,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
                 blockTree.UpdateMainChain([newBlock], false, true);
-
-                stateSyncPivot.UpdateHeaderForcefully();
             }
         }
 
