@@ -81,15 +81,17 @@ public interface IAdminRpcModule : IRpcModule
     ResultWrapper<string> admin_verifyTrie(BlockParameter block);
 
     [JsonRpcMethod(
-    Description = "Exports the current blockchain into a local file. Optionally specify a block range (firstBlock, lastBlock).",
-    IsImplemented = false
-    )]
+        Description = "Exports the current blockchain into a local file. Optionally takes a block range.",
+        ResponseDescription = "True if the operation succeeded, false otherwise.",
+        ExampleResponse = "\"true\"",
+        IsImplemented = true)]
     Task<ResultWrapper<bool>> admin_exportChain(
-        [JsonRpcParameter(Description = "File path to store the exported blocks", ExampleValue = "\"/data/mychain.blocks\"")]
-        string filePath,
-        [JsonRpcParameter(Description = "Optional start block", ExampleValue = "0")]
-        ulong? firstBlock = null,
-        [JsonRpcParameter(Description = "Optional end block", ExampleValue = "10000")]
-        ulong? lastBlock = null
-    );
+        [JsonRpcParameter(Description = "Path to export file", ExampleValue = "\"/path/to/exported_chain.json\"")]
+        string file,
+        [JsonRpcParameter(Description = "First block to export (optional)", ExampleValue = "0")]
+        ulong first = 0,
+        [JsonRpcParameter(Description = "Last block to export (optional)", ExampleValue = "0")]
+        ulong last = 0
+);
+
 }

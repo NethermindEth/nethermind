@@ -138,7 +138,8 @@ public class RegisterRpcModules : IStep
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,
-            getFromApi.ChainSpec.Parameters);
+            getFromApi.ChainSpec.Parameters,
+            _api.EthereumJsonSerializer);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);

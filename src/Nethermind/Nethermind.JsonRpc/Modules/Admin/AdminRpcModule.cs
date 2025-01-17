@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using Nethermind.Serialization.Json;
 using System.Linq;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -31,6 +34,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly ManualPruningTrigger _pruningTrigger;
     private readonly IBlockingVerifyTrie _blockingVerifyTrie;
     private readonly IStateReader _stateReader;
+    private readonly IJsonSerializer _serializer;
     private NodeInfo _nodeInfo = null!;
 
     public AdminRpcModule(
@@ -43,7 +47,8 @@ public class AdminRpcModule : IAdminRpcModule
         IEnode enode,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
-        ChainParameters parameters)
+        ChainParameters parameters,
+        IJsonSerializer ethereumJsonSerializer)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -55,6 +60,7 @@ public class AdminRpcModule : IAdminRpcModule
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+        _serializer = ethereumJsonSerializer ?? throw new ArgumentNullException(nameof(ethereumJsonSerializer));
 
         BuildNodeInfo();
     }
@@ -180,27 +186,53 @@ public class AdminRpcModule : IAdminRpcModule
 
         return ResultWrapper<string>.Success("Starting.");
     }
-
-    public async Task<ResultWrapper<bool>> admin_exportChain(string filePath, ulong? firstBlock = null, ulong? lastBlock = null)
+    public async Task<ResultWrapper<bool>> admin_exportChain(string file, ulong first = 0, ulong last = 0)
+{
+    try
     {
-        try
+        // Validate file path
+        if (string.IsNullOrWhiteSpace(file))
         {
-            await Task.Run(() =>
+            return ResultWrapper<bool>.Fail("File path cannot be empty or whitespace.");
+        }
+
+        // Determine actual block range
+        if (first == 0)
+        {
+            first = (ulong)(_blockTree.Genesis?.Number ?? 0);
+        }
+        //  If 'last' == 0, interpret that as the chain head.
+        if (last == 0 || last > (ulong)(_blockTree.Head?.Number ?? 0))
+        {
+            last = (ulong)(_blockTree.Head?.Number ?? 0);
+        }
+
+        // Sanity check: ensure 'last' >= 'first'
+        if (last < first)
+        {
+            return ResultWrapper<bool>.Fail($"Invalid block range. first({first}) > last({last}).");
+        }
+
+        List<Block> blocks = new();
+        for (ulong i = first; i <= last; i++)
+        {
+            Block? block = _blockTree.FindBlock((long)i, BlockTreeLookupOptions.None);
+            if (block == null)
             {
-                // TODO: export logic goes here.
-                // 1. Open filePath for writing.
-                // 2. Determine the range of blocks (firstBlock ?? 0) up to (lastBlock ?? chainHead).
-                // 3. Iterate over each block, serialize it, and write to file.
-                // 4. Close the file, return success.
-            });
+                return ResultWrapper<bool>.Fail($"Block not found at height {i}.");
+            }
+            blocks.Add(block);
+        }
 
-            return ResultWrapper<bool>.Success(true);
-        }
-        catch (Exception ex)
-        {
-            // Return a failure message or a generic error
-            return ResultWrapper<bool>.Fail($"Export failed: {ex.Message}");
-        }
+        string json = _serializer.Serialize(blocks);
+
+        await File.WriteAllTextAsync(file, json);
+
+        return ResultWrapper<bool>.Success(true);
     }
-
+    catch (Exception ex)
+    {
+        return ResultWrapper<bool>.Fail($"Exception during export: {ex.Message}");
+    }
+}
 }

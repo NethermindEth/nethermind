@@ -50,6 +50,7 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
         dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
         peerPool.ActivePeers.Returns(dict);
+        IJsonSerializer mockSerializer = Substitute.For<IJsonSerializer>();
 
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         Enode enode = new(_enodeString);
@@ -68,7 +69,8 @@ public class AdminModuleTests
             enode,
             _exampleDataDir,
             new ManualPruningTrigger(),
-            chainSpec.Parameters);
+            chainSpec.Parameters,
+            mockSerializer);
 
         _serializer = new EthereumJsonSerializer();
     }
@@ -125,6 +127,17 @@ public class AdminModuleTests
         _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
         _blockingVerifyTrie.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
+    }
+
+    [Test]
+    public async Task Test_exportChain_happyPath()
+    {
+        const string exportFile = "/tmp/exported_chain.json";
+
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_exportChain", exportFile, 0, 0);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+
+        response.Result!.ToString().Should().Be("True");
     }
 
     [Test]
