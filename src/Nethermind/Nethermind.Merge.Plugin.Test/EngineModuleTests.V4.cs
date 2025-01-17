@@ -398,6 +398,6 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV4(executionPayload, [], block.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
-        Assert.That(Testing.WasDisposed!.Value);
+        Assert.That(Consensus.Testing.WasDisposed!.Value);
     }
 }
