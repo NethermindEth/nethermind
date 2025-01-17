@@ -10,22 +10,41 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.FastSync;
+namespace Nethermind.State;
 
-internal class BlockingVerifyTrie(
-    ITrieStore trieStore,
-    IStateReader stateReader,
-    [KeyFilter(DbNames.Code)] IDb codeDb,
-    IProcessExitSource exitSource,
-    ILogManager logManager) : IBlockingVerifyTrie
+public class BlockingVerifyTrie : IBlockingVerifyTrie
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<BlockingVerifyTrie>();
+    private readonly ILogger _logger;
 
     private bool _alreadyRunning = false;
+    private readonly ITrieStore _trieStore;
+    private readonly IStateReader _stateReader;
+    private readonly IDb _codeDb;
+    private readonly IProcessExitSource _exitSource;
+    private readonly ILogManager _logManager;
+
+    public BlockingVerifyTrie(ITrieStore trieStore,
+        IStateReader stateReader,
+        [KeyFilter(DbNames.Code)] IDb codeDb,
+        IProcessExitSource exitSource,
+        ILogManager logManager)
+    {
+        if (trieStore is IReadOnlyTrieStore)
+        {
+            throw new InvalidOperationException("TrieStore must not be read only to be able to block processing.");
+        }
+
+        _trieStore = trieStore;
+        _stateReader = stateReader;
+        _codeDb = codeDb;
+        _exitSource = exitSource;
+        _logManager = logManager;
+        _logger = logManager.GetClassLogger<BlockingVerifyTrie>();
+    }
 
     public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
     {
@@ -38,14 +57,14 @@ internal class BlockingVerifyTrie(
         {
             try
             {
-                _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+                _logger!.Info($"Collecting trie stats and verifying that no nodes are missing staring from block {stateAtBlock} with state root {stateAtBlock.StateRoot}...");
 
                 Hash256 rootNode = stateAtBlock.StateRoot;
 
                 // This is to block processing as with halfpath old nodes will be removed
-                using IBlockCommitter? _ = trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
+                using IBlockCommitter? _ = _trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
 
-                TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, exitSource.Token);
+                TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, _exitSource.Token);
                 if (stats.MissingNodes > 0)
                 {
                     _logger.Error($"Missing node found!");
@@ -55,6 +74,7 @@ internal class BlockingVerifyTrie(
             }
             catch (OperationCanceledException)
             {
+                _logger.Error($"Verify trie cancelled");
             }
             catch (Exception e)
             {
