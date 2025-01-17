@@ -35,6 +35,7 @@ using System.Transactions;
 using Newtonsoft.Json.Schema;
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
+using Nethermind.Blockchain.Filters;
 
 namespace Nethermind.Init.Steps;
 
@@ -179,12 +180,7 @@ public class RegisterRpcModules : IStep
         SubscriptionFactory subscriptionFactory = new();
 
         // Register the standard subscription types in the dictionary
-        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(SubscriptionType.NewHeads, (jsonRpcDuplexClient, args) =>
-            new NewHeadSubscription(jsonRpcDuplexClient, _api.BlockTree, _api.LogManager, _api.SpecProvider, args));
-        subscriptionFactory.RegisterSubscriptionType<Filter?>(SubscriptionType.Logs, (jsonRpcDuplexClient, filter) => new LogsSubscription(jsonRpcDuplexClient, _api.ReceiptMonitor, _api.FilterStore, _api.BlockTree, _api.LogManager, filter));
-        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(SubscriptionType.NewPendingTransactions, (jsonRpcDuplexClient, args) => new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _api.TxPool, _api.SpecProvider, _api.LogManager, args));
-        subscriptionFactory.RegisterSubscriptionType(SubscriptionType.DroppedPendingTransactions, (jsonRpcDuplexClient) => new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _api.TxPool, _api.LogManager));
-        subscriptionFactory.RegisterSubscriptionType(SubscriptionType.Syncing, (jsonRpcDuplexClient) => new SyncingSubscription(jsonRpcDuplexClient, _api.BlockTree, _api.EthSyncingInfo, _api.LogManager));
+        subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo);
 
         _api.SubscriptionFactory = subscriptionFactory;
 

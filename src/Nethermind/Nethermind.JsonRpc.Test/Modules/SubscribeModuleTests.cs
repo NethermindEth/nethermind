@@ -81,12 +81,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(SubscriptionType.NewHeads, (jsonRpcDuplexClient, args) =>
-                new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, args));
-            subscriptionFactory.RegisterSubscriptionType<Filter?>(SubscriptionType.Logs, (jsonRpcDuplexClient, filter) => new LogsSubscription(jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter));
-            subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(SubscriptionType.NewPendingTransactions, (jsonRpcDuplexClient, args) => new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _specProvider, _logManager, args));
-            subscriptionFactory.RegisterSubscriptionType(SubscriptionType.DroppedPendingTransactions, (jsonRpcDuplexClient) => new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager));
-            subscriptionFactory.RegisterSubscriptionType(SubscriptionType.Syncing, (jsonRpcDuplexClient) => new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager));
+            subscriptionFactory.RegisterStandardSubscription(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
