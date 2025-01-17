@@ -842,7 +842,7 @@ public class EthashTests
         for (int i = 0; i < _dataSizes.Length; i++)
         {
             ulong size = Ethash.GetDataSize((uint)i);
-            Assert.That(_dataSizes[i], Is.EqualTo(size).Within(i), $"failed at epoch: {i}");
+            Assert.That(_dataSizes[i], Is.EqualTo(size).Within((uint)i), $"failed at epoch: {i}");
         }
     }
 
@@ -852,7 +852,7 @@ public class EthashTests
         for (int i = 0; i < _cacheSizes.Length; i++)
         {
             ulong size = Ethash.GetCacheSize((uint)i);
-            Assert.That(_cacheSizes[i], Is.EqualTo(size).Within(i));
+            Assert.That(_cacheSizes[i], Is.EqualTo(size).Within((uint)i));
         }
     }
 }
