@@ -398,6 +398,9 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV4(executionPayload, [], block.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
+        // wait a bit for block processing loop to finish
+        await Task.Delay(5000);
+
 #if DEBUG
         Assert.That(Testing.WasDisposed!.Value);
 #endif

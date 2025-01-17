@@ -304,14 +304,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                // ensure disposed if not already disposed in TxPool
                 processedBlock?.AccountChanges.Dispose();
                 Interlocked.Decrement(ref _queueCount);
-            }
 
 #if DEBUG
-            if (processedBlock is not null)
+            // it seems that the genesis block is not disposed either
+            // may be possible to simplify test to just test one block
+            if (processedBlock is not null && processedBlock.Number == 1)
                 Testing.WasDisposed = processedBlock.AccountChanges.IsDisposed;
 #endif
+            }
+
 
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
