@@ -181,6 +181,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     }
 
     public int Capacity => _capacity;
+    public bool IsDisposed => _disposed;
 
     bool IList.IsFixedSize => false;
 

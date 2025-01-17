@@ -218,7 +218,10 @@ public class TestBlockchain : IDisposable
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
         BlockProcessor = CreateBlockProcessor();
 
-        BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
+        BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default)
+        {
+            IsMainProcessor = true
+        };
         BlockchainProcessor = chainProcessor;
         BlockProcessingQueue = chainProcessor;
         chainProcessor.Start();

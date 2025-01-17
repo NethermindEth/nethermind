@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -349,5 +350,54 @@ public partial class EngineModuleTests
             await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
 
         return getPayloadResult.Data!.ExecutionPayload!;
+    }
+
+    [Test]
+    public async Task Should_dispose_account_changes_after_newpayload_processing()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        // Create a block with a transaction that will modify accounts
+        Transaction tx = Build.A.Transaction
+            .WithValue(1.Ether())
+            .WithTo(TestItem.AddressA)
+            .WithGasPrice(100.GWei())
+            .WithGasLimit(21000)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParent(chain.BlockTree.Head)
+            .WithParentBeaconBlockRoot(chain.BlockTree.Head.ParentBeaconBlockRoot)
+            .WithTransactions(tx)
+            .WithStateRoot(chain.BlockTree.Head.StateRoot!)
+            .WithReceiptsRoot(new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"))
+            .WithBloom(Bloom.Empty)
+            .WithGasUsed(21000)
+            .WithBaseFeePerGas(chain.BlockTree.Head.BaseFeePerGas)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithTimestamp(chain.BlockTree.Head.Timestamp + 12)
+            .WithGasLimit(chain.BlockTree.Head.GasLimit)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithNonce(0)
+            .WithPostMergeFlag(true)
+            .WithTotalDifficulty(0L)
+            .TestObject;
+
+        // Calculate block hash
+        block.Header.Hash = new("0xf911325437ff167912f561f555ab4c950f805d17fbe3cb67cb37bacef70687b1");
+
+        // Call engine_newPayloadV4 which internally processes the block without updating head
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+
+        executionPayload.TryGetBlock(out Block? blockTmp, 0);
+
+        await rpc.engine_newPayloadV4(executionPayload, [], block.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
+
+        Assert.That(Testing.WasDisposed!.Value);
     }
 }
