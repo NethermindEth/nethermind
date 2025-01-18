@@ -64,7 +64,6 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
-
             _pivot = pivot;
 
             int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
@@ -72,9 +71,12 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;
-            SetupAccountRangePartition();
+            Initialize();
+        }
 
-            //TODO: maybe better to move to a init method instead of the constructor
+        private void Initialize()
+        {
+            SetupAccountRangePartition();
             GetSyncProgress();
         }
 
