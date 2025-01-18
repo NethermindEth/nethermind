@@ -38,7 +38,7 @@ public class SynchronizerModuleTests
             .AddSingleton(stateReader)
             .AddSingleton(treeSync)
             .AddSingleton(blockQueue)
-            .AddSingleton(Substitute.For<IBlockingVerifyTrie>())
+            .AddSingleton(Substitute.For<IWorldStateManager>())
             .AddSingleton(Substitute.For<IProcessExitSource>())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
@@ -49,7 +49,7 @@ public class SynchronizerModuleTests
     {
         IContainer ctx = CreateTestContainer();
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
-        IBlockingVerifyTrie verifyTrie = ctx.Resolve<IBlockingVerifyTrie>();
+        IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
 
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
         treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
@@ -57,7 +57,7 @@ public class SynchronizerModuleTests
 
         await Task.Delay(100);
 
-        verifyTrie
+        worldStateManager
             .Received(1)
             .TryStartVerifyTrie(Arg.Any<BlockHeader>());
     }

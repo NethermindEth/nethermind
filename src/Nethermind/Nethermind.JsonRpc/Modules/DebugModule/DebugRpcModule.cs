@@ -26,7 +26,6 @@ public class DebugRpcModule : IDebugRpcModule
 {
     private readonly IDebugBridge _debugBridge;
     private readonly ILogger _logger;
-    private readonly TimeSpan _traceTimeout;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
     private readonly BlockDecoder _blockDecoder;
@@ -37,7 +36,6 @@ public class DebugRpcModule : IDebugRpcModule
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logger = logManager.GetClassLogger();
-        _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         _blockDecoder = new BlockDecoder();
     }
 
@@ -56,8 +54,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
-        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -73,8 +71,8 @@ public class DebugRpcModule : IDebugRpcModule
         blockParameter ??= BlockParameter.Latest;
         call.EnsureDefaults(_jsonRpcConfig.GasCap);
         Transaction tx = call.ToTransaction();
-        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
 
         GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
         if (transactionTrace is null)
@@ -88,8 +86,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
         var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -102,8 +100,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
         long? blockNo = blockParameter.BlockNumber;
         if (!blockNo.HasValue)
         {
@@ -122,8 +120,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
-        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
         var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -135,8 +133,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
-        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
         var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
         var transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
         if (transactionTrace is null)
@@ -158,8 +156,8 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
-        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
-        var cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
         try
         {
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
@@ -183,9 +181,9 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
-        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
-        var cancellationToken = cancellationTokenSource.Token;
-        var blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
+        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
+        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
         try
         {
@@ -204,9 +202,9 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
-        var cancellationToken = cancellationTokenSource.Token;
-        var blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
+        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
+        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
         try
         {
@@ -351,10 +349,10 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
-        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
-        var cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
 
-        var files = _debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
+        IEnumerable<string>? files = _debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBlockToFile)} request {blockHash}, result: {files}");
 
@@ -363,10 +361,10 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
-        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
-        var cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource cancellationTokenSource = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        var files = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
+        IEnumerable<string>? files = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {files}");
 
@@ -378,4 +376,7 @@ public class DebugRpcModule : IDebugRpcModule
         IEnumerable<BadBlock> badBlocks = _debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, _specProvider, _blockDecoder));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
+
+    private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
+        _jsonRpcConfig.BuildTimeoutCancellationToken();
 }

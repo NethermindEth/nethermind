@@ -31,6 +31,11 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.Synchronization.FastBlocks;
+using System.Transactions;
+using Newtonsoft.Json.Schema;
+using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
+using Nethermind.Blockchain.Filters;
 
 namespace Nethermind.Init.Steps;
 
@@ -125,7 +130,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Enode);
 
         ManualPruningTrigger pruningTrigger = new();
-        _api.PruningTrigger.Add(pruningTrigger);
+        _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
 
         AdminRpcModule adminRpcModule = new(
@@ -133,8 +138,7 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            _api.BlockingVerifyTrie!,
-            _api.WorldStateManager.GlobalStateReader,
+            _api.WorldStateManager,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,
@@ -173,15 +177,10 @@ public class RegisterRpcModules : IStep
 
         _api.JsonRpcLocalStats = jsonRpcLocalStats;
 
-        SubscriptionFactory subscriptionFactory = new(
-            _api.LogManager,
-            _api.BlockTree,
-            _api.TxPool,
-            _api.ReceiptMonitor,
-            _api.FilterStore,
-            _api.EthSyncingInfo!,
-            _api.SpecProvider,
-            rpcModuleProvider.Serializer);
+        SubscriptionFactory subscriptionFactory = new();
+
+        // Register the standard subscription types in the dictionary
+        subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo);
 
         _api.SubscriptionFactory = subscriptionFactory;
 

@@ -89,8 +89,6 @@ namespace Nethermind.Init.Steps
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
                     break;
             }
-
-            _api.NodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, _api.LogManager);
         }
     }
 }

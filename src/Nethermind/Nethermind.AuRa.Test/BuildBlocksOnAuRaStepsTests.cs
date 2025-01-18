@@ -39,7 +39,7 @@ namespace Nethermind.AuRa.Test
 
             bool[] allButLastCancellations = args.Skip(1).SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
             allButLastCancellations.Should().AllBeEquivalentTo(true);
-            allButLastCancellations.Should().HaveCountGreaterOrEqualTo(2);
+            allButLastCancellations.Should().HaveCountGreaterThanOrEqualTo(2);
         }
 
         [Test]

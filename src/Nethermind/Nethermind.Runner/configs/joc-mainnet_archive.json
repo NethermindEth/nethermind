@@ -13,6 +13,9 @@
     "DownloadBodiesInFastSync": false,
     "DownloadReceiptsInFastSync": false
   },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
   "Pruning": {
     "Mode": "None"
   },

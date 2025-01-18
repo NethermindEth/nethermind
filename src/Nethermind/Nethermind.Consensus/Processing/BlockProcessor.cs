@@ -338,6 +338,11 @@ public partial class BlockProcessor(
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
+        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+        // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
+        // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        _stateProvider.Commit(spec);
+
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
