@@ -6,8 +6,10 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.Logging;
 using System;
 
 namespace Nethermind.Taiko.Rpc;
@@ -15,10 +17,12 @@ namespace Nethermind.Taiko.Rpc;
 public class RegisterTaikoRpcModules : RegisterRpcModules
 {
     private readonly TaikoNethermindApi _api;
+    private readonly ILogger _logger;
 
     public RegisterTaikoRpcModules(INethermindApi api) : base(api)
     {
         _api = (TaikoNethermindApi)api;
+        _logger = api.LogManager.GetClassLogger();
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -32,6 +36,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.WorldState);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
         StepDependencyException.ThrowIfNull(_api.L1OriginStore);
@@ -75,10 +80,11 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.WorldState);
 
         TaikoTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
-            _api.BlockTree.AsReadOnly(),
+            _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,

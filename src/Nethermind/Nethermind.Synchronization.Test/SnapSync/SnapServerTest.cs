@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -13,7 +15,6 @@ using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
@@ -33,7 +34,7 @@ public class SnapServerTest
         internal MemDb ClientStateDb { get; init; } = null!;
     }
 
-    private Context CreateContext(IStateReader? stateRootTracker = null)
+    private Context CreateContext(ILastNStateRootTracker? stateRootTracker = null)
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
@@ -452,10 +453,10 @@ public class SnapServerTest
         proofs.Dispose();
     }
 
-    private IStateReader CreateConstantStateRootTracker(bool available)
+    private ILastNStateRootTracker CreateConstantStateRootTracker(bool available)
     {
-        IStateReader tracker = Substitute.For<IStateReader>();
-        tracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(available);
+        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
+        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(available);
         return tracker;
     }
 }

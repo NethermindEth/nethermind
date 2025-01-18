@@ -15,6 +15,7 @@ using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -28,7 +29,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IBlockingVerifyTrie _blockingVerifyTrie;
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
 
@@ -37,7 +38,8 @@ public class AdminRpcModule : IAdminRpcModule
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
-        IWorldStateManager worldStateManager,
+        IBlockingVerifyTrie blockingVerifyTrie,
+        IStateReader stateReader,
         IEnode enode,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
@@ -49,8 +51,8 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
-        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
-        _stateReader = _worldStateManager.GlobalStateReader;
+        _blockingVerifyTrie = blockingVerifyTrie ?? throw new ArgumentNullException(nameof(blockingVerifyTrie));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
@@ -171,7 +173,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
         }
 
-        if (!_worldStateManager.TryStartVerifyTrie(header))
+        if (!_blockingVerifyTrie.TryStartVerifyTrie(header))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
         }

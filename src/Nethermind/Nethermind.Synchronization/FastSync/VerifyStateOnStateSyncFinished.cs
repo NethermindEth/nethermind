@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.State;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class VerifyStateOnStateSyncFinished(IWorldStateManager worldStateManager, ITreeSync treeSync) : IStartable
+public class VerifyStateOnStateSyncFinished(IBlockingVerifyTrie blockingVerifyTrie, ITreeSync treeSync) : IStartable
 {
     public void Start()
     {
@@ -17,6 +16,6 @@ public class VerifyStateOnStateSyncFinished(IWorldStateManager worldStateManager
     {
         treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
 
-        worldStateManager.TryStartVerifyTrie(evt.Pivot);
+        blockingVerifyTrie.TryStartVerifyTrie(evt.Pivot);
     }
 }

@@ -201,7 +201,7 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeLessThanOrEqualTo(expectedAllCount - Capacity);
+            _finalizedCount.Should().BeLessOrEqualTo(expectedAllCount - Capacity);
             pool.Count.Should().Be(Capacity);
         }
 
@@ -249,7 +249,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _finalizedCount.Should().BeLessThanOrEqualTo(Capacity * (capacityMultiplier - 1));
+            _finalizedCount.Should().BeLessOrEqualTo(Capacity * (capacityMultiplier - 1));
             _allCount.Should().Be(Capacity * capacityMultiplier);
             pool.Count.Should().Be(Capacity);
         }
@@ -295,7 +295,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             int expectedAllCount = Capacity * capacityMultiplier * 3;
             _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeGreaterThanOrEqualTo(expectedAllCount - Capacity);
+            _finalizedCount.Should().BeGreaterOrEqualTo(expectedAllCount - Capacity);
         }
 
         private static void CollectAndFinalize()

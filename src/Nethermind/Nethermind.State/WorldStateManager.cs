@@ -2,15 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Healing;
-using Nethermind.State.Snap;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -19,9 +12,8 @@ public class WorldStateManager(
     IWorldState worldState,
     ITrieStore trieStore,
     IDbProvider dbProvider,
-    ILogManager logManager,
-    IProcessExitSource? processExitSource = null)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager, processExitSource)
+    ILogManager logManager)
+    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
 {
     public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
     {
@@ -33,24 +25,9 @@ public class WorldStateManager(
 
     public override IWorldState GlobalWorldState => worldState;
 
-    public override IReadOnlyKeyValueStore? HashServer => trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : trieStore.TrieNodeRlpStore;
-
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
         add => trieStore.ReorgBoundaryReached += value;
         remove => trieStore.ReorgBoundaryReached -= value;
-    }
-
-    public override void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
-    {
-        if (trieStore is HealingTrieStore healingTrieStore)
-        {
-            healingTrieStore.InitializeNetwork(hashRecovery);
-        }
-
-        if (worldState is HealingWorldState healingWorldState)
-        {
-            healingWorldState.InitializeNetwork(nodeRecovery);
-        }
     }
 }

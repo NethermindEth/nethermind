@@ -28,11 +28,11 @@
   "Mining": {
     "MinGasPrice": 1
   },
-  "Receipt": {
-    "TxLookupLimit": 0
-  },
   "Pruning": {
     "Mode": "None"
+  },
+  "Receipt": {
+    "TxLookupLimit": 0
   },
   "Blocks": {
     "GasToken": "EWT"

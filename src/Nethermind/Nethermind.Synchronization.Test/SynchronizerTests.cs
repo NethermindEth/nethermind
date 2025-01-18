@@ -333,13 +333,13 @@ public class SynchronizerTests
             PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), new ChainSpec(), _logManager);
             IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, poSSwitcher, _logManager);
 
-            IWorldStateManager worldStateManager = WorldStateManager.CreateForTest(dbProvider, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
             IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
                 ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                 : totalDifficultyBetterPeerStrategy;
 
-            IStateReader reader = worldStateManager.GlobalStateReader;
+            StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
 
             Pivot pivot = new(syncConfig);
@@ -352,7 +352,6 @@ public class SynchronizerTests
                 .AddSingleton<IReceiptConfig>(new ReceiptConfig())
                 .AddSingleton(dbProvider)
                 .AddSingleton(blockStore)
-                .AddSingleton(worldStateManager)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IBlockTree>(BlockTree)

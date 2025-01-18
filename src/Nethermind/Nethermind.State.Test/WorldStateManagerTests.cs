@@ -47,17 +47,10 @@ public class WorldStateManagerTests
         ITrieStore trieStore = Substitute.For<ITrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
-        trieStore.Scheme.Returns(keyScheme);
+        readOnlyTrieStore.Scheme.Returns(keyScheme);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
-        if (hashSupported)
-        {
-            worldStateManager.HashServer.Should().NotBeNull();
-        }
-        else
-        {
-            worldStateManager.HashServer.Should().BeNull();
-        }
+        worldStateManager.SupportHashLookup.Should().Be(hashSupported);
     }
 }

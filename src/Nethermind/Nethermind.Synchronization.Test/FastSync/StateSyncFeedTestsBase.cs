@@ -10,6 +10,7 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,11 +23,11 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -156,7 +157,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree)
+        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree, StateSyncPivot stateSyncPivot)
         {
             public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
             public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
@@ -172,6 +173,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
                 blockTree.UpdateMainChain([newBlock], false, true);
+
+                stateSyncPivot.UpdateHeaderForcefully();
             }
         }
 
@@ -265,8 +268,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
                 _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
-                IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
-                alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+                ILastNStateRootTracker alwaysAvailableRootTracker = Substitute.For<ILastNStateRootTracker>();
+                alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
                 IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
                 _stateDb = trieStore.TrieNodeRlpStore;
