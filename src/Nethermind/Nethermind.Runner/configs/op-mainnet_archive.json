@@ -18,9 +18,6 @@
   "Discovery": {
     "DiscoveryVersion": "V5"
   },
-  "Receipt": {
-    "TxLookupLimit": 0
-  },
   "Pruning": {
     "Mode": "None"
   },

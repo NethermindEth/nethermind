@@ -30,8 +30,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.Healing;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -125,7 +123,15 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
-        _api.WorldStateManager!.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager), new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        if (_api.TrieStore is HealingTrieStore healingTrieStore)
+        {
+            healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        }
+
+        if (_api.WorldState is HealingWorldState healingWorldState)
+        {
+            healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        }
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
@@ -372,8 +378,7 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             // TODO: Add a proper config for the state persistence depth.
-            snapServer = new LastNRootSnapServer(_api.WorldStateManager!.SnapServer!, new LastNStateRootTracker(_api.BlockTree, 128));
-
+            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
         }
 
         _api.ProtocolsManager = new ProtocolsManager(
@@ -399,7 +404,7 @@ public class InitializeNetwork : IStep
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
-        if (_api.WorldStateManager!.HashServer is null)
+        if (!_api.WorldStateManager!.SupportHashLookup)
         {
             _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }

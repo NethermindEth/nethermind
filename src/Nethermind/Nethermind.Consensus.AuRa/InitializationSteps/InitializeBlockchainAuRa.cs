@@ -103,7 +103,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-        IWorldState worldState = _api.WorldStateManager!.GlobalWorldState!;
+        IWorldState worldState = _api.WorldState!;
 
         return new AuRaBlockProcessor(
             _api.SpecProvider!,
@@ -139,7 +139,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
-        IWorldState worldState = _api.WorldStateManager.GlobalWorldState!;
+        IWorldState worldState = _api.WorldState!;
         IAuRaValidator validator = new AuRaValidatorFactory(
                 _api.AbiEncoder,
                 worldState,

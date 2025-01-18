@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Json;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
@@ -57,7 +56,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IReceiptMonitor _receiptCanonicalityMonitor = null!;
         private ISyncConfig _syncConfig = null!;
         private ISyncProgressResolver _syncProgressResolver = null!;
-        private EthSyncingInfo _ethSyncingInfo;
 
         [SetUp]
         public void Setup()
@@ -73,19 +71,23 @@ namespace Nethermind.JsonRpc.Test.Modules
             _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
             _syncConfig = new SyncConfig();
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
-                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
 
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
-            SubscriptionFactory subscriptionFactory = new();
-
-            // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardSubscription(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            SubscriptionFactory subscriptionFactory = new(
+                _logManager,
+                _blockTree,
+                _txPool,
+                _receiptCanonicalityMonitor,
+                _filterStore,
+                new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
+                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager),
+                _specProvider,
+                jsonSerializer);
 
             _subscriptionManager = new SubscriptionManager(
-            subscriptionFactory,
-            _logManager);
+                subscriptionFactory,
+                _logManager);
 
             _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
             _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);

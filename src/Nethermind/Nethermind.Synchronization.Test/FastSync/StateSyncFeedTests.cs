@@ -197,11 +197,13 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public async Task When_saving_root_goes_asleep_and_then_restart_to_new_tree_when_reactivated()
+        [Repeat(TestRepeatCount)]
+        public async Task When_saving_root_goes_asleep()
         {
             DbContext dbContext = new(_logger, _logManager);
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit();
+
 
             dbContext.CompareTrees("BEGIN");
 

@@ -563,8 +563,8 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
+        CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         try
         {
@@ -572,17 +572,17 @@ public partial class EthRpcModule(
             bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
-                timeout.Dispose();
+                cancellationTokenSource.Dispose();
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
             else
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, timeout));
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
             }
         }
         catch (ResourceNotFoundException exception)
         {
-            timeout.Dispose();
+            cancellationTokenSource.Dispose();
             return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
     }
@@ -590,8 +590,8 @@ public partial class EthRpcModule(
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
         // because of lazy evaluation of enumerable, we need to do the validation here first
-        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
+        CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         SearchResult<BlockHeader> fromBlockResult;
         SearchResult<BlockHeader> toBlockResult;
@@ -606,7 +606,7 @@ public partial class EthRpcModule(
 
             if (toBlockResult.IsError)
             {
-                timeout.Dispose();
+                cancellationTokenSource.Dispose();
                 return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(toBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
             }
 
@@ -616,7 +616,7 @@ public partial class EthRpcModule(
 
         if (fromBlockResult.IsError)
         {
-            timeout.Dispose();
+            cancellationTokenSource.Dispose();
             return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(fromBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
@@ -630,7 +630,7 @@ public partial class EthRpcModule(
 
         if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
         {
-            timeout.Dispose();
+            cancellationTokenSource.Dispose();
 
             return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
         }
@@ -643,7 +643,7 @@ public partial class EthRpcModule(
 
             ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
 
-            using (timeout)
+            using (cancellationTokenSource)
             {
                 foreach (FilterLog log in filterLogs)
                 {
@@ -755,11 +755,9 @@ public partial class EthRpcModule(
         return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart));
     }
 
+
     public ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
     }
-
-    private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
-        _rpcConfig.BuildTimeoutCancellationToken();
 }

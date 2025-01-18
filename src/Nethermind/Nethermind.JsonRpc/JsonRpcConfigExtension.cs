@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
@@ -18,15 +16,6 @@ namespace Nethermind.JsonRpc
                 enabledModules.Add(modules[i]);
             }
             config.EnabledModules = enabledModules.ToArray();
-        }
-
-        /// <summary>
-        /// Constructs a <see cref="CancellationTokenSource"/> that timeouts after <see cref="IJsonRpcConfig.Timeout"/>
-        /// if <see cref="Debugger.IsAttached"/> is false.
-        /// </summary>
-        public static CancellationTokenSource BuildTimeoutCancellationToken(this IJsonRpcConfig config)
-        {
-            return Debugger.IsAttached ? new CancellationTokenSource() : new CancellationTokenSource(config.Timeout);
         }
     }
 }

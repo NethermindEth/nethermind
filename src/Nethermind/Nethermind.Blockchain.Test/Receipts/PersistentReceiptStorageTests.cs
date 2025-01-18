@@ -360,37 +360,28 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_NewHeadBlock_DoNotRemove_TxIndex_WhenTxIsInOtherBlockNumber()
+    public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
     {
         CreateStorage();
+        (Block block, TxReceipt[] receipts) = InsertBlock();
 
-        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        if (_receiptConfig.CompactTxIndex)
+        {
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+        }
+        else
+        {
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
+        }
 
-        Block b1a = Build.A.Block.WithNumber(1).TestObject;
-        Block b1b = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-        Block b2a = Build.A.Block.WithNumber(2).WithParent(b1a).WithTransactions(tx).TestObject;
-        Block b2b = Build.A.Block.WithNumber(2).WithParent(b1b).TestObject;
+        Block newHead = Build.A.Block.WithNumber(1).TestObject;
+        _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
 
-        InsertBlock(b1a);
-        InsertBlock(b1b);
-        InsertBlock(b2a);
-        InsertBlock(b2b);
-
-        // b1a
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, null));
-
-        // b1b
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
-
-        // b2a
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, b1b));
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2a, null));
-
-        // b2b
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2b, b2a));
-
-        _storage.FindBlockHash(tx.Hash!).Should().Be(b1b.Hash!);
+        Assert.That(
+            () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
+            Is.Null.After(1000, 100)
+            );
     }
 
     [Test]
@@ -495,12 +486,7 @@ public class PersistentReceiptStorageTests
                 .TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(farHead);
         }
-
-        TxReceipt[] receipts = Array.Empty<TxReceipt>();
-        if (block.Transactions.Length == 1)
-        {
-            receipts = [Build.A.Receipt.WithCalculatedBloom().TestObject];
-        }
+        TxReceipt[] receipts = { Build.A.Receipt.WithCalculatedBloom().TestObject };
         return (block, receipts);
     }
 
