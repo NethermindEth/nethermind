@@ -41,7 +41,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 Address address = kv.Key;
                 AccountChange accountChange = kv.Value;
 
-                if (accountChange.SelfDestructed)
+                if (accountChange.Delete)
                 {
                     worldState.DeleteAccount(address);
                     continue;
@@ -101,13 +101,19 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     worldState.InsertCode(address, accountChange.Code, releaseSpec);
                 }
 
-                if (accountChange.ChangedSlots is not null)
+                if (!accountChange.Delete && accountChange.ChangedSlots is not null)
                 {
                     foreach (KeyValuePair<Hash256, Hash256> changedSlot in accountChange.ChangedSlots)
                     {
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.BytesToArray());
                     }
                 }
+                else if (accountChange.Delete)
+                {
+                    worldState.ClearStorage(address);
+
+                }
+
             }
 
             worldState.Commit(releaseSpec);
