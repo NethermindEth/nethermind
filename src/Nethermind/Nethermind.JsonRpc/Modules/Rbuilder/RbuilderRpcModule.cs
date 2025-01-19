@@ -44,7 +44,9 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (accountChange.SelfDestructed)
                 {
                     worldState.DeleteAccount(address);
+                    continue;
                 }
+
 
                 bool hasAccountChange = accountChange.Balance is not null
                                         || accountChange.Nonce is not null
@@ -54,6 +56,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (worldState.TryGetAccount(address, out AccountStruct account))
                 {
+
                     // IWorldState does not actually have set nonce or set balance.
                     // Set, its either this or changing `IWorldState` which is somewhat risky.
                     if (accountChange.Nonce is not null)
