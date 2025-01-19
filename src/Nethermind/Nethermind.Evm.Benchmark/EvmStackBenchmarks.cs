@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -18,12 +19,12 @@ namespace Nethermind.Evm.Benchmark
             UInt256.MaxValue
         };
 
-        private byte[] _stack;
+        private Word[] _stack;
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
+            _stack = new Word[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
         }
 
         [Benchmark(OperationsPerInvoke = 4)]

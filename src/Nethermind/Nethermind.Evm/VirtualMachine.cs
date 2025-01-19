@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -15,9 +16,13 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using DotNetty.Common.Utilities;
+using Microsoft.ClearScript.Util.Web;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -706,6 +711,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
+        // Whenever using the byRef for peeking stack, ensure that underlying U(Int256) operation does not override the output ref first
+        ref UInt256 byRef = ref NullRef<UInt256>();
+        ref Word byRefWord = ref NullRef<Word>();
+
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
         SkipInit(out UInt256 c);
@@ -739,15 +748,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         goto EmptyReturn;
                     }
+                // Arithmetic operations that pop 2 operands and push one result use PeekUInt256Ref that allows
+                // to get a ref to the top of the stack.
                 case Instruction.ADD:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        UInt256.Add(in a, in b, out result);
-                        stack.PushUInt256(result);
-
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+                        UInt256.Add(in a, in byRef, out byRef);
                         break;
                     }
                 case Instruction.MUL:
@@ -755,9 +765,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Low;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        UInt256.Multiply(in a, in b, out result);
-                        stack.PushUInt256(in result);
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+                        UInt256.Multiply(in a, in byRef, out byRef);
                         break;
                     }
                 case Instruction.SUB:
@@ -765,10 +775,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        UInt256.Subtract(in a, in b, out result);
-
-                        stack.PushUInt256(in result);
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+                        UInt256.Subtract(in a, in byRef, out byRef);
                         break;
                     }
                 case Instruction.DIV:
@@ -776,17 +785,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Low;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (b.IsZero)
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+                        if (byRef.IsZero)
                         {
-                            stack.PushZero();
+                            // NOP
+                            // byRef = default;
                         }
                         else
                         {
-                            UInt256.Divide(in a, in b, out result);
-                            stack.PushUInt256(in result);
+                            // Copy required, result overwritten before
+                            b = byRef;
+                            UInt256.Divide(in a, in b, out byRef);
                         }
-
                         break;
                     }
                 case Instruction.SDIV:
@@ -794,20 +805,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Low;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (b.IsZero)
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+                        if (byRef.IsZero)
                         {
-                            stack.PushZero();
+                            // NOP
+                            // byRef = default;
                         }
-                        else if (As<UInt256, Int256>(ref b) == Int256.MinusOne && a == P255)
+                        else if (As<UInt256, Int256>(ref byRef) == Int256.MinusOne && a == P255)
                         {
-                            result = P255;
-                            stack.PushUInt256(in result);
+                            byRef = P255;
                         }
                         else
                         {
-                            Int256.Divide(in As<UInt256, Int256>(ref a), in As<UInt256, Int256>(ref b), out As<UInt256, Int256>(ref result));
-                            stack.PushUInt256(in result);
+                            Int256.Divide(in As<UInt256, Int256>(ref a), in As<UInt256, Int256>(ref byRef), out As<UInt256, Int256>(ref byRef));
                         }
 
                         break;
@@ -817,9 +828,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Low;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        UInt256.Mod(in a, in b, out result);
-                        stack.PushUInt256(in result);
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+                        UInt256.Mod(in a, in byRef, out byRef);
                         break;
                     }
                 case Instruction.SMOD:
@@ -827,16 +838,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Low;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (b.IsZeroOrOne)
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+
+                        if (byRef.IsZeroOrOne)
                         {
-                            stack.PushZero();
+                            byRef = default;
                         }
                         else
                         {
+                            // copy value
                             As<UInt256, Int256>(ref a)
-                                .Mod(in As<UInt256, Int256>(ref b), out As<UInt256, Int256>(ref result));
-                            stack.PushUInt256(in result);
+                                .Mod(in As<UInt256, Int256>(ref byRef), out As<UInt256, Int256>(ref byRef));
                         }
 
                         break;
@@ -847,16 +860,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
 
-                        if (c.IsZero)
+                        if (byRef.IsZero)
                         {
-                            stack.PushZero();
+                            // NOP
+                            // byRef = default;
                         }
                         else
                         {
-                            UInt256.AddMod(a, b, c, out result);
-                            stack.PushUInt256(in result);
+                            // Copy required, result overwritten before
+                            c = byRef;
+                            UInt256.AddMod(a, b, c, out byRef);
                         }
 
                         break;
@@ -867,16 +883,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
 
-                        if (c.IsZero)
+                        if (byRef.IsZero)
                         {
-                            stack.PushZero();
+                            // NOP
+                            // byRef = default;
                         }
                         else
                         {
-                            UInt256.MultiplyMod(in a, in b, in c, out result);
-                            stack.PushUInt256(in result);
+                            // Copy required, result overwritten before
+                            c = byRef;
+                            UInt256.MultiplyMod(in a, in b, in c, out byRef);
                         }
 
                         break;
@@ -888,7 +907,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Metrics.ExpOpcode++;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopWord(out b);
 
                         int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -931,17 +950,25 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         int position = 31 - (int)a;
 
-                        bytes = stack.PeekWord256();
-                        sbyte sign = (sbyte)bytes[position];
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
+
+                        Endianness.Reshuffle(ref byRefWord);
+
+                        sbyte sign = (sbyte)byRefWord[position];
+
+                        bytes = MemoryMarshal.CreateSpan(ref As<Word, byte>(ref byRefWord), position);
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesZero32.AsSpan(0, position).CopyTo(bytes);
                         }
                         else
                         {
-                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesMax32.AsSpan(0, position).CopyTo(bytes);
                         }
+
+                        Endianness.Reshuffle(ref byRefWord);
 
                         // Didn't remove from stack so don't need to push back
                         break;
@@ -951,15 +978,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (a < b)
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+
+                        byRef = a < byRef ? UInt256.One : UInt256.Zero;
 
                         break;
                     }
@@ -968,15 +990,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (a > b)
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+
+                        byRef = a > byRef ? UInt256.One : UInt256.Zero;
 
                         break;
                     }
@@ -985,16 +1002,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
 
-                        if (As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) < 0)
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
+                        byRef = As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref byRef)) < 0
+                            ? UInt256.One
+                            : UInt256.Zero;
 
                         break;
                     }
@@ -1003,15 +1016,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) > 0)
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+
+                        byRef = As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref byRef)) > 0
+                            ? UInt256.One
+                            : UInt256.Zero;
 
                         break;
                     }
@@ -1020,15 +1030,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (a.Equals(b))
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+
+                        byRef = a.Equals(byRef) ? UInt256.One : UInt256.Zero;
 
                         break;
                     }
@@ -1036,15 +1041,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (a.IsZero)
-                        {
-                            stack.PushOne();
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
+                        byRef = ref stack.PeekUInt256Ref();
+                        if (IsNullRef(ref byRef)) goto StackUnderflow;
+
+                        byRef = byRef.IsZero ? UInt256.One : UInt256.Zero;
 
                         break;
                     }
@@ -1052,57 +1052,49 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        ref Vector256<byte> aVec = ref stack.PopRef();
+                        if (IsNullRef(ref aVec)) goto StackUnderflow;
 
-                        bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(aVec, bVec));
+                        byRefWord = Vector256.BitwiseAnd(aVec, byRefWord);
                         break;
                     }
                 case Instruction.OR:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        ref Vector256<byte> aVec = ref stack.PopRef();
+                        if (IsNullRef(ref aVec)) goto StackUnderflow;
 
-                        bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseOr(aVec, bVec));
+                        byRefWord = Vector256.BitwiseOr(aVec, byRefWord);
                         break;
                     }
                 case Instruction.XOR:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        ref Vector256<byte> aVec = ref stack.PopRef();
+                        if (IsNullRef(ref aVec)) goto StackUnderflow;
 
-                        bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.Xor(aVec, bVec));
+                        byRefWord = Vector256.Xor(aVec, byRefWord);
                         break;
                     }
                 case Instruction.NOT:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        ref byte bytesRef = ref stack.PopBytesByRef();
-                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        byRefWord = ref stack.PeekRef();
+                        if (IsNullRef(ref byRefWord)) goto StackUnderflow;
 
-                        Vector256<byte> negVec = Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref bytesRef));
-
-                        WriteUnaligned(ref stack.PushBytesRef(), negVec);
+                        byRefWord = Vector256.OnesComplement(byRefWord);
                         break;
                     }
                 case Instruction.BYTE:
@@ -1110,7 +1102,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopWord(out b);
 
                         if (a >= BigInt32)
                         {
@@ -1142,7 +1134,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = vmState.Memory.LoadSpan(in a, b);
 
                         // Compute the KECCAK256 directly to the stack slot
-                        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushBytesRef()));
+                        byRefWord = ref stack.PushRef();
+                        KeccakCache.ComputeTo(bytes, out As<Vector256<byte>, ValueHash256>(ref byRefWord));
+                        Endianness.Reshuffle(ref byRefWord);
+
                         break;
                     }
                 case Instruction.ADDRESS:
@@ -1552,7 +1547,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
 
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopWordUnsafe();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
                         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
@@ -1598,7 +1593,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.High;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopWordUnsafe();
                         if (!bytes.SequenceEqual(BytesZero32))
                         {
                             if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
@@ -1960,7 +1955,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
-                            bytes = stack.PopWord256();
+                            bytes = stack.PopWord(out a);
 
                             _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
@@ -2364,7 +2359,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Span<byte> salt = default;
         if (instruction == Instruction.CREATE2)
         {
-            salt = stack.PopWord256();
+            salt = stack.PopWord(out UInt256 _);
         }
 
         //EIP-3860
@@ -2497,7 +2492,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
-            topics[i] = new Hash256(stack.PopWord256());
+            topics[i] = new Hash256(stack.PopWordUnsafe());
         }
 
         LogEntry logEntry = new(
@@ -2561,7 +2556,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        ReadOnlySpan<byte> bytes = stack.PopWordUnsafe();
         bool newIsZero = bytes.IsZero();
         bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
@@ -2754,8 +2749,35 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack<TIsTracing>.WordSize);
-            _txTracer.SetOperationStack(new TraceStack(stackMemory));
+            // Requires Reshuffling
+            var head = stackValue.Head;
+
+            if (head == 0)
+            {
+                _txTracer.SetOperationStack(new TraceStack(ReadOnlyMemory<byte>.Empty));
+            }
+            else
+            {
+                // Tracing requires reshuffling the whole stack.
+                // This could be yet rethought as we could implement a memory manager that provides the casting and then Reshuffle twice.
+                Span<Word> current = vmState.DataStack.AsSpan(0, head);
+
+                var length = head * EvmStack<TIsTracing>.WordSize;
+                var bytes = ArrayPool<byte>.Shared.Rent(length);
+
+                Memory<byte> traced = bytes.AsMemory(0, length);
+                Span<Word> words = MemoryMarshal.Cast<byte, Word>(traced.Span);
+                current.CopyTo(words);
+
+                foreach (ref Word word in words)
+                {
+                    Endianness.Reshuffle(ref word);
+                }
+
+                _txTracer.SetOperationStack(new TraceStack(traced));
+
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
         }
     }
 

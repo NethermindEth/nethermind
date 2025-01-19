@@ -135,6 +135,13 @@ public class VirtualMachineTestsBase
     {
         return Execute(Activation, code);
     }
+
+    protected TransactionResult ExecuteWithTracer(byte[] code, ITxTracer tracer)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 200_000, code);
+        return _processor.Execute(transaction, block.Header, tracer);
+    }
+
     protected TestAllTracerWithOutput Execute(Transaction tx)
     {
         return Execute(Activation, tx);
