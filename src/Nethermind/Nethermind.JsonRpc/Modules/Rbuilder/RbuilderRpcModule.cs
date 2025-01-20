@@ -70,6 +70,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         {
                             worldState.DecrementNonce(address, originalNonce - accountChange.Nonce.Value);
                         }
+
                     }
 
                     if (accountChange.Balance is not null)
