@@ -165,7 +165,7 @@ public class MerkleTests
     [Test]
     public void Can_merkleize_uint128_vector()
     {
-        Merkle.Ize(out UInt256 root, new UInt128[] { 1, 3, 5 });
+        Merkle.Merkleize(out UInt256 root, new UInt128[] { 1, 3, 5 });
         Assert.That(root.ToHexString(true), Is.EqualTo("0xf189891181de961f99a35c1aa21c0d909bf30bb8bebb760050f3d06dc56e488a"));
     }
 
@@ -186,7 +186,7 @@ public class MerkleTests
     [Test]
     public void Can_merkleize_uint128_vector_full()
     {
-        Merkle.Ize(out UInt256 root, new UInt128[] { 1, 3 });
+        Merkle.Merkleize(out UInt256 root, new UInt128[] { 1, 3 });
         Assert.That(root.ToHexString(true), Is.EqualTo("0x0100000000000000000000000000000003000000000000000000000000000000"));
     }
 
