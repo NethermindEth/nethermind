@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Healing;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
