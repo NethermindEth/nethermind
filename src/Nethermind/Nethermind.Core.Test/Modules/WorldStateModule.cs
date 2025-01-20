@@ -18,7 +18,10 @@ public class WorldStateModule : Module
 
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
-            .Map<INodeStorage, PruningTrieStateFactoryOutput>((m) => m.NodeStorage);
+            .Map<INodeStorage, PruningTrieStateFactoryOutput>((m) => m.NodeStorage)
+
+            .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
+            ;
     }
 
     // Just a wrapper to easily extract the output of `PruningTrieStateFactory` which do the actual initializations.
