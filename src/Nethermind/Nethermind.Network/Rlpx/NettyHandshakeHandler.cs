@@ -72,7 +72,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ConvertTo<IPEndPoint>();
+                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
                 _session.RemoteHost = ipEndPoint.Address.ToString();
                 _session.RemotePort = ipEndPoint.Port;
             }

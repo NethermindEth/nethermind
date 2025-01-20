@@ -155,7 +155,7 @@ namespace Nethermind.Network.Rlpx
                     .ChildHandler(new ActionChannelInitializer<IChannel>(ch =>
                     {
                         Session session = new(LocalPort, ch, _disconnectsAnalyzer, _logManager);
-                        IPEndPoint? ipEndPoint = ch.RemoteAddress.ConvertTo<IPEndPoint>();
+                        IPEndPoint? ipEndPoint = ch.RemoteAddress.ToIPEndpoint();
                         session.RemoteHost = ipEndPoint.Address.ToString();
                         session.RemotePort = ipEndPoint.Port;
                         InitializeChannel(ch, session);
