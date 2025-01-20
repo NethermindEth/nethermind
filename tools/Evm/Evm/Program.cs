@@ -6,7 +6,7 @@ using System.CommandLine;
 
 CliRootCommand rootCmd = [];
 
-T8nCommand.Configure(ref rootCmd);
+T8nCommand.Configure(rootCmd);
 
 CliConfiguration cli = new(rootCmd);
 
