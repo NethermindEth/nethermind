@@ -30,7 +30,6 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        traceStoreConfig = _api.Config<ITraceStoreConfig>();
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 

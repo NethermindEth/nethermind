@@ -66,7 +66,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
-        mergeConfig = nethermindApi.Config<IMergeConfig>();
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
