@@ -38,4 +38,30 @@ public static class Wait
             unregister(handler);
         }
     }
+
+    public static async Task ForEvent(
+        CancellationToken cancellationToken,
+        Action<EventHandler> register,
+        Action<EventHandler> unregister)
+    {
+        TaskCompletionSource completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void handler(object? sender, EventArgs e)
+        {
+            completion.TrySetResult();
+        }
+
+        register(handler);
+
+        try
+        {
+            await using (cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken)))
+            {
+                await completion.Task;
+            }
+        }
+        finally
+        {
+            unregister(handler);
+        }
+    }
 }

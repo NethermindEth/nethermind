@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Healing;
@@ -34,6 +35,7 @@ public interface IWorldStateManager
 
     void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
     bool TryStartVerifyTrie(BlockHeader stateAtBlock);
+    bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
 }
 
 public interface IOverridableWorldScope

@@ -63,8 +63,7 @@ namespace Nethermind.Api
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
-                .AddSingleton(ConfigProvider.GetConfig<IReceiptConfig>())
+                .AddSource(new ConfigRegistrationSource())
                 .AddModule(new DbModule());
 
             return builder;

@@ -338,7 +338,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .SingleInstance();
 
         builder
-            .Map<IReceiptStorage, IReceiptFinder>(static (storage) => storage)
+            .Map<IReceiptFinder, IReceiptStorage>(static (storage) => storage)
             .AddSingleton<ISyncServer, SyncServer>();
     }
 

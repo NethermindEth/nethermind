@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -45,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public BeaconPivot(
             ISyncConfig syncConfig,
-            IDb metadataDb,
+            [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             IBlockTree blockTree,
             IPoSSwitcher poSSwitcher,
             ILogManager logManager)

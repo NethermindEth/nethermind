@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
@@ -107,8 +108,8 @@ namespace Nethermind.Blockchain
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
-            IDb? blockInfoDb,
-            IDb? metadataDb,
+            [KeyFilter(DbNames.BlockInfos)] IDb? blockInfoDb,
+            [KeyFilter(DbNames.Metadata)] IDb? metadataDb,
             IBadBlockStore? badBlockStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,

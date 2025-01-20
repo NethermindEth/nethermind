@@ -11,6 +11,7 @@ using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -71,8 +72,9 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-                _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
+                _session.RemoteHost = ipEndPoint.Address.ToString();
+                _session.RemotePort = ipEndPoint.Port;
             }
 
             _ = CheckHandshakeInitTimeout();
