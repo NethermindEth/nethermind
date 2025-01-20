@@ -79,4 +79,19 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<string> admin_verifyTrie(BlockParameter block);
+
+    [JsonRpcMethod(
+        Description = "Exports the current blockchain into a local file. Optionally takes a block range.",
+        ResponseDescription = "True if the operation succeeded, false otherwise.",
+        ExampleResponse = "\"true\"",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_exportChain(
+        [JsonRpcParameter(Description = "Path to export file", ExampleValue = "\"/path/to/exported_chain.json\"")]
+        string file,
+        [JsonRpcParameter(Description = "First block to export (optional)", ExampleValue = "0")]
+        ulong first = 0,
+        [JsonRpcParameter(Description = "Last block to export (optional)", ExampleValue = "0")]
+        ulong last = 0
+);
+
 }

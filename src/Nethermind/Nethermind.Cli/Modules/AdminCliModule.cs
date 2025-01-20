@@ -21,5 +21,14 @@ namespace Nethermind.Cli.Modules
 
         [CliFunction("admin", "removePeer", Description = "Removes given node from the static nodes")]
         public string? RemovePeer(string enode, bool removeFromStaticNodes = false) => NodeManager.Post<string>("admin_removePeer", enode, removeFromStaticNodes).Result;
+
+        [CliFunction("admin", "exportChain", Description = "Exports the blockchain to a local file")]
+        public bool ExportChain(
+            string file,
+            ulong first = 0,
+            ulong last = 0)
+        {
+            return NodeManager.Post<bool>("admin_exportChain", file, first, last).Result;
+        }
     }
 }
