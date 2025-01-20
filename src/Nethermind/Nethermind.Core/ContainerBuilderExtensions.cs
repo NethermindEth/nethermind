@@ -129,10 +129,10 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddKeyedSingleton<T>(this ContainerBuilder builder, string key, T instance) where T : class
+    public static ContainerBuilder AddKeyedSingleton<T>(this ContainerBuilder builder, object key, T instance) where T : class
     {
         builder.RegisterInstance(instance)
-            .Named<T>(key)
+            .Keyed<T>(key)
             .ExternallyOwned()
             .SingleInstance();
 
@@ -330,6 +330,13 @@ public static class ContainerBuilderExtensions
         builder.Register(mapper)
             .As<TTo>()
             .ExternallyOwned();
+
+        return builder;
+    }
+
+    public static ContainerBuilder OnBuild(this ContainerBuilder builder, Action<ILifetimeScope> action)
+    {
+        builder.RegisterBuildCallback(action);
 
         return builder;
     }

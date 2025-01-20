@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
@@ -23,19 +22,13 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.JsonRpc.Modules.Rpc;
-using Nethermind.Synchronization.FastBlocks;
-using System.Transactions;
-using Newtonsoft.Json.Schema;
-using Nethermind.Blockchain;
-using Nethermind.Core.Specs;
-using Nethermind.Blockchain.Filters;
 using Nethermind.State;
 
 namespace Nethermind.Init.Steps;
@@ -142,6 +135,7 @@ public class RegisterRpcModules : IStep
             new VerifyTrieStarter(_api.WorldStateManager, _api.ProcessExit!, _api.LogManager),
             _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
+            _api.AdminEraService,
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters);
