@@ -74,6 +74,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         }
                         else
                         {
+                            Console.WriteLine($"DECREMENT!!!: {address} Nonce {accountChange.Nonce}");
                             worldState.DecrementNonce(address, originalNonce - accountChange.Nonce.Value);
                         }
 
