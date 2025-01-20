@@ -106,14 +106,15 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (!codeHash.Equals(accountChange.CodeHash))
                 {
                     Console.WriteLine($"NM code hash {codeHash}, rbuilder code hash {accountChange.CodeHash}");
-                } else
-                {
+                }
 
                 if (accountChange.Code is not null)
                 {
-                    Console.WriteLine($"{codeHash}, {accountChange.CodeHash}: {BitConverter.ToString(accountChange.Code)}, {BitConverter.ToString(code)}");
-                    worldState.InsertCode(address, accountChange.Code, releaseSpec);
-                }
+                    if (accountChange.Code != code)
+                    {
+                        Console.WriteLine($"{codeHash}, {accountChange.CodeHash}: {BitConverter.ToString(accountChange.Code)}, {BitConverter.ToString(code)}");
+                        worldState.InsertCode(address, accountChange.Code, releaseSpec);
+                    }
                 }
 
                 if (accountChange.ChangedSlots is not null)
