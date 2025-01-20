@@ -49,7 +49,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.SelfDestructed)
                 {
-                    worldState.DeleteAccount(address);
+                    worldState.ClearStorage(address);
                 }
 
                 bool hasAccountChange = accountChange.Balance is not null
@@ -117,6 +117,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     {
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
+
                 }
             }
 
