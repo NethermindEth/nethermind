@@ -174,7 +174,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         (UInt256 currentTotalDiffulty, readSize) = _fileReader.ReadEntryAndDecode(
             position,
-            (buffer) => new UInt256(buffer.Span, isBigEndian: false),
+            static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
             EntryTypes.TotalDifficulty);
         header.TotalDifficulty = currentTotalDiffulty;
 
