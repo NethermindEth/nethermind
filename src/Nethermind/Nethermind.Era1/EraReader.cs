@@ -79,7 +79,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         ConcurrentQueue<long> blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
 
-        Task[] workers = Enumerable.Range(0, Environment.ProcessorCount).Select((_) => Task.Run(async () =>
+        using ArrayPoolList<Task> workers = Enumerable.Range(0, Environment.ProcessorCount).Select((_) => Task.Run(async () =>
         {
             while (blockNumbers.TryDequeue(out long blockNumber))
             {
@@ -107,8 +107,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 // Note: Header.Hash is calculated by HeaderDecoder.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
-        }, cancellation)).ToArray();
-        await Task.WhenAll(workers);
+        }, cancellation)).ToPooledList(Environment.ProcessorCount);
+        await Task.WhenAll(workers.AsSpan());
 
         using AccumulatorCalculator calculator = new();
         foreach (var valueTuple in blockHashes)
