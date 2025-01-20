@@ -38,14 +38,15 @@ public class E2StoreReader : IDisposable
         _fileLength = RandomAccess.GetLength(_file);
     }
 
-    public (T, long) ReadEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType)
+    public long ReadEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType, out T value)
     {
         Entry entry = ReadEntry(position, expectedType);
 
         int length = (int)entry.Length;
         using ArrayPoolList<byte> buffer = new ArrayPoolList<byte>(length, length);
         RandomAccess.Read(_file, buffer.AsSpan(), position + HeaderSize);
-        return (decoder(buffer.AsMemory()), (long)(entry.Length + HeaderSize));
+        value = decoder(buffer.AsMemory());
+        return (long)(entry.Length + HeaderSize);
     }
 
     public async Task<(T, long)> ReadSnappyCompressedEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType, CancellationToken token = default)

@@ -112,7 +112,7 @@ internal class E2StoreWriterTests
         sut.Dispose();
 
         using E2StoreReader reader = new E2StoreReader(tmpFile);
-        (var readBytes, _) = reader.ReadEntryAndDecode(0, buf => buf.ToArray(), EntryTypes.Accumulator);
+        _ = reader.ReadEntryAndDecode(0, buf => buf.ToArray(), EntryTypes.Accumulator, out byte[] readBytes);
         Assert.That(readBytes, Is.EquivalentTo(TestBytes));
         Assert.That(readBytes.Length, Is.EqualTo(TestBytes.Length));
     }

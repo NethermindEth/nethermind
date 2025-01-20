@@ -23,8 +23,6 @@ public class E2StoreWriter : IDisposable
     private readonly Stream _stream;
     private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-    private bool _disposedValue;
-
     public long Position => _stream.Position;
 
     public E2StoreWriter(Stream stream)

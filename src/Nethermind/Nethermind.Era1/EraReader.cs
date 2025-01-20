@@ -126,10 +126,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public ValueHash256 ReadAccumulator()
     {
-        return _fileReader.ReadEntryAndDecode<ValueHash256>(
+        _ = _fileReader.ReadEntryAndDecode<ValueHash256>(
             _fileReader.AccumulatorOffset,
             static (buffer) => new ValueHash256(buffer.Span),
-            EntryTypes.Accumulator).Item1;
+            EntryTypes.Accumulator,
+            out ValueHash256 hash);
+
+        return hash;
     }
 
     public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
@@ -172,10 +175,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         position += readSize;
 
-        (UInt256 currentTotalDiffulty, readSize) = _fileReader.ReadEntryAndDecode(
+        _ = _fileReader.ReadEntryAndDecode(
             position,
             static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
-            EntryTypes.TotalDifficulty);
+            EntryTypes.TotalDifficulty,
+            out UInt256 currentTotalDiffulty);
         header.TotalDifficulty = currentTotalDiffulty;
 
         Block block = new Block(header, body);
