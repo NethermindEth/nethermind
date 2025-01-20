@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
