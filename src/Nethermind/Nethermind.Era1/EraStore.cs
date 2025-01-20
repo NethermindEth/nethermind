@@ -92,22 +92,23 @@ public class EraStore : IEraStore
             .Select((chk) => new ValueHash256(chk))
             .ToArray();
 
-        var eraFiles = EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem).ToArray();
+        bool hasEraFile = false;
         _epochs = new();
-        foreach (var file in eraFiles)
+        foreach (var file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             int epoch;
             if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
-                throw new ArgumentException($"Malformed Era1 file '{file}'.", nameof(eraFiles));
+                throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
             _epochs[epoch] = file;
+            hasEraFile = true;
             if (epoch > LastEpoch)
                 LastEpoch = epoch;
             if (epoch < FirstEpoch)
                 FirstEpoch = epoch;
         }
 
-        if (eraFiles.Length == 0)
+        if (!hasEraFile)
         {
             throw new EraException($"No relevant era files in directory {directory}");
         }

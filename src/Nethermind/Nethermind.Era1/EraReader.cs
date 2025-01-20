@@ -22,7 +22,6 @@ namespace Nethermind.Era1;
 /// </summary>
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
-    private bool _disposedValue;
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
@@ -206,21 +205,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return _fileReader.CalculateChecksum();
     }
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposedValue)
-        {
-            _fileReader.Dispose();
-            _disposedValue = true;
-        }
-    }
-
-    public void Dispose()
-    {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
-    }
+    public void Dispose() => _fileReader.Dispose();
 
     private struct EntryReadResult
     {

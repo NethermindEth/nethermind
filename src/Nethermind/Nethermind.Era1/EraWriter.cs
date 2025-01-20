@@ -26,7 +26,6 @@ public class EraWriter : IDisposable
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly AccumulatorCalculator _accumulatorCalculator;
     private readonly ISpecProvider _specProvider;
-    private bool _disposedValue;
     private bool _finalized;
 
     public EraWriter(string path, ISpecProvider specProvider)
@@ -105,8 +104,10 @@ public class EraWriter : IDisposable
 
         //Index is 64 bits segments in the format => start | index | index | ... | count
         //16 bytes is for the start and count plus every entry
-        byte[] blockIndex = new byte[16 + _entryIndexes.Count * 8];
-        WriteInt64(blockIndex, 0, _startNumber);
+        int length = 16 + _entryIndexes.Count * 8;
+        using ArrayPoolList<byte> blockIndex = new ArrayPoolList<byte>(length, length);
+        Span<byte> blockIndexSpan = blockIndex.AsSpan();
+        WriteInt64(blockIndexSpan, 0, _startNumber);
 
         //era1:= Version | block-tuple ... | other-entries ... | Accumulator | BlockIndex
         //block-index := starting-number | index | index | index... | count
@@ -115,12 +116,12 @@ public class EraWriter : IDisposable
         for (int i = 0; i < _entryIndexes.Count; i++)
         {
             //Skip 8 bytes for the start value
-            WriteInt64(blockIndex, 8 + i * 8, _entryIndexes[i] - blockIndexPosition);
+            WriteInt64(blockIndexSpan, 8 + i * 8, _entryIndexes[i] - blockIndexPosition);
         }
 
-        WriteInt64(blockIndex, 8 + _entryIndexes.Count * 8, _entryIndexes.Count);
+        WriteInt64(blockIndexSpan, 8 + _entryIndexes.Count * 8, _entryIndexes.Count);
 
-        await _e2StoreWriter.WriteEntry(EntryTypes.BlockIndex, blockIndex, cancellation);
+        await _e2StoreWriter.WriteEntry(EntryTypes.BlockIndex, blockIndex.AsMemory(), cancellation);
         await _e2StoreWriter.Flush(cancellation);
 
         _entryIndexes.Clear();
@@ -139,24 +140,10 @@ public class EraWriter : IDisposable
         return _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
     }
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposedValue)
-        {
-            if (disposing)
-            {
-                _e2StoreWriter?.Dispose();
-                _accumulatorCalculator?.Dispose();
-                _entryIndexes?.Dispose();
-            }
-            _disposedValue = true;
-        }
-    }
-
     public void Dispose()
     {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
+        _e2StoreWriter?.Dispose();
+        _accumulatorCalculator?.Dispose();
+        _entryIndexes?.Dispose();
     }
 }

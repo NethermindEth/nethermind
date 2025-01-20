@@ -13,7 +13,6 @@ namespace Nethermind.Era1;
 internal class AccumulatorCalculator : IDisposable
 {
     ArrayPoolList<ReadOnlyMemory<byte>> _roots;
-    private bool _disposedValue;
 
     public AccumulatorCalculator()
     {
@@ -38,22 +37,5 @@ internal class AccumulatorCalculator : IDisposable
 
     internal void Clear() => _roots.Clear();
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposedValue)
-        {
-            if (disposing)
-            {
-                _roots.Dispose();
-            }
-            _disposedValue = true;
-        }
-    }
-
-    public void Dispose()
-    {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
-    }
+    public void Dispose() => _roots.Dispose();
 }
