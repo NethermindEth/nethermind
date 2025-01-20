@@ -40,6 +40,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
 
         tx.GasPrice = MaxPriorityFeePerGas ?? 0;
         tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
+        tx.GasLimit = Gas ?? 0;
 
         return tx;
     }
