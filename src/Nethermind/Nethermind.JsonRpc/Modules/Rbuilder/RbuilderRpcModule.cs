@@ -37,8 +37,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
             worldState.StateRoot = blockHeader.StateRoot!;
 
-            Console.WriteLine($"Got hash: {blockParam.BlockHash}");
-            Console.WriteLine($"Got diff: {accountDiff.Count}");
 
             foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
             {
@@ -47,7 +45,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 Console.WriteLine($"Balance {accountChange.Balance}");
                 Console.WriteLine($"Nonce {accountChange.Nonce}");
-                Console.WriteLine($"Storage {accountChange.ChangedSlots?.Count}");
+                Console.WriteLine($"Storage diff {accountChange.ChangedSlots?.Count}");
 
                 if (accountChange.SelfDestructed)
                 {
@@ -114,7 +112,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.ChangedSlots is not null)
                 {
-                    Console.WriteLine($"Changed slots changed {accountChange.ChangedSlots.Count}");
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
