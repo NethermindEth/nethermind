@@ -288,6 +288,7 @@ internal class BlobSender
                 (block.ExcessBlobGas ?? 0) +
                 excessBlobs * Cancun.Instance.MaxBlobCount +
                 excessBlobsReserve,
+                Cancun.Instance.BlobBaseFeeUpdateFraction,
                 out UInt256 blobGasPrice);
             result.maxFeePerBlobGas = blobGasPrice;
         }
