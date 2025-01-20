@@ -37,5 +37,5 @@ public class AccountChange
     [JsonPropertyName("self_destructed")]
     public bool SelfDestructed { get; set; }
     [JsonPropertyName("changed_slots")]
-    public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
+    public IDictionary<UInt256, byte[]>? ChangedSlots { get; set; }
 }
