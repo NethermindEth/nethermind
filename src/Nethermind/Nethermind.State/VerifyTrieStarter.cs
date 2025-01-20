@@ -17,7 +17,7 @@ namespace Nethermind.State;
 /// <param name="worldStateManager"></param>
 /// <param name="exitSource"></param>
 /// <param name="logManager"></param>
-public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExitSource exitSource, ILogManager logManager): IVerifyTrieStarter
+public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExitSource exitSource, ILogManager logManager) : IVerifyTrieStarter
 {
     private readonly ILogger _logger = logManager.GetClassLogger<VerifyTrieStarter>();
 

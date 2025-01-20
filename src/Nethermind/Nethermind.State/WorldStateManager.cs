@@ -31,7 +31,8 @@ public class WorldStateManager : IWorldStateManager
         ITrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager
-    ) {
+    )
+    {
         _dbProvider = dbProvider;
         _worldState = worldState;
         _trieStore = trieStore;
