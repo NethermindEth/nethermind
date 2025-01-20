@@ -26,6 +26,8 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public Transaction[]? InclusionListTransactions { get; set; }
+
     public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
@@ -45,6 +47,11 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
+        }
+
+        if (InclusionListTransactions is not null)
+        {
+            sb.Append($", {nameof(InclusionListTransactions)} count: {InclusionListTransactions.Length}");
         }
 
         sb.Append('}');
@@ -71,7 +78,8 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list transactions root hash
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -107,6 +115,15 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
+        if (InclusionListTransactions is not null)
+        {
+            Hash256 inclusionListTransactionsRootHash = InclusionListTransactions.Length == 0
+                ? PatriciaTree.EmptyTreeHash
+                : new TxTrie(InclusionListTransactions).RootHash;
+            inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 
@@ -166,6 +183,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { InclusionListTransactions: not null } => EngineApiVersions.Osaka,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

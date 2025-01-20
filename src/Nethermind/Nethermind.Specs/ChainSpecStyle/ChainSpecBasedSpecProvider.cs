@@ -235,6 +235,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
             releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
+            releaseSpec.IsEip7805Enabled = (chainSpec.Parameters.Eip7805TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             releaseSpec.IsOntakeEnabled = (chainSpec.Parameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider

@@ -16,6 +16,7 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    Transaction[]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -25,7 +26,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
+    byte[][]? executionRequests = null,
+    Transaction[]? inclusionListTransactions = null)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
@@ -35,6 +37,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
+
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    public Transaction[]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
@@ -84,6 +92,15 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
+
+        if (spec.InclusionListsEnabled)
+        {
+            if (InclusionListTransactions is null)
+            {
+                error = "Inclusion list must be set";
+                return ValidationResult.Fail;
+            }
+        }
 
         error = null;
         return ValidationResult.Success;
