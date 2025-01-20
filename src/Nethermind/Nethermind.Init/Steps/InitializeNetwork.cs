@@ -3,12 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -30,7 +28,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -63,7 +60,7 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    private const string PeersDbPath = "peers";
+    public const string PeersDbPath = "peers";
 
     protected readonly IApiWithNetwork _api;
     private readonly ILogger _logger;
@@ -338,16 +335,12 @@ public class InitializeNetwork : IStep
         _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
-            _api.NodeKey.PublicKey,
-            _networkConfig.ProcessingThreadCount,
-            _networkConfig.P2PPort,
-            _networkConfig.LocalIp,
-            _networkConfig.ConnectTimeoutMs,
+            _api.Enode!,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
-            _api.LogManager,
-            TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs)
+            _networkConfig,
+            _api.LogManager
         );
 
         await _api.RlpxPeer.Init();
@@ -356,7 +349,7 @@ public class InitializeNetwork : IStep
         await _api.StaticNodesManager.InitAsync();
 
         // ToDo: PeersDB is registered outside dbProvider
-        string dbName = "PeersDB";
+        string dbName = INetworkStorage.PeerDb;
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
             ? new MemDb(dbName)
             : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
