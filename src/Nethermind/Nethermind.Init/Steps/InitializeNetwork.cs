@@ -339,8 +339,7 @@ public class InitializeNetwork : IStep
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
             _networkConfig,
-            _api.LogManager,
-            null
+            _api.LogManager
         );
 
         await _api.RlpxPeer.Init();

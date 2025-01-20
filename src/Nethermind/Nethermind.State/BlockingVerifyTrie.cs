@@ -48,17 +48,17 @@ internal class BlockingVerifyTrie(
                 TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, exitSource.Token);
                 if (stats.MissingNodes > 0)
                 {
-                    _logger.Error($"Missing node found!");
+                    if (_logger.IsError) _logger.Error($"Missing node found!");
                 }
 
-                _logger.Info($"Stats after finishing state \n" + stats);
+                if (_logger.IsInfo) _logger.Info($"Stats after finishing state \n" + stats);
             }
             catch (OperationCanceledException)
             {
             }
             catch (Exception e)
             {
-                _logger.Error($"Error in verify trie", e);
+                if (_logger.IsError) _logger.Error($"Error in verify trie", e);
             }
 
         }, TaskCreationOptions.LongRunning);
@@ -75,10 +75,10 @@ internal class BlockingVerifyTrie(
         TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, cancellationToken);
         if (stats.MissingNodes > 0)
         {
-            _logger.Error($"Missing node found!");
+            if (_logger.IsError) _logger.Error($"Missing node found!");
         }
 
-        _logger.Info($"Stats after finishing state \n" + stats);
+        if (_logger.IsInfo) _logger.Info($"Stats after finishing state \n" + stats);
 
         return stats.MissingNodes == 0;
     }

@@ -155,7 +155,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         }
 
         var builder = new ContainerBuilder()
-            .AddModule(new PsudoNethermindModule(spec, configProvider, new TestLogManager()))
+            .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
@@ -431,7 +431,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         MainBlockProcessingContext mainBlockProcessingContext,
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
-        PsudoNethermindRunner runner,
+        PseudoNethermindRunner runner,
         ImmediateDisconnectFailure immediateDisconnectFailure)
     {
         // These check is really slow (it doubles the test time) so its disabled by default.

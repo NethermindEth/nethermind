@@ -53,7 +53,7 @@ namespace Nethermind.Network.Rlpx
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
             ILogManager logManager,
-            IChannelFactory? channelFactory
+            IChannelFactory? channelFactory = null
         ) : this(
             serializationService,
             localEnode.PublicKey,

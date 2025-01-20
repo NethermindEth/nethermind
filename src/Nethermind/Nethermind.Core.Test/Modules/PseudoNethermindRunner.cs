@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test.Modules;
 /// Replaces nethermind runner during test. Hardcoded and need to be called manually.
 /// Everything is lazy and not automatically injected on constructor, so if its not needed, its not constructed and running.
 /// </summary>
-public class PsudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
+public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
 {
     private IBlockchainProcessor? _blockchainProcessor;
     private IBlockProducerRunner? _blockProducerRunner;

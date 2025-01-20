@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Modules;
 /// </summary>
 /// <param name="configProvider"></param>
 /// <param name="spec"></param>
-public class PsudoNethermindModule(ChainSpec spec, IConfigProvider configProvider, ILogManager logManager) : Module
+public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -44,7 +44,7 @@ public class PsudoNethermindModule(ChainSpec spec, IConfigProvider configProvide
             .AddModule(new NetworkModule())
             .AddModule(new DbModule())
             .AddModule(new WorldStateModule())
-            .AddModule(new BlocktreeModule())
+            .AddModule(new BlockTreeModule())
             .AddModule(new BlockProcessingModule())
             .AddSource(new ConfigRegistrationSource())
 

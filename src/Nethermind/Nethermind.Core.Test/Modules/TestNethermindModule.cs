@@ -25,7 +25,7 @@ public class TestNethermindModule(IConfigProvider configProvider) : Module
         base.Load(builder);
 
         builder
-            .AddModule(new PsudoNethermindModule(new ChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new PseudoNethermindModule(new ChainSpec(), configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
     }

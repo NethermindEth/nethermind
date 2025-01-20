@@ -17,7 +17,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class BlocktreeModule : Autofac.Module
+public class BlockTreeModule : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {

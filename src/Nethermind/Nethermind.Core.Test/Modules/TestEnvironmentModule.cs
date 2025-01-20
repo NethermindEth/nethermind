@@ -41,7 +41,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
             .AddSingleton<IDiscoveryApp, NullDiscoveryApp>()
 
-            .AddSingleton<PsudoNethermindRunner>()
+            .AddSingleton<PseudoNethermindRunner>()
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
 
