@@ -10,6 +10,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -199,6 +201,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
 
+            SetMaxAndTargetBlobCount(chainSpec, releaseSpec, releaseStartTimestamp);
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
@@ -244,6 +247,53 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             return releaseSpec;
+        }
+
+        private void SetMaxAndTargetBlobCount(ChainSpec chainSpec, ReleaseSpec spec, ulong? releaseStartTimestamp = null)
+        {
+            (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork(chainSpec, releaseStartTimestamp);
+            if (fork is null) return;
+
+            if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name.ToLower(), out ChainSpecBlobCountJson blobCount) ||
+                chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name.ToLower(), out blobCount))
+            {
+                spec.TargetBlobCount = blobCount.Target;
+                spec.MaxBlobCount = blobCount.Max;
+                if (blobCount.BaseFeeUpdateFraction == 0)
+                {
+                    if (fork.Name == "Cancun")
+                    {
+                        spec.BlobBaseFeeUpdateFraction = Cancun.Instance.BlobBaseFeeUpdateFraction;
+                    }
+                    else if (fork.Name == "Prague")
+                    {
+                        spec.BlobBaseFeeUpdateFraction = Prague.Instance.BlobBaseFeeUpdateFraction;
+                    }
+                }
+                else
+                {
+                    spec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
+                }
+
+            }
+            else
+            {
+                spec.TargetBlobCount = 3;
+                spec.MaxBlobCount = 6;
+                spec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+            }
+        }
+
+        private (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork(ChainSpec chainSpec, ulong? releaseStartTimestamp = null)
+        {
+            if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+            {
+                return (Prague.Instance, Cancun.Instance);
+            }
+
+            return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                ? (Cancun.Instance, Shanghai.Instance)
+                : (null, null);
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

@@ -20,6 +20,9 @@ public class Cancun : Shanghai
         IsEip5656Enabled = true;
         IsEip6780Enabled = true;
         Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress;
+        MaxBlobCount = 6;
+        TargetBlobCount = 3;
+        BlobBaseFeeUpdateFraction = 3338477;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Cancun());

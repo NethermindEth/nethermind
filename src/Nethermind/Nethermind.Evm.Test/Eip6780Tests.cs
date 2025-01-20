@@ -68,7 +68,6 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(timestamp)
                 .WithTransactions(initTx, tx1).WithGasLimit(2 * _gasLimit).TestObject;
-
             _processor.Execute(initTx, block.Header, NullTxTracer.Instance);
             UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
             _processor.Execute(tx1, block.Header, NullTxTracer.Instance);

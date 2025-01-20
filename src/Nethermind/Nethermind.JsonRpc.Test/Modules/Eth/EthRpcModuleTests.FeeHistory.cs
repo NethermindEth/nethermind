@@ -88,15 +88,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    Eip4844Constants.TargetBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock * 4 },
+                    Cancun.Instance.TargetBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock,
-                    Eip4844Constants.MaxBlobGasPerBlock })
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob,
+                    Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob })
             {
                 TestName = "Different values",
                 ExpectedResult = (

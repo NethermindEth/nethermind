@@ -25,7 +25,7 @@ public class ChiadoSpecProvider : ISpecProvider
         {
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => Shanghai.Instance,
-            < PragueTimestamp => Cancun.Instance,
+            < PragueTimestamp => CancunGnosis.Instance,
             _ => PragueGnosis.Instance
         }
     };

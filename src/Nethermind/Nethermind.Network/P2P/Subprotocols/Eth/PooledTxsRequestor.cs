@@ -2,25 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig) : IPooledTxsRequestor
+    public class PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig, ISpecProvider specProvider) : IPooledTxsRequestor
     {
         private const int MaxNumberOfTxsInOneMsg = 256;
         private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
         private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-        private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is not null
-            ? txPoolConfig.MaxBlobTxSize.Value + (long)Eip4844Constants.MaxBlobGasPerBlock : long.MaxValue;
+        private readonly long _configuredMaxBlobTxSize = CalculateMaxBlobTxSize(txPoolConfig.MaxBlobTxSize, specProvider);
+
+        private static long CalculateMaxBlobTxSize(long? maxBlobTxSize, ISpecProvider specProvider)
+        {
+            if (maxBlobTxSize is null)
+            {
+                return long.MaxValue;
+            }
+
+            ulong maxBlobCount = specProvider.TransitionActivations
+                .Select(transitionActivation => specProvider.GetSpec(transitionActivation).MaxBlobCount)
+                .DefaultIfEmpty(0ul)
+                .Max();
+            return maxBlobTxSize.Value + (long)(Eip4844Constants.GasPerBlob * maxBlobCount);
+        }
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 

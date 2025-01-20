@@ -52,7 +52,17 @@
     "maximumExtraDataSize": "0xffff",
     "minGasLimit": "0x1388",
     "registrar": "0x0000000000000000000000000000000000000000",
-    "MergeForkIdTransition": "0x0"
+    "MergeForkIdTransition": "0x0",
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6
+      },
+      "prague": {
+        "target": 6,
+        "max": 9
+      }
+    }
   },
   "genesis": {
     "seal": {

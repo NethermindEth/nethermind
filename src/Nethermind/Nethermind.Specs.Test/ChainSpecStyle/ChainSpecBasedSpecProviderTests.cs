@@ -16,6 +16,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -217,7 +219,9 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
-        VerifyGnosisCancunSpecifics();
+
+        IReleaseSpec? postCancunSpec = provider.GetSpec((2, GnosisSpecProvider.CancunTimestamp));
+        VerifyGnosisCancunSpecifics(postCancunSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
@@ -269,19 +273,21 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
-        VerifyGnosisCancunSpecifics();
+
+        IReleaseSpec? postCancunSpec = provider.GetSpec((2, GnosisSpecProvider.CancunTimestamp));
+        VerifyGnosisCancunSpecifics(postCancunSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
-    private static void VerifyGnosisCancunSpecifics()
+    private static void VerifyGnosisCancunSpecifics(IReleaseSpec spec)
     {
-        Assert.Multiple(static () =>
+        Assert.Multiple(() =>
         {
-            Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
-            Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(Eip4844Constants.TargetBlobGasPerBlock, Is.EqualTo(131072));
+            Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(131072));
         });
     }
 
@@ -434,10 +440,10 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
                      // Skip EIP-4844 parameter validation
-                     .Where(p => p.Name != nameof(Eip4844Constants.BlobGasPriceUpdateFraction))
-                     .Where(p => p.Name != nameof(Eip4844Constants.MaxBlobGasPerBlock))
+                     .Where(p => p.Name != nameof(IReleaseSpec.BlobBaseFeeUpdateFraction))
+                     .Where(p => p.Name != nameof(IReleaseSpec.MaxBlobCount))
                      .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
-                     .Where(p => p.Name != nameof(Eip4844Constants.TargetBlobGasPerBlock))
+                     .Where(p => p.Name != nameof(IReleaseSpec.TargetBlobCount))
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
