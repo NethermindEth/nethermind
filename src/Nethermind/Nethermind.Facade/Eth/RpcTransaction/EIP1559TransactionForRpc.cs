@@ -15,9 +15,11 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
 
     public override TxType? Type => TxType.EIP1559;
 
+    [JsonDiscriminator]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxPriorityFeePerGas { get; set; }
 
+    [JsonDiscriminator]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerGas { get; set; }
 
