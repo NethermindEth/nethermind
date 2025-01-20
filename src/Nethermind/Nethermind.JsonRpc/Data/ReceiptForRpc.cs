@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Data
         public Address To { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address ContractAddress { get; set; }
+        public Address? ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
