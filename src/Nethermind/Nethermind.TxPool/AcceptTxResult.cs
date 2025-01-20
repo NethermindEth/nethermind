@@ -89,6 +89,15 @@ namespace Nethermind.TxPool
         /// Ignores transactions if tx type is not supported
         /// </summary>
         public static readonly AcceptTxResult NotSupportedTxType = new(15, nameof(NotSupportedTxType));
+        /// <summary>
+        /// Only one tx is allowed per delegated account. 
+        /// </summary>
+        public static readonly AcceptTxResult OnlyOneTxPerDelegatedAccount = new(16, nameof(OnlyOneTxPerDelegatedAccount));
+        /// <summary>
+        /// There is a pending delegation in the tx pool already
+        /// </summary>
+        public static readonly AcceptTxResult PendingDelegation = new(17, nameof(PendingDelegation));
+
 
         /// <summary>
         /// Transaction size exceeds configured max size.
