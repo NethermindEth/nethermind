@@ -76,7 +76,11 @@ public static class T8nInputReader
         using var reader = new StreamReader(Console.OpenStandardInput());
         try
         {
-            return EthereumJsonSerializer.Deserialize<InputData>(reader.ReadToEnd());
+            var jsonText = reader.ReadToEnd();
+            TransactionMetaDataWrapper txsMetaDataWrapper = EthereumJsonSerializer.Deserialize<TransactionMetaDataWrapper>(jsonText);
+            InputData inputData = EthereumJsonSerializer.Deserialize<InputData>(jsonText);
+            inputData.TransactionMetaDataList = txsMetaDataWrapper.Txs;
+            return inputData;
         }
         catch (Exception e)
         {

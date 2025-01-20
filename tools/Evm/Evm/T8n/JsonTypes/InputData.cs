@@ -33,8 +33,11 @@ public class InputData
             for (int i = 0; i < Txs.Length; i++)
             {
                 var transaction = Txs[i].ToTransaction();
-                transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
-                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
+                transaction.SenderAddress = Txs[i] is LegacyTransactionForRpc ? ((LegacyTransactionForRpc)Txs[i]).From : null;
+                if (transaction.SenderAddress is null)
+                {
+                    SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
+                }
 
                 transactions.Add(transaction);
             }
