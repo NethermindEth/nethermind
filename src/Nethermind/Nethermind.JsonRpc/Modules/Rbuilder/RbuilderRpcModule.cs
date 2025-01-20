@@ -100,7 +100,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.ChangedSlots is not null)
                 {
-                    foreach (KeyValuePair<Hash256, Hash256> changedSlot in accountChange.ChangedSlots)
+                    foreach (KeyValuePair<UInt256, Hash256> changedSlot in accountChange.ChangedSlots)
                     {
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.BytesToArray());
                     }
