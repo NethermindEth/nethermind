@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -113,5 +114,10 @@ public class WorldStateManager : IWorldStateManager
     public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
     {
         return _blockingVerifyTrie?.TryStartVerifyTrie(stateAtBlock) ?? false;
+    }
+
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
+    {
+        return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
     }
 }
