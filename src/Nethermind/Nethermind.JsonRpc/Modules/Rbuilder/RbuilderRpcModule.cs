@@ -102,6 +102,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 }
 
                 var codeHash = worldState.GetCodeHash(address);
+                var code = worldState.GetCode(codeHash);
                 if (!codeHash.Equals(accountChange.CodeHash))
                 {
                     Console.WriteLine($"NM code hash {codeHash}, rbuilder code hash {accountChange.CodeHash}");
@@ -110,6 +111,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.Code is not null)
                 {
+                    Console.WriteLine($"{codeHash}, {accountChange.CodeHash}: {accountChange.Code}, {code}");
                     worldState.InsertCode(address, accountChange.Code, releaseSpec);
                 }
                 }
@@ -120,7 +122,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     {
 
                         var prevValue = worldState.Get(new StorageCell(address, changedSlot.Key));
-                        Console.WriteLine($"CHANGED SLOT {BitConverter.ToString(prevValue.ToArray())}: {BitConverter.ToString(changedSlot.Value.ToBigEndian())}");
+                        //Console.WriteLine($"CHANGED SLOT {BitConverter.ToString(prevValue.ToArray())}: {BitConverter.ToString(changedSlot.Value.ToBigEndian())}");
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
 
