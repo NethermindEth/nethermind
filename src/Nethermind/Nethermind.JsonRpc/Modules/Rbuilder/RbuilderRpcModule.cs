@@ -49,7 +49,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.SelfDestructed)
                 {
-                    worldState.ClearStorage(address);
+                    worldState.DeleteAccount(address);
                 }
 
                 bool hasAccountChange = accountChange.Balance is not null
@@ -105,16 +105,21 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (!codeHash.Equals(accountChange.CodeHash))
                 {
                     Console.WriteLine($"NM code hash {codeHash}, rbuilder code hash {accountChange.CodeHash}");
-                }
+                } else
+                {
+
                 if (accountChange.Code is not null)
                 {
                     worldState.InsertCode(address, accountChange.Code, releaseSpec);
+                }
                 }
 
                 if (accountChange.ChangedSlots is not null)
                 {
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
+
+                        Console.WriteLine($"CHANGED SLOT {changedSlot.Key}: {changedSlot.Value}");
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
 
