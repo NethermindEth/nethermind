@@ -30,7 +30,7 @@ public class AccountChange
     public UInt256? Nonce { get; set; }
     public UInt256? Balance { get; set; }
     public byte[]? Code { get; set; }
-    public Hash256? Hash { get; set; }
+    public Hash256? CodeHash { get; set; }
     public bool SelfDestructed { get; set; }
     public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
 }

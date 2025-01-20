@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain.Find;
@@ -94,6 +95,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0);
                 }
 
+                var codeHash = worldState.GetCodeHash(address);
+                if (!codeHash.Equals(accountChange.CodeHash))
+                {
+                    Console.WriteLine($"NM code hash {codeHash}, rbuilder code hash {accountChange.CodeHash}");
+                }
                 if (accountChange.Code is not null)
                 {
                     worldState.InsertCode(address, accountChange.Code, releaseSpec);
@@ -101,6 +107,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.ChangedSlots is not null)
                 {
+                    Console.WriteLine($"Changed slots changed {accountChange.ChangedSlots.Count}");
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
