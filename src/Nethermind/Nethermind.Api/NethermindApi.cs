@@ -57,6 +57,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Era1;
 using Nethermind.Facade.Find;
 using Nethermind.Synchronization.FastSync;
 
@@ -225,6 +226,7 @@ namespace Nethermind.Api
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
+        public IAdminEraService AdminEraService { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

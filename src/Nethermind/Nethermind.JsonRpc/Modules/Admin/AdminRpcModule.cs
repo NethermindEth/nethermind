@@ -10,6 +10,7 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
@@ -31,6 +32,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IWorldStateManager _worldStateManager;
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
+    private readonly IAdminEraService _eraService;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -39,6 +41,7 @@ public class AdminRpcModule : IAdminRpcModule
         IStaticNodesManager staticNodesManager,
         IWorldStateManager worldStateManager,
         IEnode enode,
+        IAdminEraService eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
         ChainParameters parameters)
@@ -52,6 +55,7 @@ public class AdminRpcModule : IAdminRpcModule
         _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         _stateReader = _worldStateManager.GlobalStateReader;
         _pruningTrigger = pruningTrigger;
+        _eraService = eraService;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
         BuildNodeInfo();
@@ -156,6 +160,16 @@ public class AdminRpcModule : IAdminRpcModule
     public ResultWrapper<PruningStatus> admin_prune()
     {
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
+    }
+
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start = 0, int end = 0)
+    {
+        return ResultWrapper<string>.Success(_eraService.ExportHistory(destination, start, end));
+    }
+
+    public Task<ResultWrapper<string>> admin_importHistory(string source, int start = 0, int end = 0, string? accumulatorFile = null)
+    {
+        return ResultWrapper<string>.Success(_eraService.ImportHistory(source, start, end, accumulatorFile));
     }
 
     public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
