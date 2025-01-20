@@ -43,9 +43,9 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 Address address = kv.Key;
                 AccountChange accountChange = kv.Value;
 
-                Console.WriteLine($"{address} Balance {accountChange.Balance}");
-                Console.WriteLine($"{address} Nonce {accountChange.Nonce}");
-                Console.WriteLine($"{address} Storage diff {accountChange.ChangedSlots?.Count}");
+                // Console.WriteLine($"{address} Balance {accountChange.Balance}");
+                // Console.WriteLine($"{address} Nonce {accountChange.Nonce}");
+                // Console.WriteLine($"{address} Storage diff {accountChange.ChangedSlots?.Count}");
 
                 if (accountChange.SelfDestructed)
                 {
