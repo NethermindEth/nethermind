@@ -21,6 +21,7 @@ using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using System.Net;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
@@ -53,7 +54,7 @@ public class ShutterP2P : IShutterP2P
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = _cfg.P2PProtocolVersion,
-                AgentVersion = _cfg.P2PAgentVersion
+                AgentVersion = ProductInfo.ClientId
             })
             // pubsub settings
             .AddSingleton(new Settings()
