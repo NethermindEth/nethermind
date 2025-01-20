@@ -171,12 +171,16 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
     public IList<INethermindPlugin> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
     {
         List<INethermindPlugin> plugins = new List<INethermindPlugin>();
-        foreach (Type pluginType in plugins)
+        foreach (Type pluginType in PluginTypes)
         {
             try
             {
-                if (CreatePluginInstance(configProvider, chainSpec, pluginType) is { } plugin && plugin.Enabled)
+                INethermindPlugin plugin = CreatePluginInstance(configProvider, chainSpec, pluginType);
+                if (_logger.IsDebug) _logger.Debug($"Plugin {plugin.Name} enabled: {plugin.Enabled}");
+                if (plugin.Enabled)
+                {
                     plugins.Add(plugin);
+                }
             }
             catch (Exception ex)
             {

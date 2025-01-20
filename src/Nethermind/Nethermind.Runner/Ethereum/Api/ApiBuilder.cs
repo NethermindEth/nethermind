@@ -46,13 +46,11 @@ public class ApiBuilder
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        string engine = ChainSpec.SealEngineType;
-        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
-
+        IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault();
         INethermindApi nethermindApi =
             enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
             new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
-        nethermindApi.SealEngineType = engine;
+        nethermindApi.SealEngineType = ChainSpec.SealEngineType;
         nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
         nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 

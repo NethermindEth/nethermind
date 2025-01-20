@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Ethash
 
         public string Author => "Nethermind";
 
-        public bool Enabled => chainSpec.SealEngineType == Core.SealEngineType.Ethash;
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {
