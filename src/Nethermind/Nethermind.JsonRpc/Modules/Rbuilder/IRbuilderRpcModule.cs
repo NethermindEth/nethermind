@@ -31,5 +31,5 @@ public class AccountChange
     public UInt256? Balance { get; set; }
     public byte[]? Code { get; set; }
     public bool SelfDestructed { get; set; }
-    public IDictionary<Hash256, Hash256>? ChangedSlots { get; set; }
+    public IDictionary<UInt256, Hash256>? ChangedSlots { get; set; }
 }
