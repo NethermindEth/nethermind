@@ -76,23 +76,7 @@ public class E2StoreWriter : IDisposable
         return _stream.FlushAsync(cancellation);
     }
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposedValue)
-        {
-            if (disposing)
-            {
-                _stream?.Dispose();
-            }
-            _disposedValue = true;
-        }
-    }
-    public void Dispose()
-    {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
-    }
+    public void Dispose() => _stream.Dispose();
 
     public ValueHash256 FinalizeChecksum()
     {
