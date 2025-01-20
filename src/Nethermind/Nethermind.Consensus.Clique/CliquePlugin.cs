@@ -36,10 +36,6 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (!Enabled)
-            {
-                return Task.CompletedTask;
-            }
 
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 

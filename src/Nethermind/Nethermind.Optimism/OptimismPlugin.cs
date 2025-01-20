@@ -87,19 +87,13 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (Enabled)
-        {
-            api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-            api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
-            Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
-        }
+        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
     public Task Init(INethermindApi api)
     {
-        if (!Enabled)
-            return Task.CompletedTask;
-
         _api = (OptimismNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
@@ -137,7 +131,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public Task InitSynchronization()
     {
-        if (_api is null || !Enabled)
+        if (_api is null)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -192,7 +186,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !Enabled)
+        if (_api is null)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);

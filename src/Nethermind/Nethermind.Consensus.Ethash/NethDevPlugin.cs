@@ -44,11 +44,6 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (!Enabled)
-            {
-                return null;
-            }
-
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();

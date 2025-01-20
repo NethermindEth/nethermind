@@ -60,9 +60,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     public Task Init(INethermindApi api)
     {
-        if (!Enabled)
-            return Task.CompletedTask;
-
         _api = (TaikoNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
@@ -94,9 +91,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (!Enabled)
-            return;
-
         _api = (TaikoNethermindApi)api;
 
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
@@ -113,7 +107,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !Enabled)
+        if (_api is null)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -262,7 +256,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     // ISynchronizationPlugin
     public Task InitSynchronization()
     {
-        if (_api is null || !Enabled)
+        if (_api is null)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);

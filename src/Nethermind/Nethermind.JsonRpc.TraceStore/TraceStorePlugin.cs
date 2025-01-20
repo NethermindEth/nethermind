@@ -33,20 +33,17 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 
-        if (Enabled)
+        // Setup serialization
+        _traceSerializer = new ParityLikeTraceSerializer(_logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized);
+
+        // Setup DB
+        _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
+        _api.DbProvider!.RegisterDb(DbName, _db);
+
+        //Setup pruning if configured
+        if (traceStoreConfig.BlocksToKeep != 0)
         {
-            // Setup serialization
-            _traceSerializer = new ParityLikeTraceSerializer(_logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized);
-
-            // Setup DB
-            _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
-            _api.DbProvider!.RegisterDb(DbName, _db);
-
-            //Setup pruning if configured
-            if (traceStoreConfig.BlocksToKeep != 0)
-            {
-                _pruner = new TraceStorePruner(_api.BlockTree!, _db, traceStoreConfig.BlocksToKeep, _logManager);
-            }
+            _pruner = new TraceStorePruner(_api.BlockTree!, _db, traceStoreConfig.BlocksToKeep, _logManager);
         }
 
         return Task.CompletedTask;
@@ -54,16 +51,13 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
 
     public Task InitNetworkProtocol()
     {
-        if (Enabled)
-        {
-            if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {traceStoreConfig.TraceTypes} traces.");
+        if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {traceStoreConfig.TraceTypes} traces.");
 
-            // Setup tracing
-            ParityLikeBlockTracer parityTracer = new(traceStoreConfig.TraceTypes);
-            DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, _db!, _traceSerializer!, _logManager);
-            _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
-        }
+        // Setup tracing
+        ParityLikeBlockTracer parityTracer = new(traceStoreConfig.TraceTypes);
+        DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
+            new(parityTracer, _db!, _traceSerializer!, _logManager);
+        _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
 
         // Potentially we could add protocol for syncing traces.
         return Task.CompletedTask;
@@ -71,7 +65,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
 
     public Task InitRpcModules()
     {
-        if (Enabled && _jsonRpcConfig.Enabled)
+        if (_jsonRpcConfig.Enabled)
         {
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
             if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
@@ -86,12 +80,8 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
 
     public ValueTask DisposeAsync()
     {
-        if (Enabled)
-        {
-            _pruner?.Dispose();
-            _db?.Dispose();
-        }
-
+        _pruner?.Dispose();
+        _db?.Dispose();
         return default;
     }
 }

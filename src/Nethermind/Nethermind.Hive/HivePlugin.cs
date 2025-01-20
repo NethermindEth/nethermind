@@ -39,32 +39,29 @@ public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 
     public async Task InitNetworkProtocol()
     {
-        if (Enabled)
-        {
-            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-            if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
-            if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
-            if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+        if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+        if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+        if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
+        if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
+        if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
+        if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
 
-            _api.TxPool!.AcceptTxWhenNotSynced = true;
+        _api.TxPool!.AcceptTxWhenNotSynced = true;
 
-            _api.TxGossipPolicy.Policies.Clear();
+        _api.TxGossipPolicy.Policies.Clear();
 
-            HiveRunner hiveRunner = new(
-                _api.BlockTree,
-                _api.BlockProcessingQueue,
-                _api.ConfigProvider,
-                _api.LogManager.GetClassLogger(),
-                _api.FileSystem,
-                _api.BlockValidator
-            );
+        HiveRunner hiveRunner = new(
+            _api.BlockTree,
+            _api.BlockProcessingQueue,
+            _api.ConfigProvider,
+            _api.LogManager.GetClassLogger(),
+            _api.FileSystem,
+            _api.BlockValidator
+        );
 
-            if (_logger.IsInfo) _logger.Info("Hive is starting");
+        if (_logger.IsInfo) _logger.Info("Hive is starting");
 
-            await hiveRunner.Start(_disposeCancellationToken.Token);
-        }
+        await hiveRunner.Start(_disposeCancellationToken.Token);
     }
 
     public Task InitRpcModules()

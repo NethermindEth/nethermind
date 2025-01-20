@@ -46,73 +46,67 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public Task InitRpcModules()
     {
-        if (Enabled)
-        {
-            if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
+        if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
 
-            if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-            _api.BlockImprovementContextFactory = _shutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
-        }
+        if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
+        _api.BlockImprovementContextFactory = _shutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
         return Task.CompletedTask;
     }
 
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
     {
-        if (Enabled)
+        if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+        if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+        if (_api.LogFinder is null) throw new ArgumentNullException(nameof(_api.LogFinder));
+        if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+        if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
+        if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
+        if (_api.IpResolver is null) throw new ArgumentNullException(nameof(_api.IpResolver));
+
+        if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
+
+        Multiaddress[] bootnodeP2PAddresses;
+        try
         {
-            if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-            if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.LogFinder is null) throw new ArgumentNullException(nameof(_api.LogFinder));
-            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
-            if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
-            if (_api.IpResolver is null) throw new ArgumentNullException(nameof(_api.IpResolver));
+            shutterConfig!.Validate(out bootnodeP2PAddresses);
+        }
+        catch (ArgumentException e)
+        {
+            throw new ShutterLoadingException("Invalid Shutter config", e);
+        }
 
-            if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
-
-            Multiaddress[] bootnodeP2PAddresses;
+        ShutterValidatorsInfo validatorsInfo = new();
+        if (shutterConfig!.ValidatorInfoFile is not null)
+        {
             try
             {
-                shutterConfig!.Validate(out bootnodeP2PAddresses);
+                validatorsInfo.Load(shutterConfig!.ValidatorInfoFile);
             }
-            catch (ArgumentException e)
+            catch (Exception e)
             {
-                throw new ShutterLoadingException("Invalid Shutter config", e);
+                throw new ShutterLoadingException("Could not load Shutter validator info file", e);
             }
-
-            ShutterValidatorsInfo validatorsInfo = new();
-            if (shutterConfig!.ValidatorInfoFile is not null)
-            {
-                try
-                {
-                    validatorsInfo.Load(shutterConfig!.ValidatorInfoFile);
-                }
-                catch (Exception e)
-                {
-                    throw new ShutterLoadingException("Could not load Shutter validator info file", e);
-                }
-            }
-
-            _shutterApi = new ShutterApi(
-                _api.AbiEncoder,
-                _api.BlockTree,
-                _api.EthereumEcdsa,
-                _api.LogFinder,
-                _api.ReceiptFinder,
-                _api.LogManager,
-                _api.SpecProvider,
-                _api.Timestamper,
-                _api.WorldStateManager,
-                _api.FileSystem,
-                _api.Config<IKeyStoreConfig>(),
-                shutterConfig,
-                validatorsInfo,
-                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
-                _api.IpResolver.ExternalIp
-            );
-
-            _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
         }
+
+        _shutterApi = new ShutterApi(
+            _api.AbiEncoder,
+            _api.BlockTree,
+            _api.EthereumEcdsa,
+            _api.LogFinder,
+            _api.ReceiptFinder,
+            _api.LogManager,
+            _api.SpecProvider,
+            _api.Timestamper,
+            _api.WorldStateManager,
+            _api.FileSystem,
+            _api.Config<IKeyStoreConfig>(),
+            shutterConfig,
+            validatorsInfo,
+            TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
+            _api.IpResolver.ExternalIp
+        );
+
+        _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
 
         return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
     }

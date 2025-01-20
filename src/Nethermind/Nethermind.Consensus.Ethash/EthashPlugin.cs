@@ -27,10 +27,6 @@ namespace Nethermind.Consensus.Ethash
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (!Enabled)
-            {
-                return Task.CompletedTask;
-            }
 
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
             setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);

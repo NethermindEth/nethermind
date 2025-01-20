@@ -30,18 +30,15 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
     public async Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-        if (Enabled)
+        if (!string.IsNullOrEmpty(miningConfig.Signer))
         {
-            if (!string.IsNullOrEmpty(miningConfig.Signer))
+            if (!Uri.TryCreate(miningConfig.Signer, UriKind.Absolute, out Uri? uri))
             {
-                if (!Uri.TryCreate(miningConfig.Signer, UriKind.Absolute, out Uri? uri))
-                {
-                    throw new ConfigurationErrorsException($"{miningConfig.Signer} must have be a valid uri.");
-                }
-
-                string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
-                _nethermindApi.EngineSigner = await SetupExternalSigner(uri, blockAuthorAccount);
+                throw new ConfigurationErrorsException($"{miningConfig.Signer} must have be a valid uri.");
             }
+
+            string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
+            _nethermindApi.EngineSigner = await SetupExternalSigner(uri, blockAuthorAccount);
         }
     }
 

@@ -27,10 +27,7 @@ public class UPnPPlugin(INetworkConfig networkConfig) : INethermindPlugin
     {
         _logger = api.LogManager.GetClassLogger<UPnPPlugin>();
 
-        if (Enabled)
-        {
-            Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
-        }
+        Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
 
         return Task.CompletedTask;
     }
