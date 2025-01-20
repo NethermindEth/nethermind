@@ -76,9 +76,9 @@ public class RbuilderRpcModuleTests
             Balance = 20,
             Code = [1, 2, 3, 4],
             SelfDestructed = true,
-            ChangedSlots = new Dictionary<UInt256, Hash256>()
+            ChangedSlots = new Dictionary<UInt256, UInt256>()
             {
-                { 0, TestItem.KeccakB }
+                { 0, 0}
             }
         };
 
