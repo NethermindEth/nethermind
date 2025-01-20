@@ -184,7 +184,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
     ApiBuilder apiBuilder = new(configProvider, logManager);
-    IList<INethermindPlugin> plugins = pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
+    IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
     ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
     nethermindApi.ProcessExit = processExitSource;

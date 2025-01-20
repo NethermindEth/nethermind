@@ -9,6 +9,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -168,18 +169,27 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         return (INethermindPlugin)constructor.Invoke(parameters);
     }
 
-    public IList<INethermindPlugin> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
+    public async Task<IList<INethermindPlugin>> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
     {
         List<INethermindPlugin> plugins = new List<INethermindPlugin>();
+        if (_logger.IsInfo) _logger.Info($"Detected {PluginTypes.Count()} plugins");
         foreach (Type pluginType in PluginTypes)
         {
             try
             {
                 INethermindPlugin plugin = CreatePluginInstance(configProvider, chainSpec, pluginType);
-                if (_logger.IsDebug) _logger.Debug($"Plugin {plugin.Name} enabled: {plugin.Enabled}");
+                if (_logger.IsInfo)
+                {
+                    string pluginName = $"{plugin.Name} by {plugin.Author}";
+                    _logger.Info($"  {pluginName,-30} {(plugin.Enabled ? "Enabled" : "Disabled")}");
+                }
                 if (plugin.Enabled)
                 {
                     plugins.Add(plugin);
+                }
+                else
+                {
+                    await plugin.DisposeAsync();
                 }
             }
             catch (Exception ex)
