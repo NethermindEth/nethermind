@@ -56,7 +56,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                                         || accountChange.Nonce is not null
                                         || accountChange.Code is not null
                                         || accountChange.ChangedSlots?.Count > 0;
-                if (!hasAccountChange) continue;
+             //   if (!hasAccountChange) continue;
 
                 if (worldState.TryGetAccount(address, out AccountStruct account))
                 {
@@ -106,7 +106,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (!codeHash.Equals(accountChange.CodeHash))
                 {
                     Console.WriteLine($"NM code hash {codeHash}, rbuilder code hash {accountChange.CodeHash}");
-                }
 
                 if (accountChange.Code is not null)
                 {
@@ -116,6 +115,9 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         worldState.InsertCode(address, accountChange.Code, releaseSpec);
                     }
                 }
+                }
+
+
 
                 if (accountChange.ChangedSlots is not null)
                 {
