@@ -15,8 +15,5 @@ public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : IInitializationPlu
     public Task Init(INethermindApi api) => Task.CompletedTask;
     public Task InitNetworkProtocol() => Task.CompletedTask;
     public Task InitRpcModules() => Task.CompletedTask;
-
-    public bool ShouldRunSteps(INethermindApi api) => Enabled;
-
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

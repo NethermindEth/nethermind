@@ -78,7 +78,5 @@ namespace Nethermind.Consensus.AuRa
 
         public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
-
-        public bool ShouldRunSteps(INethermindApi api) => true;
     }
 }

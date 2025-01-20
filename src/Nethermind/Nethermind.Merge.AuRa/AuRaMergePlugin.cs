@@ -26,10 +26,11 @@ namespace Nethermind.Merge.AuRa
     {
         private AuRaNethermindApi? _auraApi;
         private readonly IMergeConfig _mergeConfig = mergeConfig;
+        private readonly ChainSpec _chainSpec = chainSpec;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => ShouldRunSteps(_api);
+        protected override bool MergeEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
 
         public override async Task Init(INethermindApi nethermindApi)
         {
@@ -81,11 +82,6 @@ namespace Nethermind.Merge.AuRa
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
                 _poSSwitcher);
-        }
-
-        public bool ShouldRunSteps(INethermindApi api)
-        {
-            return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
     }
 }

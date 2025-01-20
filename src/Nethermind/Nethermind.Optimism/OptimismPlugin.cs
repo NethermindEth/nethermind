@@ -61,8 +61,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
-
     #region IConsensusPlugin
 
     public string SealEngineType => Core.SealEngineType.Optimism;
@@ -89,7 +87,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (ShouldRunSteps(api))
+        if (Enabled)
         {
             api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
             api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
@@ -99,7 +97,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
+        if (!Enabled)
             return Task.CompletedTask;
 
         _api = (OptimismNethermindApi)api;
@@ -139,7 +137,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !Enabled)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -194,7 +192,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !Enabled)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);

@@ -117,11 +117,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
     }
 
-    public bool ShouldRunSteps(INethermindApi api)
-    {
-        return Enabled;
-    }
-
     public async ValueTask DisposeAsync()
     {
         _cts.Dispose();

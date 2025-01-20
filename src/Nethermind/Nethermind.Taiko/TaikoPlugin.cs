@@ -32,10 +32,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
-using Nethermind.State;
 using Autofac;
 using Nethermind.Synchronization;
-using System.Linq;
 
 namespace Nethermind.Taiko;
 
@@ -62,7 +60,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
+        if (!Enabled)
             return Task.CompletedTask;
 
         _api = (TaikoNethermindApi)api;
@@ -96,7 +94,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
+        if (!Enabled)
             return;
 
         _api = (TaikoNethermindApi)api;
@@ -115,7 +113,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !Enabled)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -264,7 +262,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     // ISynchronizationPlugin
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !Enabled)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -314,9 +312,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
 
         return Task.CompletedTask;
     }
-
-    // IInitializationPlugin
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
     // IConsensusPlugin
 
