@@ -119,7 +119,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
 
-                        Console.WriteLine($"CHANGED SLOT {changedSlot.Key}: {changedSlot.Value}");
+                        var prevValue = worldState.Get(new StorageCell(address, changedSlot.Key));
+                        Console.WriteLine($"CHANGED SLOT {prevValue.ToArray()}: {changedSlot.Value.ToBigEndian()}");
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
 
