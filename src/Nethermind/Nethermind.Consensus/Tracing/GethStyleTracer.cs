@@ -84,7 +84,7 @@ public class GethStyleTracer : IGethStyleTracer
         try
         {
             Dictionary<Address, AccountOverride>? stateOverride = options.StateOverrides;
-            using IOverridableTxProcessingScope? scope = stateOverride != null ? _env.BuildAndOverride(block.Header, stateOverride) : null;
+            using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, stateOverride);
 
             return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }

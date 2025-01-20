@@ -58,19 +58,14 @@ namespace Nethermind.Api
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
-        /// <summary>
-        /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
-        /// </summary>
-        /// <remarks>
-        /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
-        /// </remarks>
-        IWorldState? WorldState { get; set; }
-        IBlockingVerifyTrie? BlockingVerifyTrie { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
+
         IWorldStateManager? WorldStateManager { get; set; }
+        INodeStorage? MainNodeStorage { get; set; }
+        CompositePruningTrigger? PruningTrigger { get; set; }
+
         ITransactionProcessor? TransactionProcessor { get; set; }
-        ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
@@ -98,10 +93,8 @@ namespace Nethermind.Api
 
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
-        CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        INodeStorageFactory NodeStorageFactory { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
@@ -111,7 +104,7 @@ namespace Nethermind.Api
         {
             return ConfigureContainerBuilderFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+                .AddSingleton<INodeStorage>(MainNodeStorage!);
         }
     }
 }

@@ -74,10 +74,6 @@ namespace Nethermind.Blockchain.Receipts
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            if (e.PreviousBlock is not null)
-            {
-                RemoveBlockTx(e.PreviousBlock, e.Block);
-            }
             EnsureCanonical(e.Block);
             ReceiptsInserted?.Invoke(this, e);
 
@@ -367,20 +363,11 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private void RemoveBlockTx(Block block, Block? exceptBlock = null)
+        private void RemoveBlockTx(Block block)
         {
-            HashSet<Hash256AsKey> newTxs = null;
-            if (exceptBlock is not null)
-            {
-                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select(static (tx) => new Hash256AsKey(tx.Hash)));
-            }
-
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
-                // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
-                // is contained in the new block
-                if (newTxs?.Contains(tx.Hash) == true) continue;
                 writeBatch[tx.Hash.Bytes] = null;
             }
         }

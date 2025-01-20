@@ -36,7 +36,7 @@ public class AdminModuleTests
     private EthereumJsonSerializer _serializer = null!;
     private NetworkConfig _networkConfig = null!;
     private IBlockTree _blockTree = null!;
-    private IBlockingVerifyTrie _blockingVerifyTrie = null!;
+    private IWorldStateManager _worldStateManager = null!;
     private IStateReader _stateReader = null!;
     private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
     private const string _exampleDataDir = "/example/dbdir";
@@ -45,8 +45,9 @@ public class AdminModuleTests
     public void Setup()
     {
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
-        _blockingVerifyTrie = Substitute.For<IBlockingVerifyTrie>();
+        _worldStateManager = Substitute.For<IWorldStateManager>();
         _stateReader = Substitute.For<IStateReader>();
+        _worldStateManager.GlobalStateReader.Returns(_stateReader);
         _networkConfig = new NetworkConfig();
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
@@ -65,8 +66,7 @@ public class AdminModuleTests
             _networkConfig,
             peerPool,
             staticNodesManager,
-            _blockingVerifyTrie,
-            _stateReader,
+            _worldStateManager,
             enode,
             eraService,
             _exampleDataDir,
@@ -126,7 +126,7 @@ public class AdminModuleTests
     {
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Unable to start verify trie");
         _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
-        _blockingVerifyTrie.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
+        _worldStateManager.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
     }
 
