@@ -272,21 +272,7 @@ public class Era1ModuleTests
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
             b.Should().BeEquivalentTo(expectedBlock);
-
-            Assert.That(r.Length, Is.EqualTo(expectedReceipts.Length), "Incorrect amount of receipts.");
-
-            for (int y = 0; y < expectedReceipts.Length; y++)
-            {
-                Assert.That(r[y].TxType, Is.EqualTo(expectedReceipts[y].TxType));
-                Assert.That(r[y].PostTransactionState, Is.EqualTo(expectedReceipts[y].PostTransactionState));
-                Assert.That(r[y].GasUsedTotal, Is.EqualTo(expectedReceipts[y].GasUsedTotal));
-                Assert.That(r[y].Bloom, Is.EqualTo(expectedReceipts[y].Bloom));
-                Assert.That(r[y].Logs, Is.EquivalentTo(expectedReceipts[y].Logs!));
-                if (expectedReceipts[y].Error == null)
-                    Assert.That(r[y].Error, new OrConstraint(Is.Null, Is.Empty));
-                else
-                    Assert.That(r[y].Error, Is.EqualTo(expectedReceipts[y].Error));
-            }
+            r.Should().BeEquivalentTo(expectedReceipts);
         }
     }
 
