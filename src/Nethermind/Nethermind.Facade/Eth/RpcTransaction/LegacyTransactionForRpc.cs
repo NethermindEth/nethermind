@@ -25,7 +25,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     // NOTE: This field exists only during deserialization according to the Ethereum JSON-RPC spec.
     // No transaction types include a `From` field when serializing.
     // For backwards compatibility with previous Nethermind versions we also serialize it.
-    [JsonDiscriminator]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? From { get; set; }
 

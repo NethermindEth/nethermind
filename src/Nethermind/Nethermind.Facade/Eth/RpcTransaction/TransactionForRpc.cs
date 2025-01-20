@@ -111,7 +111,7 @@ public abstract class TransactionForRpc
 
             static bool TryGetTxType(OrderedDictionary<Type, string[]> props, JsonObject untyped, [NotNullWhen(true)] out Type? type)
             {
-                type = props.FirstOrDefault(p => p.Value.Any(name => untyped.ContainsKey(name))).Key;
+                type = props.FirstOrDefault(p => p.Value.Any(name => untyped.ContainsKey(name)), props.Last()).Key;
                 return type is not null;
             }
         }
