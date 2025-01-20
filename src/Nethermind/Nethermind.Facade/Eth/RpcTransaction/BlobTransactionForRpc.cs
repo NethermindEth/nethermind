@@ -15,11 +15,13 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public override TxType? Type => TxType;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonDiscriminator]
     public UInt256? MaxFeePerBlobGas { get; set; }
 
     // TODO: Each item should be a 32 byte array
     // Currently we don't enforce this (hashes can have any length)
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonDiscriminator]
     public byte[][]? BlobVersionedHashes { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
