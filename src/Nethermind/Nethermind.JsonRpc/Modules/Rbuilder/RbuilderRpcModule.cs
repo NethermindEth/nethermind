@@ -120,7 +120,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     {
 
                         var prevValue = worldState.Get(new StorageCell(address, changedSlot.Key));
-                        Console.WriteLine($"CHANGED SLOT {prevValue.ToArray()}: {changedSlot.Value.ToBigEndian()}");
+                        Console.WriteLine($"CHANGED SLOT {BitConverter.ToString(prevValue.ToArray())}: {BitConverter.ToString(changedSlot.Value.ToBigEndian())}");
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
 
