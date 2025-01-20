@@ -111,7 +111,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 if (accountChange.Code is not null)
                 {
-                    Console.WriteLine($"{codeHash}, {accountChange.CodeHash}: {accountChange.Code}, {code}");
+                    Console.WriteLine($"{codeHash}, {accountChange.CodeHash}: {BitConverter.ToString(accountChange.Code)}, {BitConverter.ToString(code)}");
                     worldState.InsertCode(address, accountChange.Code, releaseSpec);
                 }
                 }
