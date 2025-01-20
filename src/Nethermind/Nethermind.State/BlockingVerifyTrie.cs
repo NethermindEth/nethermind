@@ -67,10 +67,10 @@ public class BlockingVerifyTrie : IBlockingVerifyTrie
                 TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, _exitSource.Token);
                 if (stats.MissingNodes > 0)
                 {
-                    _logger.Error($"Missing node found!");
+                    if (_logger.IsError) _logger.Error($"Missing node found!");
                 }
 
-                _logger.Info($"Stats after finishing state \n" + stats);
+                if (_logger.IsInfo) _logger.Info($"Stats after finishing state \n" + stats);
             }
             catch (OperationCanceledException)
             {
@@ -78,11 +78,28 @@ public class BlockingVerifyTrie : IBlockingVerifyTrie
             }
             catch (Exception e)
             {
-                _logger.Error($"Error in verify trie", e);
+                if (_logger.IsError) _logger.Error($"Error in verify trie", e);
             }
 
         }, TaskCreationOptions.LongRunning);
 
         return true;
+    }
+
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
+    {
+        // This is to block processing as with halfpath old nodes will be removed
+        using IBlockCommitter? _ = trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
+
+        Hash256 rootNode = stateAtBlock.StateRoot;
+        TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, cancellationToken);
+        if (stats.MissingNodes > 0)
+        {
+            if (_logger.IsError) _logger.Error($"Missing node found!");
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Stats after finishing state \n" + stats);
+
+        return stats.MissingNodes == 0;
     }
 }
