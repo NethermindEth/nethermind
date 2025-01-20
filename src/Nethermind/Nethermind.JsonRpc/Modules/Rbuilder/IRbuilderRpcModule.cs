@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.RBuilder;
 
@@ -30,7 +31,10 @@ public class AccountChange
     public UInt256? Nonce { get; set; }
     public UInt256? Balance { get; set; }
     public byte[]? Code { get; set; }
+    [JsonProperty("code_hash")]
     public Hash256? CodeHash { get; set; }
+    [JsonProperty("self_destructed")]
     public bool SelfDestructed { get; set; }
+    [JsonProperty("changed_slots")]
     public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
 }
