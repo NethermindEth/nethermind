@@ -19,7 +19,7 @@ namespace Nethermind.Config
             return _provider.GetConfig<T>();
         }
 
-        public object GetConfig(Type configType)
+        public IConfig GetConfig(Type configType)
         {
             return _provider.GetConfig(configType);
         }

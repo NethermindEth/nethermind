@@ -13,7 +13,7 @@ namespace Nethermind.Config;
 
 public class ConfigProvider : IConfigProvider
 {
-    private readonly ConcurrentDictionary<Type, object> _instances = new();
+    private readonly ConcurrentDictionary<Type, IConfig> _instances = new();
 
     private readonly List<IConfigSource> _configSource = [];
     private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
@@ -25,7 +25,7 @@ public class ConfigProvider : IConfigProvider
         return (T)GetConfig(typeof(T));
     }
 
-    public object GetConfig(Type configType)
+    public IConfig GetConfig(Type configType)
     {
         if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
 
@@ -79,7 +79,7 @@ public class ConfigProvider : IConfigProvider
                 _implementations[@interface] = directImplementation;
 
                 object config = Activator.CreateInstance(_implementations[@interface]);
-                _instances[@interface] = config!;
+                _instances[@interface] = (IConfig)config!;
 
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
