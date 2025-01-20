@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -12,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -28,12 +26,12 @@ public class WorldStateManager : IWorldStateManager
     private readonly IDbProvider _dbProvider;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
 
-    public WorldStateManager(IWorldState worldState,
+    public WorldStateManager(
+        IWorldState worldState,
         ITrieStore trieStore,
         IDbProvider dbProvider,
-        ILogManager logManager,
-        IProcessExitSource? processExitSource = null)
-    {
+        ILogManager logManager
+    ) {
         _dbProvider = dbProvider;
         _worldState = worldState;
         _trieStore = trieStore;
@@ -43,11 +41,7 @@ public class WorldStateManager : IWorldStateManager
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
-
-        if (processExitSource is not null)
-        {
-            _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, processExitSource!, logManager);
-        }
+        _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
     }
 
     public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
@@ -109,11 +103,6 @@ public class WorldStateManager : IWorldStateManager
     {
         OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore, _logManager);
         return new WorldState(overlayTrieStore, overlayCode, _logManager);
-    }
-
-    public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
-    {
-        return _blockingVerifyTrie?.TryStartVerifyTrie(stateAtBlock) ?? false;
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)

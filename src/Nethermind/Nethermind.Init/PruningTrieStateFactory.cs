@@ -180,8 +180,7 @@ public class PruningTrieStateFactory(
             worldState,
             trieStore,
             dbProvider,
-            logManager,
-            processExit);
+            logManager);
 
         InitializeFullPruning(
             stateManager.GlobalStateReader,

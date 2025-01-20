@@ -3,34 +3,29 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class BlockingVerifyTrie : IBlockingVerifyTrie
+public class BlockingVerifyTrie
 {
     private readonly ILogger _logger;
 
-    private bool _alreadyRunning = false;
     private readonly ITrieStore _trieStore;
     private readonly IStateReader _stateReader;
     private readonly IDb _codeDb;
-    private readonly IProcessExitSource _exitSource;
     private readonly ILogManager _logManager;
 
-    public BlockingVerifyTrie(ITrieStore trieStore,
+    public BlockingVerifyTrie(
+        ITrieStore trieStore,
         IStateReader stateReader,
         [KeyFilter(DbNames.Code)] IDb codeDb,
-        IProcessExitSource exitSource,
         ILogManager logManager)
     {
         if (trieStore is IReadOnlyTrieStore)
@@ -41,49 +36,8 @@ public class BlockingVerifyTrie : IBlockingVerifyTrie
         _trieStore = trieStore;
         _stateReader = stateReader;
         _codeDb = codeDb;
-        _exitSource = exitSource;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<BlockingVerifyTrie>();
-    }
-
-    public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
-    {
-        if (Interlocked.CompareExchange(ref _alreadyRunning, true, false))
-        {
-            return false;
-        }
-
-        Task.Factory.StartNew(() =>
-        {
-            try
-            {
-                _logger!.Info($"Collecting trie stats and verifying that no nodes are missing staring from block {stateAtBlock} with state root {stateAtBlock.StateRoot}...");
-
-                Hash256 rootNode = stateAtBlock.StateRoot;
-
-                // This is to block processing as with halfpath old nodes will be removed
-                using IBlockCommitter? _ = _trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
-
-                TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, _exitSource.Token);
-                if (stats.MissingNodes > 0)
-                {
-                    if (_logger.IsError) _logger.Error($"Missing node found!");
-                }
-
-                if (_logger.IsInfo) _logger.Info($"Stats after finishing state \n" + stats);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.Error($"Verify trie cancelled");
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error in verify trie", e);
-            }
-
-        }, TaskCreationOptions.LongRunning);
-
-        return true;
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)

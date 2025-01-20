@@ -36,6 +36,7 @@ using Newtonsoft.Json.Schema;
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain.Filters;
+using Nethermind.State;
 
 namespace Nethermind.Init.Steps;
 
@@ -138,7 +139,8 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            _api.WorldStateManager,
+            new VerifyTrieStarter(_api.WorldStateManager, _api.ProcessExit!, _api.LogManager),
+            _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
             initConfig.BaseDbPath,
             pruningTrigger,
