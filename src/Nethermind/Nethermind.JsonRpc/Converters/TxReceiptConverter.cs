@@ -55,5 +55,6 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         writer.WritePropertyName("transactionIndex");
         JsonSerializer.Serialize(writer, UInt256.Parse(receipt.TransactionIndex.ToString(), NumberStyles.Integer), options);
 
-        writer.WriteEndObject();    }
+        writer.WriteEndObject();
+    }
 }
