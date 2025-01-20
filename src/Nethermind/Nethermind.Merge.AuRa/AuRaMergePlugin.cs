@@ -14,6 +14,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -21,9 +22,10 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
+    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig), IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
+        private readonly IMergeConfig _mergeConfig = mergeConfig;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
@@ -32,7 +34,6 @@ namespace Nethermind.Merge.AuRa
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _mergeConfig = nethermindApi.Config<IMergeConfig>();
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
@@ -84,7 +85,6 @@ namespace Nethermind.Merge.AuRa
 
         public bool ShouldRunSteps(INethermindApi api)
         {
-            _mergeConfig = api.Config<IMergeConfig>();
             return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
     }

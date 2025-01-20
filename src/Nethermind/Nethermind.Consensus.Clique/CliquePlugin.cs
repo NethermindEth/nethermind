@@ -19,10 +19,11 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliquePlugin : IConsensusPlugin
+    public class CliquePlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         public string Name => SealEngineType;
 
@@ -30,10 +31,12 @@ namespace Nethermind.Consensus.Clique
 
         public string Author => "Nethermind";
 
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Core.SealEngineType.Clique)
+            if (!Enabled)
             {
                 return Task.CompletedTask;
             }

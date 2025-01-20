@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+    public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
-
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
         public ValueTask DisposeAsync()
         {
             return default;

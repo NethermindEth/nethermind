@@ -11,11 +11,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceStorePlugin : INethermindPlugin
+public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindPlugin
 {
     private const string DbName = "TraceStore";
     private INethermindApi _api = null!;
-    private ITraceStoreConfig _config = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IDb? _db;
     private TraceStorePruner? _pruner;
@@ -25,29 +24,29 @@ public class TraceStorePlugin : INethermindPlugin
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
-    private bool Enabled => _config?.Enabled == true;
+    public bool Enabled => traceStoreConfig.Enabled;
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        _config = _api.Config<ITraceStoreConfig>();
+        traceStoreConfig = _api.Config<ITraceStoreConfig>();
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 
         if (Enabled)
         {
             // Setup serialization
-            _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
+            _traceSerializer = new ParityLikeTraceSerializer(_logManager, traceStoreConfig.MaxDepth, traceStoreConfig.VerifySerialized);
 
             // Setup DB
             _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured
-            if (_config.BlocksToKeep != 0)
+            if (traceStoreConfig.BlocksToKeep != 0)
             {
-                _pruner = new TraceStorePruner(_api.BlockTree!, _db, _config.BlocksToKeep, _logManager);
+                _pruner = new TraceStorePruner(_api.BlockTree!, _db, traceStoreConfig.BlocksToKeep, _logManager);
             }
         }
 
@@ -58,10 +57,10 @@ public class TraceStorePlugin : INethermindPlugin
     {
         if (Enabled)
         {
-            if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {_config.TraceTypes} traces.");
+            if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {traceStoreConfig.TraceTypes} traces.");
 
             // Setup tracing
-            ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
+            ParityLikeBlockTracer parityTracer = new(traceStoreConfig.TraceTypes);
             DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
                 new(parityTracer, _db!, _traceSerializer!, _logManager);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
@@ -78,7 +77,7 @@ public class TraceStorePlugin : INethermindPlugin
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
             if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
             {
-                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, _config.DeserializationParallelization);
+                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, traceStoreConfig.DeserializationParallelization);
                 apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
             }
         }

@@ -38,6 +38,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
@@ -183,21 +184,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
     ApiBuilder apiBuilder = new(configProvider, logManager);
-    IList<INethermindPlugin> plugins = [];
-
-    foreach (Type pluginType in pluginLoader.PluginTypes)
-    {
-        try
-        {
-            if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
-                plugins.Add(plugin);
-        }
-        catch (Exception ex)
-        {
-            if (logger.IsError) logger.Error($"Failed to create plugin {pluginType.FullName}", ex);
-        }
-    }
-
+    IList<INethermindPlugin> plugins = pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
     ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
     nethermindApi.ProcessExit = processExitSource;

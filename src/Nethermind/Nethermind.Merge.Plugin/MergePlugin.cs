@@ -32,16 +32,16 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
-public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
+public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : IConsensusWrapperPlugin, ISynchronizationPlugin
 {
     protected INethermindApi _api = null!;
     private ILogger _logger;
-    protected IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     protected IBlocksConfig _blocksConfig = null!;
     protected ITxPoolConfig _txPoolConfig = null!;
@@ -59,22 +59,19 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
 
-    protected virtual bool MergeEnabled => _mergeConfig.Enabled &&
-                                           _api.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+    protected virtual bool MergeEnabled => mergeConfig.Enabled &&
+                                           chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
     public int Priority => PluginPriorities.Merge;
-
-    // Don't remove default constructor. It is used by reflection when we're loading plugins
-    public MergePlugin() { }
 
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
-        _mergeConfig = nethermindApi.Config<IMergeConfig>();
+        mergeConfig = nethermindApi.Config<IMergeConfig>();
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
 
-        MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
+        MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
         _logger = _api.LogManager.GetClassLogger();
 
@@ -93,7 +90,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _blockCacheService = new BlockCacheService();
             _poSSwitcher = new PoSSwitcher(
-                _mergeConfig,
+                mergeConfig,
                 _syncConfig,
                 _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
                 _api.BlockTree,
@@ -131,7 +128,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     private void EnsureNotConflictingSettings()
     {
-        if (!_mergeConfig.Enabled && _mergeConfig.TerminalTotalDifficulty is not null)
+        if (!mergeConfig.Enabled && mergeConfig.TerminalTotalDifficulty is not null)
         {
             throw new InvalidConfigurationException(
                 $"{nameof(MergeConfig)}.{nameof(MergeConfig.TerminalTotalDifficulty)} cannot be set when {nameof(MergeConfig)}.{nameof(MergeConfig.Enabled)} is false.",
@@ -225,7 +222,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     private bool HasTtd()
     {
-        return _api.SpecProvider?.TerminalTotalDifficulty is not null || _mergeConfig.TerminalTotalDifficulty is not null;
+        return _api.SpecProvider?.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
     }
 
     public Task InitNetworkProtocol()
@@ -304,13 +301,13 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
-                if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
+                if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
                 {
                     return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
                 }
 
                 DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
-                IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
+                IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
                 return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
             }
 
@@ -342,7 +339,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _invalidChainTracker,
                     _beaconSync,
                     _api.LogManager,
-                    TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+                    TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
                     _api.Config<IReceiptConfig>().StoreReceipts),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
@@ -366,7 +363,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
                 _api.SpecProvider,
-                new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
+                new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, mergeConfig), _api.LogManager),
                 _api.LogManager);
 
             RegisterEngineRpcModule(engineRpcModule);
@@ -436,7 +433,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
                 .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
                 .AddSingleton<IBeaconPivot>(_beaconPivot)
-                .AddSingleton(_mergeConfig)
+                .AddSingleton(mergeConfig)
                 .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
             builder.RegisterModule(new SynchronizerModule(_syncConfig));

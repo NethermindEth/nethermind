@@ -9,7 +9,7 @@ using Open.Nat;
 
 namespace Nethermind.UPnP.Plugin;
 
-public class UPnPPlugin : INethermindPlugin
+public class UPnPPlugin(INetworkConfig networkConfig) : INethermindPlugin
 {
     public string Name => "UPnP";
     public string Description => "Automatic port forwarding with UPnP";
@@ -19,15 +19,15 @@ public class UPnPPlugin : INethermindPlugin
     private readonly TimeSpan ExpirationRate = TimeSpan.FromMinutes(10);
     private PeriodicTimer? _timer = null;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private INetworkConfig _networkConfig = new NetworkConfig();
     private ILogger _logger = NullLogger.Instance;
+
+    public bool Enabled => networkConfig.EnableUPnP;
 
     public Task Init(INethermindApi api)
     {
-        _networkConfig = api.Config<INetworkConfig>();
         _logger = api.LogManager.GetClassLogger<UPnPPlugin>();
 
-        if (_networkConfig.EnableUPnP)
+        if (Enabled)
         {
             Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
         }
@@ -79,14 +79,14 @@ public class UPnPPlugin : INethermindPlugin
 
         await device.CreatePortMapAsync(new Mapping(
             Protocol.Tcp,
-            _networkConfig.P2PPort,
-            _networkConfig.P2PPort,
+            networkConfig.P2PPort,
+            networkConfig.P2PPort,
             ExpirationRate.Milliseconds + 10000,
             "Nethermind P2P"));
         await device.CreatePortMapAsync(new Mapping(
             Protocol.Udp,
-            _networkConfig.DiscoveryPort,
-            _networkConfig.DiscoveryPort,
+            networkConfig.DiscoveryPort,
+            networkConfig.DiscoveryPort,
             ExpirationRate.Milliseconds + 10000,
             "Nethermind Discovery"));
 

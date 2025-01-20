@@ -32,11 +32,7 @@ public class ConfigRegistrationSource : IRegistrationSource
             new DelegateActivator(swt.ServiceType, (c, p) =>
             {
                 IConfigProvider configProvider = c.Resolve<IConfigProvider>();
-                object config = typeof(IConfigProvider)
-                    .GetMethod("GetConfig")
-                    .MakeGenericMethod(swt.ServiceType)
-                    .Invoke(configProvider, new object[] { });
-                return config;
+                return configProvider.GetConfig(swt.ServiceType);
             }),
             new RootScopeLifetime(),
             InstanceSharing.Shared,

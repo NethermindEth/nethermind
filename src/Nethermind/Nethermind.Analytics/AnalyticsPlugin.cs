@@ -12,13 +12,17 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Analytics
 {
-    public class AnalyticsPlugin : INethermindPlugin
+    public class AnalyticsPlugin(IInitConfig initConfig, IAnalyticsConfig analyticsConfig) : INethermindPlugin
     {
-        private IAnalyticsConfig _analyticsConfig;
         private IList<IPublisher> _publishers;
         private INethermindApi _api;
 
-        private bool _isOn;
+        private bool _isOn = initConfig.WebSocketsEnabled &&
+                             (analyticsConfig.PluginsEnabled ||
+                              analyticsConfig.StreamBlocks ||
+                              analyticsConfig.StreamTransactions);
+
+        public bool Enabled => _isOn;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -32,13 +36,6 @@ namespace Nethermind.Analytics
         {
             _api = api;
             var (getFromAPi, _) = _api.ForInit;
-            _analyticsConfig = getFromAPi.Config<IAnalyticsConfig>();
-
-            IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
-            _isOn = initConfig.WebSocketsEnabled &&
-                    (_analyticsConfig.PluginsEnabled ||
-                     _analyticsConfig.StreamBlocks ||
-                     _analyticsConfig.StreamTransactions);
 
             if (!_isOn)
             {
@@ -57,7 +54,7 @@ namespace Nethermind.Analytics
 
         private void TxPoolOnNewDiscovered(object sender, TxEventArgs e)
         {
-            if (_analyticsConfig.StreamTransactions)
+            if (analyticsConfig.StreamTransactions)
             {
                 foreach (IPublisher publisher in _publishers)
                 {

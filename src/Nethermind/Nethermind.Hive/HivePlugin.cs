@@ -10,10 +10,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Hive;
 
-public class HivePlugin : INethermindPlugin
+public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 {
     private INethermindApi _api = null!;
-    private IHiveConfig _hiveConfig = null!;
     private ILogger _logger;
     private readonly CancellationTokenSource _disposeCancellationToken = new();
 
@@ -33,10 +32,7 @@ public class HivePlugin : INethermindPlugin
     public Task Init(INethermindApi api)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
-        _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
         _logger = _api.LogManager.GetClassLogger();
-
-        Enabled = _hiveConfig.Enabled;
 
         return Task.CompletedTask;
     }
@@ -76,5 +72,5 @@ public class HivePlugin : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    private bool Enabled { get; set; }
+    public bool Enabled => hiveConfig.Enabled;
 }

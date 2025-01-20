@@ -15,20 +15,19 @@ using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
 using Nethermind.KeyStore.Config;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
 
-public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
+public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin, IInitializationPlugin
 {
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";
     public string Author => "Nethermind";
-    public bool Enabled => ShouldRunSteps(_api!);
+    public bool Enabled => shutterConfig!.Enabled && mergeConfig!.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
     public int Priority => PluginPriorities.Shutter;
 
     private INethermindApi? _api;
-    private IMergeConfig? _mergeConfig;
-    private IShutterConfig? _shutterConfig;
     private IBlocksConfig? _blocksConfig;
     private ShutterApi? _shutterApi;
     private ILogger _logger;
@@ -40,8 +39,6 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     {
         _api = nethermindApi;
         _blocksConfig = _api.Config<IBlocksConfig>();
-        _mergeConfig = _api.Config<IMergeConfig>();
-        _shutterConfig = _api.Config<IShutterConfig>();
         _logger = _api.LogManager.GetClassLogger();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
@@ -76,7 +73,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             Multiaddress[] bootnodeP2PAddresses;
             try
             {
-                _shutterConfig!.Validate(out bootnodeP2PAddresses);
+                shutterConfig!.Validate(out bootnodeP2PAddresses);
             }
             catch (ArgumentException e)
             {
@@ -84,11 +81,11 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             }
 
             ShutterValidatorsInfo validatorsInfo = new();
-            if (_shutterConfig!.ValidatorInfoFile is not null)
+            if (shutterConfig!.ValidatorInfoFile is not null)
             {
                 try
                 {
-                    validatorsInfo.Load(_shutterConfig!.ValidatorInfoFile);
+                    validatorsInfo.Load(shutterConfig!.ValidatorInfoFile);
                 }
                 catch (Exception e)
                 {
@@ -108,7 +105,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 _api.WorldStateManager,
                 _api.FileSystem,
                 _api.Config<IKeyStoreConfig>(),
-                _shutterConfig,
+                shutterConfig,
                 validatorsInfo,
                 TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
                 _api.IpResolver.ExternalIp
@@ -122,9 +119,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
     public bool ShouldRunSteps(INethermindApi api)
     {
-        _shutterConfig = api.Config<IShutterConfig>();
-        _mergeConfig = api.Config<IMergeConfig>();
-        return _shutterConfig!.Enabled && _mergeConfig!.Enabled && api.ChainSpec.SealEngineType is SealEngineType.AuRa;
+        return Enabled;
     }
 
     public async ValueTask DisposeAsync()

@@ -17,10 +17,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class NethDevPlugin : IConsensusPlugin
+    public class NethDevPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
@@ -33,6 +34,8 @@ namespace Nethermind.Consensus.Ethash
 
         public string Author => "Nethermind";
 
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
@@ -41,7 +44,7 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != SealEngineType)
+            if (!Enabled)
             {
                 return null;
             }

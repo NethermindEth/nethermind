@@ -39,7 +39,7 @@ using System.Linq;
 
 namespace Nethermind.Taiko;
 
-public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
 {
     public const string Taiko = "Taiko";
     private const string L1OriginDbName = "L1Origin";
@@ -57,6 +57,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
+
+    public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
     public Task Init(INethermindApi api)
     {

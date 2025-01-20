@@ -11,7 +11,6 @@ namespace Nethermind.EthStats.Test;
 
 public class EthStatsPluginTests
 {
-    public IEthStatsConfig StatsConfig { get; private set; } = null!;
     private NethermindApi _context = null!;
 #pragma warning disable NUnit1032
     private INethermindPlugin _plugin = null!;
@@ -21,7 +20,7 @@ public class EthStatsPluginTests
     public void Setup()
     {
         _context = Build.ContextWithMocks();
-        _plugin = new EthStatsPlugin();
+        _plugin = new EthStatsPlugin(new EthStatsConfig() { Enabled = true });
     }
 
     [TearDown]
@@ -31,7 +30,6 @@ public class EthStatsPluginTests
     [TestCase(false)]
     public void Init_eth_stats_plugin_does_not_throw_exception(bool enabled)
     {
-        StatsConfig = new EthStatsConfig() { Enabled = enabled };
         Assert.DoesNotThrow(() => _plugin.InitTxTypesAndRlpDecoders(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());

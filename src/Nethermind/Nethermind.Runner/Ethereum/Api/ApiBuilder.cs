@@ -23,6 +23,7 @@ public class ApiBuilder
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
+    public ChainSpec ChainSpec { get; }
 
     public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
     {
@@ -31,6 +32,7 @@ public class ApiBuilder
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
         _jsonSerializer = new EthereumJsonSerializer();
+        ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
     public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
@@ -38,24 +40,23 @@ public class ApiBuilder
 
     public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
     {
-        ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
         bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
         if (wasCreated)
         {
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        string engine = chainSpec.SealEngineType;
+        string engine = ChainSpec.SealEngineType;
         IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
 
         INethermindApi nethermindApi =
-            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
-            new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
+            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
+            new NethermindApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
         nethermindApi.SealEngineType = engine;
-        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
+        nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
         nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 
-        SetLoggerVariables(chainSpec);
+        SetLoggerVariables(ChainSpec);
 
         return nethermindApi;
     }

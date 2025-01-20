@@ -12,7 +12,7 @@ using System.Configuration;
 
 namespace Nethermind.ExternalSigner.Plugin;
 
-public class ClefSignerPlugin : INethermindPlugin
+public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
 {
     private INethermindApi? _nethermindApi;
 
@@ -23,14 +23,14 @@ public class ClefSignerPlugin : INethermindPlugin
     public string Author => "Nethermind";
 
     public bool MustInitialize => true;
+    public bool Enabled => miningConfig.Enabled;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public async Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-        IMiningConfig miningConfig = _nethermindApi.Config<IMiningConfig>();
-        if (miningConfig.Enabled)
+        if (Enabled)
         {
             if (!string.IsNullOrEmpty(miningConfig.Signer))
             {

@@ -39,7 +39,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -59,6 +59,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private BeaconSync? _beaconSync;
 
     private OptimismCL? _cl;
+    public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
     public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 

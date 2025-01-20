@@ -3,12 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using Nethermind.Config;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Api.Extensions;
 
@@ -124,5 +127,63 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
             return fPos.CompareTo(sPos);
         });
+    }
+
+    private bool TryResolveParameter(IConfigProvider configProvider, ChainSpec chainSpec, Type parameterType, [NotNullWhen(true)] out object? parameter)
+    {
+        if (parameterType == typeof(ChainSpec))
+        {
+            parameter = chainSpec;
+            return true;
+        }
+
+        if (parameterType.IsAssignableTo(typeof(IConfig)))
+        {
+            parameter = configProvider.GetConfig(parameterType);
+            return true;
+        }
+
+        parameter = null;
+        return false;
+    }
+
+    private INethermindPlugin CreatePluginInstance(IConfigProvider configProvider, ChainSpec chainSpec, Type plugin)
+    {
+        ConstructorInfo[] constructors = plugin.GetConstructors();
+        // For simplicity and to prevent mistake, only one constructor should be defined.
+        if (constructors.Length != 1) throw new Exception($"Plugin {plugin.Name} has more than one constructor");
+
+        ConstructorInfo constructor = constructors[0];
+        object[] parameters = new object[constructor.GetParameters().Length];
+        for (int i = 0; i < constructor.GetParameters().Length; i++)
+        {
+            ParameterInfo parameter = constructor.GetParameters()[i];
+
+            if (!TryResolveParameter(configProvider, chainSpec, parameter.ParameterType, out parameters[i]!))
+            {
+                throw new Exception($"Failed to resolve parameter {parameter.ParameterType} for plugin {plugin.Name} construction");
+            }
+        }
+
+        return (INethermindPlugin)constructor.Invoke(parameters);
+    }
+
+    public IList<INethermindPlugin> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
+    {
+        List<INethermindPlugin> plugins = new List<INethermindPlugin>();
+        foreach (Type pluginType in plugins)
+        {
+            try
+            {
+                if (CreatePluginInstance(configProvider, chainSpec, pluginType) is { } plugin && plugin.Enabled)
+                    plugins.Add(plugin);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", ex);
+            }
+        }
+
+        return plugins;
     }
 }
