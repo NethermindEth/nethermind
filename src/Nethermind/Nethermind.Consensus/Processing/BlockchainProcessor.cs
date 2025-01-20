@@ -271,6 +271,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
 
+            Block? processedBlock = null;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -283,7 +284,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
+                processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
 
                 if (processedBlock is null)
                 {
@@ -303,8 +304,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                // ensure disposed if not already disposed in TxPool
+                processedBlock?.AccountChanges.Dispose();
                 Interlocked.Decrement(ref _queueCount);
+
+#if DEBUG
+            // it seems that the genesis block is not disposed either
+            // may be possible to simplify test to just test one block
+            if (processedBlock is not null && processedBlock.Number == 1)
+                Testing.WasDisposed = processedBlock.AccountChanges.IsDisposed;
+#endif
             }
+
 
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
