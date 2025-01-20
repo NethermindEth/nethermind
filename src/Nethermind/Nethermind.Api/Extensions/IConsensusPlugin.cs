@@ -11,8 +11,6 @@ namespace Nethermind.Api.Extensions
 {
     public interface IConsensusPlugin : INethermindPlugin, IBlockProducerFactory
     {
-        string SealEngineType { get; }
-
         INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 

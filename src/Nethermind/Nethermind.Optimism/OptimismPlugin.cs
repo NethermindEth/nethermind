@@ -39,7 +39,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -59,8 +59,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private BeaconSync? _beaconSync;
 
     private OptimismCL? _cl;
-
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
+    public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
     #region IConsensusPlugin
 
@@ -88,19 +87,13 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (ShouldRunSteps(api))
-        {
-            api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-            api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
-            Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
-        }
+        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
-            return Task.CompletedTask;
-
         _api = (OptimismNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
@@ -138,7 +131,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -193,7 +186,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);

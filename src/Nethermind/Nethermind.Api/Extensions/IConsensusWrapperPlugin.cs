@@ -16,7 +16,5 @@ namespace Nethermind.Api.Extensions
         /// Priorities for ordering multiple plugin. Only used to determine the wrapping order of block production.
         /// </summary>
         int Priority => 0;
-
-        bool Enabled { get; }
     }
 }

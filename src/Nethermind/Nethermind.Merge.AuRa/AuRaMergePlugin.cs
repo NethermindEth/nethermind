@@ -14,6 +14,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -21,18 +22,19 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
+    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig), IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
+        private readonly IMergeConfig _mergeConfig = mergeConfig;
+        private readonly ChainSpec _chainSpec = chainSpec;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => ShouldRunSteps(_api);
+        protected override bool MergeEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
 
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _mergeConfig = nethermindApi.Config<IMergeConfig>();
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
@@ -80,12 +82,6 @@ namespace Nethermind.Merge.AuRa
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
                 _poSSwitcher);
-        }
-
-        public bool ShouldRunSteps(INethermindApi api)
-        {
-            _mergeConfig = api.Config<IMergeConfig>();
-            return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
     }
 }
