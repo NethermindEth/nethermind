@@ -128,7 +128,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     {
         return _fileReader.ReadEntryAndDecode<ValueHash256>(
             _fileReader.AccumulatorOffset,
-            (buffer) => new ValueHash256(buffer.Span),
+            static (buffer) => new ValueHash256(buffer.Span),
             EntryTypes.Accumulator).Item1;
     }
 
