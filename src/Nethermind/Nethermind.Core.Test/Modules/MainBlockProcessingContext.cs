@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -19,7 +21,9 @@ namespace Nethermind.Core.Test.Modules;
 public record MainBlockProcessingContext(
     ILifetimeScope LifetimeScope,
     BlockchainProcessor BlockchainProcessor,
+    IWorldState WorldState,
     IBlockProcessor BlockProcessor,
+    ITransactionProcessor TransactionProcessor,
     GenesisLoader GenesisLoader) : IAsyncDisposable
 {
     public IBlockProcessingQueue BlockProcessingQueue => BlockchainProcessor;
