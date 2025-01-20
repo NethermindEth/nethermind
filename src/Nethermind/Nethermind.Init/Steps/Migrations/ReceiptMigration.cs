@@ -14,7 +14,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -33,7 +32,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
-        private Stopwatch? _stopwatch;
         private long _toBlock;
 
         private readonly ProgressLogger _progressLogger;
@@ -51,6 +49,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
+        private long _from = 0;
 
         public ReceiptMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
@@ -89,12 +88,24 @@ namespace Nethermind.Init.Steps.Migrations
             _progressLogger = new ProgressLogger("Receipts migration", logManager);
         }
 
-        public async Task<bool> Run(long blockNumber)
+        // Actually start running it.
+        public async Task<bool> Run(long from, long to)
         {
             _cancellationTokenSource?.Cancel();
-            await (_migrationTask ?? Task.CompletedTask);
+            try
+            {
+                await (_migrationTask ?? Task.CompletedTask);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
             _cancellationTokenSource = new CancellationTokenSource();
-            _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
+
+            // The MigratedBlockNumber is the actual "To"
+            _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, to), (_blockTree.Head?.Number ?? 0)) + 1;
+            _from = from;
+
             _migrationTask = DoRun(_cancellationTokenSource.Token);
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
@@ -104,6 +115,7 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_receiptConfig.ReceiptsMigration)
                 {
+                    _from = 0; // From is not configured by this method, but need to be reset.
                     ResetMigrationIndexIfNeeded();
                     await DoRun(cancellationToken);
                 }
@@ -114,14 +126,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (_receiptConfig.StoreReceipts)
             {
-                if (!CanMigrate(_syncModeSelector.Current))
-                {
-                    await Wait.ForEventCondition<SyncModeChangedEventArgs>(
-                        cancellationToken,
-                        (e) => _syncModeSelector.Changed += e,
-                        (e) => _syncModeSelector.Changed -= e,
-                        (arg) => CanMigrate(arg.Current));
-                }
+                await _syncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
 
                 RunIfNeeded(cancellationToken);
             }
@@ -138,20 +143,19 @@ namespace Nethermind.Init.Steps.Migrations
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;
             _toBlock = migrateToBlockNumber;
+            _from = Math.Min(_from, _toBlock);
 
-            _logger.Warn($"Running migration to {_toBlock}");
+            _logger.Warn($"Running migration to {_from} {_toBlock}");
 
             if (_toBlock > 0)
             {
-                _stopwatch = Stopwatch.StartNew();
                 try
                 {
                     RunMigration(cancellationToken);
                 }
                 catch (Exception e)
                 {
-                    _stopwatch.Stop();
-                    _logger.Error(GetLogMessage("failed", $"Error: {e}"), e);
+                    _logger.Error("Error running receipt migration", e);
                 }
             }
             else
@@ -162,17 +166,14 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void RunMigration(CancellationToken token)
         {
-            long synced = 1;
-
-            _progressLogger.Reset(synced, _toBlock);
-
-            if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
+            long synced = 0;
+            _progressLogger.Reset(synced, _toBlock - _from + 1);
 
             using Timer timer = new(1000);
             timer.Enabled = true;
             timer.Elapsed += (_, _) =>
             {
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
+                _progressLogger.LogProgress();
             };
 
             try
@@ -204,30 +205,29 @@ namespace Nethermind.Init.Steps.Migrations
 
                 if (!token.IsCancellationRequested)
                 {
-                    if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts database"));
+                    if (_logger.IsInfo) _logger.Info("Compacting receipts database");
                     _receiptsDb.Compact();
-                    if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts tx index database"));
+                    if (_logger.IsInfo) _logger.Info("Compacting receipts tx index database");
                     _txIndexDb.Compact();
-                    if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts block database"));
+                    if (_logger.IsInfo) _logger.Info("Compacting receipts block database");
                     _receiptsBlockDb.Compact();
                 }
             }
             finally
             {
                 _progressLogger.MarkEnd();
-                _stopwatch?.Stop();
                 timer.Stop();
             }
 
             if (!token.IsCancellationRequested)
             {
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("finished"));
+                if (_logger.IsInfo) _logger.Info("Receipt migration finished");
             }
         }
 
         Block GetMissingBlock(long i, Hash256? blockHash)
         {
-            if (_logger.IsDebug) _logger.Debug(GetLogMessage("warning", $"Block {i} not found. Logs will not be searchable for this block."));
+            if (_logger.IsDebug) _logger.Debug($"Block {i} not found. Logs will not be searchable for this block.");
             Block emptyBlock = EmptyBlock.Get();
             emptyBlock.Header.Number = i;
             emptyBlock.Header.Hash = blockHash;
@@ -266,11 +266,11 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            for (long i = _toBlock - 1; i > 0; i--)
+            for (long i = _toBlock; i > _from; i--)
             {
                 if (token.IsCancellationRequested)
                 {
-                    if (_logger.IsInfo) _logger.Info(GetLogMessage("cancelled"));
+                    if (_logger.IsInfo) _logger.Info("Receipt migration cancelled");
                     yield break;
                 }
 
@@ -295,11 +295,12 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (notNullReceipts.Length == 0) return;
 
+            // This should set the new rlp and tx index depending on config.
             _receiptStorage.Insert(block, notNullReceipts);
 
-            // I guess some old schema need this
+            // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
-                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Transactions);
+                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Default);
                 for (int i = 0; i < notNullReceipts.Length; i++)
                 {
                     writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;
@@ -324,8 +325,7 @@ namespace Nethermind.Init.Steps.Migrations
             if (notNullReceipts.Length != receipts.Length)
             {
                 if (_logger.IsWarn)
-                    _logger.Warn(GetLogMessage("warning",
-                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
+                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!");
             }
         }
 
@@ -380,13 +380,6 @@ namespace Nethermind.Init.Steps.Migrations
 
             bool isCompactEncoding = ReceiptArrayStorageDecoder.IsCompactEncoding(receiptData!);
             return _receiptConfig.CompactReceiptStore != isCompactEncoding;
-        }
-
-        private string GetLogMessage(string status, string? suffix = null)
-        {
-            string message = $"ReceiptsDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progressLogger.CurrentValue.ToString().PadLeft(_toBlock.ToString().Length)} / {_toBlock} blocks migrated. | current {_progressLogger.CurrentPerSecond:F2} Blk/s | total {_progressLogger.TotalPerSecond:F2} Blk/s. {suffix}";
-            _progressLogger.SetMeasuringPoint();
-            return message;
         }
 
         private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
