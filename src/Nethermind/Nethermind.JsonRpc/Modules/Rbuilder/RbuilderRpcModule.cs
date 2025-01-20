@@ -105,21 +105,23 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 if (!codeHash.Equals(accountChange.CodeHash))
                 {
                     Console.WriteLine($"NM code hash {codeHash}, rbuilder code hash {accountChange.CodeHash}");
-                }
+                } else
+                {
 
                 if (accountChange.Code is not null)
                 {
                     worldState.InsertCode(address, accountChange.Code, releaseSpec);
                 }
+                }
 
                 if (accountChange.ChangedSlots is not null)
                 {
-                    foreach (KeyValuePair<UInt256, byte[]> changedSlot in accountChange.ChangedSlots)
+                    foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
 
                         var prevValue = worldState.Get(new StorageCell(address, changedSlot.Key));
-                        Console.WriteLine($"CHANGED SLOT {BitConverter.ToString(prevValue.ToArray())}: {BitConverter.ToString(changedSlot.Value)}");
-                        worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value);
+                        Console.WriteLine($"CHANGED SLOT {BitConverter.ToString(prevValue.ToArray())}: {BitConverter.ToString(changedSlot.Value.ToBigEndian())}");
+                        worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
 
                 }
