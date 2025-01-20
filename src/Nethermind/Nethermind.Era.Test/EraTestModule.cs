@@ -4,19 +4,13 @@
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Logging;
-using NSubstitute;
+using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Era1.Test;
 
@@ -56,42 +50,16 @@ public class EraTestModule : Module
         base.Load(builder);
 
         builder
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddModule(new EraModule())
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
             .AddSingleton<IBlockValidator>(Always.Valid)
-            .AddSingleton<IProcessExitSource>(Substitute.For<IProcessExitSource>())
-            .AddSingleton<ISyncConfig>(new SyncConfig()
-            {
-            })
-            .AddSingleton<IFileSystem>(new FileSystem())
+            .AddSingleton<IFileSystem>(new FileSystem()) // Run on real filesystem.
             .AddSingleton<IEraConfig>(new EraConfig()
             {
                 MaxEra1Size = 16,
                 NetworkName = TestNetwork,
             })
-            .AddSingleton<IBlockTree>(Build.A.BlockTree().TestObject)
-
-            // Need to be real because during import the receipts does not have txhash but the ensure canonical
-            // assumed that the txhash is not null which would have been populated by receipt recovery but InMemoryReceiptStorage
-            // does not do receipt recovery.
-            .AddModule(new DbModule())
-            .AddSingleton<IReceiptConfig>(new ReceiptConfig())
-            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
-            .AddSingleton<IBlockStore, BlockStore>()
-            .AddSingleton<IEthereumEcdsa, EthereumEcdsa>()
-            .AddSingleton<IReceiptsRecovery, ReceiptsRecovery>()
-            .AddSingleton<IReceiptStorage, PersistentReceiptStorage>();
-
-
-        builder
-            .Register(ctx => TempPath.GetTempFile())
-            .SingleInstance()
-            .Named<TempPath>("file");
-
-        builder
-            .Register(ctx => TempPath.GetTempDirectory())
-            .SingleInstance()
-            .Named<TempPath>("directory");
+            .AddKeyedSingleton<TempPath>("file", ctx => TempPath.GetTempFile())
+            .AddKeyedSingleton<TempPath>("directory", ctx => TempPath.GetTempDirectory());
     }
 }
