@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,10 +32,10 @@ public class AccountChange
     public UInt256? Nonce { get; set; }
     public UInt256? Balance { get; set; }
     public byte[]? Code { get; set; }
-    [JsonProperty("code_hash")]
+    [JsonPropertyName("code_hash")]
     public Hash256? CodeHash { get; set; }
-    [JsonProperty("self_destructed")]
+    [JsonPropertyName("self_destructed")]
     public bool SelfDestructed { get; set; }
-    [JsonProperty("changed_slots")]
+    [JsonPropertyName("changed_slots")]
     public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
 }

@@ -37,10 +37,17 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
             worldState.StateRoot = blockHeader.StateRoot!;
 
+            Console.WriteLine($"Got hash: {blockParam.BlockHash}");
+            Console.WriteLine($"Got diff: {accountDiff.Count}");
+
             foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
             {
                 Address address = kv.Key;
                 AccountChange accountChange = kv.Value;
+
+                Console.WriteLine($"Balance {accountChange.Balance}");
+                Console.WriteLine($"Nonce {accountChange.Nonce}");
+                Console.WriteLine($"Storage {accountChange.ChangedSlots?.Count}");
 
                 if (accountChange.SelfDestructed)
                 {
