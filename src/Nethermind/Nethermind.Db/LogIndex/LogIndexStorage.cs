@@ -27,12 +27,14 @@ namespace Nethermind.Db
         private const string FolderName = "log-index";
         private const string TempFileName = "temp_index.bin";
         private const string FinalFileName = "finalized_index.bin";
+        private static readonly byte[] LastBlockNumKey = "LastBlockNum"u8.ToArray();
 
         public string TempFilePath { get; }
         public string FinalFilePath { get; }
 
         private readonly SafeFileHandle _finalFileHandle;
         private readonly FileStream _finalFileStream;
+        private readonly IDb _defaultDb;
         private readonly IDb _addressDb;
         private readonly IDb _topicsDb;
         private readonly ILogger _logger;
@@ -42,7 +44,6 @@ namespace Nethermind.Db
         private const int IndexDataMaxCount = 8 - 1;
         private const int PageDataMaxCount = PageSize / BlockNumSize;
 
-
         private readonly IFilePagesPool _tempPagesPool;
 
         // used for state/data validation, TODO: remove, replace with tests
@@ -51,7 +52,7 @@ namespace Nethermind.Db
         // TODO: ensure class is singleton
         public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger, string baseDbPath, int ioParallelism)
         {
-            if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be greater than 1.", nameof(ioParallelism));
+            if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
             _ioParallelism = ioParallelism;
 
             TempFilePath = Path.Combine(baseDbPath, FolderName, TempFileName);
@@ -71,8 +72,8 @@ namespace Nethermind.Db
             _addressDb = columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = columnsDb.GetColumnDb(LogIndexColumns.Topics);
 
-            IDb tempPagesDb = columnsDb.GetColumnDb(LogIndexColumns.Default);
-            _tempPagesPool = new AsyncFilePagesPool(TempFilePath, tempPagesDb, PageSize)
+            _defaultDb = columnsDb.GetColumnDb(LogIndexColumns.Default);
+            _tempPagesPool = new AsyncFilePagesPool(TempFilePath, _defaultDb, PageSize)
             {
                 AllocatedPagesPoolSize = 2048,
                 ReturnedPagesPoolSize = -1
@@ -101,7 +102,12 @@ namespace Nethermind.Db
 
         private int _lastKnownBlock = -1;
 
-        public int GetLastKnownBlockNumber() => _lastKnownBlock;
+        public int GetLastKnownBlockNumber()
+        {
+            return _lastKnownBlock < 0
+                ? ReadLastKnownBlockNumber() // Should only happen until first update
+                : _lastKnownBlock;
+        }
 
         public IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to)
         {
@@ -261,12 +267,15 @@ namespace Nethermind.Db
             return Task.CompletedTask;
         }
 
+        // Not thread-safe
         public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync,
             CancellationToken cancellationToken)
         {
             return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync, cancellationToken);
         }
 
+        // Not thread-safe
+        // batch is expected to be sorted
         public async Task<SetReceiptsStats> SetReceiptsAsync(
             BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken
         )
@@ -290,7 +299,7 @@ namespace Nethermind.Db
                 );
                 stats.ProcessingData.Include(watch.Elapsed);
 
-                _lastKnownBlock = Math.Max(_lastKnownBlock, batch.Max(b => b.BlockNumber));
+                WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
             }
             finally
             {
@@ -479,14 +488,14 @@ namespace Nethermind.Db
             db.PutSpan(dbKey, indexInfo.Serialize(), WriteFlags.DisableWAL);
         }
 
-        private IndexInfo CreateTempIndex(byte[] keyPrefix, SetReceiptsStats stats)
+        private static IndexInfo CreateTempIndex(byte[] keyPrefix, SetReceiptsStats stats)
         {
             // TODO: Save index offset to DB immediately after obtaining the page
             Interlocked.Increment(ref stats.NewTempIndexes);
             return IndexInfo.Temp(keyPrefix);
         }
 
-        private IndexInfo? GetIndex(IDb db, byte[] keyPrefix, SetReceiptsStats stats)
+        private static IndexInfo? GetIndex(IDb db, byte[] keyPrefix, SetReceiptsStats stats)
         {
             var dbKey = new byte[keyPrefix.Length + BlockNumSize];
 
@@ -615,12 +624,27 @@ namespace Nethermind.Db
             return buffer[..length];
         }
 
-        private long Append(FileStream fileStream, ReadOnlySpan<byte> data)
+        private static long Append(FileStream fileStream, ReadOnlySpan<byte> data)
         {
             long offset = fileStream.Length;
             fileStream.Seek(offset, SeekOrigin.Begin);
             fileStream.Write(data);
             return offset;
+        }
+
+        private int ReadLastKnownBlockNumber()
+        {
+            using IIterator<byte[], byte[]> iterator = _defaultDb.GetIterator();
+
+            iterator.Seek(LastBlockNumKey);;
+            return iterator.Valid() ? BinaryPrimitives.ReadInt32BigEndian(iterator.Value()) : -1;
+        }
+
+        private void WriteLastKnownBlockNumber(int value)
+        {
+            Span<byte> buffer = ArrayPool<byte>.Shared.RentSpan(sizeof(int));
+            BinaryPrimitives.WriteInt32BigEndian(buffer, value);
+            _defaultDb.PutSpan(LastBlockNumKey, buffer);
         }
 
         // used for data validation, TODO: remove, replace with tests

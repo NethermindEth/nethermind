@@ -28,7 +28,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
-        private Stopwatch? _stopwatch;
+        private readonly Stopwatch _stopwatch = new();
 
         private readonly ProgressLogger _progress;
         private readonly IReceiptStorage _receiptStorage;
@@ -141,7 +141,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private async Task RunIfNeeded(CancellationToken cancellationToken)
         {
-            _stopwatch = Stopwatch.StartNew();
+            _stopwatch.Start();
             try
             {
                 await RunMigration(cancellationToken);
@@ -214,9 +214,9 @@ namespace Nethermind.Init.Steps.Migrations
             }
             finally
             {
-                await _logIndexStorage.DisposeAsync();
+                //await _logIndexStorage.DisposeAsync();
                 _progress.MarkEnd();
-                _stopwatch!.Stop();
+                _stopwatch.Stop();
                 timer.Stop();
             }
 
@@ -232,10 +232,12 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 // const int startFrom = 0;
                 // const int startFrom = 750_000; // Just before slowdown
-                const int startFrom = 750_000 + 18_000 + 33_000; // Where slowdown starts
+                var startFrom = 750_000 + 18_000 + 33_000; // Where slowdown starts
                 // const int startFrom = 2_000_000; // Average blocks
                 // const int startFrom = 2_000_000 + 180_000; // Very log-dense blocks
                 _totalBlocks = _blockTree.BestKnownNumber - startFrom;
+
+                startFrom = Math.Max(startFrom, _logIndexStorage.GetLastKnownBlockNumber() + 1);
 
                 for (long i = startFrom; i < _blockTree.BestKnownNumber; i += BatchSize)
                 {

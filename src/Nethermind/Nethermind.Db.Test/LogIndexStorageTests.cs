@@ -131,11 +131,16 @@ namespace Nethermind.Db.Test
                     new(address, [], [])
                 }.ToArray()
             };
-            var expectedBlocks = new List<int>();
-            for (int i = 1; i <= 2000; i++)
+            var expectedBlocks = Enumerable.Range(1, 2000).ToArray();
+
+            // Act
+            _logIndexStorage.GetLastKnownBlockNumber().Should().Be(-1);
+
+            foreach (IGrouping<int, int> blocks in expectedBlocks.GroupBy(i => (i - 1) / 100))
             {
-                expectedBlocks.Add(i);
-                await _logIndexStorage.SetReceiptsAsync(i, [receipt], isBackwardSync: false, CancellationToken.None);
+                BlockReceipts[] receipts = blocks.Select(b => new BlockReceipts(b, [receipt])).ToArray();
+                await _logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false, CancellationToken.None);
+                _logIndexStorage.GetLastKnownBlockNumber().Should().Be(blocks.Max());
             }
 
             // Assert
