@@ -156,7 +156,7 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
-          if [[ "$network" == base-* || "$network" == op-* ]]; then
+          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
@@ -172,8 +172,13 @@ jobs:
               extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
             fi
 
+            if [[ "$network" == world-* ]]; then
+              extra_param="--world"
+            fi
+
             stripped_network="${network#base-}"
             stripped_network="${stripped_network#op-}"
+            stripped_network="${stripped_network#world-}"
 
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
@@ -283,7 +288,7 @@ jobs:
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
-          if [[ "$network" == base-* || "$network" == op-* ]]; then
+          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             docker logs sedge-consensus-op-l2-client
           elif [[ "$network" == taiko-* ]]; then
             docker logs sedge-consensus-taikodriver-client

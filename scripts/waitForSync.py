@@ -14,6 +14,7 @@ if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia
 
 container_mapping = {
     "base-": "sedge-execution-op-l2-client",
+    "world-": "sedge-execution-op-l2-client",
     "op-": "sedge-execution-op-l2-client",
     "taiko-": "sedge-execution-taiko-client",
 }
