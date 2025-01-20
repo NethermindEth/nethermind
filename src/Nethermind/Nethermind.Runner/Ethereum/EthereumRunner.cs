@@ -57,8 +57,9 @@ public class EthereumRunner(INethermindApi api)
         Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
         Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
         Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
+        Task logIndexStorageTask = Stop(() => _api.LogIndexStorage?.StopAsync(), "Stopping log index storage");
         Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping RLPx peer");
-        await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
+        await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask, logIndexStorageTask);
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {

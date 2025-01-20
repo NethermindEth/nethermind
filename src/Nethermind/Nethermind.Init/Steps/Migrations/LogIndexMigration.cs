@@ -141,7 +141,6 @@ namespace Nethermind.Init.Steps.Migrations
 
         private async Task RunIfNeeded(CancellationToken cancellationToken)
         {
-            _stopwatch.Start();
             try
             {
                 await RunMigration(cancellationToken);
@@ -198,6 +197,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private async Task RunMigration(CancellationToken token)
         {
+            _stopwatch.Start();
+
             if (_logger.IsInfo) _logger.Info("LogIndexMigration started");
 
             using Timer timer = new(10_000);
@@ -222,7 +223,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (!token.IsCancellationRequested)
             {
-                if (_logger.IsInfo) _logger.Info($"LogIndexMigration finished in {_stopwatch!.Elapsed}");
+                if (_logger.IsInfo) _logger.Info($"LogIndexMigration finished in {_stopwatch.Elapsed}");
             }
         }
 

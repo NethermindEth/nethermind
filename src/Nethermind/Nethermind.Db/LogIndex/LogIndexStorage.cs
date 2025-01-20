@@ -91,13 +91,18 @@ namespace Nethermind.Db
             }
         }
 
+        public async Task StopAsync()
+        {
+            await _setReceiptsSemaphore.WaitAsync();
+            await _tempPagesPool.StopAsync();
+        }
+
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
+            await _tempPagesPool.DisposeAsync();
             await _finalFileStream.DisposeAsync();
             _finalFileHandle.Dispose();
-
-            await _tempPagesPool.StopAsync();
-            await _tempPagesPool.DisposeAsync();
+            _setReceiptsSemaphore.Dispose();
         }
 
         private int _lastKnownBlock = -1;
@@ -267,19 +272,22 @@ namespace Nethermind.Db
             return Task.CompletedTask;
         }
 
-        // Not thread-safe
+        private readonly SemaphoreSlim _setReceiptsSemaphore = new (1, 1);
+
         public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync,
             CancellationToken cancellationToken)
         {
             return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync, cancellationToken);
         }
 
-        // Not thread-safe
         // batch is expected to be sorted
         public async Task<SetReceiptsStats> SetReceiptsAsync(
             BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken
         )
         {
+            if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
+                throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
+
             await _tempPagesPool.StartAsync();
 
             var stats = new SetReceiptsStats();
@@ -313,6 +321,8 @@ namespace Nethermind.Db
                 _addressDb.Flush();
                 _topicsDb.Flush();
                 stats.FlushingDbs.Include(watch.Elapsed);
+
+                _setReceiptsSemaphore.Release();
             }
 
             return stats;

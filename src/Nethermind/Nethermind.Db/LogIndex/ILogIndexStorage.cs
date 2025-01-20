@@ -21,6 +21,7 @@ public interface ILogIndexStorage : IAsyncDisposable
     Task CheckMigratedData();
     Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken);
+    Task StopAsync();
 
     PagesStats PagesStats { get; }
     string TempFilePath { get; }
