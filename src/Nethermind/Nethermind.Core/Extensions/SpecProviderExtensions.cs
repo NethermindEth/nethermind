@@ -34,10 +34,7 @@ namespace Nethermind.Core.Extensions
 
         public static ulong GetTransitionsMaxBlobGas(this ISpecProvider specProvider)
         {
-            return Eip4844Constants.GasPerBlob * specProvider.TransitionActivations
-                .Select(transitionActivation => specProvider.GetSpec(transitionActivation).MaxBlobCount)
-                .DefaultIfEmpty(0ul)
-                .Max();
+            return Eip4844Constants.GasPerBlob * specProvider.GetFinalSpec().MaxBlobCount;
         }
     }
 }
