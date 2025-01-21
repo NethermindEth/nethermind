@@ -210,7 +210,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     // In case of some strange corruption, we will have to reset the whole sync.
                     if (lowestInserted!.TotalDifficulty is null)
                     {
-                        _logger.Warn($"Missing total difficulty on lowest inserted header: {lowestInserted!.ToString(BlockHeader.Format.Short)}. Resetting header sync.");
+                        if (_logger.IsWarn) _logger.Warn($"Missing total difficulty on lowest inserted header: {lowestInserted!.ToString(BlockHeader.Format.Short)}. Resetting header sync.");
                         _blockTree.LowestInsertedHeader = null;
                     }
                 }
