@@ -36,8 +36,10 @@ public static class BinaryEncoding
 
         // Use 32 - 28 bits as the last one
         value |= (chunk & 0b00001111) << (4 * bits);
-        return 5;
+        return MaxVarIntByteCount;
     }
+
+    public const int MaxVarIntByteCount = 5;
 
     public static int WriteVarInt(uint value, Span<byte> span, int offset = 0)
     {

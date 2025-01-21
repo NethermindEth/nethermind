@@ -277,22 +277,38 @@ public class LogsBuilder
         var start = writer.WrittenCount;
 
         var previous = 0U;
+        var written = 0;
+
+        Span<byte> span = default;
 
         // Simple diff encoding
         foreach (var value in values)
         {
             var diff = value - previous;
 
-            // diff == 0 when it's a repeated entry. Skip these
-            if (diff > 0)
+            // Skip repeated entries
+            if (diff == 0) continue;
+
+            if (span.Length - written < BinaryEncoding.MaxVarIntByteCount)
             {
-                // TODO: optimize span getting and advancing.
-                Span<byte> span = writer.GetSpan(5);
-                var written = BinaryEncoding.WriteVarInt(diff, span, 0);
-                writer.Advance(written);
+                if (written > 0)
+                {
+                    writer.Advance(written);
+                    written = 0;
+                }
+
+                span = writer.GetSpan(BinaryEncoding.MaxVarIntByteCount);
             }
 
+            written += BinaryEncoding.WriteVarInt(diff, span, written);
             previous = value;
+        }
+
+        // Advance the leftover
+        if (written > 0)
+        {
+            writer.Advance(written);
+            written = 0;
         }
 
         var end = writer.WrittenCount;
