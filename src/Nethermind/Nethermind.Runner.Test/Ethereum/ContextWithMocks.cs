@@ -95,6 +95,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
                 StateReader = Substitute.For<IStateReader>(),
+                VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>(),
                 MainNodeStorage = Substitute.For<INodeStorage>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
@@ -128,7 +129,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .Build(),
             };
 
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }
