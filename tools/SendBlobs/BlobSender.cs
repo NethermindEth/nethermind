@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+extern alias BouncyCastle;
 
 using Nethermind.Cli;
 using Nethermind.Consensus;
@@ -12,7 +13,7 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Org.BouncyCastle.Utilities.Encoders;
+using BouncyCastle::Org.BouncyCastle.Utilities.Encoders;
 
 namespace SendBlobs;
 internal class BlobSender
