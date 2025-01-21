@@ -104,6 +104,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
+    void SetNonce(Address address, in UInt256 nonce);
+
     /* snapshots */
 
     void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true);
