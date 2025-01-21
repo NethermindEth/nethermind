@@ -51,7 +51,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
@@ -59,7 +58,6 @@ using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Era1;
 using Nethermind.Facade.Find;
-using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Api
 {
@@ -72,6 +70,7 @@ namespace Nethermind.Api
             LogManager = logManager;
             ChainSpec = chainSpec;
             CryptoRandom = new CryptoRandom();
+            DisposeStack = new DisposableStack(logManager);
             DisposeStack.Push(CryptoRandom);
         }
 
@@ -241,7 +240,7 @@ namespace Nethermind.Api
         public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec { get; set; }
-        public DisposableStack DisposeStack { get; } = new();
+        public DisposableStack DisposeStack { get; }
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource? ProcessExit { get; set; }
