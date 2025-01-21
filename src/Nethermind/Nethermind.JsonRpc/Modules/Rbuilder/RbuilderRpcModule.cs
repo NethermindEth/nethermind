@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -152,7 +153,7 @@ public class RbuilderRpcModule(
                    {
 
                         ReadOnlySpan<byte> nmVaule = worldState.Get(new StorageCell(address, slot.Key));
-                        if (nmVaule.ToArray() != slot.Value.ToBigEndian())
+                        if (nmVaule.ToArray().SequenceEqual(slot.Value.ToBigEndian()))
                         {
                             Console.WriteLine($"NM slot value {BitConverter.ToString(nmVaule.ToArray())}, rbuilder slot value {BitConverter.ToString(slot.Value.ToBigEndian())}, address: {address}");
                         }
@@ -165,8 +166,6 @@ public class RbuilderRpcModule(
 
 
             }
-
-
 
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
