@@ -46,6 +46,11 @@ public class ApiBuilder
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
+        if (consensusPlugins.Count() > 1)
+        {
+            throw new NotSupportedException($"More than one consensus plugins are enabled. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
+        }
+
         IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault();
         INethermindApi nethermindApi =
             enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec) ??
