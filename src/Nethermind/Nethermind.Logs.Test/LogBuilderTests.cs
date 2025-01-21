@@ -111,7 +111,7 @@ public class LogBuilderTests
         const int txs = 100;
         const int logEntries = blocks * txs;
 
-        foreach ((uint block, ushort tx)  in Builder())
+        foreach ((uint block, ushort tx) in Builder())
         {
             builder.Append(entry, block, tx);
         }
