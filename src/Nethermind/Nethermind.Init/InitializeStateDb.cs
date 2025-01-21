@@ -90,6 +90,7 @@ public class InitializeStateDb : IStep
 
         setApi.StateReader = stateManager.GlobalStateReader;
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
+        setApi.VerifyTrieStarter = new VerifyTrieStarter(stateManager, _api.ProcessExit!, _api.LogManager);
 
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
