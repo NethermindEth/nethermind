@@ -324,6 +324,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 else if (ShouldBuildANewBatch())
                 {
                     batch = ProcessPersistedHeadersOrBuildNewBatch(cancellationToken);
+                    if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
                 if (batch is not null)
