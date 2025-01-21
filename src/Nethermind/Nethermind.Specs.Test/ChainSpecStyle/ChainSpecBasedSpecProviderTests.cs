@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -199,7 +200,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
             Assert.That(spec.GetMaxBlobGas(), Is.EqualTo(786432));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
             Assert.That(spec.GetTargetBlobGas(), Is.EqualTo(393216));
         });
     }
