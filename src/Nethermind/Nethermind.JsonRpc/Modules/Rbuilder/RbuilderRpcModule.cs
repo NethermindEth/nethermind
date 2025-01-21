@@ -114,9 +114,11 @@ public class RbuilderRpcModule(
 
                 if (accountChange.ChangedSlots is not null)
                 {
-                    foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
+
+                   var changedSlotsSorted = accountChange.ChangedSlots.OrderBy(kv => kv.Key).ToList();
+                    foreach (KeyValuePair<UInt256, UInt256> changedSlot in changedSlotsSorted)
                     {
-                        ReadOnlySpan<byte> prevValue = worldState.Get(new StorageCell(address, changedSlot.Key));
+                        //ReadOnlySpan<byte> prevValue = worldState.Get(new StorageCell(address, changedSlot.Key));
                         //Console.WriteLine($"CHANGED SLOT {BitConverter.ToString(prevValue.ToArray())}: {BitConverter.ToString(changedSlot.Value.ToBigEndian())}");
                         worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.ToBigEndian());
                     }
