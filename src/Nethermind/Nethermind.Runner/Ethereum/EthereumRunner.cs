@@ -65,12 +65,7 @@ public class EthereumRunner(INethermindApi api)
             await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
         }
 
-        while (_api.DisposeStack.Count != 0)
-        {
-            IAsyncDisposable disposable = _api.DisposeStack.Pop();
-            await Stop(async () => await disposable.DisposeAsync(), $"Disposing {disposable}");
-        }
-
+        await _api.DisposeStack.DisposeAsync();
         Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
         if (_logger.IsInfo)

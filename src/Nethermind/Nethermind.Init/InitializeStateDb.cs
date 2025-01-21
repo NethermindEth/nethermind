@@ -84,10 +84,6 @@ public class InitializeStateDb : IStep
         // Used by rpc to trigger pruning.
         setApi.PruningTrigger = pruningTrigger;
 
-        // TODO: Don't forget this
-        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
-        getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
-
         setApi.StateReader = stateManager.GlobalStateReader;
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
 
