@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -68,8 +67,7 @@ public abstract class TransactionForRpc
 
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
-        private static readonly OrderedDictionary<Type, string[]> _requiredProps = [];
-        private static readonly FromTransactionFunc?[] _fromTransactionFuncs = new FromTransactionFunc?[Transaction.MaxTxType + 1];
+        private static readonly List<TxTypeInfo> _txTypes = [];
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
 
         /// <summary>
@@ -88,17 +86,28 @@ public abstract class TransactionForRpc
         internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {
             Type txType = typeof(T);
-            _fromTransactionFuncs[(byte)T.TxType] = T.FromTransaction;
-            string[] uniqueProperties = txType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(p => p.GetCustomAttribute<JsonDiscriminatorAttribute>() is not null).Select(p => p.Name).ToArray();
+            string[] uniqueProperties = txType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(p => p.GetCustomAttribute<JsonDiscriminatorAttribute>() is not null)
+                .Select(p => p.Name).ToArray();
 
-            if (_requiredProps.ContainsKey(txType))
+            TxTypeInfo typeInfo = new TxTypeInfo
+            {
+                TxType = T.TxType,
+                Type = txType,
+                FromTransactionFunc = T.FromTransaction,
+                DiscriminatorProperties = uniqueProperties
+            };
+
+            int existingTypeInfo = _txTypes.FindIndex(t => t.Type == txType);
+
+            if (existingTypeInfo != -1)
             {
                 // Adding in reverse order so new tx type are in priority
-                _requiredProps[txType] = uniqueProperties;
+                _txTypes[existingTypeInfo] = typeInfo;
             }
             else
             {
-                _requiredProps.Insert(0, typeof(T), uniqueProperties);
+                _txTypes.Insert(0, typeInfo);
             }
         }
 
@@ -109,15 +118,10 @@ public abstract class TransactionForRpc
             Utf8JsonReader txTypeReader = reader;
             JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            return TryGetTxType(_requiredProps, untyped, out Type? concreteTxType)
-                ? (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options)
-                : throw new JsonException("Unknown transaction type");
+            Type concreteTxType = _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes.Last())?.Type
+                ?? throw new JsonException("Unknown transaction type");
 
-            static bool TryGetTxType(OrderedDictionary<Type, string[]> props, JsonObject untyped, [NotNullWhen(true)] out Type? type)
-            {
-                type = props.FirstOrDefault(p => p.Value.Any(name => untyped.ContainsKey(name)), props.Last()).Key;
-                return type is not null;
-            }
+            return (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
@@ -127,9 +131,16 @@ public abstract class TransactionForRpc
 
         public static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         {
-            return _fromTransactionFuncs.TryGetByTxType(tx.Type, out var FromTransaction)
-                ? FromTransaction(tx, extraData)
-                : throw new ArgumentException("No converter for transaction type");
+            return _txTypes.FirstOrDefault(t => t.TxType == tx.Type)?.FromTransactionFunc(tx, extraData)
+                ?? throw new ArgumentException("No converter for transaction type");
+        }
+
+        class TxTypeInfo
+        {
+            public TxType TxType { get; set; }
+            public Type Type { get; set; }
+            public FromTransactionFunc FromTransactionFunc { get; set; }
+            public string[] DiscriminatorProperties { get; set; } = [];
         }
     }
 
