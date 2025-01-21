@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -20,21 +21,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
         private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-        private readonly long _configuredMaxBlobTxSize = CalculateMaxBlobTxSize(txPoolConfig.MaxBlobTxSize, specProvider);
-
-        private static long CalculateMaxBlobTxSize(long? maxBlobTxSize, ISpecProvider specProvider)
-        {
-            if (maxBlobTxSize is null)
-            {
-                return long.MaxValue;
-            }
-
-            ulong maxBlobCount = specProvider.TransitionActivations
-                .Select(transitionActivation => specProvider.GetSpec(transitionActivation).MaxBlobCount)
-                .DefaultIfEmpty(0ul)
-                .Max();
-            return maxBlobTxSize.Value + (long)(Eip4844Constants.GasPerBlob * maxBlobCount);
-        }
+        private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+            ? long.MaxValue
+            : txPoolConfig.MaxBlobTxSize.Value * (long)specProvider.GetTransitionsMaxBlobGas();
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 

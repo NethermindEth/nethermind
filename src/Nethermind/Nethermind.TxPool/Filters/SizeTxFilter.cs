@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
@@ -9,10 +11,12 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>
 /// Ignores transactions that exceed configured max transaction size limit.
 /// </summary>
-internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
+internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger, ISpecProvider specProvider) : IIncomingTxFilter
 {
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
-    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize ?? long.MaxValue;
+    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+        ? long.MaxValue
+        : txPoolConfig.MaxBlobTxSize.Value * (long)specProvider.GetTransitionsMaxBlobGas();
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
