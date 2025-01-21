@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain.Find;
@@ -119,7 +120,6 @@ public class RbuilderRpcModule(
 
                 if (accountChange.ChangedSlots is not null)
                 {
-                    worldState.ClearStorage(address);
                    var changedSlotsSorted = accountChange.ChangedSlots.OrderBy(kv => kv.Key).ToList();
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in changedSlotsSorted)
                     {
@@ -174,7 +174,6 @@ public class RbuilderRpcModule(
 
             }
 
-            Console.WriteLine($"STATE ROOT:{worldState.StateRoot}");
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
@@ -197,5 +196,16 @@ public class RbuilderRpcModule(
             obj.WorldState.ResetOverrides();
             return true;
         }
+    }
+}
+
+static class CsvLogger
+{
+    private static readonly string _filePath = "state_root_log.csv";
+
+    public static void LogStateRoot(string message)
+    {
+        using StreamWriter writer = new StreamWriter(_filePath, append: true);
+        writer.WriteLine($"{DateTime.Now},{message}");
     }
 }
