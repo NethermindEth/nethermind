@@ -201,6 +201,7 @@ namespace Nethermind.Api
         public IWorldStateManager? WorldStateManager { get; set; }
         public INodeStorage? MainNodeStorage { get; set; }
         public CompositePruningTrigger? PruningTrigger { get; set; }
+        public IVerifyTrieStarter? VerifyTrieStarter { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
