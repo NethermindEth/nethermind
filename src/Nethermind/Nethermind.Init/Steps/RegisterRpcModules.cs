@@ -29,7 +29,6 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.State;
 
 namespace Nethermind.Init.Steps;
 
@@ -132,7 +131,7 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            new VerifyTrieStarter(_api.WorldStateManager, _api.ProcessExit!, _api.LogManager),
+            _api.VerifyTrieStarter!,
             _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
             _api.AdminEraService,
