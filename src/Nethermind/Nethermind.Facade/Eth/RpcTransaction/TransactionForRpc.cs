@@ -72,6 +72,10 @@ public abstract class TransactionForRpc
         private static readonly FromTransactionFunc?[] _fromTransactionFuncs = new FromTransactionFunc?[Transaction.MaxTxType + 1];
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
 
+        /// <summary>
+        /// Transaction type is determined based on fields present in the request:
+        /// Properties marked with <see cref="JsonDiscriminatorAttribute" /> are checked in reverse order of tx type registration.
+        /// </summary>
         static TransactionJsonConverter()
         {
             RegisterTransactionType<LegacyTransactionForRpc>();
@@ -142,6 +146,10 @@ public abstract class TransactionForRpc
     public static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
 }
 
+
+/// <summary>
+/// Marks fields that determine the transaction type
+/// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = false)]
 public sealed class JsonDiscriminatorAttribute : Attribute
 {
