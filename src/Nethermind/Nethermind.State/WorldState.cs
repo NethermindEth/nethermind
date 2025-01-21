@@ -143,7 +143,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
-        	stateRoot ??= _stateRoot;
+            stateRoot ??= _stateRoot;
             ResetState(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
@@ -197,7 +197,6 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.CommitTrees();
             _state.Commit(blockNumber);
-            _stateRoot = _state.StateRoot;
             ResetState(_state.StateRoot);
         }
 
@@ -296,6 +295,7 @@ namespace Nethermind.State
         private void ResetState(Hash256 stateRoot)
         {
             Interlocked.Exchange(ref _state, _factory.Get(stateRoot, _prefetchMerkle))?.Dispose();
+            Interlocked.Exchange(ref _stateRoot, stateRoot);
         }
 
         private void ResetStateToNull()
