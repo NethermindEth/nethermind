@@ -9,7 +9,7 @@
 
     <ItemGroup>
       <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24528.1" />
-      <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" Aliases="BouncyCastle"/>
+      <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.0" Aliases="BouncyCastle"/>
     </ItemGroup>
 
     <ItemGroup>
