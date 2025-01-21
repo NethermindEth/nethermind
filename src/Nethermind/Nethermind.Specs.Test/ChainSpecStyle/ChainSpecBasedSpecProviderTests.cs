@@ -198,7 +198,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
             Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(786432));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
             Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(393216));
         });
     }
