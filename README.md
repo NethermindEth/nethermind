@@ -88,7 +88,7 @@ This is the easiest and fastest way to build Nethermind if you don't want to clo
 docker build https://github.com/nethermindeth/nethermind.git -t nethermind
 ```
 
-For more info, see [Bulding Docker image](https://docs.nethermind.io/developers/building-from-source#bulding-docker-image).
+For more info, see [Building Docker image](https://docs.nethermind.io/developers/building-from-source#bulding-docker-image).
 
 ### Standalone binaries
 
