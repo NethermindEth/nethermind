@@ -47,7 +47,6 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"MaxPriorityFeePerGas":"0x0"}""");
 
-
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"maxFeePerBlobGas":"0x0"}""");
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
@@ -55,7 +54,6 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Blob, """{"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"BlobVersionedHashes":null}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
-
 
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"authorizationList":[]}""");
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","authorizationList":[]}""");

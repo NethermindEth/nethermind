@@ -146,7 +146,6 @@ public abstract class TransactionForRpc
     public static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
 }
 
-
 /// <summary>
 /// Marks fields that determine the transaction type
 /// </summary>
