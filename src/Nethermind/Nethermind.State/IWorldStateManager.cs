@@ -34,7 +34,14 @@ public interface IWorldStateManager
     IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
     void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
-    bool TryStartVerifyTrie(BlockHeader stateAtBlock);
+
+    /// <summary>
+    /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
+    /// Return false if error is found.
+    /// </summary>
+    /// <param name="stateAtBlock"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
 }
 
