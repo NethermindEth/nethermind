@@ -97,8 +97,8 @@ public class InitializeStateDb : IStep
             BlockHeader? head = getApi.BlockTree!.Head?.Header;
             if (head is not null)
             {
-                stateManager.TryStartVerifyTrie(head);
                 _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
+                stateManager.VerifyTrie(head, setApi.ProcessExit!.Token);
             }
         }
 

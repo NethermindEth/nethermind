@@ -6,7 +6,7 @@ using Nethermind.State;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class VerifyStateOnStateSyncFinished(IWorldStateManager worldStateManager, ITreeSync treeSync) : IStartable
+public class VerifyStateOnStateSyncFinished(VerifyTrieStarter verifyTrieStarter, ITreeSync treeSync) : IStartable
 {
     public void Start()
     {
@@ -17,6 +17,6 @@ public class VerifyStateOnStateSyncFinished(IWorldStateManager worldStateManager
     {
         treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
 
-        worldStateManager.TryStartVerifyTrie(evt.Pivot);
+        verifyTrieStarter.TryStartVerifyTrie(evt.Pivot);
     }
 }
