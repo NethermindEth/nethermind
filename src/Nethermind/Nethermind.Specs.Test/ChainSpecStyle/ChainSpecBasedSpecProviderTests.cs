@@ -12,12 +12,11 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.GnosisForks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -197,9 +196,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.Multiple(() =>
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
-            Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(786432));
+            Assert.That(spec.GetMaxBlobGas(), Is.EqualTo(786432));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(393216));
+            Assert.That(spec.GetTargetBlobGas(), Is.EqualTo(393216));
         });
     }
 
@@ -301,9 +300,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.Multiple(() =>
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
-            Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(262144));
+            Assert.That(spec.GetMaxBlobGas(), Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(131072));
+            Assert.That(spec.GetTargetBlobGas(), Is.EqualTo(131072));
         });
     }
 

@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.Producers
             UInt256 blobGasCounter = 0;
             UInt256 feePerBlobGas = UInt256.Zero;
 
-            var maxBlobGasPerBlock = spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
+            var maxBlobGasPerBlock = spec.GetMaxBlobGas();
             foreach (Transaction blobTx in blobTransactions)
             {
                 if (blobGasCounter >= maxBlobGasPerBlock)
