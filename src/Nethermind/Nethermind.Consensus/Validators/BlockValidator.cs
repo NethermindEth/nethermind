@@ -339,7 +339,7 @@ public class BlockValidator(
 
         if (blobGasUsed > spec.GetMaxBlobGas())
         {
-            error = string.Format(BlockErrorMessages.BlobGasUsedAboveBlockLimit, spec.GetMaxBlobGas());
+            error = string.Format(BlockErrorMessages.BlobGasUsedAboveBlockLimit, spec.GetMaxBlobGas(), blobsInBlock, blobGasUsed);
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }
