@@ -148,15 +148,15 @@ public class RbuilderRpcModule(
                        Console.WriteLine($"NM code hash {account.CodeHash}, rbuilder code hash {account.CodeHash}, address: {address}");
                    }
 
-                   foreach (KeyValuePair<UInt256,UInt256> slot in accountChange.ChangedSlots)
-                   {
-
-                        ReadOnlySpan<byte> nmVaule = worldState.Get(new StorageCell(address, slot.Key));
-                        if (nmVaule.ToArray() != slot.Value.ToBigEndian())
-                        {
-                            Console.WriteLine($"NM slot value {BitConverter.ToString(nmVaule.ToArray())}, rbuilder slot value {BitConverter.ToString(slot.Value.ToBigEndian())}, address: {address}");
-                        }
-                   }
+                   // foreach (KeyValuePair<UInt256,UInt256> slot in accountChange.ChangedSlots)
+                   // {
+                   //
+                   //      ReadOnlySpan<byte> nmVaule = worldState.Get(new StorageCell(address, slot.Key));
+                   //      if (nmVaule.ToArray() != slot.Value.ToBigEndian())
+                   //      {
+                   //          Console.WriteLine($"NM slot value {BitConverter.ToString(nmVaule.ToArray())}, rbuilder slot value {BitConverter.ToString(slot.Value.ToBigEndian())}, address: {address}");
+                   //      }
+                   // }
                 }
                 else
                 {
