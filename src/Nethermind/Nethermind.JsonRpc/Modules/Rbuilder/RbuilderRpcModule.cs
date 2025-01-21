@@ -40,6 +40,11 @@ public class RbuilderRpcModule(
             IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
             worldState.StateRoot = blockHeader.StateRoot!;
 
+            if (!worldState.HasStateForRoot(blockHeader.StateRoot))
+            {
+                Console.WriteLine("DOESN'T have a state root for this block");
+            }
+
 
             foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
             {
@@ -56,7 +61,7 @@ public class RbuilderRpcModule(
                                        || accountChange.Nonce is not null
                                        || accountChange.Code is not null
                                        || accountChange.ChangedSlots?.Count > 0;
-                //   if (!hasAccountChange) continue;
+                  if (!hasAccountChange) continue;
 
                 if (worldState.TryGetAccount(address, out AccountStruct account))
                 {
@@ -114,7 +119,7 @@ public class RbuilderRpcModule(
 
                 if (accountChange.ChangedSlots is not null)
                 {
-
+                    worldState.ClearStorage(address);
                    var changedSlotsSorted = accountChange.ChangedSlots.OrderBy(kv => kv.Key).ToList();
                     foreach (KeyValuePair<UInt256, UInt256> changedSlot in changedSlotsSorted)
                     {
@@ -169,6 +174,7 @@ public class RbuilderRpcModule(
 
             }
 
+            Console.WriteLine($"STATE ROOT:{worldState.StateRoot}");
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
