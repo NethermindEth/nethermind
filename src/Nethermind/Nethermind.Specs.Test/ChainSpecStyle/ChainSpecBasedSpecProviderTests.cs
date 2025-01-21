@@ -153,6 +153,20 @@ public class ChainSpecBasedSpecProviderTests
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
+        IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
+
+        VerifySepoliaCancunSpecifics(postCancunSpec);
+    }
+
+    private static void VerifySepoliaCancunSpecifics(IReleaseSpec spec)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(786432));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+            Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(393216));
+        });
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -182,9 +196,22 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
 
+        IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
+        VerifyHoleskyCancunSpecifics(postCancunSpec);
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
+    }
+
+    private static void VerifyHoleskyCancunSpecifics(IReleaseSpec spec)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(786432));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+            Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(393216));
+        });
     }
 
     public static IEnumerable<TestCaseData> ChiadoActivations
@@ -390,6 +417,19 @@ public class ChainSpecBasedSpecProviderTests
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
+        IReleaseSpec postCancunSpec = provider.GetSpec(MainnetSpecProvider.CancunActivation);
+        VerifyMainnetCancunSpecifics(postCancunSpec);
+    }
+
+    private static void VerifyMainnetCancunSpecifics(IReleaseSpec spec)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.MaxBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(786432));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+            Assert.That(spec.TargetBlobCount * Eip4844Constants.GasPerBlob, Is.EqualTo(393216));
+        });
     }
 
     [Flags]
