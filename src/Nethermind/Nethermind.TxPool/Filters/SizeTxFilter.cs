@@ -16,7 +16,7 @@ internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger, I
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
-        : txPoolConfig.MaxBlobTxSize.Value * (long)specProvider.GetTransitionsMaxBlobGas();
+        : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetTransitionsMaxBlobGas();
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
