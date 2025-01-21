@@ -14,9 +14,7 @@
     <ItemGroup>
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Cli\Nethermind.Cli.csproj" />
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
-      <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj">
-        <ExcludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</ExcludeAssets>
-      </ProjectReference>
+      <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
     </ItemGroup>
 
 </Project>
