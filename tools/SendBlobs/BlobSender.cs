@@ -12,7 +12,6 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 using Org.BouncyCastle.Utilities.Encoders;
 
 namespace SendBlobs;
