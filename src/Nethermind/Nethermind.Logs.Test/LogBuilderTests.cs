@@ -56,6 +56,8 @@ public class LogBuilderTests
         reader.Find(hash0).ToArray().Should().BeEquivalentTo([e1, e2]);
 
         reader.Find(hash0, 1).Should().BeEmpty();
+
+        writer.WrittenCount.Should().Be(48);
     }
 
     [Test]
@@ -93,6 +95,8 @@ public class LogBuilderTests
         reader.Find(hash0).ToArray().Should().BeEquivalentTo(expected);
 
         reader.Find(hash0, 1).Should().BeEmpty();
+
+        writer.WrittenCount.Should().Be(50);
     }
 
     [Test]
@@ -120,5 +124,35 @@ public class LogBuilderTests
         builder.Build(writer);
 
         Console.WriteLine($"{(double)writer.WrittenCount / logEntries:F1} bytes per {nameof(LogEntry)}");
+    }
+
+    [Test]
+    public void Repeated_entries_should_be_deduplicated()
+    {
+        var builder = new LogsBuilder();
+
+        var entry = new LogEntry(Address.SystemUser, [], [_hashes[0]]);
+
+        const int logsReported = 1000;
+        const uint block = 1;
+        const ushort tx = 1;
+
+        // Report a lot of times with the same position, to replicate a complex exchange where a lot of
+        // Transfer (index_topic_1 address src, index_topic_2 address dst, uint256 wad) is done.
+        for (ushort i = 0; i < logsReported; i++)
+        {
+            builder.Append(entry, block, tx);
+        }
+
+        var writer = new ArrayBufferWriter<byte>();
+
+        builder.Build(writer);
+
+        var reader = new LogsBuilder.MemoryReader(writer.WrittenMemory);
+
+        LogsBuilder.Entry e = new(block, tx);
+
+        reader.Find(Address.SystemUser).ToArray().Should().BeEquivalentTo([e]);
+        writer.WrittenCount.Should().Be(42);
     }
 }

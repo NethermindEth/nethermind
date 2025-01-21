@@ -279,10 +279,17 @@ public class LogsBuilder
         // Simple diff encoding
         foreach (var value in values)
         {
-            // TODO: optimize span getting and advancing.
-            Span<byte> span = writer.GetSpan(5);
-            var written = BinaryEncoding.WriteVarInt(value - previous, span, 0);
-            writer.Advance(written);
+            var diff = value - previous;
+
+            // diff == 0 when it's a repeated entry. Skip these
+            if (diff > 0)
+            {
+                // TODO: optimize span getting and advancing.
+                Span<byte> span = writer.GetSpan(5);
+                var written = BinaryEncoding.WriteVarInt(diff, span, 0);
+                writer.Advance(written);
+            }
+
             previous = value;
         }
 
