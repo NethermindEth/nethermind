@@ -6,7 +6,7 @@ using Nethermind.State;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class VerifyStateOnStateSyncFinished(VerifyTrieStarter verifyTrieStarter, ITreeSync treeSync) : IStartable
+public class VerifyStateOnStateSyncFinished(IVerifyTrieStarter verifyTrieStarter, ITreeSync treeSync) : IStartable
 {
     public void Start()
     {

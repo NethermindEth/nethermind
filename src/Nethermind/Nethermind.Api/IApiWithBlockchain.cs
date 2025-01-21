@@ -64,6 +64,7 @@ namespace Nethermind.Api
         IWorldStateManager? WorldStateManager { get; set; }
         INodeStorage? MainNodeStorage { get; set; }
         CompositePruningTrigger? PruningTrigger { get; set; }
+        IVerifyTrieStarter? VerifyTrieStarter { get; set; }
 
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITxSender? TxSender { get; set; }
