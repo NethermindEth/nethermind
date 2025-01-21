@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -72,21 +73,21 @@ public partial class EthRpcModuleTests
     private static Block[] GetThreeTestBlocks(bool eip1559Enabled = true)
     {
         Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero)
-            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 4 : null)
+            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GetMaxBlobGas() * 4 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject
         ).TestObject;
 
         Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash!)
-            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 8 : null)
+            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GetMaxBlobGas() * 8 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).TestObject
         ).TestObject;
 
         Block thirdBlock = Build.A.Block.WithNumber(2).WithParentHash(secondBlock.Hash!)
-            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 12 : null)
+            .WithExcessBlobGas(eip1559Enabled ? Cancun.Instance.GetMaxBlobGas() * 12 : null)
             .WithTransactions(
             Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
             Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
@@ -142,22 +143,22 @@ public partial class EthRpcModuleTests
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
                 ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
             };
-            yield return new TestCaseData(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 4)
+            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGas() * 4)
             {
                 TestName = "Initial price spike",
                 ExpectedResult = Success(2)
             };
-            yield return new TestCaseData(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 42)
+            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGas() * 42)
             {
                 TestName = "Price spike",
                 ExpectedResult = Success(19806)
             };
-            yield return new TestCaseData(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 419)
+            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGas() * 419)
             {
                 TestName = $"Price spike higher than {nameof(UInt64)} value",
                 ExpectedResult = Success(UInt256.Parse("0x54486950184d094e079641e7e0d6dd85a81c"))
             };
-            yield return new TestCaseData(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob * 3000)
+            yield return new TestCaseData(Cancun.Instance.GetMaxBlobGas() * 3000)
             {
                 TestName = $"Overflow for huge {nameof(BlockHeader.ExcessBlobGas)} value",
                 ExpectedResult = Fail()

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
@@ -83,5 +84,11 @@ namespace Nethermind.Evm
             spec.UseExpDDosProtection
                 ? GasCostOf.ExpByteEip160
                 : GasCostOf.ExpByte;
+
+        public static ulong GetMaxBlobGas(this IReleaseSpec spec) =>
+            spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
+
+        public static ulong GetTargetBlobGas(this IReleaseSpec spec) =>
+            spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
     }
 }
