@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -9,8 +10,10 @@ using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -21,11 +24,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class EthereumStepsManagerTests
     {
         [Test]
+        public void BuildInSteps_IsCorrect()
+        {
+            EthereumRunner.BuildInSteps.ToHashSet().Should()
+                .BeEquivalentTo(
+                    EthereumStepsLoader.LoadStepInfoFromAssembly(typeof(IStep).Assembly).Concat(
+                        EthereumStepsLoader.LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly)
+                    ).ToHashSet());
+        }
+
+        [Test]
         public async Task When_no_assemblies_defined()
         {
             NethermindApi runnerContext = CreateNethermindApi();
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader();
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(Array.Empty<StepInfo>());
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,
                 runnerContext,
@@ -36,29 +49,19 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        public async Task With_steps_from_here()
+        public void With_steps_from_here()
         {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
-
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-
-            try
-            {
-                await stepsManager.InitializeAll(source.Token);
-            }
-            catch (Exception e)
-            {
-                if (!(e is OperationCanceledException))
-                {
-                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
-                }
-            }
+            EthereumStepsLoader.LoadStepInfoFromAssembly(GetType().Assembly)
+                .ToArray()
+                .Should()
+                .BeEquivalentTo([
+                    new StepInfo(typeof(StepLong)),
+                    new StepInfo(typeof(StepForever)),
+                    new StepInfo(typeof(StepA)),
+                    new StepInfo(typeof(StepB)),
+                    new StepInfo(typeof(StepCAuRa)),
+                    new StepInfo(typeof(StepCStandard)),
+                ]);
         }
 
         [Test]
@@ -67,7 +70,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             AuRaNethermindApi runnerContext = CreateAuraApi();
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader([
+                new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepCAuRa)),
+            ]);
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,
                 runnerContext,
@@ -90,7 +96,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             NethermindApi runnerContext = CreateNethermindApi();
 
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader([
+                new StepInfo(typeof(StepForever)),
+            ]);
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,
                 runnerContext,

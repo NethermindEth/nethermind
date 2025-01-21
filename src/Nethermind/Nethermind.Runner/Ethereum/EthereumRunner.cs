@@ -4,14 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum;
 
@@ -20,11 +21,45 @@ public class EthereumRunner(INethermindApi api)
     private readonly INethermindApi _api = api;
     private readonly ILogger _logger = api.LogManager.GetClassLogger();
 
+    public static readonly StepInfo[] BuildInSteps =
+    [
+         new StepInfo(typeof(InitializeStateDb)),
+         new StepInfo(typeof(ApplyMemoryHint)),
+         new StepInfo(typeof(DatabaseMigrations)),
+         new StepInfo(typeof(EraStep)),
+         new StepInfo(typeof(FilterBootnodes)),
+         new StepInfo(typeof(InitCrypto)),
+         new StepInfo(typeof(InitDatabase)),
+         new StepInfo(typeof(InitializeBlockchain)),
+         new StepInfo(typeof(InitializeBlockProducer)),
+         new StepInfo(typeof(InitializeBlockTree)),
+         new StepInfo(typeof(InitializeNetwork)),
+         new StepInfo(typeof(InitializeNodeStats)),
+         new StepInfo(typeof(InitializePlugins)),
+         new StepInfo(typeof(InitializePrecompiles)),
+         new StepInfo(typeof(InitTxTypesAndRlp)),
+         new StepInfo(typeof(LoadGenesisBlock)),
+         new StepInfo(typeof(LogHardwareInfo)),
+         new StepInfo(typeof(MigrateConfigs)),
+         new StepInfo(typeof(RegisterPluginRpcModules)),
+         new StepInfo(typeof(RegisterRpcModules)),
+         new StepInfo(typeof(ResolveIps)),
+         new StepInfo(typeof(ReviewBlockTree)),
+         new StepInfo(typeof(SetupKeyStore)),
+         new StepInfo(typeof(StartBlockProcessor)),
+         new StepInfo(typeof(StartBlockProducer)),
+         new StepInfo(typeof(StartLogProducer)),
+         new StepInfo(typeof(StartMonitoring)),
+         new StepInfo(typeof(UpdateDiscoveryConfig)),
+         new StepInfo(typeof(StartGrpc)),
+         new StepInfo(typeof(StartRpc)),
+    ];
+
     public async Task Start(CancellationToken cancellationToken)
     {
         if (_logger.IsDebug) _logger.Debug("Starting Ethereum runner");
 
-        EthereumStepsLoader stepsLoader = new(GetStepsAssemblies(_api));
+        EthereumStepsLoader stepsLoader = new(GetStepsInfo(_api));
         EthereumStepsManager stepsManager = new(stepsLoader, _api, _api.LogManager);
 
         await stepsManager.InitializeAll(cancellationToken);
@@ -34,16 +69,21 @@ public class EthereumRunner(INethermindApi api)
         if (_logger.IsInfo) _logger.Info(infoScreen);
     }
 
-    private IEnumerable<Assembly> GetStepsAssemblies(INethermindApi api)
+    private IEnumerable<StepInfo> GetStepsInfo(INethermindApi api)
     {
-        yield return typeof(IStep).Assembly;
-        yield return GetType().Assembly;
+        foreach (StepInfo buildInStep in BuildInSteps)
+        {
+            yield return buildInStep;
+        }
 
         IEnumerable<IInitializationPlugin> enabledInitializationPlugins = _api.Plugins.OfType<IInitializationPlugin>();
 
         foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
         {
-            yield return initializationPlugin.GetType().Assembly;
+            foreach (StepInfo stepInfo in EthereumStepsLoader.LoadStepInfoFromAssembly(initializationPlugin.GetType().Assembly))
+            {
+                yield return stepInfo;
+            }
         }
     }
 

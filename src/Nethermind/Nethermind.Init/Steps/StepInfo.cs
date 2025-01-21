@@ -8,7 +8,7 @@ namespace Nethermind.Init.Steps
 {
     public class StepInfo
     {
-        public StepInfo(Type type, Type baseType)
+        public StepInfo(Type type)
         {
             if (type.IsAbstract)
             {
@@ -16,7 +16,7 @@ namespace Nethermind.Init.Steps
             }
 
             StepType = type;
-            StepBaseType = baseType;
+            StepBaseType = GetStepBaseType(type);
 
             RunnerStepDependenciesAttribute? dependenciesAttribute =
                 StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
@@ -35,5 +35,17 @@ namespace Nethermind.Init.Steps
         {
             return $"{StepType.Name} : {StepBaseType.Name} ({Stage})";
         }
+
+        private static Type GetStepBaseType(Type type)
+        {
+            while (type.BaseType is not null && IsStepType(type.BaseType))
+            {
+                type = type.BaseType;
+            }
+
+            return type;
+        }
+
+        public static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
     }
 }
