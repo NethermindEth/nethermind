@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
             ? long.MaxValue
-            : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetTransitionsMaxBlobGas();
+            : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGas();
 
         private readonly ClockKeyCache<ValueHash256> _pendingHashes = new(MemoryAllowance.TxHashCacheSize);
 
