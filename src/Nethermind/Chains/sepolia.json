@@ -70,11 +70,13 @@
     "blobSchedule": {
       "cancun": {
         "target": 3,
-        "max": 6
+        "max": 6,
+        "baseFeeUpdateFraction": "0x32f0ed"
       },
       "prague": {
         "target": 6,
-        "max": 9
+        "max": 9,
+        "baseFeeUpdateFraction":  "0x4c6964"
       }
     }
   },
