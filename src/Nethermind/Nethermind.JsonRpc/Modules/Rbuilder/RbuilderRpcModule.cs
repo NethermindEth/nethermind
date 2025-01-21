@@ -153,7 +153,7 @@ public class RbuilderRpcModule(
                    {
 
                         ReadOnlySpan<byte> nmVaule = worldState.Get(new StorageCell(address, slot.Key));
-                        if (nmVaule.ToArray().SequenceEqual(slot.Value.ToBigEndian()))
+                        if (!nmVaule.ToArray().SequenceEqual(slot.Value.ToBigEndian()))
                         {
                             Console.WriteLine($"NM slot value {BitConverter.ToString(nmVaule.ToArray())}, rbuilder slot value {BitConverter.ToString(slot.Value.ToBigEndian())}, address: {address}");
                         }
