@@ -107,23 +107,38 @@ public class LogBuilderTests
 
         var entry = new LogEntry(Address.SystemUser, [], [hash0]);
 
-        const int blocks = 1000;
-        const int txs = 1000;
+        const int blocks = 100;
+        const int txs = 100;
         const int logEntries = blocks * txs;
 
-        for (uint i = 0; i < blocks; i++)
+        foreach ((uint block, ushort tx)  in Builder())
         {
-            for (ushort j = 0; j < txs; j++)
-            {
-                builder.Append(entry, i, j);
-            }
+            builder.Append(entry, block, tx);
         }
 
         var writer = new ArrayBufferWriter<byte>();
 
         builder.Build(writer);
 
+        var reader = new LogsBuilder.MemoryReader(writer.WrittenMemory);
+
+        reader.Find(Address.SystemUser)
+            .Should()
+            .BeEquivalentTo(Builder().Select(t => new LogsBuilder.Entry(t.block, t.tx)));
+
         Console.WriteLine($"{(double)writer.WrittenCount / logEntries:F1} bytes per {nameof(LogEntry)}");
+        return;
+
+        static IEnumerable<(uint block, ushort tx)> Builder()
+        {
+            for (uint i = 1; i < blocks; i++)
+            {
+                for (ushort j = 1; j < txs; j++)
+                {
+                    yield return (i, j);
+                }
+            }
+        }
     }
 
     [Test]

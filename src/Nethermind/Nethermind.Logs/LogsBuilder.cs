@@ -134,6 +134,8 @@ public class LogsBuilder
     /// </summary>
     private const int MaxBlockNumber = (1 << (31 - BlockNumberShift)) - 1;
 
+    private const int MinBlockNumber = 1;
+
     private const int MaxTxPerBlock = 1 << BlockNumberShift;
     private const int TxMask = MaxTxPerBlock - 1;
     private const uint LookupMarker = 0x80_00_00_00;
@@ -149,7 +151,7 @@ public class LogsBuilder
     public void Append(LogEntry entry, uint blockNumber, ushort txNumber)
     {
         Debug.Assert(txNumber < MaxTxPerBlock);
-        Debug.Assert(blockNumber <= MaxBlockNumber);
+        Debug.Assert(MinBlockNumber <= blockNumber && blockNumber <= MaxBlockNumber);
 
         uint mixed = (blockNumber << BlockNumberShift) | txNumber;
 
