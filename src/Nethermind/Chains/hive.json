@@ -67,7 +67,14 @@
     "eip7251TransitionTimestamp": "0x0",
     "eip7685TransitionTimestamp": "0x0",
     "eip7702TransitionTimestamp": "0x0",
-    "chainID": "0x1"
+    "eip7623TransitionTimestamp": "0x0",
+    "chainID": "0x1",
+    "blobSchedule": {
+      "prague": {
+        "target": "0x6",
+        "max": "0x9"
+      }
+    }
   },
   "genesis": {
     "seal": {
@@ -84,7 +91,7 @@
     "gasLimit": "0x016345785d8a0000",
     "baseFeePerGas": "0x07",
     "blobGasUsed": "0x00",
-    "excessBlobGas": "0x140000",
+    "excessBlobGas": "0x00",
     "parentBeaconBlockRoot": "0x0000000000000000000000000000000000000000000000000000000000000000"
   },
   "accounts": {
@@ -150,10 +157,10 @@
       "code": "0x3373fffffffffffffffffffffffffffffffffffffffe14604d57602036146024575f5ffd5b5f35801560495762001fff810690815414603c575f5ffd5b62001fff01545f5260205ff35b5f5ffd5b62001fff42064281555f359062001fff015500",
       "storage": {}
     },
-    "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
-      "nonce": "0x00",
-      "balance": "0x18f8e4",
-      "code": "0x",
+    "0x0000000000000000000000000000000000001000": {
+      "nonce": "0x01",
+      "balance": "0x00",
+      "code": "0x00",
       "storage": {}
     }
   }

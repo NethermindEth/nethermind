@@ -25,6 +25,7 @@ using FluentAssertions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.Crypto;
 using System;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Test
 {
