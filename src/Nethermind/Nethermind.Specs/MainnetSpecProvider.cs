@@ -49,7 +49,8 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            _ => Prague.Instance
+            { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
+            _ => Osaka.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

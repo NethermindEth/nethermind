@@ -52,6 +52,11 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
             #endregion
+
+            #region Osaka
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV5)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            #endregion
         }
 
         return _capabilities;

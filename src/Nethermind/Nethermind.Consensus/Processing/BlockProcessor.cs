@@ -27,6 +27,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
@@ -288,14 +289,18 @@ public partial class BlockProcessor(
 
     private void ValidateInclusionList(Block block)
     {
-        // Return early if block is already at gas limit
-        if (block.GasUsed >= block.GasLimit)
+        bool isValid =
+            block.InclusionListTransactions is null ||
+            block.GasUsed >= block.GasLimit;
+
+        if (isValid)
         {
             return;
         }
 
-        foreach (Transaction tx in block.InclusionListTransactions)
+        foreach (byte[] txBytes in block.InclusionListTransactions)
         {
+            Transaction tx = Rlp.Decode<Transaction>(txBytes);
             if (block.Transactions.Contains(tx))
             {
                 continue;

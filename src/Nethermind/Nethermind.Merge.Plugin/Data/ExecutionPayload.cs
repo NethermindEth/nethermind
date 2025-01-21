@@ -110,7 +110,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
     /// </summary>
     [JsonIgnore]
-    public virtual Transaction[]? InclusionListTransactions { get; set; }
+    public virtual byte[][]? InclusionListTransactions { get; set; }
 
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 

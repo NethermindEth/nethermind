@@ -11,6 +11,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using System.Linq;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -26,7 +28,7 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
-    public Transaction[]? InclusionListTransactions { get; set; }
+    public byte[][]? InclusionListTransactions { get; set; }
 
     public virtual long? GetGasLimit() => null;
 
@@ -120,9 +122,10 @@ public class PayloadAttributes
 
         if (InclusionListTransactions is not null)
         {
+            Transaction[] txs = InclusionListTransactions.Select(tx => Rlp.Decode<Transaction>(tx)).ToArray();
             Hash256 inclusionListTransactionsRootHash = InclusionListTransactions.Length == 0
                 ? PatriciaTree.EmptyTreeHash
-                : new TxTrie(InclusionListTransactions).RootHash;
+                : new TxTrie(txs).RootHash;
             inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
@@ -192,6 +195,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true} => EngineApiVersions.Osaka,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

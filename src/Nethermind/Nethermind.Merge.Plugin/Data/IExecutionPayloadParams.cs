@@ -16,7 +16,7 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
-    Transaction[]? InclusionListTransactions { get; set; }
+    byte[][]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -27,7 +27,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests = null,
-    Transaction[]? inclusionListTransactions = null)
+    byte[][]? inclusionListTransactions = null)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
@@ -42,7 +42,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
     /// </summary>
-    public Transaction[]? InclusionListTransactions { get; set; } = inclusionListTransactions;
+    public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
