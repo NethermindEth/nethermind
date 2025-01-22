@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -60,6 +62,13 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        yield return typeof(InitializeBlockchainOptimism);
+        yield return typeof(InitializeBlockProducerOptimism);
+        yield return typeof(RegisterOptimismRpcModules);
+    }
 
     #region IConsensusPlugin
 

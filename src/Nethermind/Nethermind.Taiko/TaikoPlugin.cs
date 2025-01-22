@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -34,6 +35,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
 using Nethermind.Synchronization;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Taiko;
 
@@ -305,6 +307,14 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
         _beaconSync.AllowBeaconHeaderSync();
 
         return Task.CompletedTask;
+    }
+
+    // IInitializationPlugin
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        yield return typeof(InitializeBlockchainTaiko);
+        yield return typeof(InitializeBlockProducerTaiko);
+        yield return typeof(RegisterTaikoRpcModules);
     }
 
     // IConsensusPlugin

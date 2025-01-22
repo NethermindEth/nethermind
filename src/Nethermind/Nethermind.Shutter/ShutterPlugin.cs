@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -14,6 +15,7 @@ using Nethermind.Logging;
 using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
+using Nethermind.Api.Steps;
 using Nethermind.KeyStore.Config;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -109,6 +111,12 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
 
         return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
+    }
+
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        // None? Then why  does it declare it then?
+        yield break;
     }
 
     public async ValueTask DisposeAsync()

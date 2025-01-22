@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -12,6 +14,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Merge.AuRa.InitializationSteps;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Specs.ChainSpecStyle;
@@ -82,6 +85,12 @@ namespace Nethermind.Merge.AuRa
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
                 _poSSwitcher);
+        }
+
+        public IEnumerable<StepInfo> GetSteps()
+        {
+            yield return typeof(InitializeBlockchainAuRaMerge);
+            yield return typeof(RegisterAuRaMergeRpcModules);
         }
     }
 }

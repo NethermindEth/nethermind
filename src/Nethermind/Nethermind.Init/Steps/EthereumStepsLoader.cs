@@ -6,38 +6,28 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
 {
     public class EthereumStepsLoader : IEthereumStepsLoader
     {
-        private readonly IEnumerable<Assembly> _stepsAssemblies;
+        private readonly IEnumerable<StepInfo> _stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
 
-        public EthereumStepsLoader(params Assembly[] stepsAssemblies)
-            : this((IEnumerable<Assembly>)stepsAssemblies) { }
-
-        public EthereumStepsLoader(IEnumerable<Assembly> stepsAssemblies)
+        public EthereumStepsLoader(IEnumerable<StepInfo> stepsInfo)
         {
-            _stepsAssemblies = stepsAssemblies;
+            _stepsInfo = stepsInfo;
         }
 
-        public IEnumerable<StepInfo> LoadSteps(Type apiType)
+        public IEnumerable<StepInfo> ResolveStepsImplementations(Type apiType)
         {
             if (!apiType.GetInterfaces().Contains(_baseApiType))
             {
                 throw new NotSupportedException($"api type must implement {_baseApiType.Name}");
             }
 
-            List<Type> allStepTypes = new List<Type>();
-            foreach (Assembly stepsAssembly in _stepsAssemblies)
-            {
-                allStepTypes.AddRange(stepsAssembly.GetExportedTypes()
-                    .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t)));
-            }
-
-            return allStepTypes
-                .Select(s => new StepInfo(s, GetStepBaseType(s)))
+            return _stepsInfo
                 .GroupBy(s => s.StepBaseType)
                 .Select(g => SelectImplementation(g.ToArray(), apiType))
                 .Where(s => s is not null)
@@ -69,18 +59,6 @@ namespace Nethermind.Init.Steps
             }
 
             return stepsWithMatchingApiType.FirstOrDefault();
-        }
-
-        private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
-
-        private static Type GetStepBaseType(Type type)
-        {
-            while (type.BaseType is not null && IsStepType(type.BaseType))
-            {
-                type = type.BaseType;
-            }
-
-            return type;
         }
     }
 }

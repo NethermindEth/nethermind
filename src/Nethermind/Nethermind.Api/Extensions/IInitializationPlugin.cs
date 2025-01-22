@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.Api.Steps;
+
 namespace Nethermind.Api.Extensions;
 
 /// <summary>
@@ -9,4 +12,5 @@ namespace Nethermind.Api.Extensions;
 /// </summary>
 public interface IInitializationPlugin : INethermindPlugin
 {
+    IEnumerable<StepInfo> GetSteps();
 }

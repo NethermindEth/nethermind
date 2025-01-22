@@ -10,6 +10,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -21,8 +22,8 @@ namespace Nethermind.Init.Steps
 
         private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
         private readonly INethermindApi _api;
-        private readonly List<StepInfo> _allSteps;
-        private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
+        private readonly List<StepState> _allSteps;
+        private readonly Dictionary<Type, StepState> _allStepsByBaseType;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
@@ -35,7 +36,7 @@ namespace Nethermind.Init.Steps
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()
                       ?? throw new ArgumentNullException(nameof(logManager));
 
-            _allSteps = loader.LoadSteps(_api.GetType()).ToList();
+            _allSteps = loader.ResolveStepsImplementations(_api.GetType()).Select((s) => new StepState(s)).ToList();
             _allStepsByBaseType = _allSteps.ToDictionary(static s => s.StepBaseType, static s => s);
         }
 
@@ -44,7 +45,7 @@ namespace Nethermind.Init.Steps
             bool changedAnything;
             do
             {
-                foreach (StepInfo stepInfo in _allSteps)
+                foreach (StepState stepInfo in _allSteps)
                 {
                     _logger.Debug($"{stepInfo} is {stepInfo.Stage}");
                 }
@@ -54,7 +55,7 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
 
                 changedAnything = false;
-                foreach (StepInfo stepInfo in _allSteps)
+                foreach (StepState stepInfo in _allSteps)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -63,7 +64,7 @@ namespace Nethermind.Init.Steps
                         bool allDependenciesFinished = true;
                         foreach (Type dependency in stepInfo.Dependencies)
                         {
-                            StepInfo dependencyInfo = _allStepsByBaseType[dependency];
+                            StepState dependencyInfo = _allStepsByBaseType[dependency];
                             if (dependencyInfo.Stage != StepInitializationStage.Complete)
                             {
                                 if (_logger.IsDebug) _logger.Debug($"{stepInfo} is waiting for {dependencyInfo}");
@@ -103,7 +104,7 @@ namespace Nethermind.Init.Steps
         private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
         {
             int startedThisRound = 0;
-            foreach (StepInfo stepInfo in _allSteps)
+            foreach (StepState stepInfo in _allSteps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -112,7 +113,7 @@ namespace Nethermind.Init.Steps
                     continue;
                 }
 
-                IStep? step = CreateStepInstance(stepInfo);
+                IStep? step = CreateStepInstance(stepInfo.StepInfo);
                 if (step is null)
                 {
                     if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step {stepInfo}");
@@ -145,7 +146,7 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private async Task ExecuteStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
+        private async Task ExecuteStep(IStep step, StepState stepState, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
@@ -156,7 +157,7 @@ namespace Nethermind.Init.Steps
                     _logger.Debug(
                         $"Step {step.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
-                stepInfo.Stage = StepInitializationStage.Complete;
+                stepState.Stage = StepInitializationStage.Complete;
             }
             catch (Exception exception)
             {
@@ -167,7 +168,7 @@ namespace Nethermind.Init.Steps
                             $"Step {step.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
                             exception);
 
-                    stepInfo.Stage = StepInitializationStage.Failed;
+                    stepState.Stage = StepInitializationStage.Failed;
                     throw;
                 }
 
@@ -176,7 +177,7 @@ namespace Nethermind.Init.Steps
                     _logger.Warn(
                         $"Step {step.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
                 }
-                stepInfo.Stage = StepInitializationStage.Complete;
+                stepState.Stage = StepInitializationStage.Complete;
             }
             finally
             {
@@ -208,6 +209,19 @@ namespace Nethermind.Init.Steps
             Task? anyFaulted = _allPending.FirstOrDefault(static t => t.IsFaulted);
             if (anyFaulted?.IsFaulted == true && anyFaulted?.Exception is not null)
                 ExceptionDispatchInfo.Capture(anyFaulted.Exception.GetBaseException()).Throw();
+        }
+
+        private class StepState(StepInfo stepInfo)
+        {
+            public StepInitializationStage Stage { get; set; }
+            public Type[] Dependencies => stepInfo.Dependencies;
+            public Type StepBaseType => stepInfo.StepBaseType;
+            public StepInfo StepInfo => stepInfo;
+
+            public override string ToString()
+            {
+                return $"{stepInfo.StepType.Name} : {stepInfo.StepBaseType.Name} ({Stage})";
+            }
         }
     }
 }
