@@ -254,7 +254,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            for (long i = to; i > from; i--)
+            for (long i = to; i >= from; i--)
             {
                 if (token.IsCancellationRequested)
                 {
