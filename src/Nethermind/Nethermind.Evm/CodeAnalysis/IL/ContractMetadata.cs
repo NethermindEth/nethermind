@@ -28,6 +28,7 @@ public class SegmentMetadata
 
 public class SubSegmentMetadata
 {
+    public OpcodeInfo[] SubSegment { get; set; }
     public int Start { get; set; }
     public int End { get; set; }
 
@@ -46,4 +47,8 @@ public class SubSegmentMetadata
     }
 
     public Dictionary<int, long> StaticGasSubSegmentes { get; set; } = new();
+
+    public HashSet<Instruction> Instructions => SubSegment.Select(x => x.Operation).ToHashSet();
+
+    public bool RequiresOpcodeCheck => Instructions.Any(x => x.RequiresAvailabilityCheck());
 }

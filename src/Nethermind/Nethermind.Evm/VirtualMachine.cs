@@ -717,28 +717,31 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
+        if(typeof(IsOptimizing) == typeof(TOptimizing))
         {
-            Metrics.AotPrecompiledCalls++;
-            IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
-            int programCounter = vmState.ProgramCounter;
-            ref ILChunkExecutionState chunkExecutionState = ref vmState.IlState;
-            if (precompiledContract.MoveNext(vmState, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger, ref chunkExecutionState))
+            if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
-                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
-                return new CallResult(chunkExecutionState.CallResult);
-            }
+                Metrics.AotPrecompiledCalls++;
+                IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
+                int programCounter = vmState.ProgramCounter;
+                ref ILChunkExecutionState chunkExecutionState = ref vmState.IlState;
+                if (precompiledContract.MoveNext(vmState, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger, ref chunkExecutionState))
+                {
+                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
+                    return new CallResult(chunkExecutionState.CallResult);
+                }
 
-            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
-            switch(chunkExecutionState.ContractState)
-            {
-                case ContractState.Finished:
-                    goto Empty;
-                case ContractState.Return or ContractState.Revert:
-                   return new CallResult(_returnDataBuffer, null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
-                case ContractState.Failed:
-                    return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
+                switch(chunkExecutionState.ContractState)
+                {
+                    case ContractState.Return or ContractState.Revert:
+                       return new CallResult(_returnDataBuffer, null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                    case ContractState.Failed:
+                        return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
+                    default:
+                        goto Empty;
+                }
             }
         }
 

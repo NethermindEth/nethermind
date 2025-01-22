@@ -1189,6 +1189,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .JUMP(5)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
+                yield return ([Instruction.JUMPDEST], Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(3)
+                    .PushSingle(3)
+                    .MUL()
+                    .GAS()
+                    .PUSHx([1])
+                    .SSTORE()
+                    .STOP()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+
+
                 yield return ([Instruction.SHL], Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(0)

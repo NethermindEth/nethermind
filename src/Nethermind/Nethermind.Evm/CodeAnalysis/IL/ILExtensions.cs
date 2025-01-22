@@ -134,6 +134,61 @@ public class Locals<T>(Emit<T> method) : IDisposable
     }
 
 }
+public static class GasEmit
+{
+    public static void EmitStaticGasCheck<T>(this Emit<T> il, Local gasAvailable, long gasCost, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    {
+        il.LoadLocal(gasAvailable);
+        il.LoadConstant(gasCost);
+        il.Subtract();
+        il.Duplicate();
+        il.StoreLocal(gasAvailable);
+        il.LoadConstant((long)0);
+        il.BranchIfLess(il.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+    }
+}
+
+public static class ReleaseSpecEmit
+{
+    public static void DeclareOpcodeValidityCheckVariables<T>(Emit<T> method, ContractMetadata metadata, Locals<T> locals)
+    {
+        foreach (var segment in metadata.Segments)
+        {
+            foreach (var subSegment in segment.SubSegments.Values)
+            {
+                locals.TryDeclareLocal(subSegment.GetHashCode().ToString(), typeof(Nullable<bool>));
+            }
+        }
+    }
+    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, EnvLoader<T> env, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    {
+        Label alreadyCheckedLabel = method.DefineLabel();
+        Label hasToCheckLabel = method.DefineLabel();
+        string segmentRefName = segmentMetadata.GetHashCode().ToString();
+        if (!locals.TryLoadLocal(segmentRefName, true))
+        {
+            throw new InvalidOperationException($"method {nameof(DeclareOpcodeValidityCheckVariables) } must be called before calling {nameof(EmitAmortizedOpcodeCheck)}");
+        }
+
+        method.Call(typeof(bool?).GetProperty(nameof(Nullable<bool>.HasValue)).GetGetMethod());
+        method.BranchIfTrue(alreadyCheckedLabel);
+
+        foreach (var opcode in segmentMetadata.Instructions)
+        {
+            env.LoadSpec(method, locals, false);
+            method.LoadConstant((byte)opcode);
+            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+            method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+        }
+
+        method.LoadConstant(true);
+        method.NewObject(typeof(bool?).GetConstructor([typeof(bool)]));
+        locals.TryStoreLocal(segmentRefName);
+
+        method.MarkLabel(alreadyCheckedLabel);
+    }
+}
+
 public static class TypeEmit
 {
     public static string MangleName(this string cleanName) => $"<{cleanName}>k__BackingField<ilevm>";
@@ -172,7 +227,6 @@ public static class TypeEmit
         return propertyBuilder;
     }
 }
-
 public static class StackEmit
 {
     /// <summary>
@@ -256,7 +310,6 @@ public static class StackEmit
         il.StoreLocal(idx);
     }
 }
-
 public static class WordEmit
 {
 
@@ -723,6 +776,8 @@ public static class UnsafeEmit
 /// </summary>
 static class EmitExtensions
 {
+
+    
     public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, int pc, SubSegmentMetadata stackMetadata)
     {
         if (stackMetadata.LeftOutStack != 0 && pc == stackMetadata.End)

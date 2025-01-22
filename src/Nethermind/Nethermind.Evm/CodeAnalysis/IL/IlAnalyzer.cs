@@ -323,6 +323,12 @@ public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlo
                     subSegment.IsFailing = hasInvalidOpcode;
                     subSegment.IsReachable = hasJumpdest;
                     subSegment.StaticGasSubSegmentes[costStart] = coststack;
+
+                    if(subSegment.Start <= subSegment.End)
+                    {
+                        subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
+                    }
+
                     metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
 
@@ -364,7 +370,7 @@ public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlo
                             subSegment.IsReachable = hasJumpdest;
 
                             subSegment.StaticGasSubSegmentes[costStart] = coststack; // remember the stackHeadRef chain of opcodes
-
+                            subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
                             metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
                             subsegmentStart = pc + 1;
@@ -388,7 +394,7 @@ public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlo
             notStart = false;
         }
 
-        if (!metadata.SubSegments.ContainsKey(subsegmentStart) || lastOpcodeIsAjumpdest)
+        if ((subsegmentStart < metadata.Segment.Length && !metadata.SubSegments.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
         {
             subSegment.Start = subsegmentStart;
             subSegment.StaticGasSubSegmentes[costStart] = coststack;
@@ -396,6 +402,7 @@ public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlo
             subSegment.IsFailing = hasInvalidOpcode;
             subSegment.RequiredStack = -subSegment.RequiredStack;
             subSegment.End = metadata.Segment.Length - 1;
+            subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
             metadata.SubSegments[subSegment.Start] = subSegment;
         }
 
