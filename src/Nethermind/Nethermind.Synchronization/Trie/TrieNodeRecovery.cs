@@ -12,21 +12,18 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Trie;
-
-public interface ITrieNodeRecovery<in TRequest>
-{
-    bool CanRecover => BlockchainProcessor.IsMainProcessingThread;
-    Task<byte[]?> Recover(ValueHash256 rlpHash, TRequest request);
-}
 
 public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
     protected readonly ILogger _logger;
     private const int MaxPeersForRecovery = 30;
+
+    public bool CanRecover => BlockchainProcessor.IsMainProcessingThread;
 
     protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager)
     {
@@ -104,11 +101,16 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         }
         catch (OperationCanceledException)
         {
-            if (_logger.IsTrace) _logger.Trace($"Cancelled recovering RLP from peer {peer}");
+            if (_logger.IsTrace) _logger.Trace($"Cancelled recovering RLP {rlpHash} from peer {peer}");
+        }
+        catch (TimeoutException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Timeout recovering RLP {rlpHash} from peer {peer}");
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error($"Could not recover from {peer}", e);
+            if (_logger.IsWarn) _logger.Warn($"Could not recover RLP {rlpHash} from {peer}");
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Could not recover RLP {rlpHash} from {peer}", e);
         }
 
         return (recovery, null);

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -24,6 +25,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.Rlpx;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -83,7 +85,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
-            INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,

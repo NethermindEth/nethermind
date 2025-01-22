@@ -208,9 +208,9 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
             call.BlockStateCalls.Sort((b1, b2) => b1.BlockOverrides!.Number!.Value.CompareTo(b2.BlockOverrides!.Number!.Value));
         }
 
-        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout); //TODO remove!
+        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, cancellationTokenSource.Token);
+        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header,

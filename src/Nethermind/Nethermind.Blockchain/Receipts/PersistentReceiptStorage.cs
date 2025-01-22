@@ -74,10 +74,6 @@ namespace Nethermind.Blockchain.Receipts
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            if (e.PreviousBlock is not null)
-            {
-                RemoveBlockTx(e.PreviousBlock, e.Block);
-            }
             EnsureCanonical(e.Block);
             ReceiptsInserted?.Invoke(this, e);
 
@@ -260,7 +256,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -295,7 +291,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (ensureCanonical)
             {
-                EnsureCanonical(block);
+                EnsureCanonical(block, lastBlockNumber);
             }
         }
 
@@ -336,12 +332,17 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
+            EnsureCanonical(block, null);
+        }
+
+        private void EnsureCanonical(Block block, long? lastBlockNumber)
+        {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
 
-            long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
-            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
+            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= lastBlockNumber - _receiptConfig.TxLookupLimit) return;
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
@@ -362,20 +363,11 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private void RemoveBlockTx(Block block, Block? exceptBlock = null)
+        private void RemoveBlockTx(Block block)
         {
-            HashSet<Hash256AsKey> newTxs = null;
-            if (exceptBlock is not null)
-            {
-                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select(static (tx) => new Hash256AsKey(tx.Hash)));
-            }
-
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
-                // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
-                // is contained in the new block
-                if (newTxs?.Contains(tx.Hash) == true) continue;
                 writeBatch[tx.Hash.Bytes] = null;
             }
         }
