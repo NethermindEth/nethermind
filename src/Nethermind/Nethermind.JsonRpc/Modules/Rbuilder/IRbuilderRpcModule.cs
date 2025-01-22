@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,9 +28,18 @@ public interface IRbuilderRpcModule: IRpcModule
 
 public class AccountChange
 {
+    [JsonPropertyName("nonce")]
     public UInt256? Nonce { get; set; }
+
+    [JsonPropertyName("balance")]
     public UInt256? Balance { get; set; }
-    public byte[]? Code { get; set; }
+
+    [JsonPropertyName("code_hash")]
+    public Hash256? CodeHash { get; set; }
+
+    [JsonPropertyName("self_destructed")]
     public bool SelfDestructed { get; set; }
-    public IDictionary<UInt256, Hash256>? ChangedSlots { get; set; }
+
+    [JsonPropertyName("changed_slots")]
+    public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
 }
