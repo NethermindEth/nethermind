@@ -15,7 +15,7 @@ using Nethermind.Logging;
 using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
-using Nethermind.Init.Steps;
+using Nethermind.Api.Steps;
 using Nethermind.KeyStore.Config;
 using Nethermind.Specs.ChainSpecStyle;
 

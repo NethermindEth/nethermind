@@ -4,7 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Init.Steps
+namespace Nethermind.Api.Steps
 {
     public interface IStep
     {

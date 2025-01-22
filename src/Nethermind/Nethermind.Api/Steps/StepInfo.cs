@@ -4,7 +4,7 @@
 using System;
 using System.Reflection;
 
-namespace Nethermind.Init.Steps
+namespace Nethermind.Api.Steps
 {
     public class StepInfo
     {

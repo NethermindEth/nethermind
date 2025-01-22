@@ -35,6 +35,8 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
 using Nethermind.Synchronization;
+using System.Linq;
+using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Taiko;

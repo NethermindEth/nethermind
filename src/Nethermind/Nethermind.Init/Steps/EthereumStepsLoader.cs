@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
 {

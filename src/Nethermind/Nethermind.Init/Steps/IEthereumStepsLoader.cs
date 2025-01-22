@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
 {

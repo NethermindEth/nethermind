@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core.Collections;
 using Nethermind.Init.Snapshot;
