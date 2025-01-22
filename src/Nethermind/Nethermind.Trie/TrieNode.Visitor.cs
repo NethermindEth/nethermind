@@ -203,7 +203,7 @@ namespace Nethermind.Trie
 
                             if (tasks is { Count: > 0 })
                             {
-                                Task.WaitAll(tasks.ToArray());
+                                Task.WaitAll(tasks.AsSpan());
                                 tasks.Dispose();
                             }
                             return;
@@ -215,8 +215,7 @@ namespace Nethermind.Trie
 
                                     // we need to have separate context for each thread as context tracks level and branch child index
                                     TrieVisitContext childContext = visitContext.Clone();
-                                    VisitChild(ref closureParentPath, i, childNode, trieNodeResolver, treeVisitor,
-                                        contextCopy, childContext);
+                                    VisitChild(ref closureParentPath, i, childNode, trieNodeResolver, treeVisitor, contextCopy, childContext);
                                 });
                         }
 
