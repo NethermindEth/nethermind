@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.RBuilder;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -73,11 +74,10 @@ public class RbuilderRpcModuleTests
         {
             Nonce = 10,
             Balance = 20,
-            Code = [1, 2, 3, 4],
             SelfDestructed = true,
-            ChangedSlots = new Dictionary<Hash256, Hash256>()
+            ChangedSlots = new Dictionary<UInt256, UInt256>()
             {
-                { TestItem.KeccakA, TestItem.KeccakB }
+                {0,0}
             }
         };
 
