@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -35,13 +36,15 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     protected override void Load(ContainerBuilder builder)
     {
         ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
 
         base.Load(builder);
         builder
             .AddModule(new AppInputModule(spec, configProvider, logManager))
 
             .AddModule(new SynchronizerModule(syncConfig))
-            .AddModule(new NetworkModule())
+            .AddModule(new NetworkModule(initConfig, networkConfig))
             .AddModule(new DbModule())
             .AddModule(new WorldStateModule())
             .AddModule(new BlockTreeModule())
@@ -51,7 +54,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             // Environments
             .AddSingleton<DisposableStack>()
             .AddSingleton<ITimerFactory, TimerFactory>()
-            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext, IInitConfig>((blockProcessingContext, initConfig) => new BackgroundTaskScheduler(
+            .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
                 initConfig.BackgroundTaskConcurrency,
                 logManager))

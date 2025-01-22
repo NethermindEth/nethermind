@@ -75,10 +75,38 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         ctx.Resolve<ISynchronizer>().Start();
     }
 
+    ISessionMonitor? _sessionMonitor;
+    IDiscoveryApp? _discoveryApp;
+    IPeerPool? _peerPool;
+    IPeerManager? _peerManager;
+
+    public async Task StartDiscovery(CancellationToken cancellationToken)
+    {
+        if (_sessionMonitor is not null) return;
+        await ctx.Resolve<IStaticNodesManager>().InitAsync();
+
+        _discoveryApp = ctx.Resolve<IDiscoveryApp>();
+        _ = _discoveryApp.StartAsync(); // Bootstrap is not blocking by default
+
+        _peerPool = ctx.Resolve<IPeerPool>();
+        _peerPool.Start();;
+
+        _peerManager = ctx.Resolve<IPeerManager>();
+        _peerManager.Start();
+
+        _sessionMonitor = ctx.Resolve<ISessionMonitor>();
+        _sessionMonitor.Start();
+    }
+
     public async ValueTask DisposeAsync()
     {
         await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
         await (_blockProducerRunner?.StopAsync() ?? Task.CompletedTask);
         await (_rlpxHost?.Shutdown() ?? Task.CompletedTask);
+
+        _sessionMonitor?.Stop();
+        await (_discoveryApp?.StopAsync() ?? Task.CompletedTask);
+        await (_peerPool?.StopAsync() ?? Task.CompletedTask);
+        await (_peerManager?.StopAsync() ?? Task.CompletedTask);
     }
 }

@@ -257,8 +257,6 @@ public class InitializeNetwork : IStep
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
             _api.NodeStatsManager, _api.IpResolver
         );
-
-        _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }
 
     private Task StartSync()

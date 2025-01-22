@@ -67,6 +67,8 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
+
+        Initialize(nodeKey.PublicKey);
     }
 
     public void Initialize(PublicKey masterPublicKey)
