@@ -13,9 +13,12 @@ using Nethermind.Core.Collections;
 using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa;
+using Nethermind.Merge.Plugin;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Shutter;
+using Nethermind.Shutter.Config;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Taiko;
 using NUnit.Framework;
 
@@ -35,12 +38,12 @@ public class EthereumStepsLoaderTests
     [Test]
     public void DoubleCheck_PluginsSteps()
     {
-        CheckPlugin(new AuRaPlugin());
-        CheckPlugin(new OptimismPlugin());
-        CheckPlugin(new TaikoPlugin());
-        CheckPlugin(new AuRaMergePlugin());
-        CheckPlugin(new SnapshotPlugin());
-        CheckPlugin(new ShutterPlugin());
+        CheckPlugin(new AuRaPlugin(new ChainSpec()));
+        CheckPlugin(new OptimismPlugin(new ChainSpec()));
+        CheckPlugin(new TaikoPlugin(new ChainSpec()));
+        CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
+        CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));
+        CheckPlugin(new ShutterPlugin(new ShutterConfig(), new MergeConfig(), new ChainSpec()));
     }
 
     [Test]
