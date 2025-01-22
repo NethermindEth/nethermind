@@ -29,7 +29,7 @@ public class EthereumStepsLoaderTests
         var steps = new HashSet<StepInfo>();
         steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
         steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
-        EthereumRunner.BuildInSteps.ToHashSet().Should().BeEquivalentTo(steps);
+        EthereumRunner.BuiltInSteps.ToHashSet().Should().BeEquivalentTo(steps);
     }
 
     [Test]

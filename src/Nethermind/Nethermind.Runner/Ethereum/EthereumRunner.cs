@@ -22,7 +22,7 @@ public class EthereumRunner(INethermindApi api)
     private readonly INethermindApi _api = api;
     private readonly ILogger _logger = api.LogManager.GetClassLogger();
 
-    public static readonly StepInfo[] BuildInSteps =
+    public static readonly StepInfo[] BuiltInSteps =
     [
          new(typeof(InitializeStateDb)),
          new(typeof(ApplyMemoryHint)),
@@ -72,7 +72,7 @@ public class EthereumRunner(INethermindApi api)
 
     private IEnumerable<StepInfo> GetStepsInfo(INethermindApi api)
     {
-        foreach (StepInfo buildInStep in BuildInSteps)
+        foreach (StepInfo buildInStep in BuiltInSteps)
         {
             yield return buildInStep;
         }

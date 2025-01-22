@@ -14,7 +14,6 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.InitializationSteps;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
