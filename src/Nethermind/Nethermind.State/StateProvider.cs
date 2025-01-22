@@ -43,6 +43,25 @@ namespace Nethermind.State
 
         private readonly bool _populatePreBlockCache;
 
+        public StateProvider(IScopedTrieStore? trieStore,
+            IKeyValueStore codeDb,
+            ILogManager logManager,
+            StateTree? stateTree = null,
+            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
+            bool populatePreBlockCache = true)
+        {
+            _preBlockCache = preBlockCache;
+            _populatePreBlockCache = populatePreBlockCache;
+            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _tree = stateTree ?? new StateTree(trieStore, logManager);
+            _getStateFromTrie = address =>
+            {
+                Metrics.IncrementStateTreeReads();
+                return _tree.Get(address);
+            };
+        }
+
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
             ArgumentNullException.ThrowIfNull(visitor);
@@ -626,25 +645,6 @@ namespace Nethermind.State
                     stateTracer.ReportAccountRead(address);
                 }
             }
-        }
-
-        public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStore codeDb,
-            ILogManager logManager,
-            StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
-            bool populatePreBlockCache = true)
-        {
-            _preBlockCache = preBlockCache;
-            _populatePreBlockCache = populatePreBlockCache;
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? new StateTree(trieStore, logManager);
-            _getStateFromTrie = address =>
-            {
-                Metrics.IncrementStateTreeReads();
-                return _tree.Get(address);
-            };
         }
 
         public bool WarmUp(Address address)

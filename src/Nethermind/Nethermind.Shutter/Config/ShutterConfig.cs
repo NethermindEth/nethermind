@@ -15,7 +15,6 @@ namespace Nethermind.Shutter.Config
         public int P2PPort { get; set; } = 23102;
         public string? ValidatorInfoFile { get; set; }
         public string? P2PProtocolVersion { get; set; } = "/shutter/0.1.0";
-        public string? P2PAgentVersion { get; set; } = "github.com/shutter-network/rolling-shutter/rolling-shutter";
         public string ShutterKeyFile { get; set; } = "shutter.key.plain";
         public ulong ValidatorRegistryMessageVersion { get; set; } = 1;
         public ulong InstanceID { get; set; } = 0;
