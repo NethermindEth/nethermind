@@ -792,6 +792,12 @@ namespace Nethermind.Synchronization.FastBlocks
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             _nextHeaderHash = header.ParentHash!;
+
+            if ((header.TotalDifficulty ?? 0) < header.Difficulty)
+            {
+                _logger.Error($"TotalDifficulty is not set for in {nameof(SetExpectedNextHeaderToParent)}");
+            }
+
             _nextHeaderTotalDifficulty = _totalDifficultyStrategy.ParentTotalDifficulty(header);
         }
 

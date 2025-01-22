@@ -33,28 +33,11 @@ public class LogsBuilder
         public bool Equals(Entry other) => _raw == other._raw;
     }
 
-    public sealed class MemoryReader
+    public sealed class MemoryReader(
+        ReadOnlyMemory<byte> multiple,
+        ReadOnlyMemory<byte> pointers,
+        ReadOnlyMemory<byte> hashes)
     {
-        private readonly ReadOnlyMemory<byte> _mixed;
-        private readonly ReadOnlyMemory<byte> _hashes;
-        private readonly ReadOnlyMemory<byte> _memory;
-
-        public MemoryReader(ReadOnlyMemory<byte> memory)
-        {
-            _memory = memory;
-            var count = memory.Span.Slice(memory.Length - LengthOfLength).ReadNativeEndian();
-
-            var startOfEntries = (int)(memory.Length - LengthOfLength - count * EntryWithHash);
-            var mixedWithHashes = memory.Slice(startOfEntries, (int)(count * EntryWithHash));
-
-            Debug.Assert(mixedWithHashes.Length == count * EntryWithHash);
-
-            var split = count * SizeOfMixed;
-
-            _mixed = mixedWithHashes.Slice(0, split);
-            _hashes = mixedWithHashes.Slice(split);
-        }
-
         public IEnumerable<Entry> Find(Address address) => FindByHash(Hash(address.Bytes, AddressSeed));
 
         public IEnumerable<Entry> Find(Hash256 topic, int index = 0) =>
@@ -62,12 +45,12 @@ public class LogsBuilder
 
         private IEnumerable<Entry> FindByHash(ulong hash)
         {
-            var at = MemoryMarshal.Cast<byte, ulong>(_hashes.Span).BinarySearch(hash);
+            var at = MemoryMarshal.Cast<byte, ulong>(hashes.Span).BinarySearch(hash);
 
             if (at < 0)
                 return [];
 
-            ReadOnlySpan<uint> mixed = MemoryMarshal.Cast<byte, uint>(_mixed.Span);
+            ReadOnlySpan<uint> mixed = MemoryMarshal.Cast<byte, uint>(pointers.Span);
 
             var m = mixed[at];
 
@@ -77,9 +60,9 @@ public class LogsBuilder
             }
 
             var offset = (int)(m & ~LookupMarker);
-            var start = _memory[offset..].Span.ReadNativeEndian();
+            var start = multiple[offset..].Span.ReadNativeEndian();
 
-            ReadOnlyMemory<byte> payload = _memory.Slice(start, offset - start);
+            ReadOnlyMemory<byte> payload = multiple.Slice(start, offset - start);
             return new EntryEnumerable(payload);
         }
 
@@ -192,9 +175,9 @@ public class LogsBuilder
 
     private static long GetTopicSeed(int i) => TopicSeed + i;
 
-    public void Build(IBufferWriter<byte> data)
+    public void Build(IBufferWriter<byte> multiple, IBufferWriter<byte> pointers, IBufferWriter<byte> hashes)
     {
-        var w = new CountingBufferWriter<byte>(data);
+        var w = new CountingBufferWriter<byte>(multiple);
 
         // Sort by hash first
         Array.Sort(_hashes, _mixed, 0, _index);
@@ -202,13 +185,10 @@ public class LogsBuilder
         var count = Deduplicate(w);
 
         // Mixed first
-        w.WriteNativeEndianSpan<uint>(_mixed.AsSpan(0, count));
+        pointers.WriteNativeEndianSpan<uint>(_mixed.AsSpan(0, count));
 
         // Hashes then
-        w.WriteNativeEndianSpan<ulong>(_hashes.AsSpan(0, count));
-
-        // Store it as the last one, so that the reader can read last 4 bytes and create proper span.
-        w.WriteNativeEndian(count);
+        hashes.WriteNativeEndianSpan<ulong>(_hashes.AsSpan(0, count));
     }
 
     private int Deduplicate(CountingBufferWriter<byte> writer)

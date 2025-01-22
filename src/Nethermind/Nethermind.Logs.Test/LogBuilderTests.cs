@@ -41,11 +41,7 @@ public class LogBuilderTests
         builder.Append(entry0, block, tx1);
         builder.Append(entry1, block, tx2);
 
-        var writer = new ArrayBufferWriter<byte>();
-
-        builder.Build(writer);
-
-        var reader = new LogsBuilder.MemoryReader(writer.WrittenMemory);
+        (LogsBuilder.MemoryReader reader, int written) = BuildToReader(builder);
 
         LogsBuilder.Entry e1 = new(block, tx1);
         LogsBuilder.Entry e2 = new(block, tx2);
@@ -57,7 +53,7 @@ public class LogBuilderTests
 
         reader.Find(hash0, 1).Should().BeEmpty();
 
-        writer.WrittenCount.Should().Be(48);
+        written.Should().Be(44);
     }
 
     [Test]
@@ -78,11 +74,7 @@ public class LogBuilderTests
         builder.Append(entry, block1, tx2);
         builder.Append(entry, block1, tx1);
 
-        var writer = new ArrayBufferWriter<byte>();
-
-        builder.Build(writer);
-
-        var reader = new LogsBuilder.MemoryReader(writer.WrittenMemory);
+        (LogsBuilder.MemoryReader reader, int written) = BuildToReader(builder);
 
         LogsBuilder.Entry e1 = new(block1, tx1);
         LogsBuilder.Entry e2 = new(block1, tx2);
@@ -96,7 +88,7 @@ public class LogBuilderTests
 
         reader.Find(hash0, 1).Should().BeEmpty();
 
-        writer.WrittenCount.Should().Be(50);
+        written.Should().Be(46);
     }
 
     [Test]
@@ -116,17 +108,13 @@ public class LogBuilderTests
             builder.Append(entry, block, tx);
         }
 
-        var writer = new ArrayBufferWriter<byte>();
-
-        builder.Build(writer);
-
-        var reader = new LogsBuilder.MemoryReader(writer.WrittenMemory);
+        (LogsBuilder.MemoryReader reader, int written) = BuildToReader(builder);
 
         reader.Find(Address.SystemUser)
             .Should()
             .BeEquivalentTo(Builder().Select(t => new LogsBuilder.Entry(t.block, t.tx)));
 
-        Console.WriteLine($"{(double)writer.WrittenCount / logEntries:F1} bytes per {nameof(LogEntry)}");
+        Console.WriteLine($"{(double)written / logEntries:F1} bytes per {nameof(LogEntry)}");
         return;
 
         static IEnumerable<(uint block, ushort tx)> Builder()
@@ -159,15 +147,24 @@ public class LogBuilderTests
             builder.Append(entry, block, tx);
         }
 
-        var writer = new ArrayBufferWriter<byte>();
-
-        builder.Build(writer);
-
-        var reader = new LogsBuilder.MemoryReader(writer.WrittenMemory);
+        (LogsBuilder.MemoryReader reader, int written) = BuildToReader(builder);
 
         LogsBuilder.Entry e = new(block, tx);
 
         reader.Find(Address.SystemUser).ToArray().Should().BeEquivalentTo([e]);
-        writer.WrittenCount.Should().Be(42);
+        written.Should().Be(38);
+    }
+
+    private static (LogsBuilder.MemoryReader reader, int writtenCount) BuildToReader(LogsBuilder builder)
+    {
+        var multiple = new ArrayBufferWriter<byte>();
+        var pointers = new ArrayBufferWriter<byte>();
+        var hashes = new ArrayBufferWriter<byte>();
+
+        builder.Build(multiple, pointers, hashes);
+
+        var reader = new LogsBuilder.MemoryReader(multiple.WrittenMemory, pointers.WrittenMemory, hashes.WrittenMemory);
+
+        return (reader, writtenCount: multiple.WrittenCount + pointers.WrittenCount + hashes.WrittenCount);
     }
 }
