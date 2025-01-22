@@ -109,6 +109,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
             worldState.Commit(releaseSpec);
             //worldState.CommitTree(blockHeader.Number + 1);
+            worldState.RecalculateStateRoot();
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
