@@ -6,6 +6,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using System.Collections;
+using System.Text.Json;
 
 namespace Nethermind.JsonRpc.Test.Data;
 
@@ -18,6 +19,12 @@ public class TransactionForRpcDeserializationTests
     {
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
         return transactionForRpc.ToTransaction().Type;
+    }
+
+    [Test]
+    public void Test_TxTypeIsDeclined_WhenUnknown()
+    {
+        Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>("""{"type":"0x10"}"""));
     }
 
     public static IEnumerable TxJsonTestCases
@@ -59,6 +66,12 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","authorizationList":[]}""");
             yield return Make(TxType.SetCode, """{"authorizationList":null}""");
             yield return Make(TxType.SetCode, """{"AuthorizationList":[]}""");
+
+            yield return Make(TxType.Legacy, """{"type":"0x0"}""");
+            yield return Make(TxType.AccessList, """{"type":"0x1"}""");
+            yield return Make(TxType.EIP1559, """{"type":"0x2"}""");
+            yield return Make(TxType.Blob, """{"type":"0x3"}""");
+            yield return Make(TxType.SetCode, """{"type":"0x4"}""");
         }
     }
 }

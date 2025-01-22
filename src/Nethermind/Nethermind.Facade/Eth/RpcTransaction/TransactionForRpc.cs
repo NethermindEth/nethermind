@@ -113,12 +113,22 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            const string TypeFieldKey = nameof(TransactionForRpc.Type);
             // Copy the reader so we can do a double parse:
             // The first parse is used to check for fields, while the second parses the entire Transaction
             Utf8JsonReader txTypeReader = reader;
             JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            Type concreteTxType = _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes.Last())?.Type
+            TxType? txType = null;
+            if (untyped.TryGetPropertyValue(TypeFieldKey, out JsonNode? node))
+            {
+                txType = JsonSerializer.Deserialize<TxType>(node, options);
+            }
+
+            Type concreteTxType =
+                (txType is not null
+                ? _txTypes.FirstOrDefault(p => p.TxType == txType)
+                : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes.Last()))?.Type
                 ?? throw new JsonException("Unknown transaction type");
 
             return (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
