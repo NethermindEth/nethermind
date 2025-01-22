@@ -60,6 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private ISyncConfig _syncConfig = null!;
         private ISyncProgressResolver _syncProgressResolver = null!;
         private EthSyncingInfo _ethSyncingInfo;
+        private IPeerPool _peerPool;
 
         [SetUp]
         public void Setup()
@@ -77,13 +78,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
                 new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
+            _peerPool = Substitute.For<IPeerPool>();
 
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardSubscription(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,

@@ -23,13 +23,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 public class SubscriptionFactory : ISubscriptionFactory
 {
     private readonly ConcurrentDictionary<string, CustomSubscriptionType> _subscriptionConstructors;
-    private readonly IPeerPool _peerPool;
 
     public SubscriptionFactory()
     {
         _subscriptionConstructors = new ConcurrentDictionary<string, CustomSubscriptionType>();
-        // [AdminSubscriptionType.PeerEvents] = CreateSubscriptionType((jsonRpcDuplexClient) =>
-        //        new PeerEventsSubscription(jsonRpcDuplexClient, logManager, _peerPool)),
     }
 
     public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)

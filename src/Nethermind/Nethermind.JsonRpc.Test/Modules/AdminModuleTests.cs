@@ -96,17 +96,9 @@ public class AdminModuleTests
             Parameters = new ChainParameters()
         };
 
-        SubscriptionFactory subscriptionFactory = new(
-                _logManager,
-                _blockTree,
-                _txPool,
-                _receiptCanonicalityMonitor,
-                _filterStore,
-                new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
-                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager),
-                _specProvider,
-                jsonSerializer,
-                peerPool);
+        SubscriptionFactory subscriptionFactory = new();
+
+        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, peerPool);
 
         _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,

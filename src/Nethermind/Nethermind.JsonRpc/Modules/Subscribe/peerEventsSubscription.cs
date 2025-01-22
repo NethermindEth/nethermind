@@ -5,6 +5,7 @@ using System;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -16,11 +17,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public PeerEventsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ILogManager? logManager,
-            IPeerPool peerPool = null)
+            IPeerPool? peerPool)
             : base(jsonRpcDuplexClient)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _peerPool = peerPool;
+            _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
 
             _peerPool.PeerAdded += OnPeerAdded;
             _peerPool.PeerRemoved += OnPeerRemoved;

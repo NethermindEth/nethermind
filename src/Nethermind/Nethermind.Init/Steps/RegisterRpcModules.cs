@@ -128,16 +128,10 @@ public class RegisterRpcModules : IStep
 
         StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
 
-        SubscriptionFactory subscriptionFactory = new(
-            _api.LogManager,
-            _api.BlockTree,
-            _api.TxPool,
-            _api.ReceiptMonitor,
-            _api.FilterStore,
-            _api.EthSyncingInfo!,
-            _api.SpecProvider,
-            rpcModuleProvider.Serializer,
-            _api.PeerPool);
+        SubscriptionFactory subscriptionFactory = new();
+
+        // Register the standard subscription types in the dictionary
+        subscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool);
 
         _api.SubscriptionFactory = subscriptionFactory;
 
@@ -188,14 +182,14 @@ public class RegisterRpcModules : IStep
 
         _api.JsonRpcLocalStats = jsonRpcLocalStats;
 
-        SubscriptionFactory subscriptionFactory = new();
+        //SubscriptionFactory subscriptionFactory = new();
 
-        // Register the standard subscription types in the dictionary
-        subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo);
+        //// Register the standard subscription types in the dictionary
+        //subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool);
 
-        _api.SubscriptionFactory = subscriptionFactory;
+        //_api.SubscriptionFactory = subscriptionFactory;
 
-        SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
+        //SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
 
         SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
         rpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);

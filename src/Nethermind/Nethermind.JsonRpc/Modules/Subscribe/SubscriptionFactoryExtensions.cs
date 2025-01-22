@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
@@ -25,7 +26,7 @@ public static class SubscriptionFactoryExtensions
         )
     {
         subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
-            SubscriptionType.NewHeads,
+            SubscriptionType.EthSubscription.NewHeads,
             (jsonRpcDuplexClient, args) =>
             new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)
             );
@@ -40,7 +41,7 @@ public static class SubscriptionFactoryExtensions
         )
     {
         subscriptionFactory.RegisterSubscriptionType<Filter?>(
-            SubscriptionType.Logs,
+            SubscriptionType.EthSubscription.Logs,
             (jsonRpcDuplexClient, filter) =>
             new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, filter)
             );
@@ -54,7 +55,7 @@ public static class SubscriptionFactoryExtensions
         )
     {
         subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
-            SubscriptionType.NewPendingTransactions,
+            SubscriptionType.EthSubscription.NewPendingTransactions,
             (jsonRpcDuplexClient, args) =>
             new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, specProvider, logManager, args)
             );
@@ -67,7 +68,7 @@ public static class SubscriptionFactoryExtensions
         )
     {
         subscriptionFactory.RegisterSubscriptionType(
-            SubscriptionType.DroppedPendingTransactions,
+            SubscriptionType.EthSubscription.DroppedPendingTransactions,
             (jsonRpcDuplexClient) =>
             new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager)
             );
@@ -81,13 +82,46 @@ public static class SubscriptionFactoryExtensions
         )
     {
         subscriptionFactory.RegisterSubscriptionType(
-            SubscriptionType.Syncing,
+            SubscriptionType.EthSubscription.Syncing,
             (jsonRpcDuplexClient) =>
             new SyncingSubscription(jsonRpcDuplexClient, blockTree, ethSyncingInfo, logManager)
             );
     }
 
-    public static void RegisterStandardSubscription(
+    public static void RegisterPeerEventsSubscription(
+        this ISubscriptionFactory subscriptionFactory,
+        ILogManager? logManager,
+        IPeerPool? peerPool
+        )
+    {
+        subscriptionFactory.RegisterSubscriptionType(
+            SubscriptionType.AdminSubscription.PeerEvents,
+            (jsonRpcDuplexClient) =>
+            new PeerEventsSubscription(jsonRpcDuplexClient, logManager, peerPool)
+            );
+    }
+
+    public static void RegisterStandardSubscriptions(
+        this ISubscriptionFactory subscriptionFactory,
+        IBlockTree? blockTree,
+        ILogManager? logManager,
+        ISpecProvider specProvider,
+        IReceiptMonitor receiptMonitor,
+        IFilterStore? filterStore,
+        ITxPool? txPool,
+        IEthSyncingInfo ethSyncingInfo,
+        IPeerPool? peerPool
+        )
+    {
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
+        subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
+        subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
+        subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
+        subscriptionFactory.RegisterPeerEventsSubscription(logManager, peerPool);
+    }
+
+    public static void RegisterStandardEthSubscriptions(
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
         ILogManager? logManager,
