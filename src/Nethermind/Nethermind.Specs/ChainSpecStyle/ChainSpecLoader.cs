@@ -176,7 +176,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
 
             OntakeTransition = chainSpecJson.Params.OntakeTransition,
-            BlobSchedule = chainSpecJson.Params.BlobSchedule,
+            BlobSchedule = new Dictionary<string, ChainSpecBlobCountJson>(chainSpecJson.Params.BlobSchedule, StringComparer.OrdinalIgnoreCase),
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

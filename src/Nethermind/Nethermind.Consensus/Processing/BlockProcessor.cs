@@ -73,8 +73,6 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-
-
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed

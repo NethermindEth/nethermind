@@ -106,18 +106,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
         private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
         {
-            BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
+            double CalculateBlobGasUsedRatio(Block b, out UInt256 feePerBlobGas)
             {
                 IReleaseSpec spec = _specProvider.GetSpec(b.Header);
-                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction,
-                    out UInt256 feePerBlobGas);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas);
 
-                double blobGasUsedRatio = 0;
                 var maxBlobGasPerBlob = _specProvider.GetSpec(b.Header).GetMaxBlobGasPerBlock();
-                if (maxBlobGasPerBlob != 0)
-                {
-                    blobGasUsedRatio = (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlob;
-                }
+                return maxBlobGasPerBlob == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlob;
+            }
+
+            BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
+            {
+                double blobGasUsedRatio = CalculateBlobGasUsedRatio(b, out UInt256 feePerBlobGas);
 
                 return new(
                     b.Number,
