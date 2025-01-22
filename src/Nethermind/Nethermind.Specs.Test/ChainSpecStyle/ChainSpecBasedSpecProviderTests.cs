@@ -26,6 +26,12 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
+    [SetUp]
+    public void Initialize()
+    {
+        Eip4844Constants.OverrideIfAny(1);
+    }
+
     private const double GnosisBlockTime = 5;
 
     [TestCase(0, null, false)]

@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -48,7 +47,7 @@ namespace Nethermind.Evm.Test
             }
 
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
+            _processor.Execute(transaction, block.Header, tracer);
 
             if (eip3198Enabled)
             {
