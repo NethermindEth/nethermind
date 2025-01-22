@@ -32,7 +32,7 @@ namespace Nethermind.Core.Extensions
             return specProvider.GetSpec(blockNumber, null);
         }
 
-        public static ulong GetFinalMaxBlobGas(this ISpecProvider specProvider)
+        public static ulong GetFinalMaxBlobGasPerBlock(this ISpecProvider specProvider)
         {
             return Eip4844Constants.GasPerBlob * specProvider.GetFinalSpec().MaxBlobCount;
         }

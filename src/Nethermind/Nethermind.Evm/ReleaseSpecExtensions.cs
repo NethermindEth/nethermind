@@ -85,10 +85,10 @@ namespace Nethermind.Evm
                 ? GasCostOf.ExpByteEip160
                 : GasCostOf.ExpByte;
 
-        public static ulong GetMaxBlobGas(this IReleaseSpec spec) =>
+        public static ulong GetMaxBlobGasPerBlock(this IReleaseSpec spec) =>
             spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
 
-        public static ulong GetTargetBlobGas(this IReleaseSpec spec) =>
+        public static ulong GetTargetBlobGasPerBlock(this IReleaseSpec spec) =>
             spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
     }
 }

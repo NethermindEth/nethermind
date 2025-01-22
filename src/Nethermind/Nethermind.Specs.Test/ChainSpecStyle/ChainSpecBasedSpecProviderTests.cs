@@ -202,9 +202,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.Multiple(() =>
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
-            Assert.That(spec.GetMaxBlobGas(), Is.EqualTo(786432));
+            Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(spec.GetTargetBlobGas(), Is.EqualTo(393216));
+            Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
         });
     }
 
@@ -306,9 +306,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.Multiple(() =>
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
-            Assert.That(spec.GetMaxBlobGas(), Is.EqualTo(262144));
+            Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(spec.GetTargetBlobGas(), Is.EqualTo(131072));
+            Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(131072));
         });
     }
 

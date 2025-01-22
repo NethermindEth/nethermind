@@ -102,8 +102,8 @@ public static class BlobGasCalculator
 
         ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
         excessBlobGas += parentBlockHeader.BlobGasUsed ?? 0;
-        return excessBlobGas < releaseSpec.GetTargetBlobGas()
+        return excessBlobGas < releaseSpec.GetTargetBlobGasPerBlock()
             ? 0
-            : excessBlobGas - releaseSpec.GetTargetBlobGas();
+            : excessBlobGas - releaseSpec.GetTargetBlobGasPerBlock();
     }
 }

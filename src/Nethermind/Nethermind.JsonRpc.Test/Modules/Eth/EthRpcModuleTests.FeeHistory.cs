@@ -89,15 +89,15 @@ public partial class EthRpcModuleTests
                 new ulong?[] { 1,
                     2,
                     0,
-                    Cancun.Instance.GetTargetBlobGas(),
-                    Cancun.Instance.GetMaxBlobGas(),
-                    Cancun.Instance.GetMaxBlobGas() * 4 },
+                    Cancun.Instance.GetTargetBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock() * 4 },
                 new ulong?[] { 0,
                     Eip4844Constants.GasPerBlob * 2,
-                    Cancun.Instance.GetMaxBlobGas(),
-                    Cancun.Instance.GetMaxBlobGas(),
-                    Cancun.Instance.GetMaxBlobGas(),
-                    Cancun.Instance.GetMaxBlobGas() })
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock(),
+                    Cancun.Instance.GetMaxBlobGasPerBlock() })
             {
                 TestName = "Different values",
                 ExpectedResult = (
