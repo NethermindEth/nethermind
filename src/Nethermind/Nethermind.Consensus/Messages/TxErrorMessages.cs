@@ -44,7 +44,7 @@ public static class TxErrorMessages
         "blob transaction missing blob hashes";
 
     public static readonly string BlobTxGasLimitExceeded =
-        "BlobTxGasLimitExceeded: Transaction exceeded {0}.";
+        "BlobTxGasLimitExceeded: Transaction's totalDataGas ({0}) exceeded MaxBlobGas per transaction ({1}).";
 
     public const string BlobTxMissingBlobs =
         "BlobTxMissingBlobs: Blob transaction must have blobs.";
