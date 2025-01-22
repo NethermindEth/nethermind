@@ -38,8 +38,10 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{"nonce":"0x0","to":null,"gasPrice":"0x0","gas":"0x0","input":null}""");
             yield return Make(TxType.Legacy, """{"nonce":"0x0","input":null}""");
             yield return Make(TxType.Legacy, """{}""");
+            yield return Make(TxType.Legacy, """{"type":null}""");
             yield return Make(TxType.Legacy, """{"additionalField":""}""");
 
+            yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":null}""");

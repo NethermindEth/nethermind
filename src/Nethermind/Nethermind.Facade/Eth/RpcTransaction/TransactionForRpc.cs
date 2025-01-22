@@ -122,7 +122,7 @@ public abstract class TransactionForRpc
             TxType? txType = null;
             if (untyped.TryGetPropertyValue(TypeFieldKey, out JsonNode? node))
             {
-                txType = JsonSerializer.Deserialize<TxType>(node, options);
+                txType = JsonSerializer.Deserialize<TxType?>(node, options);
             }
 
             Type concreteTxType =
