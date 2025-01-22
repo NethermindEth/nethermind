@@ -1,5 +1,6 @@
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Init.Steps;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -15,5 +16,11 @@ public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : IInitializationPlu
     public Task Init(INethermindApi api) => Task.CompletedTask;
     public Task InitNetworkProtocol() => Task.CompletedTask;
     public Task InitRpcModules() => Task.CompletedTask;
+
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        yield return new StepInfo(typeof(InitDatabaseSnapshot));
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

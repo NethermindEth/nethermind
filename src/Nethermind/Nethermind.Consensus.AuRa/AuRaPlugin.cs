@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -8,6 +9,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -78,5 +80,12 @@ namespace Nethermind.Consensus.AuRa
 
         public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+        public IEnumerable<StepInfo> GetSteps()
+        {
+            yield return new StepInfo(typeof(InitializeBlockchainAuRa));
+            yield return new StepInfo(typeof(LoadGenesisBlockAuRa));
+            yield return new StepInfo(typeof(RegisterAuRaRpcModules));
+            yield return new StepInfo(typeof(StartBlockProcessorAuRa));
+        }
     }
 }

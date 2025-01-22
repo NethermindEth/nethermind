@@ -24,16 +24,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class EthereumStepsManagerTests
     {
         [Test]
-        public void BuildInSteps_IsCorrect()
-        {
-            EthereumRunner.BuildInSteps.ToHashSet().Should()
-                .BeEquivalentTo(
-                    EthereumStepsLoader.LoadStepInfoFromAssembly(typeof(IStep).Assembly).Concat(
-                        EthereumStepsLoader.LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly)
-                    ).ToHashSet());
-        }
-
-        [Test]
         public async Task When_no_assemblies_defined()
         {
             NethermindApi runnerContext = CreateNethermindApi();
@@ -46,22 +36,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
-        }
-
-        [Test]
-        public void With_steps_from_here()
-        {
-            EthereumStepsLoader.LoadStepInfoFromAssembly(GetType().Assembly)
-                .ToArray()
-                .Should()
-                .BeEquivalentTo([
-                    new StepInfo(typeof(StepLong)),
-                    new StepInfo(typeof(StepForever)),
-                    new StepInfo(typeof(StepA)),
-                    new StepInfo(typeof(StepB)),
-                    new StepInfo(typeof(StepCAuRa)),
-                    new StepInfo(typeof(StepCStandard)),
-                ]);
         }
 
         [Test]

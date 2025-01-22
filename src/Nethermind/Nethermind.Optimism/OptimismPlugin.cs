@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,6 +61,13 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+
+    public IEnumerable<StepInfo> GetSteps()
+    {
+        yield return new StepInfo(typeof(InitializeBlockchainOptimism));
+        yield return new StepInfo(typeof(InitializeBlockProducerOptimism));
+        yield return new StepInfo(typeof(RegisterOptimismRpcModules));
+    }
 
     #region IConsensusPlugin
 

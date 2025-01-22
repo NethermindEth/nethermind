@@ -80,7 +80,7 @@ public class EthereumRunner(INethermindApi api)
 
         foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
         {
-            foreach (StepInfo stepInfo in EthereumStepsLoader.LoadStepInfoFromAssembly(initializationPlugin.GetType().Assembly))
+            foreach (StepInfo stepInfo in initializationPlugin.GetSteps())
             {
                 yield return stepInfo;
             }

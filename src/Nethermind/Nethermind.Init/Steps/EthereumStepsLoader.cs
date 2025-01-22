@@ -19,17 +19,6 @@ namespace Nethermind.Init.Steps
             _stepsInfo = stepsInfo;
         }
 
-        public static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)
-        {
-            IEnumerable<Type> stepTypes = assembly.GetExportedTypes()
-                .Where(t => !t.IsInterface && !t.IsAbstract && StepInfo.IsStepType(t));
-
-            foreach (Type stepType in stepTypes)
-            {
-                yield return new StepInfo(stepType);
-            }
-        }
-
         public IEnumerable<StepInfo> ResolveStepsImplementations(Type apiType)
         {
             if (!apiType.GetInterfaces().Contains(_baseApiType))
