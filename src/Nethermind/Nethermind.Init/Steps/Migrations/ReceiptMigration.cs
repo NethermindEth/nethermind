@@ -32,7 +32,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
-        private long _toBlock;
 
         private readonly ProgressLogger _progressLogger;
         [NotNull]
@@ -49,7 +48,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
-        private long _from = 0;
 
         public ReceiptMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
@@ -101,12 +99,11 @@ namespace Nethermind.Init.Steps.Migrations
             }
 
             _cancellationTokenSource = new CancellationTokenSource();
-
-            // The MigratedBlockNumber is the actual "To"
-            _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, to), (_blockTree.Head?.Number ?? 0)) + 1;
-            _from = from;
-
-            _migrationTask = DoRun(_cancellationTokenSource.Token);
+            _migrationTask = Task.Run(async () =>
+            {
+                await _syncModeSelector.WaitUntilMode(CanMigrate, _cancellationTokenSource.Token);
+                RunMigration(from, to, false, _cancellationTokenSource.Token);
+            });
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
         public async Task Run(CancellationToken cancellationToken)
@@ -115,20 +112,10 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_receiptConfig.ReceiptsMigration)
                 {
-                    _from = 0; // From is not configured by this method, but need to be reset.
                     ResetMigrationIndexIfNeeded();
-                    await DoRun(cancellationToken);
+                    await _syncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
+                    RunIfNeeded(cancellationToken);
                 }
-            }
-        }
-
-        private async Task DoRun(CancellationToken cancellationToken)
-        {
-            if (_receiptConfig.StoreReceipts)
-            {
-                await _syncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
-
-                RunIfNeeded(cancellationToken);
             }
         }
 
@@ -142,16 +129,12 @@ namespace Nethermind.Init.Steps.Migrations
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;
-            _toBlock = migrateToBlockNumber;
-            _from = Math.Min(_from, _toBlock);
 
-            _logger.Warn($"Running migration to {_from} {_toBlock}");
-
-            if (_toBlock > 0)
+            if (migrateToBlockNumber > 0)
             {
                 try
                 {
-                    RunMigration(cancellationToken);
+                    RunMigration(0, migrateToBlockNumber, true, cancellationToken);
                 }
                 catch (Exception e)
                 {
@@ -164,10 +147,14 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private void RunMigration(CancellationToken token)
+        private void RunMigration(long from, long to, bool updateReceiptMigrationPointer, CancellationToken token)
         {
+            from = Math.Min(from, to);
             long synced = 0;
-            _progressLogger.Reset(synced, _toBlock - _from + 1);
+
+            if (_logger.IsWarn) _logger.Warn($"Running migration from {from} to {to}");
+
+            _progressLogger.Reset(synced, to - from + 1);
 
             using Timer timer = new(1000);
             timer.Enabled = true;
@@ -184,7 +171,8 @@ namespace Nethermind.Init.Steps.Migrations
                     parallelism = Environment.ProcessorCount;
                 }
 
-                GetBlockBodiesForMigration(token).AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
+                GetBlockBodiesForMigration(from, to, updateReceiptMigrationPointer, token)
+                    .AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
                     (long blockNum, Hash256 blockHash) = item;
                     Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
@@ -239,7 +227,7 @@ namespace Nethermind.Init.Steps.Migrations
             EmptyBlock.Return(emptyBlock);
         }
 
-        IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(CancellationToken token)
+        IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(long from, long to, bool updateReceiptMigrationPointer, CancellationToken token)
         {
             bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
             {
@@ -266,7 +254,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            for (long i = _toBlock; i > _from; i--)
+            for (long i = to; i > from; i--)
             {
                 if (token.IsCancellationRequested)
                 {
@@ -279,7 +267,7 @@ namespace Nethermind.Init.Steps.Migrations
                     yield return (i, blockHash!);
                 }
 
-                if (_receiptStorage.MigratedBlockNumber > i)
+                if (updateReceiptMigrationPointer && _receiptStorage.MigratedBlockNumber > i)
                 {
                     _receiptStorage.MigratedBlockNumber = i;
                 }

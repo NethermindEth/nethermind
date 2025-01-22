@@ -99,9 +99,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             else
             {
                 await migration.Run(CancellationToken.None);
+                Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
             }
-
-            Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
 
             if (wasMigrated)
             {
