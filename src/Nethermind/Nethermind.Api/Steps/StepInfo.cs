@@ -15,7 +15,8 @@ namespace Nethermind.Api.Steps
                 throw new ArgumentException("Step type cannot be abstract", nameof(type));
             }
 
-            if (!IsStepType(type)) {
+            if (!IsStepType(type))
+            {
                 throw new ArgumentException($"{type.FullName} is not a step type");
             }
 
