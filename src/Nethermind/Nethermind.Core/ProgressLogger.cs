@@ -71,7 +71,6 @@ namespace Nethermind.Core
             {
                 UtcEndTime = _timestamper.UtcNow;
             }
-            LogProgress();
         }
 
         public void Reset(long startValue, long total)
