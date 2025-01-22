@@ -134,7 +134,7 @@ namespace Nethermind.Consensus.Producers
 
                 checkedBlobTransactions++;
 
-                ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+                ulong txBlobGas = blobTx.GetBlobGas();
                 if (txBlobGas > maxBlobGasPerBlock - blobGasCounter)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");

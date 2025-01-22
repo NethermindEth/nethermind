@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -139,7 +140,7 @@ public class BlockDecoderTests
     public void Write_rlp_of_blocks_to_file(string rlp)
     {
         // the test is useful for debugging hive
-        File.WriteAllBytes("C:\\chains\\block1.rlp", Bytes.FromHexString(rlp));
+        File.WriteAllBytes("chains\\block1.rlp".GetApplicationResourcePath(), Bytes.FromHexString(rlp));
     }
 
     [Test]
