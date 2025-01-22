@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -48,7 +50,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
                 bool hasAccountChange = accountChange.Balance is not null
                                         || accountChange.Nonce is not null
-                                        || accountChange.Code is not null
+                                        || accountChange.CodeHash is not null
                                         || accountChange.ChangedSlots?.Count > 0;
                 if (!hasAccountChange) continue;
 
@@ -58,18 +60,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     // Set, its either this or changing `IWorldState` which is somewhat risky.
                     if (accountChange.Nonce is not null)
                     {
-                        UInt256 originalNonce = account.Nonce;
-                        if (accountChange.Nonce.Value > originalNonce)
-                        {
-                            worldState.IncrementNonce(address, accountChange.Nonce.Value - originalNonce);
-                        }
-                        else if (accountChange.Nonce.Value == originalNonce)
-                        {
-                        }
-                        else
-                        {
-                            worldState.DecrementNonce(address, originalNonce - accountChange.Nonce.Value);
-                        }
+                        worldState.SetNonce(address, accountChange.Nonce.Value);
                     }
 
                     if (accountChange.Balance is not null)
@@ -86,6 +77,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         {
                             worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
                         }
+
+                        if (worldState.GetBalance(address) != accountChange.Balance.Value)
+                        {
+                            throw new Exception("Balance is not same!? Why?");
+                        }
                     }
                 }
                 else
@@ -93,22 +89,26 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                     worldState.CreateAccountIfNotExists(address, accountChange.Balance ?? 0, accountChange.Nonce ?? 0);
                 }
 
-                if (accountChange.Code is not null)
+                if (accountChange.CodeHash is not null)
                 {
-                    worldState.InsertCode(address, accountChange.Code, releaseSpec);
+                    // Note, this set CodeDb, but since this is a read only world state, it should do nothing.
+                    worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false);
                 }
 
                 if (accountChange.ChangedSlots is not null)
                 {
-                    foreach (KeyValuePair<UInt256, Hash256> changedSlot in accountChange.ChangedSlots)
+                    foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                     {
-                        worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value.BytesToArray());
+                        ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian();
+                        bool newIsZero = bytes.IsZero();
+                        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : [0];
+                        worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
                     }
                 }
             }
 
             worldState.Commit(releaseSpec);
-            worldState.RecalculateStateRoot();
+            worldState.CommitTree(blockHeader.Number + 1);
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
