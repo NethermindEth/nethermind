@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -11,10 +10,8 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -46,8 +43,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             AuRaNethermindApi runnerContext = CreateAuraApi();
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader([
-                new StepInfo(typeof(StepCStandard)),
-                new StepInfo(typeof(StepCAuRa)),
+                typeof(StepCStandard),
+                typeof(StepCAuRa),
             ]);
             EthereumStepsManager stepsManager = new EthereumStepsManager(
                 stepsLoader,

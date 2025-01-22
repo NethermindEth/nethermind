@@ -83,10 +83,10 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
         public IEnumerable<StepInfo> GetSteps()
         {
-            yield return new StepInfo(typeof(InitializeBlockchainAuRa));
-            yield return new StepInfo(typeof(LoadGenesisBlockAuRa));
-            yield return new StepInfo(typeof(RegisterAuRaRpcModules));
-            yield return new StepInfo(typeof(StartBlockProcessorAuRa));
+            yield return typeof(InitializeBlockchainAuRa);
+            yield return typeof(LoadGenesisBlockAuRa);
+            yield return typeof(RegisterAuRaRpcModules);
+            yield return typeof(StartBlockProcessorAuRa);
         }
     }
 }

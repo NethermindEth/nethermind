@@ -65,9 +65,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public IEnumerable<StepInfo> GetSteps()
     {
-        yield return new StepInfo(typeof(InitializeBlockchainOptimism));
-        yield return new StepInfo(typeof(InitializeBlockProducerOptimism));
-        yield return new StepInfo(typeof(RegisterOptimismRpcModules));
+        yield return typeof(InitializeBlockchainOptimism);
+        yield return typeof(InitializeBlockProducerOptimism);
+        yield return typeof(RegisterOptimismRpcModules);
     }
 
     #region IConsensusPlugin

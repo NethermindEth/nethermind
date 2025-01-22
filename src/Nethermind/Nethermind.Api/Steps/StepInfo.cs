@@ -15,6 +15,10 @@ namespace Nethermind.Api.Steps
                 throw new ArgumentException("Step type cannot be abstract", nameof(type));
             }
 
+            if (!IsStepType(type)) {
+                throw new ArgumentException($"{type.FullName} is not a step type");
+            }
+
             StepType = type;
             StepBaseType = GetStepBaseType(type);
 
@@ -31,7 +35,6 @@ namespace Nethermind.Api.Steps
 
         public override string ToString()
         {
-            // return $"{StepType.Name} : {StepBaseType.Name} ({Stage})";
             return $"{StepType.Name} : {StepBaseType.Name}";
         }
 
@@ -43,6 +46,11 @@ namespace Nethermind.Api.Steps
             }
 
             return type;
+        }
+
+        public static implicit operator StepInfo(Type type)
+        {
+            return new StepInfo(type);
         }
 
         public static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);

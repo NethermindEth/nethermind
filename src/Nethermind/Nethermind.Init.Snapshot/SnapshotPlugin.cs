@@ -20,7 +20,7 @@ public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : IInitializationPlu
 
     public IEnumerable<StepInfo> GetSteps()
     {
-        yield return new StepInfo(typeof(InitDatabaseSnapshot));
+        yield return typeof(InitDatabaseSnapshot);
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
