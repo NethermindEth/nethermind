@@ -28,11 +28,8 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_disposed) return;
             if (ShouldBeActive(current))
             {
-                Task.Run(() =>
-                {
-                    InitializeFeed();
-                    Activate();
-                });
+                InitializeFeed();
+                Activate();
             }
 
             if (ShouldBeDormant(current))
