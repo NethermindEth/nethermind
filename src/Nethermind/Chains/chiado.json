@@ -78,6 +78,7 @@
     "eip1559ElasticityMultiplier": "0x2",
     "feeCollector": "0x1559000000000000000000000000000000000000",
     "eip1559FeeCollectorTransition": 0,
+    "eip4844FeeCollectorTransition": "0xFFFFFFFFC46535FE",
     "eip4844BlobGasPriceUpdateFraction": "0x10fafa",
     "eip4844MaxBlobGasPerBlock": "0x40000",
     "eip4844MinBlobGasPrice": "0x3b9aca00",

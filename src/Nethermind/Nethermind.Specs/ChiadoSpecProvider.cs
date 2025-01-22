@@ -15,7 +15,8 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
     public const ulong CancunTimestamp = 0x65ba8e4c;
     //TODO correct this timestamp!
-    public const ulong PragueTimestamp = ulong.MaxValue - 2;
+    public const ulong PragueTimestamp = ulong.MaxValue - 1000000001;
+    public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
 
     private ChiadoSpecProvider() { }
 
