@@ -29,7 +29,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IVerifyTrieStarter _verifyTrieStarter;
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
     private readonly IAdminEraService _eraService;
@@ -39,7 +39,8 @@ public class AdminRpcModule : IAdminRpcModule
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
-        IWorldStateManager worldStateManager,
+        IVerifyTrieStarter verifyTrieStarter,
+        IStateReader stateReader,
         IEnode enode,
         IAdminEraService eraService,
         string dataDir,
@@ -52,8 +53,8 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
-        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
-        _stateReader = _worldStateManager.GlobalStateReader;
+        _verifyTrieStarter = verifyTrieStarter ?? throw new ArgumentNullException(nameof(verifyTrieStarter));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _pruningTrigger = pruningTrigger;
         _eraService = eraService;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
@@ -185,7 +186,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
         }
 
-        if (!_worldStateManager.TryStartVerifyTrie(header))
+        if (!_verifyTrieStarter.TryStartVerifyTrie(header))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
         }

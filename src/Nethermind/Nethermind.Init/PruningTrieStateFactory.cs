@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Healing;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -167,8 +166,6 @@ public class PruningTrieStateFactory(
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false);
 
-        disposeStack.Push(mainWorldTrieStore);
-
         // Init state if we need system calls before actual processing starts
         worldState.StateRoot = blockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
         if (blockTree!.Head?.StateRoot is not null)
@@ -180,8 +177,14 @@ public class PruningTrieStateFactory(
             worldState,
             trieStore,
             dbProvider,
-            logManager,
-            processExit);
+            logManager);
+
+        // NOTE: Don't forget this! Very important!
+        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);
+        // Must be disposed after main trie store or the final persist on dispose will not set persisted state on blocktree.
+        disposeStack.Push(trieStoreBoundaryWatcher);
+
+        disposeStack.Push(mainWorldTrieStore);
 
         InitializeFullPruning(
             stateManager.GlobalStateReader,
