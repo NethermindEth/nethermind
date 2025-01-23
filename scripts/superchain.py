@@ -10,6 +10,7 @@ import sha3
 import tomllib
 import zstandard as zstd
 import argparse
+import tempfile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
 IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet"]
@@ -171,17 +172,17 @@ def to_nethermind(chain_name, l1, superchain, chain, genesis):
     return nethermind
 
 
-def main(output_directory):
+def main(temp_directory, output_directory):
     logging.debug("Downloading Superchain registry")
     with urlopen(SUPERCHAIN_REPOSITORY) as zip_response:
         with ZipFile(BytesIO(zip_response.read())) as zip_file:
-            zip_file.extractall()
+            zip_file.extractall(path=temp_directory)
     logging.debug("Unpacked superchain registry")
 
     logging.debug("Loading Superchain registry index")
-    with open(path.join("superchain-registry-main", "chainList.toml"), "rb") as json_config:
+    with open(path.join(temp_directory, "superchain-registry-main", "chainList.toml"), "rb") as json_config:
         chainList = tomllib.load(json_config)
-    with open(path.join("superchain-registry-main", "superchain", "extra", "dictionary"), "rb") as json_config:
+    with open(path.join(temp_directory, "superchain-registry-main", "superchain", "extra", "dictionary"), "rb") as json_config:
         superchain_dict = zstd.ZstdCompressionDict(json_config.read())
         zdecompressor = zstd.ZstdDecompressor(dict_data=superchain_dict)
 
@@ -192,9 +193,10 @@ def main(output_directory):
             continue
 
         logging.debug(f"Processing `{l1}-{chainName}`")
-        superchain_path = path.join("superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
-        config_path = path.join("superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
+        superchain_path = path.join(temp_directory, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
+        config_path = path.join(temp_directory, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
         genesis_path = path.join(
+            temp_directory,
             "superchain-registry-main",
             "superchain",
             "extra",
@@ -252,7 +254,7 @@ def main(output_directory):
 
     logging.debug("Storing compression dictionary")
     with open(path.join(output_directory, "dictionary"), "wb+") as nethermind_dict_file:
-        nethermind_dict_file.write(nethermind_dict.as_bytes)
+        nethermind_dict_file.write(nethermind_dict.as_bytes())
 
 
 if __name__ == "__main__":
@@ -262,4 +264,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logging.basicConfig(format="[%(levelname)s] %(message)s", level=logging.DEBUG if args.verbose else logging.INFO)
-    main(args.output)
+
+    with tempfile.TemporaryDirectory() as temp_directory:
+        main(temp_directory, args.output)
