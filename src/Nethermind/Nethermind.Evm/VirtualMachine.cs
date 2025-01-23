@@ -1524,7 +1524,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!BlobGasCalculator.TryCalculateFeePerBlobGas(blkCtx.Header.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
                             {
-                                goto InvalidInstruction;
+                                goto OverflowBaseFee;
                             }
                             blkCtx.BlobBaseFee = feePerBlobGas;
                         }
@@ -2062,6 +2062,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     InvalidJumpDestination:
         exceptionType = EvmExceptionType.InvalidJumpDestination;
+        goto ReturnFailure;
+    OverflowBaseFee:
+        exceptionType = EvmExceptionType.OverflowBaseFee;
         goto ReturnFailure;
     AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
