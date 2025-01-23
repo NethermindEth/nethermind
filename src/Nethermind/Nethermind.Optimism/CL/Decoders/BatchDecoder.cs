@@ -290,11 +290,12 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         }
 
         byte[][] datas = new byte[totalTxCount][];
+        TxType[] types = new TxType[totalTxCount];
         ulong legacyTxCnt = 0;
         for (int i = 0; i < (int)totalTxCount; ++i)
         {
-            (datas[i], int n8, TxType type) = DecodeTxData(data[n..]);
-            if (type == TxType.Legacy)
+            (datas[i], int n8, types[i]) = DecodeTxData(data[n..]);
+            if (types[i] == TxType.Legacy)
             {
                 legacyTxCnt++;
             }
@@ -336,7 +337,9 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
                 Datas = datas,
                 Nonces = nonces,
                 Gases = gases,
-                ProtectedBits = protectedBits
+                ProtectedBits = protectedBits,
+
+                Types = types
             }
         };
     }

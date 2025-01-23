@@ -43,8 +43,8 @@ public class L1BlockInfoBuilder
         ulong sequenceNumber = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(8));
         ulong timestamp = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(8));
         ulong number = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(8));
-        UInt256 baseFee = new(depositTxData.TakeAndMove(32));
-        UInt256 blobBaseFee = new(depositTxData.TakeAndMove(32));
+        UInt256 baseFee = new(depositTxData.TakeAndMove(32), true);
+        UInt256 blobBaseFee = new(depositTxData.TakeAndMove(32), true);
         Hash256 blockHash = new(depositTxData.TakeAndMove(32));
         ReadOnlySpan<byte> addressPadding = depositTxData.TakeAndMove(12);
         if (!addressPadding.SequenceEqual(ExpectedAddressPadding))

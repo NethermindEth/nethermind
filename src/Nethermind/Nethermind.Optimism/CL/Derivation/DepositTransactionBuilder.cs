@@ -17,16 +17,16 @@ public class DepositTransactionBuilder(ISpecProvider specProvider, CLChainSpecEn
     public Transaction BuildSystemTransaction(L1BlockInfo blockInfo)
     {
         byte[] data = new byte[SystemTxDataLengthEcotone];
-        BinaryPrimitives.WriteUInt32BigEndian(data[..4], blockInfo.MethodId);
-        BinaryPrimitives.WriteUInt32BigEndian(data[4..8], blockInfo.BaseFeeScalar);
-        BinaryPrimitives.WriteUInt32BigEndian(data[8..12], blockInfo.BlobBaseFeeScalar);
-        BinaryPrimitives.WriteUInt64BigEndian(data[12..20], blockInfo.SequenceNumber);
-        BinaryPrimitives.WriteUInt64BigEndian(data[20..28], blockInfo.Timestamp);
-        BinaryPrimitives.WriteUInt64BigEndian(data[28..36], blockInfo.Number);
-        blockInfo.BaseFee.ToBigEndian().CopyTo(data[36..68].AsSpan());
-        blockInfo.BlobBaseFee.ToBigEndian().CopyTo(data[68..100].AsSpan());
-        blockInfo.BlockHash.Bytes.CopyTo(data[100..132].AsSpan());
-        blockInfo.BatcherAddress.Bytes.CopyTo(data[144..164].AsSpan());
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(), blockInfo.MethodId);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(4), blockInfo.BaseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(8), blockInfo.BlobBaseFeeScalar);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(12), blockInfo.SequenceNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(20), blockInfo.Timestamp);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(28), blockInfo.Number);
+        blockInfo.BaseFee.ToBigEndian().CopyTo(data, 36);
+        blockInfo.BlobBaseFee.ToBigEndian().CopyTo(data, 68);
+        blockInfo.BlockHash.Bytes.CopyTo(data.AsSpan(100));
+        blockInfo.BatcherAddress.Bytes.CopyTo(data, 144);
 
         Span<byte> source = stackalloc byte[64];
         blockInfo.BlockHash.Bytes.CopyTo(source);
@@ -52,18 +52,18 @@ public class DepositTransactionBuilder(ISpecProvider specProvider, CLChainSpecEn
         };
     }
 
-    public Transaction BuildUserDepositTransaction()
+    public Transaction[] BuildUserDepositTransactions()
     {
-        throw new NotImplementedException();
+        return []; // TODO implement
     }
 
-    public Transaction UpgradeTransaction()
+    public Transaction[] BuildUpgradeTransactions()
     {
-        throw new NotImplementedException();
+        return []; // TODO implement
     }
 
-    public Transaction ForceIncludeTransaction()
+    public Transaction[] BuildForceIncludeTransactions()
     {
-        throw new NotImplementedException();
+        return []; // TODO implement
     }
 }

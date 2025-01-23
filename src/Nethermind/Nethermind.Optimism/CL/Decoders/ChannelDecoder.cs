@@ -75,4 +75,6 @@ public struct BatchV1Transactions
     public ulong[] Nonces;
     public ulong[] Gases;
     public BigInteger ProtectedBits;
+
+    public TxType[] Types;
 }

@@ -8,5 +8,6 @@ namespace Nethermind.Optimism.CL;
 
 public interface IPayloadAttributesDeriver
 {
-    OptimismPayloadAttributes[] DerivePayloadAttributes(BatchV1 batch, BeaconBlock l1BeaconOrigin, BlockForRpc l1Origin, SystemConfig config);
+    // OptimismPayloadAttributes[] DerivePayloadAttributes(BatchV1 batch, BeaconBlock l1BeaconOrigin, BlockForRpc l1Origin, SystemConfig config);
+
 }

@@ -5,6 +5,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -23,4 +24,5 @@ public class OptimismNethermindApi : NethermindApi
     public IInvalidChainTracker? InvalidChainTracker { get; set; }
     public OPL1CostHelper? L1CostHelper { get; set; }
     public OptimismSpecHelper? SpecHelper { get; set; }
+    public IOptimismEthRpcModule? OptimismEthRpcModule { get; set; }
 }
