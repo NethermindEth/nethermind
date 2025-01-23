@@ -48,30 +48,6 @@ with open(GENESIS_FILE, "rb") as f:
 
 config = merge_all(superchain, chain)
 
-codeHashes = {}
-def map_accounts(alloc):
-    result = {}
-    for k, v in alloc.items():
-        value = v
-
-        if value.get("balance") == "0x0":
-            del value["balance"]
-
-        if value.get("code") is not None:
-            h = keccak(value["code"])
-            value["codeHash"] = h
-            codeHashes[h] = value["code"][2:]
-            del value["code"]
-        else:
-            value["codeHash"] = (
-                "0x0000000000000000000000000000000000000000000000000000000000000000"
-            )
-
-        key = f"0x{k}"
-        result[key] = value
-    return result
-
-
 nethermind = {
     "name": lookup(config, ["name"]),
     "dataDir": f"{CHAIN_NAME}-{L1_CHAIN}",
@@ -204,6 +180,7 @@ nethermind = {
         "enode://8a5a5006159bf079d06a04e5eceab2a1ce6e0f721875b2a9c96905336219dbe14203d38f70f3754686a6324f786c2f9852d8c0dd3adac2d080f4db35efc678c5@3.231.11.52:30301",
         "enode://cdadbe835308ad3557f9a1de8db411da1a260a98f8421d62da90e71da66e55e98aaa8e90aa7ce01b408a54e4bd2253d701218081ded3dbe5efbbc7b41d7cef79@54.198.153.150:30301",
     ],
+    "accounts": lookup(genesis, ["alloc"]),
 }
 
 # Post-processing
@@ -212,12 +189,6 @@ nethermind = {
 nethermind["genesis"] = {
     k: v for k, v in nethermind["genesis"].items() if v is not None
 }
-
-## Alloc/Accounts
-alloc = lookup(genesis, ["alloc"])
-if alloc is not None:
-    nethermind["accounts"] = map_accounts(alloc)
-    nethermind["codeHashes"] = codeHashes
 
 ## Optimism
 if CHAIN_NAME == "op":
