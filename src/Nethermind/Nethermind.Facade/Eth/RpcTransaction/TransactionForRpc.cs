@@ -122,13 +122,15 @@ public abstract class TransactionForRpc
             TxType? txType = null;
             if (untyped.TryGetPropertyValue(TypeFieldKey, out JsonNode? node))
             {
-                txType = JsonSerializer.Deserialize<TxType?>(node, options);
+                txType = node.Deserialize<TxType?>(options);
             }
 
             Type concreteTxType =
-                (txType is not null
-                ? _txTypes.FirstOrDefault(p => p.TxType == txType)
-                : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes.Last()))?.Type
+                (
+                    txType is not null
+                        ? _txTypes.FirstOrDefault(p => p.TxType == txType)
+                        : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes[^1])
+                )?.Type
                 ?? throw new JsonException("Unknown transaction type");
 
             return (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
