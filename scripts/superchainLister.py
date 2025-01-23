@@ -23,5 +23,5 @@ for chain in chainList["chains"]:
   config_path = path.join("superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
   genesis_path = path.join("superchain-registry-main", "superchain", "extra", "genesis", l1, f"{chainName}.json.zst")
 
-  with open(genesis_path, 'rb') as ifh, io.StringIO() as ofh:
+  with open(genesis_path, 'rb') as ifh, io.BytesIO() as ofh:
     zdecompressor.copy_stream(ifh, ofh)
