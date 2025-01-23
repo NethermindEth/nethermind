@@ -1,16 +1,16 @@
-from functools import reduce
-from urllib.request import urlopen
-from zipfile import ZipFile
-from io import BytesIO
+import argparse
 import json
 import logging
-import os.path as path
 import os
+import os.path as path
 import sha3
+import tempfile
 import tomllib
 import zstandard as zstd
-import argparse
-import tempfile
+from functools import reduce
+from io import BytesIO
+from urllib.request import urlopen
+from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
 IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet"]
