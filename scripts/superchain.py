@@ -44,7 +44,7 @@ def merge_all(*dicts):
     return reduce(merge, [{}, *dicts])
 
 
-def to_nethermind(chain_name, l1, superchain, chain, genesis):
+def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
     config = merge_all(superchain, chain)
 
     nethermind = {
@@ -163,7 +163,7 @@ def to_nethermind(chain_name, l1, superchain, chain, genesis):
     nethermind["genesis"] = {k: v for k, v in nethermind["genesis"].items() if v is not None}
 
     ## Optimism specific
-    if chain_name == "op":
+    if chain_name == "op" and l1 == "mainnet":
         nethermind["params"]["terminalTotalDifficulty"] = 210470125
         nethermind["params"]["eip2565Transition"] = "0x3C45B0"
         nethermind["params"]["eip2929Transition"] = "0x3C45B0"
@@ -172,7 +172,47 @@ def to_nethermind(chain_name, l1, superchain, chain, genesis):
     return nethermind
 
 
+def to_nethermind_runner(chain_name, l1, chain):
+    qualified_name = f"{chain_name}-{l1}"
+    runner = {
+        "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+        "Init": {
+            "ChainSpecPath": f"chainspec/{qualified_name}.json.zstd",
+            "GenesisHash": "0x70d316d2e0973b62332ba2e9768dd7854298d7ffe77f0409ffdb8d859f2d3fa3",
+            "BaseDbPath": f"nethermind_db/{qualified_name}",
+            "LogFileName": f"{qualified_name}.logs.txt",
+        },
+        "TxPool": {"BlobsSupport": "Disabled"},
+        "Sync": {"FastSync": True, "SnapSync": True, "FastSyncCatchUpHeightDelta": "10000000000"},
+        "Discovery": {"DiscoveryVersion": "V5"},
+        "JsonRpc": {"Enabled": True, "Port": 8545, "EnginePort": 8551},
+        "Pruning": {"PruningBoundary": 192},
+        "Blocks": {"SecondsPerSlot": lookup(chain, ["block_time"])},
+        "Merge": {"Enabled": True},
+        "Optimism": {"SequencerUrl": lookup(chain, ["sequencer_rpc"])},
+    }
+    # Post processing
+
+    ## Optimism specific
+    if chain_name == "op" and l1 == "mainnet":
+        runner["Optimism"]["Snapshot"] = (
+            {
+                "Enabled": True,
+                "DownloadUrl": "http://optimism-snapshot.nethermind.io/op-mainnet-genesis-v1.zip",
+                "SnapshotFileName": "op-mainnet-genesis-v1.zip",
+                "Checksum": "0xd7e15b26175c4c924acf75c5790e75d5eaa044977ca8e1904dc62d5d0769eba3",
+            },
+        )
+
+    return runner
+
+
 def main(tmp_dir, output_dir):
+    logging.debug("Setting up directories")
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(path.join(output_dir, "chainspec"), exist_ok=True)
+    os.makedirs(path.join(output_dir, "runner"), exist_ok=True)
+
     logging.debug("Downloading Superchain registry")
     with urlopen(SUPERCHAIN_REPOSITORY) as zip_response:
         with ZipFile(BytesIO(zip_response.read())) as zip_file:
@@ -218,10 +258,13 @@ def main(tmp_dir, output_dir):
             genesis_buffer.seek(0)
             genesis = json.load(genesis_buffer)
 
-            nethermind = to_nethermind(chainName, l1, superchain, chain, genesis)
-
+            chainspec = to_nethermind_chainspec(chainName, l1, superchain, chain, genesis)
             with open(path.join(tmp_dir, f"{chainName}-{l1}.json"), "w+") as zstd_file:
-                json.dump(nethermind, zstd_file)
+                json.dump(chainspec, zstd_file)
+
+            runner = to_nethermind_runner(chainName, l1, chain)
+            with open(path.join(output_dir, "runner", f"{chainName}-{l1}.json"), "w+") as f:
+                json.dump(runner, f, indent=2)
 
     logging.debug("Training compression dictionary")
     samples = []
@@ -236,8 +279,7 @@ def main(tmp_dir, output_dir):
     nethermind_dict = zstd.train_dictionary(2**16, samples, threads=-1)
     zcompressor = zstd.ZstdCompressor(dict_data=nethermind_dict)
 
-    logging.debug("Compressing configuration files")
-    os.makedirs(output_dir, exist_ok=True)
+    logging.debug("Compressing chainspec files")
     for root, _, files in os.walk(tmp_dir):
         for file in files:
             if not file.endswith(".json"):
@@ -245,22 +287,22 @@ def main(tmp_dir, output_dir):
 
             with (
                 open(path.join(root, file), "rb") as json_config,
-                open(path.join(output_dir, f"{file}.zstd"), "wb+") as zstd_file,
+                open(path.join(output_dir, "chainspec", f"{file}.zstd"), "wb+") as zstd_file,
             ):
                 zcompressor.copy_stream(json_config, zstd_file)
 
     logging.debug("Storing compression dictionary")
-    with open(path.join(output_dir, "dictionary"), "wb+") as nethermind_dict_file:
+    with open(path.join(output_dir, "chainspec", "dictionary"), "wb+") as nethermind_dict_file:
         nethermind_dict_file.write(nethermind_dict.as_bytes())
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optimism Superchain to Nethermind chain configuration converter")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode")
-    parser.add_argument("-o", "--output", default="Chains", help="output directory for the generated configurations")
+    parser.add_argument("-o", "--output", default="output", help="output directory for the generated configurations")
     args = parser.parse_args()
 
     logging.basicConfig(format="[%(levelname)s] %(message)s", level=logging.DEBUG if args.verbose else logging.INFO)
 
-    with tempfile.TemporaryDirectory() as temp_directory:
-        main(temp_directory, args.output)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        main(tmp_dir, args.output)
