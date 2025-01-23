@@ -71,8 +71,7 @@ public abstract class TransactionForRpc
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
 
         /// <summary>
-        /// Transaction type is determined based on fields present in the request:
-        /// Properties marked with <see cref="JsonDiscriminatorAttribute" /> are checked in reverse order of tx type registration.
+        /// Transaction type is determined based on type field or type-specific fields present in the request
         /// </summary>
         static TransactionJsonConverter()
         {
@@ -98,16 +97,24 @@ public abstract class TransactionForRpc
                 DiscriminatorProperties = uniqueProperties
             };
 
-            int existingTypeInfo = _txTypes.FindIndex(t => t.Type == txType);
+            int existingTypeInfo = _txTypes.FindIndex(t => t.TxType == typeInfo.TxType);
 
             if (existingTypeInfo != -1)
             {
-                // Adding in reverse order so new tx type are in priority
                 _txTypes[existingTypeInfo] = typeInfo;
             }
             else
             {
-                _txTypes.Insert(0, typeInfo);
+                // Adding in reverse order so newer tx types are in priority
+                int indexOfPreviousTxType = _txTypes.FindIndex(t => t.TxType < typeInfo.TxType);
+                if (indexOfPreviousTxType != -1)
+                {
+                    _txTypes.Insert(indexOfPreviousTxType, typeInfo);
+                }
+                else
+                {
+                    _txTypes.Add(typeInfo);
+                }
             }
         }
 
