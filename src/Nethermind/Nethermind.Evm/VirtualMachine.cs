@@ -1519,22 +1519,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.BLOBBASEFEE:
                     {
-                        if (!spec.BlobBaseFeeEnabled) goto InvalidInstruction;
-                        if (blkCtx.BlobBaseFee.HasValue)
-                        {
-                            result = blkCtx.BlobBaseFee.Value;
-                        }
-                        else
-                        {
-                            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(blkCtx.Header.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
-                            {
-                                goto InvalidInstruction;
-                            }
-                            result = feePerBlobGas;
-                        }
+                        if (!spec.BlobBaseFeeEnabled || !blkCtx.BlobBaseFee.HasValue) goto InvalidInstruction;
 
                         gasAvailable -= GasCostOf.Base;
 
+                        result = blkCtx.BlobBaseFee.Value;
                         stack.PushUInt256(in result);
                         break;
                     }
