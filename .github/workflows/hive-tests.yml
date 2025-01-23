@@ -16,7 +16,7 @@ on:
           - ethereum/consensus
           - ethereum/engine
           - ethereum/graphql
-          - ethereum/pyspec
+          - ethereum/eest
           - ethereum/rpc
           - ethereum/rpc-compat
           - ethereum/sync
