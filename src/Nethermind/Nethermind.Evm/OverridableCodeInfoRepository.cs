@@ -16,6 +16,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
+    }
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
