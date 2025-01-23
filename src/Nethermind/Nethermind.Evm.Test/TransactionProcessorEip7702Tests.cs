@@ -502,7 +502,7 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.RETURN)
             .Done,
             new byte[]{ (byte)Eip7702Constants.DelegationDesignatorLength } };
-        byte[] delegationCode = [..Eip7702Constants.DelegationHeader, ..TestItem.AddressC.Bytes];
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
 
         yield return new object[] {
             Prepare.EvmCode
