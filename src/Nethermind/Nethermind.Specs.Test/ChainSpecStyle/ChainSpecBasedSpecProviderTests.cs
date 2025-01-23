@@ -28,6 +28,12 @@ public class ChainSpecBasedSpecProviderTests
 {
     private const double GnosisBlockTime = 5;
 
+    [SetUp]
+    public void Setup()
+    {
+        Eip4844Constants.OverrideIfAny(1);
+    }
+
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
     [TestCase(0, 4660ul, false)]
@@ -197,7 +203,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
             Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
             Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
         });
     }
@@ -238,14 +244,12 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1));
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp));
+        IReleaseSpec? postCancunSpec = provider.GetSpec((1, ChiadoSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, ChiadoSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, ChiadoSpecProvider.PragueTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
-
-        IReleaseSpec? postCancunSpec = provider.GetSpec((2, GnosisSpecProvider.CancunTimestamp));
         VerifyGnosisCancunSpecifics(postCancunSpec);
-        VerifyGnosisCancunSpecifics();
         // VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, ChiadoSpecProvider.FeeCollector);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             static t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
@@ -305,12 +309,11 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp - 1));
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp));
+        IReleaseSpec? postCancunSpec = provider.GetSpec((1, GnosisSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
-
-        IReleaseSpec? postCancunSpec = provider.GetSpec((2, GnosisSpecProvider.CancunTimestamp));
         VerifyGnosisCancunSpecifics(postCancunSpec);
         // VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
