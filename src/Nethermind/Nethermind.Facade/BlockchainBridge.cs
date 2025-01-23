@@ -295,6 +295,11 @@ namespace Nethermind.Facade
                 callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
+
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, out UInt256 blobBaseFee))
+                {
+                    transaction.MaxFeePerBlobGas = blobBaseFee;
+                }
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
