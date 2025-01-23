@@ -171,7 +171,7 @@ def to_nethermind(chain_name, l1, superchain, chain, genesis):
     return nethermind
 
 
-def main(output_folder):
+def main(output_directory):
     logging.debug("Downloading Superchain registry")
     with urlopen(SUPERCHAIN_REPOSITORY) as zip_response:
         with ZipFile(BytesIO(zip_response.read())) as zip_file:
@@ -219,14 +219,14 @@ def main(output_folder):
 
             nethermind = to_nethermind(chainName, l1, superchain, chain, genesis)
 
-            nethermind_json_path = path.join(output_folder)
+            nethermind_json_path = path.join(output_directory)
             os.makedirs(nethermind_json_path, exist_ok=True)
             with open(path.join(nethermind_json_path, f"{chainName}-{l1}.json"), "w+") as zstd_file:
                 json.dump(nethermind, zstd_file)
 
     logging.debug("Training for compression")
     samples = []
-    for root, _, files in os.walk(output_folder):
+    for root, _, files in os.walk(output_directory):
         for file in files:
             if not file.endswith(".json"):
                 continue
@@ -239,26 +239,26 @@ def main(output_folder):
     zcompressor = zstd.ZstdCompressor(dict_data=nethermind_dict)
 
     logging.debug("Compressing configuration files")
-    for root, _, files in os.walk(output_folder):
+    for root, _, files in os.walk(output_directory):
         for file in files:
             if not file.endswith(".json"):
                 continue
 
             with (
                 open(path.join(root, file), "rb") as json_config,
-                open(path.join(output_folder, f"{file}.zstd"), "wb+") as zstd_file,
+                open(path.join(output_directory, f"{file}.zstd"), "wb+") as zstd_file,
             ):
                 zcompressor.copy_stream(json_config, zstd_file)
 
     logging.debug("Storing compression dictionary")
-    with open(path.join(output_folder, "dictionary"), "wb+") as nethermind_dict_file:
+    with open(path.join(output_directory, "dictionary"), "wb+") as nethermind_dict_file:
         nethermind_dict_file.write(nethermind_dict.as_bytes)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optimism Superchain to Nethermind chain configuration converter")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode")
-    parser.add_argument("-o", "--output", default="Chains", help="output folder for the generated configurations")
+    parser.add_argument("-o", "--output", default="Chains", help="output directory for the generated configurations")
     args = parser.parse_args()
 
     logging.basicConfig(format="[%(levelname)s] %(message)s", level=logging.DEBUG if args.verbose else logging.INFO)
