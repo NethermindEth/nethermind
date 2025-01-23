@@ -29,11 +29,12 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
+COPY libsnmallocshim.so .
 
-RUN apt-get update && apt-get install -y libjemalloc-dev && rm -rf /var/lib/apt/lists/*
-RUN ln -sr /lib/x86_64-linux-gnu/libjemalloc.so.2 /lib/x86_64-linux-gnu/libjemalloc.so.1
+#RUN apt-get update && apt-get install -y libjemalloc-dev && rm -rf /var/lib/apt/lists/*
+#RUN ln -sr /lib/x86_64-linux-gnu/libjemalloc.so.2 /lib/x86_64-linux-gnu/libjemalloc.so.1
 
-ENV LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so
+ENV LD_PRELOAD=/nethermind/libsnmallocshim.so
 #ENV MALLOC_CONF=stats_print:true
 
 ENTRYPOINT ["./nethermind"]
