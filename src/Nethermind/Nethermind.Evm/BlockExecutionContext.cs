@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct BlockExecutionContext
+public readonly struct BlockExecutionContext
 {
     public BlockHeader Header { get; }
     public UInt256? BlobBaseFee { get; }
