@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Core;
-using FluentAssertions;
 using FluentAssertions.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -25,7 +22,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test;
 
-public class E2EDiscoveryTests
+[TestFixture(DiscoveryVersion.V4)]
+[TestFixture(DiscoveryVersion.V5)]
+public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
 
     /// <summary>
@@ -38,15 +37,20 @@ public class E2EDiscoveryTests
         spec.Bootnodes = [];
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
-        networkConfig.DiscoveryPort = AssignDiscoveryPort();
+        int port = AssignDiscoveryPort();
+        networkConfig.DiscoveryPort = port;
+        networkConfig.P2PPort = port;
+
+        IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
+        discoveryConfig.DiscoveryVersion = discoveryVersion;
         if (bootEnode is not null)
         {
-            networkConfig.Bootnodes = bootEnode.ToString()!;
+            discoveryConfig.Bootnodes = bootEnode.ToString()!;
         }
 
         return new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}"))
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"))
             .Build();
     }
 
@@ -72,15 +76,18 @@ public class E2EDiscoveryTests
 
         HashSet<PublicKey> nodeKeys = nodes.Select(ctx => ctx.Resolve<IEnode>().PublicKey).ToHashSet();
 
-        foreach (IContainer container in nodes)
+        foreach (IContainer node in nodes)
         {
-            await container.Resolve<PseudoNethermindRunner>().StartDiscovery(cancellationTokenSource.Token);
+            await node.Resolve<PseudoNethermindRunner>().StartDiscovery(cancellationTokenSource.Token);
         }
 
-        foreach (IContainer container in nodes)
+        foreach (IContainer node in nodes)
         {
-            var poolNodeSets = container.Resolve<IPeerPool>().Peers.Values.Select((p) => p.Node.Id).ToHashSet();
-            poolNodeSets.Should().BeEquivalentTo(nodeKeys);
+            IPeerPool pool = node.Resolve<IPeerPool>();
+            HashSet<PublicKey> expectedKeys = new HashSet<PublicKey>(nodeKeys);
+            expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
+
+            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(), Is.EquivalentTo(expectedKeys).After(1000, 100));
         }
     }
 }

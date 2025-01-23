@@ -30,7 +30,7 @@ namespace Nethermind.Consensus
             SetSigner(key);
         }
 
-        public Signer(ulong chainId, ProtectedPrivateKey key, ILogManager logManager)
+        public Signer(ulong chainId, IProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus
                 _key is not null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
         }
 
-        public void SetSigner(ProtectedPrivateKey? key)
+        public void SetSigner(IProtectedPrivateKey? key)
         {
             PrivateKey? pk = null;
             if (key is not null)

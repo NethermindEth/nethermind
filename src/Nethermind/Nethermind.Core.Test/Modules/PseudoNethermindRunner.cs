@@ -25,6 +25,10 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
     private IBlockchainProcessor? _blockchainProcessor;
     private IBlockProducerRunner? _blockProducerRunner;
     private IRlpxHost? _rlpxHost;
+    private ISessionMonitor? _sessionMonitor;
+    private IDiscoveryApp? _discoveryApp;
+    private IPeerPool? _peerPool;
+    private IPeerManager? _peerManager;
 
     public async Task StartBlockProcessing(CancellationToken cancellationToken)
     {
@@ -67,21 +71,26 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         // Protocol manager is what listen to rlpx for new connection which then send to sync peer pool.
         ctx.Resolve<IProtocolsManager>();
 
-        _rlpxHost ??= ctx.Resolve<IRlpxHost>();
-        await _rlpxHost.Init();
+        if (_rlpxHost is null)
+        {
+            _rlpxHost = ctx.Resolve<IRlpxHost>();
+            await _rlpxHost.Init();
+        }
 
         // Sync peer pool has a loop that refresh the peer TD and header.
         ctx.Resolve<ISyncPeerPool>().Start();
         ctx.Resolve<ISynchronizer>().Start();
     }
 
-    ISessionMonitor? _sessionMonitor;
-    IDiscoveryApp? _discoveryApp;
-    IPeerPool? _peerPool;
-    IPeerManager? _peerManager;
-
     public async Task StartDiscovery(CancellationToken cancellationToken)
     {
+        // Needed by peer manager
+        if (_rlpxHost is null)
+        {
+            _rlpxHost = ctx.Resolve<IRlpxHost>();
+            await _rlpxHost.Init();
+        }
+
         if (_sessionMonitor is not null) return;
         await ctx.Resolve<IStaticNodesManager>().InitAsync();
 
@@ -89,7 +98,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         _ = _discoveryApp.StartAsync(); // Bootstrap is not blocking by default
 
         _peerPool = ctx.Resolve<IPeerPool>();
-        _peerPool.Start();;
+        _peerPool.Start();
 
         _peerManager = ctx.Resolve<IPeerManager>();
         _peerManager.Start();

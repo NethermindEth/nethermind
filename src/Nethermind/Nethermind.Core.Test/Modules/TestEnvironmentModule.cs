@@ -39,12 +39,13 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
-            .AddSingleton<IDiscoveryApp, NullDiscoveryApp>()
 
             .AddSingleton<PseudoNethermindRunner>()
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
+            .AddSingleton<IIPResolver, FixedIpResolver>()
 
+            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(nodeKey))
             .AddSingleton<IEnode, INetworkConfig>(networkConfig =>
             {
                 IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
@@ -82,6 +83,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
                 INetworkConfig networkConfig = cfg.Resolve<INetworkConfig>();
                 networkConfig.DiscoveryDns = null;
+                networkConfig.LocalIp ??= "127.0.0.1";
+                networkConfig.ExternalIp ??= "127.0.0.1";
             });
     }
 }

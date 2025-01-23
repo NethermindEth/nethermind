@@ -14,17 +14,12 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Dns;
-using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.StaticNodes;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
@@ -35,7 +30,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class NetworkModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
+public class NetworkModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -46,6 +41,7 @@ public class NetworkModule(IInitConfig initConfig, INetworkConfig networkConfig)
             .AddSingleton<IPivot, Pivot>()
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
+            .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
 
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
@@ -75,6 +71,7 @@ public class NetworkModule(IInitConfig initConfig, INetworkConfig networkConfig)
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
+            // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
 
             .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
@@ -114,72 +111,26 @@ public class NetworkModule(IInitConfig initConfig, INetworkConfig networkConfig)
                     });
             })
 
+            // Some config migration
+            .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
+            {
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                if (networkConfig.DiagTracerEnabled)
+                {
+                    NetworkDiagTracer.IsEnabled = true;
+                }
+                if (NetworkDiagTracer.IsEnabled)
+                {
+                    NetworkDiagTracer.Start(logManager);
+                }
+                int maxPeersCount = networkConfig.ActivePeersMaxCount;
+                Network.Metrics.PeerLimit = maxPeersCount;
+                return networkConfig;
+            })
+
             ;
 
         // TODO: Add `WorldStateManager.InitializeNetwork`.
-
-        ConfigureDiscover(builder);
     }
 
-    private void ConfigureDiscover(ContainerBuilder builder)
-    {
-        // Discovery app
-        if (!initConfig.DiscoveryEnabled)
-        {
-            builder.AddSingleton<IDiscoveryApp, NullDiscoveryApp>();
-        }
-        else
-        {
-            builder.AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>();
-        }
-
-        if (!networkConfig.OnlyStaticPeers)
-        {
-            builder
-                // Enr discovery
-                .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
-                {
-                    ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
-                    if (networkConfig.DiscoveryDns == null)
-                    {
-                        string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
-                        networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
-                    }
-                    return networkConfig;
-                })
-                .AddSingleton<INodeSource>((ctx) =>
-                {
-                    IEthereumEcdsa ethereumEcdsa = ctx.Resolve<IEthereumEcdsa>();
-                    ILogManager logManager = ctx.Resolve<ILogManager>();
-
-                    // I do not use the key here -> API is broken - no sense to use the node signer here
-                    NodeRecordSigner nodeRecordSigner = new(ethereumEcdsa, new PrivateKeyGenerator().Generate());
-                    EnrRecordParser enrRecordParser = new(nodeRecordSigner);
-                    return new EnrDiscovery(enrRecordParser, networkConfig, logManager); // initialize with a proper network
-                })
-
-                // TODO: Node source to discovery 4 feeder.
-
-                // Connect discovery app.
-                .Bind<INodeSource, IDiscoveryApp>();
-        }
-
-        builder
-
-            // Node source
-            .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
-            .Bind<INodeSource, IStaticNodesManager>()
-
-            // another node source
-            .AddSingleton<NodesLoader>()
-            .Bind<INodeSource, NodesLoader>()
-
-            // composite node source
-            .AddComposite<INodeSource, CompositeNodeSource>()
-
-            // The actual thing that uses the INodeSource(s)
-            .AddSingleton<IPeerPool, PeerPool>()
-            .AddSingleton<IPeerManager, PeerManager>()
-            ;
-    }
 }
