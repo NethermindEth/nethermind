@@ -40,7 +40,7 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
 
         IReleaseSpec spec = SpecProvider.GetSpec(activation);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
         _ = BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedFeePerBlobGas);
         if (eip7516Enabled)
         {
