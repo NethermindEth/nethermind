@@ -43,7 +43,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IHandler<Transaction[]> getInclusionListTransactionsHandler,
+        IHandler<byte[][]> getInclusionListTransactionsHandler,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,

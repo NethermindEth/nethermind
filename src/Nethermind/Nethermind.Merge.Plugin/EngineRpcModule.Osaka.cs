@@ -4,7 +4,6 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -14,9 +13,10 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    protected readonly IHandler<Transaction[]> _getInclusionListTransactionsHandler;
-    public Task<ResultWrapper<Transaction[]>> engine_getInclusionList()
-        => GetInclusionListTransactions(EngineApiVersions.Osaka);
+    private readonly IHandler<byte[][]> _getInclusionListTransactionsHandler;
+
+    public Task<ResultWrapper<byte[][]>> engine_getInclusionList()
+        => _getInclusionListTransactionsHandler.Handle();
 
     /// <summary>
     /// Method parameter list is extended with <see cref="InclusionListTransactions"/> parameter.
@@ -27,7 +27,4 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Osaka);
-
-    protected Task<ResultWrapper<Transaction[]>> GetInclusionListTransactions(int version)
-        => _getInclusionListTransactionsHandler.Handle();
 }

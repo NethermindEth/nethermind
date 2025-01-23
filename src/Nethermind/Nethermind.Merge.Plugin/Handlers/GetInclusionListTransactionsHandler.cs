@@ -4,16 +4,19 @@
 using Nethermind.Core;
 using Nethermind.TxPool;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Rlp;
+using System.Linq;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetInclusionListTransactionsHandler(
     ITxPool txPool)
-    : IHandler<Transaction[]>
+    : IHandler<byte[][]>
 {
-    public ResultWrapper<Transaction[]> Handle()
+    public ResultWrapper<byte[][]> Handle()
     {
         Transaction[] txs = txPool.GetPendingTransactions();
-        return ResultWrapper<Transaction[]>.Success(txs);
+        byte[][] txBytes = [.. txs.Select(tx => Rlp.Encode(tx).Bytes)];
+        return ResultWrapper<byte[][]>.Success(txBytes);
     }
 }

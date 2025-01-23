@@ -54,8 +54,9 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             #endregion
 
             #region Osaka
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getInclusionList)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV5)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
             #endregion
         }
 
