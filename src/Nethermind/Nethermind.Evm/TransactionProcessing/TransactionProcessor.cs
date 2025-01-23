@@ -124,7 +124,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, blCtx.Header, tracer, opts);
+                return _systemTransactionProcessor.Execute(tx, new BlockExecutionContext(blCtx.Header, SpecProvider.GetSpec(blCtx.Header)), tracer, opts);
             }
 
             return Execute(tx, in blCtx, tracer, opts);
@@ -629,6 +629,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessedItems))
                 {
 
+                    // asdfasdf
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
                         : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
