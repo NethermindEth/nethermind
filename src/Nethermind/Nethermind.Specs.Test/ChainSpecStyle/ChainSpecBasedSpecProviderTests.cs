@@ -22,7 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
 
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
