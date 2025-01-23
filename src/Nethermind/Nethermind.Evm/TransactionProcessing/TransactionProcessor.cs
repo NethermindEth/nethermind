@@ -629,7 +629,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessedItems))
                 {
 
-                    // asdfasdf
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
                         : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
