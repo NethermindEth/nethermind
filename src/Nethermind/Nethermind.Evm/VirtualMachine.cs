@@ -697,9 +697,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingStorage : struct, IIsTracing
     {
         int programCounter = vmState.ProgramCounter;
-        ref readonly ExecutionEnvironment env = ref vmState.Env;
-        ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
-        ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
+        ref ExecutionEnvironment env = ref vmState.Env;
+        ref TxExecutionContext txCtx = ref env.TxExecutionContext;
+        ref BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
         ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
@@ -1520,18 +1520,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.BLOBBASEFEE:
                     {
                         if (!spec.BlobBaseFeeEnabled) goto InvalidInstruction;
-                        if (blkCtx.BlobBaseFee.HasValue)
-                        {
-                            result = blkCtx.BlobBaseFee.Value;
-                        }
-                        else
+                        if (!blkCtx.BlobBaseFee.HasValue)
                         {
                             if (!BlobGasCalculator.TryCalculateFeePerBlobGas(blkCtx.Header.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
                             {
                                 goto InvalidInstruction;
                             }
-                            result = feePerBlobGas;
+                            blkCtx.BlobBaseFee = feePerBlobGas;
                         }
+                        result = blkCtx.BlobBaseFee.Value;
 
                         gasAvailable -= GasCostOf.Base;
 

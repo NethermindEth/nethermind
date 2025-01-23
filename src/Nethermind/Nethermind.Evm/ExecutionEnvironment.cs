@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public readonly struct ExecutionEnvironment
+    public struct ExecutionEnvironment
     {
         public ExecutionEnvironment
         (
@@ -61,7 +61,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Transaction originator
         /// </summary>
-        public readonly TxExecutionContext TxExecutionContext;
+        public TxExecutionContext TxExecutionContext;
 
         /// <summary>
         /// ETH value transferred in this call.

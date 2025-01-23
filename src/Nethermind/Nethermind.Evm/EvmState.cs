@@ -171,7 +171,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
     internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
-    public ref readonly ExecutionEnvironment Env => ref _env;
+    public ref ExecutionEnvironment Env => ref _env;
     public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
     public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
 

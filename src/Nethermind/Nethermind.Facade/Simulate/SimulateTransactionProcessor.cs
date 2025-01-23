@@ -22,7 +22,8 @@ public sealed class SimulateTransactionProcessor(
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer,
+        ExecutionOptions opts)
     {
         if (!validate)
         {

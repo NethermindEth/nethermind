@@ -6,10 +6,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public readonly struct BlockExecutionContext
+public struct BlockExecutionContext
 {
     public BlockHeader Header { get; }
-    public UInt256? BlobBaseFee { get; }
+    public UInt256? BlobBaseFee { get; set; }
 
     public BlockExecutionContext(BlockHeader blockHeader)
     {
