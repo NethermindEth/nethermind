@@ -172,31 +172,30 @@ def to_nethermind(chain_name, l1, superchain, chain, genesis):
     return nethermind
 
 
-def main(temp_directory, output_directory):
+def main(tmp_dir, output_dir):
     logging.debug("Downloading Superchain registry")
     with urlopen(SUPERCHAIN_REPOSITORY) as zip_response:
         with ZipFile(BytesIO(zip_response.read())) as zip_file:
-            zip_file.extractall(path=temp_directory)
-    logging.debug("Unpacked superchain registry")
+            zip_file.extractall(path=tmp_dir)
 
     logging.debug("Loading Superchain registry index")
-    with open(path.join(temp_directory, "superchain-registry-main", "chainList.toml"), "rb") as json_config:
+    with open(path.join(tmp_dir, "superchain-registry-main", "chainList.toml"), "rb") as json_config:
         chainList = tomllib.load(json_config)
-    with open(path.join(temp_directory, "superchain-registry-main", "superchain", "extra", "dictionary"), "rb") as json_config:
+    with open(path.join(tmp_dir, "superchain-registry-main", "superchain", "extra", "dictionary"), "rb") as json_config:
         superchain_dict = zstd.ZstdCompressionDict(json_config.read())
         zdecompressor = zstd.ZstdDecompressor(dict_data=superchain_dict)
 
     for chain in chainList["chains"]:
         [l1, chainName] = chain["identifier"].split("/")
         if chainName in IGNORED_CHAINS or l1 in IGNORED_L1S:
-            logging.debug("Ignoring `{l1}-{chainName}`")
+            logging.info(f"Ignoring `{l1}-{chainName}`")
             continue
 
         logging.debug(f"Processing `{l1}-{chainName}`")
-        superchain_path = path.join(temp_directory, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
-        config_path = path.join(temp_directory, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
+        superchain_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
+        config_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
         genesis_path = path.join(
-            temp_directory,
+            tmp_dir,
             "superchain-registry-main",
             "superchain",
             "extra",
@@ -221,14 +220,12 @@ def main(temp_directory, output_directory):
 
             nethermind = to_nethermind(chainName, l1, superchain, chain, genesis)
 
-            nethermind_json_path = path.join(output_directory)
-            os.makedirs(nethermind_json_path, exist_ok=True)
-            with open(path.join(nethermind_json_path, f"{chainName}-{l1}.json"), "w+") as zstd_file:
+            with open(path.join(tmp_dir, f"{chainName}-{l1}.json"), "w+") as zstd_file:
                 json.dump(nethermind, zstd_file)
 
-    logging.debug("Training for compression")
+    logging.debug("Training compression dictionary")
     samples = []
-    for root, _, files in os.walk(output_directory):
+    for root, _, files in os.walk(tmp_dir):
         for file in files:
             if not file.endswith(".json"):
                 continue
@@ -236,24 +233,24 @@ def main(temp_directory, output_directory):
             json_config_path = path.join(root, file)
             with open(json_config_path, "rb") as json_config:
                 samples.append(json_config.read())
-
     nethermind_dict = zstd.train_dictionary(2**16, samples, threads=-1)
     zcompressor = zstd.ZstdCompressor(dict_data=nethermind_dict)
 
     logging.debug("Compressing configuration files")
-    for root, _, files in os.walk(output_directory):
+    os.makedirs(output_dir, exist_ok=True)
+    for root, _, files in os.walk(tmp_dir):
         for file in files:
             if not file.endswith(".json"):
                 continue
 
             with (
                 open(path.join(root, file), "rb") as json_config,
-                open(path.join(output_directory, f"{file}.zstd"), "wb+") as zstd_file,
+                open(path.join(output_dir, f"{file}.zstd"), "wb+") as zstd_file,
             ):
                 zcompressor.copy_stream(json_config, zstd_file)
 
     logging.debug("Storing compression dictionary")
-    with open(path.join(output_directory, "dictionary"), "wb+") as nethermind_dict_file:
+    with open(path.join(output_dir, "dictionary"), "wb+") as nethermind_dict_file:
         nethermind_dict_file.write(nethermind_dict.as_bytes())
 
 
