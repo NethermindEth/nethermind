@@ -435,7 +435,7 @@ public class TransactionProcessorTests
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
         var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
-        _transactionProcessor.Execute(initTx,  blkCtx, NullTxTracer.Instance);
+        _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
