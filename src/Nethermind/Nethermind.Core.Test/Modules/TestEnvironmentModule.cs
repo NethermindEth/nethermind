@@ -85,6 +85,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 networkConfig.DiscoveryDns = null;
                 networkConfig.LocalIp ??= "127.0.0.1";
                 networkConfig.ExternalIp ??= "127.0.0.1";
+                networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
             });
     }
 }

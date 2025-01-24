@@ -333,7 +333,7 @@ public class InitializeNetwork : IStep
         _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
-            _api.Enode!,
+            _api.NodeKey!,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
