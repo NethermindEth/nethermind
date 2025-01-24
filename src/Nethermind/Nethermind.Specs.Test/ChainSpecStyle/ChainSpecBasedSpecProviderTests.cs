@@ -38,10 +38,10 @@ public class ChainSpecBasedSpecProviderTests
     [NonParallelizable]
     public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
-        ChainSpec chainSpec = loader.LoadFromFile(path);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
@@ -81,10 +81,10 @@ public class ChainSpecBasedSpecProviderTests
     [NonParallelizable]
     public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
-        ChainSpec chainSpec = loader.LoadFromFile(path);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
@@ -454,9 +454,10 @@ public class ChainSpecBasedSpecProviderTests
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
-        return loader.LoadFromFile(path);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        return chainSpec;
     }
 
     [Test]

@@ -1543,9 +1543,9 @@ public partial class EngineModuleTests
     [Test]
     public void Should_return_expected_capabilities_for_mainnet()
     {
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
