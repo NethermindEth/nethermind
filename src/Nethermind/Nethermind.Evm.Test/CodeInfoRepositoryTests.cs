@@ -137,7 +137,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository sut = new();
 
-        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(delegationCode).ValueHash256);
+        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(code).ValueHash256);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]

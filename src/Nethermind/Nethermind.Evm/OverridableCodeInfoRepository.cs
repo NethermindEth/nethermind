@@ -18,6 +18,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
+        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
+    }
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
         delegationAddress = null;
         return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
