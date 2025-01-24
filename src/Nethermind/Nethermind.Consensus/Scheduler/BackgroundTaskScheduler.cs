@@ -46,7 +46,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         _mainCancellationTokenSource = new CancellationTokenSource();
         _blockProcessorCancellationTokenSource = new CancellationTokenSource();
-        _taskQueue = Channel.CreateUnbounded<IActivity>();
+        _taskQueue = Channel.CreateBounded<IActivity>(1_000_000);
         _logger = logManager.GetClassLogger();
         _blockProcessor = blockProcessor;
         _restartQueueSignal = new ManualResetEvent(true);
