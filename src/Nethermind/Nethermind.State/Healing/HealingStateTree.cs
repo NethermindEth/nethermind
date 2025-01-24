@@ -35,7 +35,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart(), rootHash ?? RootHash))
+            if (Recover(e.Hash, e.Path.ToNibble(), rootHash ?? RootHash))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -52,7 +52,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart(), RootHash))
+            if (Recover(e.Hash, e.Path.ToNibble(), RootHash))
             {
                 base.Set(rawKey, value);
             }

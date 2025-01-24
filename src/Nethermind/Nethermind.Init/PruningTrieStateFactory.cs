@@ -131,17 +131,11 @@ public class PruningTrieStateFactory(
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
-        TrieStore trieStore = syncConfig.TrieHealing
-            ? new HealingTrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                logManager)
-            : new TrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                logManager);
+        TrieStore trieStore =  new TrieStore(
+            mainNodeStorage,
+            pruningStrategy,
+            persistenceStrategy,
+            logManager);
 
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;

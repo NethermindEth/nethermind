@@ -66,13 +66,8 @@ public class WorldStateManager : IWorldStateManager
         remove => _trieStore.ReorgBoundaryReached -= value;
     }
 
-    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
+    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
     {
-        if (_trieStore is HealingTrieStore healingTrieStore)
-        {
-            healingTrieStore.InitializeNetwork(hashRecovery);
-        }
-
         if (_worldState is HealingWorldState healingWorldState)
         {
             healingWorldState.InitializeNetwork(nodeRecovery);

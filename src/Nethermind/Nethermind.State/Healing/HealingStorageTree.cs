@@ -34,7 +34,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
+            if (Recover(e.Hash, e.Path.ToNibble()))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -51,7 +51,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
+            if (Recover(e.Hash, e.Path.ToNibble()))
             {
                 base.Set(rawKey, value);
             }

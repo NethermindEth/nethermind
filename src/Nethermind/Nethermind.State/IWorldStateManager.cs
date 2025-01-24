@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -33,7 +31,7 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
     IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
-    void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
+    void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
 
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
