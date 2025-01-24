@@ -51,12 +51,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
                 return new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
             })
-            .AddAdvance<HandshakeService>(cfg =>
-            {
-                cfg.As<IHandshakeService>();
-                cfg.WithParameter(TypedParameter.From(nodeKey));
-            })
-
             .AddKeyedSingleton(NodeKey, nodeKey)
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
@@ -70,22 +64,23 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                     // It just need to override this.
                     HasSynced = true
                 };
-            });
+            })
 
-        builder
-            .RegisterBuildCallback((cfg) =>
+            .AddDecorator<ISyncConfig>((_, syncConfig) =>
             {
-                ISyncConfig syncConfig = cfg.Resolve<ISyncConfig>();
                 syncConfig.GCOnFeedFinished = false;
                 syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
                 syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
                 syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
-
-                INetworkConfig networkConfig = cfg.Resolve<INetworkConfig>();
+                return syncConfig;
+            })
+            .AddDecorator<INetworkConfig>((_, networkConfig) =>
+            {
                 networkConfig.DiscoveryDns = null;
                 networkConfig.LocalIp ??= "127.0.0.1";
                 networkConfig.ExternalIp ??= "127.0.0.1";
                 networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
+                return networkConfig;
             });
     }
 }
