@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/base-sepolia.json.zstd",
-    "BaseDbPath": "nethermind_db/base-sepolia",
-    "LogFileName": "base-sepolia.logs.txt"
+    "ChainSpecPath": "chainspec/metal-sepolia.json.zstd",
+    "BaseDbPath": "nethermind_db/metal-sepolia",
+    "LogFileName": "metal-sepolia.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -31,6 +31,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://sepolia-sequencer.base.org"
+    "SequencerUrl": "https://testnet.rpc.metall2.com"
   }
 }

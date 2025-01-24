@@ -1,11 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-mainnet.json",
-    "GenesisHash": "0x70d316d2e0973b62332ba2e9768dd7854298d7ffe77f0409ffdb8d859f2d3fa3",
+    "ChainSpecPath": "chainspec/worldchain-mainnet.json.zstd",
     "BaseDbPath": "nethermind_db/worldchain-mainnet",
-    "LogFileName": "worldchain-mainnet.logs.txt",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "worldchain-mainnet.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -27,8 +25,7 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 2,
-    "TargetBlockGasLimit": 30000000
+    "SecondsPerSlot": 2
   },
   "Merge": {
     "Enabled": true
