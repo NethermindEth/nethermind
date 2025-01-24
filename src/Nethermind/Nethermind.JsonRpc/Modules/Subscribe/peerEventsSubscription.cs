@@ -7,31 +7,47 @@ using Nethermind.Network;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Blockchain;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class PeerEventsSubscription : Subscription
     {
         private readonly IPeerPool _peerPool;
-        private readonly ISession _session;
+        //private readonly ISession _session;
+        private readonly IRlpxHost _rlpxHost;
+        private readonly ISessionMonitor _sessionMonitor;
 
 
         public PeerEventsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ILogManager? logManager,
             IPeerPool? peerPool,
-            ISession? session
+            //ISession? session,
+            IRlpxHost? rlpxHost
             )
             : base(jsonRpcDuplexClient)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-            _session = session ?? throw new ArgumentNullException(nameof(session));
+            //_session = session ?? throw new ArgumentNullException(nameof(session));
+            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
+            //_sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
 
             _peerPool.PeerAdded += OnPeerAdded;
             _peerPool.PeerRemoved += OnPeerRemoved;
-            _session.MsgReceived += OnMsgReceived;
-            _session.MsgDelivered += OnMsgDelivered;
+
+            // subscribe to each session that already exist
+            _sessionMonitor = _rlpxHost.SessionMonitor;
+            foreach (ISession session in _sessionMonitor.Sessions.Values)
+            {
+                session.MsgDelivered += OnMsgDelivered;
+                session.MsgReceived += OnMsgReceived;
+
+            }
+
+            _rlpxHost.SessionCreated += OnSessionCreated;
+            
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded and PeerRemoved.");
         }
 
@@ -121,6 +137,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed message sned.");
             });
+        }
+
+        private void OnSessionCreated(object? sender, SessionEventArgs args)
+        {
+            args.Session.MsgDelivered += OnMsgDelivered;
+            args.Session.MsgReceived += OnMsgReceived;
         }
 
         public override string Type => SubscriptionType.AdminSubscription.PeerEvents;

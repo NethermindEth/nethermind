@@ -326,5 +326,7 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
+
+        public ISessionMonitor SessionMonitor => _sessionMonitor;
     }
 }

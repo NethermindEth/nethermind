@@ -49,6 +49,8 @@ namespace Nethermind.Network
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
 
+        public ConcurrentDictionary<Guid, ISession> Sessions => _sessions;
+
         public void AddSession(ISession session)
         {
             session.Disconnected += OnDisconnected;
