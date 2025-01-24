@@ -16,7 +16,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig): Module
+public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

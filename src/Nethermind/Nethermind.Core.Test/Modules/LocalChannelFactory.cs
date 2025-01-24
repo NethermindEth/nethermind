@@ -137,7 +137,7 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
 
         protected override void DoWrite(ChannelOutboundBuffer input)
         {
-            for (;;)
+            for (; ; )
             {
                 object msg = input.Current;
                 if (msg == null)
