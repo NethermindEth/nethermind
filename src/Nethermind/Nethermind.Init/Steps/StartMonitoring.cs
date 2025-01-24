@@ -16,7 +16,7 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(StartMonitoring))]
+[RunnerStepDependencies(typeof(InitializeNetwork))]
 public class StartMonitoring : IStep
 {
     private readonly IApiWithNetwork _api;
