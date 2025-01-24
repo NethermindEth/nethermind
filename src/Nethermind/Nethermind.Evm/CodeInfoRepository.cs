@@ -64,6 +64,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
+        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
+    }
+
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
         delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
         {
@@ -74,7 +79,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
-            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
+            if (followDelegation)
+                cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
         }
 
         return cachedCodeInfo;
@@ -159,9 +165,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
-            : TryGetDelegatedAddress(codeInfo.MachineCode.Span, out Address? delegationAddress)
-                ? worldState.GetCodeHash(delegationAddress)
-                : codeHash;
+            : codeHash;
     }
 
     /// <remarks>
