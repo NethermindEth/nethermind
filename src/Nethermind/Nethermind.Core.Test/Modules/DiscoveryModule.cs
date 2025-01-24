@@ -58,7 +58,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                         discoveryConfig.Bootnodes += "," + string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
                     }
                 }
-                else
+                else if (chainSpec.Bootnodes is not null)
                 {
                     discoveryConfig.Bootnodes = string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
                 }
