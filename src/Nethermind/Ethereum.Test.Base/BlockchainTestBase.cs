@@ -79,17 +79,17 @@ public abstract class BlockchainTestBase
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            [((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, test.Network)];
+            [((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
         if (test.NetworkAfterTransition is not null)
         {
-               transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
+            transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
         ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
             ? GnosisSpecProvider.Instance
             : new CustomSpecProvider(transitions.ToArray());
 
-        if (specProvider.GenesisSpec != Frontier.Instance)
+        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
         {
             Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
         }
