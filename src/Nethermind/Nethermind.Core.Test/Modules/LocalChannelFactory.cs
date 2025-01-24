@@ -1,12 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Local;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using NonBlocking;
+using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -30,6 +37,11 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
     public IChannel CreateClient()
     {
         return new LocalClientChannel(networkGroup, LocalEndpoint);
+    }
+
+    public IChannel CreateDatagramChannel()
+    {
+        return new LocalDatagramChannel(networkGroup);
     }
 
     private class LocalClientChannel(string networkGroup, IPEndPoint localIPEndpoint) : LocalChannel
@@ -95,6 +107,127 @@ internal class LocalChannelFactory(string networkGroup, INetworkConfig networkCo
         public override int GetHashCode()
         {
             return Id.GetHashCode();
+        }
+    }
+
+    private class LocalDatagramChannel(string networkGroup) : EmbeddedChannel(EmbeddedChannelId.Instance, false, false, []), IDatagramChannel
+    {
+        private static ConcurrentDictionary<(string, EndPoint), WeakReference<LocalDatagramChannel>> channelRegistry = new();
+
+        private EndPoint? _bondedEndpoint;
+
+        protected override bool IsCompatible(IEventLoop eventLoop)
+        {
+            // Not sure why its only compatible with EmbeddedEventLoop originally..
+            return true;
+        }
+
+        protected override void DoBind(EndPoint localAddress)
+        {
+            channelRegistry.TryAdd((networkGroup, localAddress), new WeakReference<LocalDatagramChannel>(this));
+            _bondedEndpoint = localAddress;
+            base.DoBind(localAddress);
+        }
+
+        public override async Task CloseAsync()
+        {
+            channelRegistry.TryRemove((networkGroup, _bondedEndpoint!), out _);
+            await base.CloseAsync();
+        }
+
+        protected override void DoWrite(ChannelOutboundBuffer input)
+        {
+            for (; ; )
+            {
+                object msg = input.Current;
+                if (msg == null)
+                {
+                    break;
+                }
+
+                if (msg is DatagramPacket addressedEnvelope)
+                {
+                    if (channelRegistry.TryGetValue((networkGroup, addressedEnvelope.Recipient), out WeakReference<LocalDatagramChannel>? reference) && reference.TryGetTarget(out LocalDatagramChannel? recipient))
+                    {
+                        DatagramPacket newEnvelop = new DatagramPacket(addressedEnvelope.Content, _bondedEndpoint, addressedEnvelope.Recipient);
+                        ReferenceCountUtil.Retain(newEnvelop);
+                        recipient!.WriteInbound(newEnvelop);
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Unsupported message type {msg.GetType()}");
+                }
+
+                input.Remove();
+            }
+        }
+
+        public bool IsConnected()
+        {
+            return true;
+        }
+
+        public Task JoinGroup(IPEndPoint multicastAddress)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task JoinGroup(IPEndPoint multicastAddress, TaskCompletionSource promise)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source,
+            TaskCompletionSource promise)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task LeaveGroup(IPEndPoint multicastAddress)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task LeaveGroup(IPEndPoint multicastAddress, TaskCompletionSource promise)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source,
+            TaskCompletionSource promise)
+        {
+            return Task.CompletedTask;
         }
     }
 }

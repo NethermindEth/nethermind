@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto
 {
-    public class ProtectedPrivateKey : ProtectedData<PrivateKey>
+    public class ProtectedPrivateKey : ProtectedData<PrivateKey>, IProtectedPrivateKey
     {
         public ProtectedPrivateKey(PrivateKey privateKey, string keyStoreDir,
             ICryptoRandom? random = null, ITimestamper? timestamper = null)

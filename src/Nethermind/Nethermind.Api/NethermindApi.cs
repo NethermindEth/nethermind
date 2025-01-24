@@ -233,12 +233,12 @@ namespace Nethermind.Api
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ISubscriptionFactory? SubscriptionFactory { get; set; }
-        public ProtectedPrivateKey? NodeKey { get; set; }
+        public IProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>
         /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>.
         /// </summary>
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; }

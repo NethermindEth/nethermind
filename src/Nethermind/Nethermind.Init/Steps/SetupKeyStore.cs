@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
                     .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
-                ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
+                IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
                 IMiningConfig miningConfig = get.Config<IMiningConfig>();
                 //Don't load the local key if an external signer is configured

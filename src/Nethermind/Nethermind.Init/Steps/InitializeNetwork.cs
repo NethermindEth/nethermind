@@ -257,8 +257,6 @@ public class InitializeNetwork : IStep
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
             _api.NodeStatsManager, _api.IpResolver
         );
-
-        _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }
 
     private Task StartSync()
@@ -335,7 +333,7 @@ public class InitializeNetwork : IStep
         _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
-            _api.Enode!,
+            _api.NodeKey!,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,

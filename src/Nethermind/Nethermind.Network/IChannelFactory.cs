@@ -7,7 +7,9 @@ namespace Nethermind.Network;
 
 public interface IChannelFactory
 {
-    public IServerChannel CreateServer();
+    IServerChannel CreateServer();
 
-    public IChannel CreateClient();
+    IChannel CreateClient();
+
+    IChannel CreateDatagramChannel();
 }

@@ -5,14 +5,15 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -33,11 +34,11 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        public string? LocalIp { get; set; }
+        private string? LocalIp { get; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
-        private readonly Logging.ILogger _logger;
+        private readonly ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private readonly IEventExecutorGroup _group;
@@ -45,45 +46,18 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
 
+        private readonly TimeSpan _shutdownQuietPeriod;
+        private readonly TimeSpan _shutdownCloseTimeout;
+
         public RlpxHost(
             IMessageSerializationService serializationService,
-            IEnode localEnode,
+            [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
             ILogManager logManager,
-            IChannelFactory? channelFactory = null
-        ) : this(
-            serializationService,
-            localEnode.PublicKey,
-            networkConfig.ProcessingThreadCount,
-            networkConfig.P2PPort,
-            networkConfig.LocalIp,
-            networkConfig.ConnectTimeoutMs,
-            handshakeService,
-            sessionMonitor,
-            disconnectsAnalyzer,
-            logManager,
-            TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs),
-            channelFactory
-        )
-        { }
-
-        public RlpxHost(
-            IMessageSerializationService serializationService,
-            PublicKey localNodeId,
-            int networkProcessingThread,
-            int localPort,
-            string? localIp,
-            int connectTimeoutMs,
-            IHandshakeService handshakeService,
-            ISessionMonitor sessionMonitor,
-            IDisconnectsAnalyzer disconnectsAnalyzer,
-            ILogManager logManager,
-            TimeSpan sendLatency,
-            IChannelFactory? channelFactory = null
-        )
+            IChannelFactory? channelFactory = null)
         {
             // .NET Core definitely got the easy logging setup right :D
             // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
@@ -100,6 +74,7 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
+            int networkProcessingThread = networkConfig.ProcessingThreadCount;
             if (networkProcessingThread <= 1)
             {
                 _group = new SingleThreadEventLoop();
@@ -114,12 +89,14 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _disconnectsAnalyzer = disconnectsAnalyzer ?? throw new ArgumentNullException(nameof(disconnectsAnalyzer));
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-            LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
-            LocalPort = localPort;
-            LocalIp = localIp;
-            _sendLatency = sendLatency;
-            _connectTimeout = TimeSpan.FromMilliseconds(connectTimeoutMs);
+            LocalNodeId = nodeKey.PublicKey;
+            LocalPort = networkConfig.P2PPort;
+            LocalIp = networkConfig.LocalIp;
+            _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
+            _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
+            _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
+            _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
         }
 
         public async Task Init()
@@ -294,7 +271,6 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            //            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -305,12 +281,9 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
-            // every [quietPeriod] we check if there were any event in the loop - if none then we can shutdown
-            TimeSpan quietPeriod = TimeSpan.FromMilliseconds(100);
-            TimeSpan nettyCloseTimeout = TimeSpan.FromMilliseconds(1000);
             Task closingTask = Task.WhenAll(
-                _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(quietPeriod, nettyCloseTimeout) : Task.CompletedTask,
-                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout) : Task.CompletedTask);
+                _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
+                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask);
 
             // below comment may arise from not understanding the quiet period but the resolution is correct
             // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
