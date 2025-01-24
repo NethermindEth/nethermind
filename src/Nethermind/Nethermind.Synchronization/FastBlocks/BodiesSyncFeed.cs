@@ -6,15 +6,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -40,7 +37,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncPointers _syncPointers;
-        private readonly IDb _blocksDb;
 
         private SyncStatusList _syncStatusList;
 
@@ -56,7 +52,6 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
@@ -67,7 +62,6 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool;
             _syncConfig = syncConfig;
             _syncReport = syncReport;
-            _blocksDb = blocksDb;
             _flushDbInterval = flushDbInterval;
 
             if (!_syncConfig.FastSync)
@@ -169,7 +163,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private void Flush()
         {
             long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
-            _blocksDb.Flush();
+
+            _blockTree.Flush(FlushReason.InsertBlocks);
+
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
@@ -277,7 +273,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void InsertOneBlock(Block block)
         {
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, blockWriteFlags: WriteFlags.DisableWAL);
             _syncStatusList.MarkInserted(block.Number);
         }
 

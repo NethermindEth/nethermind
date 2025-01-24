@@ -80,6 +80,12 @@ public class HeaderStore : IHeaderStore
         return Get(blockHash)?.Number;
     }
 
+    public void Flush()
+    {
+        _headerDb.Flush();
+        _blockNumberDb.Flush();
+    }
+
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
         Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);

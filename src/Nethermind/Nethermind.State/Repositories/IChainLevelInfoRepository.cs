@@ -11,5 +11,6 @@ namespace Nethermind.State.Repositories
         void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null);
         BatchWrite StartBatch();
         ChainLevelInfo? LoadLevel(long number);
+        void Flush();
     }
 }

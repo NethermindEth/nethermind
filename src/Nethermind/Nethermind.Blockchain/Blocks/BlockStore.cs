@@ -96,4 +96,6 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     {
         _blockCache.Set(block.Hash, block);
     }
+
+    public void Flush() => blockDb.Flush();
 }

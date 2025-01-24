@@ -203,7 +203,7 @@ public class EraImporter(
     private void InsertBlockAndReceipts(Block b, TxReceipt[] r, long lastBlockNumber)
     {
         if (blockTree.FindBlock(b.Number) is null)
-            blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, blockWriteFlags: WriteFlags.DisableWAL);
         if (!receiptStorage.HasBlock(b.Number, b.Hash!))
             receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }
