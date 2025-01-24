@@ -22,7 +22,7 @@
   },
   "Hive": {
     "Enabled": true,
-    "ChainFile": "C:\\chains\\blocks_2_td_393120.rlp",
+    "ChainFile": "C:\\chains\\block1.rlp",
     "GenesisFilePath": "genesis.json",
     "BlocksDir": "blocks",
     "KeysDir": "keys"
