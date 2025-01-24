@@ -124,6 +124,11 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             FulfillFunc = fulfillFunc,
         };
 
+        int tasksScheduled = _taskQueue.Reader.Count;
+        if (tasksScheduled % 1000 == 0)
+        {
+            _logger.Warn($"there are {tasksScheduled} tasks scheduled");
+        }
         if (!_taskQueue.Writer.TryWrite(activity))
         {
             request.TryDispose();
