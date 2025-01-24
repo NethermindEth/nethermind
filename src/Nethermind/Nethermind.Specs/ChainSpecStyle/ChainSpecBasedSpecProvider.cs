@@ -196,27 +196,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip3607Enabled = (chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.ValidateChainId = (chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
             releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(chainSpec.Parameters.ValidateReceiptsTransition ?? 0, chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
-
-            void SetMaxAndTargetBlobCount(ChainSpec chainSpec, ReleaseSpec spec, ulong? releaseStartTimestamp = null)
-            {
-                (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork(chainSpec, releaseStartTimestamp);
-                if (fork is null) return;
-
-                if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name, out ChainSpecBlobCountJson blobCount) ||
-                    chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name, out blobCount))
-                {
-                    spec.TargetBlobCount = blobCount.Target;
-                    spec.MaxBlobCount = blobCount.Max;
-                    spec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
-                }
-                else
-                {
-                    spec.TargetBlobCount = 3;
-                    spec.MaxBlobCount = 6;
-                    spec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
-                }
-            }
-            SetMaxAndTargetBlobCount(chainSpec, releaseSpec, releaseStartTimestamp);
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
@@ -266,19 +245,41 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
             }
 
-            return releaseSpec;
-        }
+            SetMaxAndTargetBlobCount();
 
-        private (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork(ChainSpec chainSpec, ulong? releaseStartTimestamp = null)
-        {
-            if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+            return releaseSpec;
+
+            void SetMaxAndTargetBlobCount()
             {
-                return (Prague.Instance, Cancun.Instance);
+                (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork();
+                if (fork is null) return;
+
+                if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name, out ChainSpecBlobCountJson blobCount) ||
+                    chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name, out blobCount))
+                {
+                    releaseSpec.TargetBlobCount = blobCount.Target;
+                    releaseSpec.MaxBlobCount = blobCount.Max;
+                    releaseSpec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
+                }
+                else
+                {
+                    releaseSpec.TargetBlobCount = 3;
+                    releaseSpec.MaxBlobCount = 6;
+                    releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+                }
+            }
+            (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork()
+            {
+                if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+                {
+                    return (Prague.Instance, Cancun.Instance);
+                }
+
+                return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                    ? (Cancun.Instance, Shanghai.Instance)
+                    : (null, null);
             }
 
-            return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
-                ? (Cancun.Instance, Shanghai.Instance)
-                : (null, null);
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
