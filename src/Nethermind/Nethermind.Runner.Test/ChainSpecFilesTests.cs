@@ -18,7 +18,7 @@ namespace Nethermind.Runner.Test
 
         public ChainSpecFilesTests()
         {
-            _loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), NullLogger.Instance);
+            _loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         }
 
         [TestCase("foundation", 1UL)]
