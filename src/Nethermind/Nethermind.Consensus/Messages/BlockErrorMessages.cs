@@ -95,8 +95,8 @@ public static class BlockErrorMessages
     public static string HeaderGasUsedMismatch(long expected, long actual) =>
         $"HeaderGasUsedMismatch: Gas used in header does not match calculated. Expected {expected}, got {actual}";
 
-    public static readonly string BlobGasUsedAboveBlockLimit =
-        "BlockBlobGasExceeded: A block cannot have more than {0} blob gas, blobs count {1}, blobs gas used: {2}.";
+    public static string BlobGasUsedAboveBlockLimit(ulong blobGas, int blobsCount, ulong blobsGasUsed) =>
+        $"BlockBlobGasExceeded: A block cannot have more than {blobGas} blob gas, blobs count {blobsCount}, blobs gas used: {blobsGasUsed}.";
 
     public static string IncorrectExcessBlobGas(ulong? expected, ulong? actual) =>
         $"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated. Expected {expected}, got {actual}";
