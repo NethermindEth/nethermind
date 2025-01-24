@@ -36,6 +36,10 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         IConfigProvider configProvider = new ConfigProvider();
         ChainSpec spec = new ChainSpecLoader(new EthereumJsonSerializer()).LoadEmbeddedOrFromFile("chainspec/foundation.json", default);
         spec.Bootnodes = [];
+        if (bootEnode is not null)
+        {
+            spec.Bootnodes = [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
+        }
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
@@ -44,10 +48,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
-        if (bootEnode is not null)
-        {
-            discoveryConfig.Bootnodes = bootEnode.ToString()!;
-        }
 
         return new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))

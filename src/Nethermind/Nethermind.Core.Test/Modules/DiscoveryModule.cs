@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Crypto;
@@ -48,6 +49,20 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             {
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+
+                // Was in `UpdateDiscoveryConfig` step.
+                if (discoveryConfig.Bootnodes != string.Empty)
+                {
+                    if (chainSpec.Bootnodes.Length != 0)
+                    {
+                        discoveryConfig.Bootnodes += "," + string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
+                    }
+                }
+                else
+                {
+                    discoveryConfig.Bootnodes = string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
+                }
+
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
