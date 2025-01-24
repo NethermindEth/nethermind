@@ -96,6 +96,7 @@ namespace Nethermind.Init.Steps
             }
 
             await Task.WhenAll(_allPending);
+            ReviewFailedAndThrow();
         }
 
         private readonly ConcurrentQueue<Task> _allPending = new();
