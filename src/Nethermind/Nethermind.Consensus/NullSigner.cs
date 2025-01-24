@@ -26,7 +26,7 @@ namespace Nethermind.Consensus
 
         public void SetSigner(PrivateKey key) { }
 
-        public void SetSigner(ProtectedPrivateKey key) { }
+        public void SetSigner(IProtectedPrivateKey key) { }
 
         public Signature Sign(BlockHeader header) { return new(new byte[65]); }
     }
