@@ -299,4 +299,24 @@ public class BlockchainBridgeTests
 
         _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
     }
+
+    [Test]
+    public void Call_sets_maxFeePerBlobGas()
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(0)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new() { Type = TxType.Blob, MaxFeePerBlobGas = null, BlobVersionedHashes = [] };
+
+        _blockchainBridge.Call(header, tx);
+        _transactionProcessor.Received().CallAndRestore(
+            Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Any<ITxTracer>());
+    }
 }
