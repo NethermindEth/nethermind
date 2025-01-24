@@ -178,7 +178,6 @@ def to_nethermind_runner(chain_name, l1, chain):
         "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
         "Init": {
             "ChainSpecPath": f"chainspec/{qualified_name}.json.zstd",
-            "GenesisHash": "0x70d316d2e0973b62332ba2e9768dd7854298d7ffe77f0409ffdb8d859f2d3fa3",
             "BaseDbPath": f"nethermind_db/{qualified_name}",
             "LogFileName": f"{qualified_name}.logs.txt",
         },
