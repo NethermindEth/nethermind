@@ -125,7 +125,7 @@ For more info, see [Building standalone binaries](https://docs.nethermind.io/dev
 
 ## Contributing
 
-BEFORE you start work on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
+BEFORE you start to work on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
 
 ## Security
 
