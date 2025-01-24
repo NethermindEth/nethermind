@@ -268,28 +268,26 @@ def main(tmp_dir, output_dir):
 
     logging.debug("Training compression dictionary")
     samples = []
-    for root, _, files in os.walk(tmp_dir):
-        for file in files:
-            if not file.endswith(".json"):
-                continue
+    for file in os.listdir(tmp_dir):
+        if not file.endswith(".json"):
+            continue
 
-            json_config_path = path.join(root, file)
-            with open(json_config_path, "rb") as json_config:
-                samples.append(json_config.read())
+        with open(path.join(tmp_dir, file), "rb") as json_config:
+            samples.append(json_config.read())
     nethermind_dict = zstd.train_dictionary(2**16, samples, threads=-1)
     zcompressor = zstd.ZstdCompressor(dict_data=nethermind_dict)
 
     logging.debug("Compressing chainspec files")
-    for root, _, files in os.walk(tmp_dir):
-        for file in files:
-            if not file.endswith(".json"):
-                continue
+    for file in os.listdir(tmp_dir):
+        if not file.endswith(".json"):
+            continue
 
-            with (
-                open(path.join(root, file), "rb") as json_config,
-                open(path.join(output_dir, "chainspec", f"{file}.zstd"), "wb+") as zstd_file,
-            ):
-                zcompressor.copy_stream(json_config, zstd_file)
+        logging.debug(f"Compressing `{file}`")
+        with (
+            open(path.join(tmp_dir, file), "rb") as json_config,
+            open(path.join(output_dir, "chainspec", f"{file}.zstd"), "wb+") as zstd_file,
+        ):
+            zcompressor.copy_stream(json_config, zstd_file)
 
     logging.debug("Storing compression dictionary")
     with open(path.join(output_dir, "chainspec", "dictionary"), "wb+") as nethermind_dict_file:
