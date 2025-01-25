@@ -576,7 +576,7 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
-        SyncPeerMock syncPeerMock1 = new(remoteBlockTree,  remotePublicKey: TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
+        SyncPeerMock syncPeerMock1 = new(remoteBlockTree, remotePublicKey: TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
         PeerInfo peer1 = new(syncPeerMock1);
         ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
         SyncPeerMock syncPeerMock2 = new(remoteBlockTree, remotePublicKey: TestItem.PublicKeyB, remoteSyncServer: remoteServer2);

@@ -13,7 +13,7 @@ using Nethermind.State.SnapServer;
 
 namespace Nethermind.Synchronization.Test;
 
-public class MockSnapSyncPeer(ISnapServer snapServer): ISnapSyncPeer
+public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 {
     private static readonly byte[] _emptyBytes = [0];
     public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
