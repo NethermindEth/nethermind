@@ -396,7 +396,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         [StackTraceHidden]
         static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak)
         {
-            throw new MissingTrieNodeException($"Node {keccak} is missing from the DB", address, path, keccak);
+            throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
         }
     }
 

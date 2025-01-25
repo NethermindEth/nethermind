@@ -35,7 +35,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(Nibbles.ToBytes(rawKey));
+            Hash256 fullPath = new Hash256(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 return base.Get(rawKey, rootHash);
@@ -53,7 +53,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(Nibbles.ToBytes(rawKey));
+            Hash256 fullPath = new Hash256(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);
@@ -76,8 +76,8 @@ public class HealingStorageTree : StorageTree
                 {
                     ValueHash256 nodeHash = ValueKeccak.Compute(kv.Value);
                     TrieStore.Set(kv.Key, nodeHash, kv.Value);
-                    return true;
                 }
+                return true;
             }
             else
             {

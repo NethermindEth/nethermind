@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.State.Healing;
-using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
@@ -31,7 +30,7 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
     IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStore overlayCode);
 
-    void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery);
+    void InitializeNetwork(IPathRecovery pathRecovery);
 
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
