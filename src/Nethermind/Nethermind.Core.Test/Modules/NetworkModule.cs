@@ -75,7 +75,10 @@ public class NetworkModule(IInitConfig initConfig) : Module
 
             .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
             {
-                ctx.Resolve<IWorldStateManager>().InitializeNetwork(new PathNodeRecovery(peerPool, ctx.Resolve<ILogManager>()));
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                ctx.Resolve<IWorldStateManager>().InitializeNetwork(
+                    new GetNodeDataTrieNodeRecovery(peerPool, logManager),
+                    new SnapTrieNodeRecovery(peerPool, logManager));
             })
 
             // TODO: LastNStateRootTracker

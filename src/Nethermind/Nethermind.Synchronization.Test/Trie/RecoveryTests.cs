@@ -23,7 +23,6 @@ namespace Nethermind.Synchronization.Test.Trie;
 
 public class RecoveryTests
 {
-    /*
     private byte[] _keyRlp = null!;
     private byte[] _returnedRlp = null!;
     private Hash256 _key = null!;
@@ -159,5 +158,4 @@ public class RecoveryTests
         _syncPeerPool.InitializedPeers.Returns(peers);
         return recovery.Recover(_key, request);
     }
-    */
 }

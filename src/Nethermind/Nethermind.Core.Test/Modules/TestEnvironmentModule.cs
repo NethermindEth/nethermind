@@ -67,6 +67,9 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                     HasSynced = true
                 };
             })
+
+            // Useful for passing into another node's ISyncPeerPool.
+            // Act like a connected sync peer without going through actual network and RLPs.
             .Add<SyncPeerMock>(ctx =>
             {
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
