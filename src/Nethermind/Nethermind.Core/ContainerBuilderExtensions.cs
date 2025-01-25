@@ -254,6 +254,13 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
+    {
+        builder.Register(factory)
+            .As<T>();
+
+        return builder;
+    }
 
     public static ContainerBuilder Add<T, TImpl>(this ContainerBuilder builder) where T : class where TImpl : notnull
     {

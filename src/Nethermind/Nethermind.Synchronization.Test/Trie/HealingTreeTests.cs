@@ -2,16 +2,33 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using System.Linq.Expressions;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -23,6 +40,91 @@ namespace Nethermind.Synchronization.Test.Trie;
 [Parallelizable(ParallelScope.Fixtures)]
 public class HealingTreeTests
 {
+    [Test]
+    public async Task HealingTreeTest()
+    {
+        ConfigProvider configProvider = new ConfigProvider();
+        configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
+        await using IContainer fullServer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
+            .Build();
+        await using IContainer client = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
+            .Build();
+
+        IDb clientStateDb = client.ResolveNamed<IDb>(DbNames.State);
+        IDb serverStateDb = fullServer.ResolveNamed<IDb>(DbNames.State);
+
+        // Add some data to the server.
+        Hash256 stateRoot;
+        {
+            IWorldState mainWorldState = fullServer.Resolve<MainBlockProcessingContext>().WorldState;
+            mainWorldState.StateRoot = Keccak.EmptyTreeHash;
+
+            for (int i = 0; i < 10; i++)
+            {
+                Address address = new Address(Keccak.Compute(i.ToString()));
+                mainWorldState.CreateAccount(address, (UInt256)i, (UInt256)i);
+            }
+
+            Address storageAddress = new Address(Keccak.Compute("storage"));
+            mainWorldState.CreateAccount(storageAddress, 100, 100);
+            for (int i = 1; i < 10; i++)
+            {
+                mainWorldState.Set(new StorageCell(storageAddress, (UInt256)i), i.ToBigEndianByteArray());
+            }
+
+            mainWorldState.Commit(Cancun.Instance);
+            mainWorldState.CommitTree(1);
+
+            stateRoot = mainWorldState.StateRoot;
+        }
+
+        {
+            Random random = new Random(0);
+            using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = serverStateDb.GetAll().ToPooledList(10);
+            // Sort for reproducability
+            allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
+
+            // Copy from server to client, but randomly remove some of them.
+            foreach (var kv in allValues)
+            {
+                if (random.NextDouble() < 0.9)
+                {
+                    clientStateDb[kv.Key] = kv.Value;
+                }
+            }
+        }
+
+        ISyncPeerPool clientSyncPeerPool = client.Resolve<ISyncPeerPool>();
+        clientSyncPeerPool.Start();
+        clientSyncPeerPool.AddPeer(fullServer.Resolve<SyncPeerMock>());
+
+        // Make sure that the client have the same data.
+        {
+            IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
+            mainWorldState.StateRoot = stateRoot;
+
+            for (int i = 0; i < 10; i++)
+            {
+                Address address = new Address(Keccak.Compute(i.ToString()));
+                mainWorldState.GetBalance(address).Should().Be((UInt256)i);
+                mainWorldState.GetNonce(address).Should().Be((UInt256)i);
+            }
+
+            Address storageAddress = new Address(Keccak.Compute("storage"));
+            mainWorldState.GetBalance(storageAddress).Should().Be((UInt256)100);
+            mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
+            for (int i = 1; i < 10; i++)
+            {
+                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray().Should().BeEquivalentTo(i.ToBigEndianByteArray());
+            }
+        }
+    }
+
+    /*
     private static readonly byte[] _rlp = { 3, 4 };
     private static readonly Hash256 _key = Keccak.Compute(_rlp);
 
@@ -106,4 +208,5 @@ public class HealingTreeTests
             action.Should().Throw<MissingTrieNodeException>();
         }
     }
+    */
 }

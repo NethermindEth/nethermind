@@ -18,6 +18,8 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Test;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -64,6 +66,20 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                     // It just need to override this.
                     HasSynced = true
                 };
+            })
+            .Add<SyncPeerMock>(ctx =>
+            {
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                ISyncServer syncServer = ctx.Resolve<ISyncServer>();
+                IEnode enode = ctx.Resolve<IEnode>();
+                IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
+                ISnapSyncPeer? snapSyncPeer = null;
+                if (worldStateManager.SnapServer is not null)
+                {
+                    snapSyncPeer = new MockSnapSyncPeer(worldStateManager.SnapServer);
+                }
+
+                return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: snapSyncPeer);
             })
 
             .AddDecorator<ISyncConfig>((_, syncConfig) =>

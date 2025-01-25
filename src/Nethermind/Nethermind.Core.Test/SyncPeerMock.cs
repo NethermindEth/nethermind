@@ -8,31 +8,26 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 
-namespace Nethermind.Synchronization.Test
+namespace Nethermind.Core.Test
 {
     public class SyncPeerMock : ISyncPeer
     {
         public string Name => "Mock";
         private readonly IBlockTree _remoteTree;
         private readonly ISyncServer? _remoteSyncServer;
+        private readonly ISnapSyncPeer? _snapSyncPeer;
         private readonly TaskCompletionSource _closeTaskCompletionSource = new();
 
-        public SyncPeerMock(IBlockTree remoteTree, PublicKey? localPublicKey = null, string localClientId = "", ISyncServer? remoteSyncServer = null, PublicKey? remotePublicKey = null, string remoteClientId = "")
+        public SyncPeerMock(IBlockTree remoteTree, ISyncServer? remoteSyncServer = null, PublicKey? remotePublicKey = null, string remoteClientId = "", ISnapSyncPeer? snapSyncPeer = null)
         {
-            string localHost = "127.0.0.1";
-            if (int.TryParse(localClientId.Replace("PEER", string.Empty), out int localIndex))
-            {
-                localHost = $"127.0.0.{localIndex}";
-            }
-
             string remoteHost = "127.0.0.1";
             if (int.TryParse(remoteClientId.Replace("PEER", string.Empty), out int remoteIndex))
             {
@@ -47,11 +42,11 @@ namespace Nethermind.Synchronization.Test
 
             _remoteSyncServer = remoteSyncServer;
             Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
-            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235);
             Node.ClientId = remoteClientId;
-            LocalNode.ClientId = localClientId;
 
             Task.Factory.StartNew(RunQueue, TaskCreationOptions.LongRunning);
+
+            _snapSyncPeer = snapSyncPeer;
         }
 
         private void RunQueue()
@@ -65,8 +60,6 @@ namespace Nethermind.Synchronization.Test
         }
 
         public Node Node { get; }
-
-        private Node LocalNode { get; }
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId;
@@ -187,7 +180,14 @@ namespace Nethermind.Synchronization.Test
 
         public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
-            throw new NotImplementedException();
+            if (protocol == Network.Contract.P2P.Protocol.Snap && _snapSyncPeer is not null)
+            {
+                protocolHandler = (T)_snapSyncPeer;
+                return true;
+            }
+
+            protocolHandler = null!;
+            return false;
         }
 
         public Task Close()
