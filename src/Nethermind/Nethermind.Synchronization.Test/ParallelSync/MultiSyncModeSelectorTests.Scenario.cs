@@ -873,7 +873,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _syncProgressSetups.Add(
                         () =>
                         {
-                            SyncConfig.MaxAttemptsToUpdatePivot = 3;
+                            SyncConfig.MaxAttemptsToUpdatePivot = -1;
                             BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
                             BeaconSyncStrategy.MergeTransitionFinished.Returns(true);
                             return "merge sync pivot not resolved yet";
