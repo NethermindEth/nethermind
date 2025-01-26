@@ -7,15 +7,12 @@ using System.Linq;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Era1;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -39,7 +36,7 @@ namespace Nethermind.Api
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; set; }
-        ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
         string SealEngineType { get; set; }

@@ -317,7 +317,7 @@ public class BlockValidator(
 
             if (feePerBlobGas.IsZero)
             {
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas))
                 {
                     error = BlockErrorMessages.BlobGasPriceOverflow;
                     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
@@ -337,9 +337,9 @@ public class BlockValidator(
 
         ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
-        if (blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
+        if (blobGasUsed > spec.GetMaxBlobGasPerBlock())
         {
-            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit;
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GetMaxBlobGasPerBlock(), blobsInBlock, blobGasUsed);
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }
