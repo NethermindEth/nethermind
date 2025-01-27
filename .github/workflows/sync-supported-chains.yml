@@ -367,5 +367,5 @@ jobs:
           ref: "main"
           token: "${{ steps.gh-app.outputs.token }}"
           inputs: '{
-            "nethermind_branch": "${{ github.ref}}"
+            "nethermind_branch": "${{ github.event.workflow_run.head_branch }}"
           }'
