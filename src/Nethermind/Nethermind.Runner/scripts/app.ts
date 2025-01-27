@@ -83,17 +83,9 @@ let txPoolNodes: INode[] = null;
  * Main function to start polling data and updating the UI.
  */
 function updateTxPool(txPool: TxPool) {
-
-  if (!txPoolNodes) {
-    return;
-  }
-  // Update Sankey
-  txPoolFlow.update(txPoolNodes, txPool);
-
-  // Update numeric indicators
-  updateText(txPoolValue, d3.format(',.0f')(txPool.pooledTx));
-  updateText(blobTxPoolValue, d3.format(',.0f')(txPool.pooledBlobTx));
-  updateText(totalValue, d3.format(',.0f')(txPool.pooledTx + txPool.pooledBlobTx));
+  const nowMs = performance.now();
+  const currentNow = nowMs / 1000;
+  const diff = currentNow - lastNow;
 
   // Summarize link flows to compute TPS
   let currentReceived = 0;
@@ -116,30 +108,48 @@ function updateTxPool(txPool: TxPool) {
     }
   }
   const currentHashesReceived = txPool.hashesReceived;
-  const nowMs = performance.now();
-  const currentNow = nowMs / 1000;
 
   if (lastNow !== 0) {
-    const diff = currentNow - lastNow;
+    seriesHashes.push({ t: nowMs, v: currentHashesReceived - lastHashesReceived });
+    if (seriesHashes.length > 60) { seriesHashes.shift(); }
+    seriesReceived.push({ t: nowMs, v: currentReceived - lastReceived });
+    if (seriesReceived.length > 60) { seriesReceived.shift(); }
+    seriesDuplicate.push({ t: nowMs, v: currentDuplicate - lastDuplicate });
+    if (seriesDuplicate.length > 60) { seriesDuplicate.shift(); }
+    seriesTxPool.push({ t: nowMs, v: currentTxPool - lastTxPool });
+    if (seriesTxPool.length > 60) { seriesTxPool.shift(); }
+    seriesBlock.push({ t: nowMs, v: currentBlock - lastBlock });
+    if (seriesBlock.length > 60) { seriesBlock.shift(); }
+  }
 
-    // Update the sparkline for each type
-    sparkline(document.getElementById('sparkHashesTps') as HTMLElement,
-      seriesHashes, { t: nowMs, v: currentHashesReceived - lastHashesReceived });
-    sparkline(document.getElementById('sparkReceivedTps') as HTMLElement,
-      seriesReceived, { t: nowMs, v: currentReceived - lastReceived });
-    sparkline(document.getElementById('sparkDuplicateTps') as HTMLElement,
-      seriesDuplicate, { t: nowMs, v: currentDuplicate - lastDuplicate });
-    sparkline(document.getElementById('sparkTxPoolTps') as HTMLElement,
-      seriesTxPool, { t: nowMs, v: currentTxPool - lastTxPool });
-    sparkline(document.getElementById('sparkBlockTps') as HTMLElement,
-      seriesBlock, { t: nowMs, v: currentBlock - lastBlock });
 
-    // Show TPS values
-    updateText(blockTpsValue, formatDec((currentBlock - lastBlock) / diff));
-    updateText(receivedTpsValue, formatDec((currentReceived - lastReceived) / diff));
-    updateText(txPoolTpsValue, formatDec((currentTxPool - lastTxPool) / diff));
-    updateText(duplicateTpsValue, formatDec((currentDuplicate - lastDuplicate) / diff));
-    updateText(hashesReceivedTpsValue, formatDec((currentHashesReceived - lastHashesReceived) / diff));
+  if (!document.hidden) {
+    if (!txPoolNodes) {
+      return;
+    }
+    // Update Sankey
+    txPoolFlow.update(txPoolNodes, txPool);
+
+    // Update numeric indicators
+    updateText(txPoolValue, d3.format(',.0f')(txPool.pooledTx));
+    updateText(blobTxPoolValue, d3.format(',.0f')(txPool.pooledBlobTx));
+    updateText(totalValue, d3.format(',.0f')(txPool.pooledTx + txPool.pooledBlobTx));
+
+    if (lastNow !== 0) {
+      // Update the sparkline for each type
+      sparkline(document.getElementById('sparkHashesTps') as HTMLElement, seriesHashes);
+      sparkline(document.getElementById('sparkReceivedTps') as HTMLElement, seriesReceived);
+      sparkline(document.getElementById('sparkDuplicateTps') as HTMLElement, seriesDuplicate);
+      sparkline(document.getElementById('sparkTxPoolTps') as HTMLElement, seriesTxPool);
+      sparkline(document.getElementById('sparkBlockTps') as HTMLElement, seriesBlock);
+
+      // Show TPS values
+      updateText(blockTpsValue, formatDec((currentBlock - lastBlock) / diff));
+      updateText(receivedTpsValue, formatDec((currentReceived - lastReceived) / diff));
+      updateText(txPoolTpsValue, formatDec((currentTxPool - lastTxPool) / diff));
+      updateText(duplicateTpsValue, formatDec((currentDuplicate - lastDuplicate) / diff));
+      updateText(hashesReceivedTpsValue, formatDec((currentHashesReceived - lastHashesReceived) / diff));
+    }
   }
 
   // Update "last" values for next iteration
@@ -169,7 +179,6 @@ sse.addEventListener("txNodes", (e) => {
   txPoolNodes = data;
 });
 sse.addEventListener("txLinks", (e) => {
-  if (document.hidden) return;
   const data = JSON.parse(e.data) as TxPool;
   updateTxPool(data);
 });
@@ -199,6 +208,7 @@ sse.addEventListener("forkChoice", (e) => {
   updateText(safeBlockDelta, `(${(data.safe - data.head).toFixed(0)})`);
   updateText(finalizedBlockDelta, `(${(data.finalized - data.head).toFixed(0)})`);
 });
+
 let maxCpuPercent = 0;
 let maxMemoryMb = 0;
 sse.addEventListener("system", (e) => {
@@ -212,17 +222,26 @@ sse.addEventListener("system", (e) => {
     maxCpuPercent = cpuPercent;
   }
 
+  const now = performance.now();
+  let newCpuDatum = { t: now, v: data.userPercent + data.privilegedPercent };
+  seriesTotalCpu.push(newCpuDatum);
+  if (seriesTotalCpu.length > 60) { seriesTotalCpu.shift(); }
+
+  let newMemoryDatum = { t: now, v: memoryMb };
+  seriesMemory.push(newMemoryDatum);
+  if (seriesMemory.length > 60) { seriesMemory.shift(); }
+
   if (document.hidden) return;
 
   updateText(upTime, formatDuration(data.uptime));
 
   updateText(cpuTime, formatDec(cpuPercent));
   updateText(maxCpuTime, formatDec(maxCpuPercent));
-  sparkline(sparkCpu, seriesTotalCpu, { t: performance.now(), v: data.userPercent + data.privilegedPercent }, 300, 100, 60);
+  sparkline(sparkCpu, seriesTotalCpu, 300, 100, 60);
 
   updateText(memory, format(memoryMb));
   updateText(maxMemory, format(maxMemoryMb));
-  sparkline(sparkMemory, seriesMemory, { t: performance.now(), v: memoryMb }, 300, 100, 60);
+  sparkline(sparkMemory, seriesMemory, 300, 100, 60);
 });
 
 let logs: string[] = [];
