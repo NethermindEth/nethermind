@@ -107,8 +107,11 @@ public class ForkInfoTests
     [TestCase(1, 1_696_000_703ul, "0xc61a6098", 1_696_000_704ul, "Last genesis spec block")]
     [TestCase(2, 1_696_000_704ul, "0xfd4f016b", 1_707_305_664ul, "First Shanghai block")]
     [TestCase(3, 1_707_305_663ul, "0xfd4f016b", 1_707_305_664ul, "Future Shanghai timestamp")]
-    [TestCase(4, 1_707_305_664ul, "0x9b192ad0", 0ul, "First Cancun timestamp")]
-    [TestCase(5, 1_717_305_664ul, "0x9b192ad0", 0ul, "Future Cancun timestamp")]
+    [TestCase(4, 1_707_305_664ul, "0x9b192ad0", 1_739_352_768ul, "First Cancun timestamp")]
+    [TestCase(5, 1_717_305_664ul, "0x9b192ad0", 1_739_352_768ul, "Future Cancun timestamp")]
+    [TestCase(5, 1_739_352_768ul, "0xf818a0d6", 0ul, "First Prague timestamp")]
+    [TestCase(5, 1_759_352_768ul, "0xf818a0d6", 0ul, "Future Prague timestamp")]
+
     public void Fork_id_and_hash_as_expected_on_holesky(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.HoleskyGenesis, forkHashHex, next, description, HoleskySpecProvider.Instance, "holesky.json");
