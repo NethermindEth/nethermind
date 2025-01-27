@@ -22,20 +22,19 @@ interface Margin {
  * @param newDatum  A new data point { t, v } to add.
  * @param width     Outer width of the sparkline SVG (default 300).
  * @param height    Outer height of the sparkline SVG (default 60).
- * @param maxPoints Maximum points in the rolling window (default 50).
+ * @param maxPoints Maximum points in the rolling window (default 60).
  */
 export function sparkline(
   element: HTMLElement,
   data: Datum[],
-  newDatum: Datum,
   width = 80,
   height = 44,
   maxPoints = 60
 ) {
+  const newDatum: Datum = data[data.length - 1];
   //
   // 1. Push the new datum, filter to the last `maxPoints` seconds
   //
-  data.push(newDatum);
   const leftEdge = newDatum.t - maxPoints * 1000;
   // Keep only data within the fixed time window
   data = data.filter(d => d.t >= leftEdge);
