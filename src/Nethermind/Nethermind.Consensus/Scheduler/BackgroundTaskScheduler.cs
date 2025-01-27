@@ -132,7 +132,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             throw new InvalidOperationException("Unable to write to background task queue.");
         }
 
-        Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
+        Evm.Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
     }
 
     public async ValueTask DisposeAsync()
