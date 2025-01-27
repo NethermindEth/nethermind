@@ -27,8 +27,13 @@ public class EthereumEthApi : IEthApi
         return _ethRpcClient.Post<ReceiptForRpc[]?>("eth_getBlockReceipts", new object[] { blockHash });
     }
 
-    public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash)
+    public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash, bool fullTxs)
     {
-        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByHash", new object[] { blockHash, false });
+        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByHash", new object[] { blockHash, fullTxs });
+    }
+
+    public Task<BlockForRpc?> GetBlockByNumber(ulong blockNumber, bool fullTxs)
+    {
+        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByNumber", new object[] { blockNumber, fullTxs });
     }
 }

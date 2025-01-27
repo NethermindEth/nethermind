@@ -11,5 +11,6 @@ namespace Nethermind.Optimism.CL;
 public interface IEthApi
 {
     Task<ReceiptForRpc[]?> GetReceiptsByHash(Hash256 blockHash);
-    Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash);
+    Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash, bool fullTxs);
+    Task<BlockForRpc?> GetBlockByNumber(ulong blockNumber, bool fullTxs);
 }

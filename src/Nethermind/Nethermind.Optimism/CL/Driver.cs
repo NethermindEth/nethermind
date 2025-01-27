@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
 
@@ -15,29 +17,42 @@ public class Driver : IDisposable
     private readonly ICLConfig _config;
     private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
+    private readonly CLChainSpecEngineParameters _engineParameters;
 
-    public Driver(IL1Bridge l1Bridge, ICLConfig config, ILogger logger)
+    private readonly IChannelStorage _channelStorage;
+
+    public Driver(IL1Bridge l1Bridge, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
         _config = config;
         _l1Bridge = l1Bridge;
         _logger = logger;
+        _channelStorage = new ChannelStorage();
+        _engineParameters = engineParameters;
     }
 
     public void Start()
     {
-        _l1Bridge.OnNewL1Head += OnNewL1Head;
+        _channelStorage.OnChannelBuilt += OnChannelBuilt;
+        // _l1Bridge.OnNewL1Head += OnNewL1Head;
     }
 
-    private async void OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
+    private void OnChannelBuilt(byte[] channelData)
+    {
+        byte[] decompressed = ChannelDecoder.DecodeChannel(channelData);
+        // TODO: avoid rlpStream here
+        RlpStream rlpStream = new(decompressed);
+        ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
+        BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
+        // TODO: put into batch queue
+    }
+
+    public async void OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
     {
         _logger.Error($"INVOKED {block.SlotNumber}");
-        Address sepoliaBatcher = new("0x8F23BB38F531600e5d8FDDaAEC41F13FaB46E98c");
-        Address batcherInboxAddress = new("0xff00000000000000000000000000000011155420");
         // Filter batch submitter transaction
         foreach (Transaction transaction in block.Transactions)
         {
-            // _logger.Error($"Tx To: {transaction.To}, From: {transaction.SenderAddress} end");
-            if (batcherInboxAddress == transaction.To && sepoliaBatcher == transaction.SenderAddress)
+            if (_engineParameters.BatcherInboxAddress == transaction.To && _engineParameters.BatcherAddress == transaction.SenderAddress)
             {
                 if (transaction.Type == TxType.Blob)
                 {
@@ -54,12 +69,14 @@ public class Driver : IDisposable
 
     private async Task ProcessBlobBatcherTransaction(Transaction transaction, ulong slotNumber)
     {
+        _logger.Error($"PROCESS BLOB");
         BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
         while (blobSidecars is null)
         {
             await Task.Delay(100);
             blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
         }
+
         for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
         {
             for (int j = 0; j < blobSidecars.Length; ++j)
@@ -70,33 +87,11 @@ public class Driver : IDisposable
                     _logger.Error($"BLOB: {BitConverter.ToString(blobSidecars[j].Blob[..32]).Replace("-", "")}");
                     byte[] data = BlobDecoder.DecodeBlob(blobSidecars[j]);
                     Frame[] frames = FrameDecoder.DecodeFrames(data);
-                    _logger.Error($"FRAMES NUMBER: {frames.Length}");
-                    foreach (Frame frame in frames)
-                    {
-                        // _logger.Error($"FRAME DATA: {BitConverter.ToString(frame.FrameData).Replace("-", "").ToLower()}");
-                        // await Task.Delay(100);
-                        (BatchV1 batch, byte[] _) = ChannelDecoder.DecodeChannel(frame);
-
-                        // BatchV1 batch = BatchDecoder.Instance.DecodeSpanBinary(frame.FrameData);
-
-                        _logger.Error($"BATCH: L1OriginNum: {batch.L1OriginNum} BlockCount: {batch.BlockCount} RelTimestamp: {batch.RelTimestamp} L1OriginCheck: {BitConverter.ToString(batch.L1OriginCheck).Replace("-", "").ToLower()}");
-                        int currentTx = 0;
-                        foreach (var txCount in batch.BlockTxCounts)
-                        {
-                            _logger.Error($"L2 BLOCK: txCount: {txCount}");
-                            for (int k = 0; k < (int)txCount; ++k)
-                            {
-                                _logger.Error($"TX: to: {batch.Txs.Tos[currentTx + k]}");
-                            }
-
-                            currentTx += (int)txCount;
-                        }
-                        _logger.Error($"END BATCH");
-                    }
+                    _logger.Error($"FRAME: {frames[0].FrameNumber} {frames[0].IsLast} {frames[0].ChannelId}");
+                    _channelStorage.ConsumeFrames(frames);
                 }
             }
         }
-
     }
 
     private void ProcessCalldataBatcherTransaction(Transaction transaction)

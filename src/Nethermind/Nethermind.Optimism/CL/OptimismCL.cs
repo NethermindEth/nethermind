@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
@@ -29,6 +30,9 @@ public class OptimismCL : IDisposable
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly Driver _driver;
 
+    private readonly IBeaconApi _beaconApi;
+    private readonly IEthApi _ethApi;
+
     public OptimismCL(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters, ICLConfig config,
         IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ITimestamper timestamper, ILogManager logManager,
         IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpcModule)
@@ -44,17 +48,17 @@ public class OptimismCL : IDisposable
 
         _p2p = new OptimismCLP2P(specProvider.ChainId, engineParameters.Nodes, config,
             _chainSpecEngineParameters.SequencerP2PAddress, timestamper, logManager, engineRpcModule, _cancellationTokenSource.Token);
-        IEthApi ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
-        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa,
+        _ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
+        _beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa,
             _logger, _cancellationTokenSource.Token);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, config, _cancellationTokenSource.Token, logManager);
-        _driver = new Driver(_l1Bridge, config, _logger);
+        _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _cancellationTokenSource.Token, logManager);
+        _driver = new Driver(_l1Bridge, config, engineParameters, _logger);
     }
 
     public void Start()
     {
         // _l1Bridge.Start();
-        // _driver.Start();
+        _driver.Start();
         TEST();
         // _p2p.Start();
     }
@@ -72,11 +76,16 @@ public class OptimismCL : IDisposable
         var enumerator = block.Transactions.GetEnumerator();
         enumerator.MoveNext();
         OptimismTransactionForRpc tx = (OptimismTransactionForRpc)enumerator.Current;
-
-        // var list = new List<TransactionForRpc>();
-        // while(enumerator.MoveNext())
-        //     list.Add((TransactionForRpc)enumerator.Current);
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input, block.ExtraData);
         _logger.Error($"DONE: {l1BlockInfo.Number}, {l1BlockInfo.BlockHash}, {l1BlockInfo.BatcherAddress}");
+        GetBatches();
+    }
+
+    private async void GetBatches()
+    {
+        // BlockForRpc? block = await _l1Bridge.GetBlock(21691682);
+        BeaconBlock? beaconBlock = await _beaconApi.GetBySlotNumber(10905449);
+        ReceiptForRpc[]? receitps = await _ethApi.GetReceiptsByHash(beaconBlock!.Value.ExecutionBlockHash);
+        _driver.OnNewL1Head(beaconBlock!.Value, receitps!);
     }
 }

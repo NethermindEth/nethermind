@@ -12,7 +12,7 @@ public class FrameDecoder
 {
     private static (Frame, int) DecodeFrame(byte[] data)
     {
-        byte[] channelId = data[..16];
+        UInt128 channelId = BitConverter.ToUInt128(data[..16]);
         UInt16 frameNumber = BitConverter.ToUInt16(data[16..18].Reverse().ToArray());
         UInt32 frameDataLength = BitConverter.ToUInt32(data[18..22].Reverse().ToArray());
         byte[] frameData = data[22..(22 + (int)frameDataLength)];
@@ -21,6 +21,7 @@ public class FrameDecoder
         {
             throw new Exception("Invalid isLast flag");
         }
+
         return (new Frame()
         {
             ChannelId = channelId,
@@ -57,7 +58,7 @@ public class FrameDecoder
 
 public struct Frame
 {
-    public byte[] ChannelId;
+    public UInt128 ChannelId;
     public UInt16 FrameNumber;
     public byte[] FrameData;
     public bool IsLast;

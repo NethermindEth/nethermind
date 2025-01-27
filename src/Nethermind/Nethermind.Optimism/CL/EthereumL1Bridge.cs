@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
@@ -72,5 +73,10 @@ public class EthereumL1Bridge : IL1Bridge
     public Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber)
     {
         return _beaconApi.GetBlobSidecars(slotNumber);
+    }
+
+    public Task<BlockForRpc?> GetBlock(ulong blockNumber)
+    {
+        return _ethL1Api.GetBlockByNumber(blockNumber, true);
     }
 }

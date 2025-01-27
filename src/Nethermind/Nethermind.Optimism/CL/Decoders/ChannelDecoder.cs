@@ -15,34 +15,32 @@ namespace Nethermind.Optimism.CL;
 
 public class ChannelDecoder
 {
-    public static (BatchV1, byte[]) DecodeChannel(Frame frame)
+    public static byte[] DecodeChannel(byte[] data)
     {
         // TODO: avoid allocation
         var memoryStream = new MemoryStream();
-        if ((frame.FrameData[0] & 0x0F) == 8 || (frame.FrameData[0] & 0x0F) == 15)
+        if ((data[0] & 0x0F) == 8 || (data[0] & 0x0F) == 15)
         {
             // zlib
             // TODO: test
-            var deflateStream = new DeflateStream(new MemoryStream(frame.FrameData[2..]), CompressionMode.Decompress);
+            var deflateStream = new DeflateStream(new MemoryStream(data[2..]), CompressionMode.Decompress);
             deflateStream.CopyTo(memoryStream);
-        } else if (frame.FrameData[0] == 1)
+        } else if (data[0] == 1)
         {
             // brotli
-            BrotliStream stream = new BrotliStream(new MemoryStream(frame.FrameData[1..]), CompressionMode.Decompress);
+            BrotliStream stream = new BrotliStream(new MemoryStream(data[1..]), CompressionMode.Decompress);
             stream.CopyTo(memoryStream);
         }
         else
         {
-            throw new Exception($"Unsupported compression algorithm {frame.FrameData[0]}");
+            throw new Exception($"Unsupported compression algorithm {data[0]}");
         }
-
-        byte[] decompressed = memoryStream.ToArray();
-
-        BatchV1 batch = BatchDecoder.Instance.DecodeSpanBinary(decompressed);
-        return (batch, decompressed);
+        // TODO: make rlp stream out of MemoryStream without conversion
+        return memoryStream.ToArray();
     }
 }
 
+// TODO: support singular batches
 public struct BatchV0
 {
     public Hash256 ParentHash;
