@@ -498,11 +498,7 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
-                     // // Skip EIP-4844 parameter validation
-                     // .Where(p => p.Name != nameof(IReleaseSpec.BlobBaseFeeUpdateFraction))
-                     // .Where(p => p.Name != nameof(IReleaseSpec.MaxBlobCount))
-                     // .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
-                     // .Where(p => p.Name != nameof(IReleaseSpec.TargetBlobCount))
+                     
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
