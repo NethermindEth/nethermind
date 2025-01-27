@@ -38,7 +38,7 @@ internal abstract class OpcodeILEmitter<T>
     public Dictionary<Instruction, OpcodeILEmitterDelegate<T>> opcodeEmitters = new();
     public bool AddEmitter(Instruction instruction, OpcodeILEmitterDelegate<T> emitter)
     {
-        if(opcodeEmitters.ContainsKey(instruction))
+        if (opcodeEmitters.ContainsKey(instruction))
         {
             return false;
         }
@@ -56,7 +56,7 @@ internal abstract class OpcodeILEmitter<T>
         opcodeEmitters.Remove(instruction);
     }
 
-    public void Emit(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, SubSegmentMetadata currentSubSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method,  Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label jumpTable, Label exitLabel) exitLabels)
+    public void Emit(IVMConfig ilCompilerConfig, ContractMetadata contractMetadata, SegmentMetadata currentSegment, SubSegmentMetadata currentSubSegment, int opcodeIndex, OpcodeInfo opcodeMetadata, Sigil.Emit<T> method, Locals<T> localVariables, EnvLoader<T> envStateLoader, Dictionary<EvmExceptionType, Sigil.Label> exceptions, (Label returnLabel, Label jumpTable, Label exitLabel) exitLabels)
     {
         if (opcodeEmitters.TryGetValue(opcodeMetadata.Operation, out var emitter))
         {
@@ -64,7 +64,7 @@ internal abstract class OpcodeILEmitter<T>
         }
         else
         {
-            if(opcodeEmitters.TryGetValue(Instruction.INVALID, out var emitInvalidOpcode))
+            if (opcodeEmitters.TryGetValue(Instruction.INVALID, out var emitInvalidOpcode))
             {
                 emitInvalidOpcode(ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels);
             }
@@ -74,6 +74,8 @@ internal abstract class OpcodeILEmitter<T>
             }
         }
     }
+
+    internal OpcodeILEmitterDelegate<T> emptyEmitter = (ilCompilerConfig, contractMetadata, currentSegment, currentSubSegment, opcodeIndex, opcodeMetadata, method, localVariables, envStateLoader, exceptions, exitLabels) => { };
 }
 internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 {
@@ -85,6 +87,9 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
         {
             switch (instruction)
             {
+                case Instruction.JUMPDEST:
+                    AddEmitter(instruction, emptyEmitter);
+                    break;
                 case Instruction.JUMP:
                     AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                     {

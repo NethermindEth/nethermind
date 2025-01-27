@@ -26,6 +26,7 @@ using CommandLine;
 using System.IO;
 using Nethermind.Evm.CodeAnalysis.IL;
 using static Nethermind.Evm.VirtualMachine;
+using Microsoft.Diagnostics.Runtime;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -53,7 +54,7 @@ namespace Nethermind.Benchmark.Runner
     {
         public class Options
         {
-            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm")]
+            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm, ilevm")]
             public string Mode { get; set; }
 
             [Option('b', "bytecode", Required = false, HelpText = "Hex encoded bytecode")]
@@ -62,15 +63,17 @@ namespace Nethermind.Benchmark.Runner
             [Option('n', "identifier", Required = false, HelpText = "Benchmark Name")]
             public string Name { get; set; }
 
+            [Option('c', "config", Required = false, HelpText = "EVM configs : 1-STD, 2-PAT, 4-JIT, 8-AOT")]
+            public string Config { get; set; }
         }
 
 
-        public static void Main(string[] args)
+        public static void _Main(string[] args)
         {
             IlAnalyzer.Initialize();
 
             byte[] bytes = new byte[32];
-            ((UInt256)4999).ToBigEndian(bytes);
+            ((UInt256)2048 * 2).ToBigEndian(bytes);
             var argBytes = bytes.WithoutLeadingZeros().ToArray();
             byte[] bytecode = Prepare.EvmCode
                         .PushData(argBytes)
@@ -111,8 +114,8 @@ namespace Nethermind.Benchmark.Runner
             var nrml = new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std", bytecode, null);
             var ilvm = new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot", bytecode, ILMode.FULL_AOT_MODE);
 
-            Run(ilvm, 1_000);
-            Run(nrml, 1_000);
+            Run(ilvm, 100);
+            Run(nrml, 100);
 
         }
 
@@ -126,7 +129,7 @@ namespace Nethermind.Benchmark.Runner
             }
         }
 
-        public static void _Main(string[] args)
+        public static void Main(string[] args)
         {
             IlAnalyzer.Initialize();
 
@@ -139,6 +142,9 @@ namespace Nethermind.Benchmark.Runner
                 case "evm":
                     RunEvmBenchmarks(options.Value);
                     break;
+                case "ilevm":
+                    RunIlEvmBenchmarks(options.Value);
+                    break;
                 default:
                     throw new Exception("Invalid mode");
             }
@@ -146,9 +152,35 @@ namespace Nethermind.Benchmark.Runner
 
         public static void RunEvmBenchmarks(Options options)
         {
+            int mode = 1 | 2 | 4 | 8;
+            Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE", mode.ToString());
+
             if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
             {
-                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.LongRun.WithRuntime(CoreRuntime.Core90)));
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
+            }
+            else
+            {
+                string bytecode = options.ByteCode;
+                if (Path.Exists(bytecode))
+                {
+                    bytecode = File.ReadAllText(bytecode);
+                }
+
+                Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE", bytecode);
+                Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME", options.Name);
+                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+            }
+        }
+
+
+        public static void RunIlEvmBenchmarks(Options options)
+        {
+            Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE", options.Config);
+
+            if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
+            {
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
             }
             else
             {

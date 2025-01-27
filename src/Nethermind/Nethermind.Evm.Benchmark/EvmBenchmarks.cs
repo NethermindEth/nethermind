@@ -30,6 +30,8 @@ using System.Linq;
 using Microsoft.Extensions.Options;
 using BenchmarkDotNet.Running;
 using Nethermind.Specs.Forks;
+using Nethermind.Abi;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -50,6 +52,7 @@ namespace Nethermind.Evm.Benchmark
             where TTracingStorage : struct, VirtualMachine.IIsTracing;
         public string Name { get; init; }
 
+        private readonly ICodeInfoRepository codeInfoRepository;
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
@@ -63,7 +66,7 @@ namespace Nethermind.Evm.Benchmark
         private VMConfig vmConfig;
         private int? mode;
         private IlAnalyzer _ilAnalyzer;
-
+        private CodeInfo driverCodeInfo;
         public LocalSetup(string name, byte[] _bytecode, int? ilvmMode)
         {
             Name = name;
@@ -95,7 +98,7 @@ namespace Nethermind.Evm.Benchmark
             bytecode = _bytecode;
             mode = ilvmMode;
 
-            CodeInfoRepository codeInfoRepository = new();  
+            codeInfoRepository = new CodeInfoRepository();  
 
             ILogManager logmanager = vmConfig.BakeInTracingInAotModes ? LimboLogs.Instance : NullLogManager.Instance;
 
@@ -108,6 +111,28 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
             _ilAnalyzer = new IlAnalyzer(_stateProvider, MainnetSpecProvider.Instance, _blockhashProvider, codeInfoRepository);
+
+            var address = InsertCode(bytecode);
+
+            var driver =
+                Prepare.EvmCode
+                .COMMENT("BEGIN")
+                .Call(address, 1000000)
+                .POP()
+                .COMMENT("END")
+                .STOP()
+                .Done;
+
+            var driverCodeinfo = new CodeInfo(driver, Address.FromNumber(23));
+            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance);
+
+            if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled || vmConfig.IsFullAotEnabled)
+            {
+                _ilAnalyzer.Analyse(driverCodeinfo, mode.Value, vmConfig, NullLogger.Instance);
+                _ilAnalyzer.Analyse(targetCodeInfo, mode.Value, vmConfig, NullLogger.Instance);
+            }
+
+            driverCodeInfo = driverCodeinfo;
         }
         private Address InsertCode(byte[] bytecode, Address target = null)
         {
@@ -122,46 +147,12 @@ namespace Nethermind.Evm.Benchmark
 
         public void Setup()
         {
-            var address = InsertCode(bytecode);
-
-            var driver =
-                Prepare.EvmCode
-                .COMMENT("BEGIN")
-                .Call(address, 100000)
-                .POP()
-                .COMMENT("END")
-                .STOP()
-                .Done;
-
-            CodeInfoRepository codeInfoRepository = new();
-
-            var driverCodeinfo = new CodeInfo(driver, Address.FromNumber(23));
-            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance);
-
-            if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled || vmConfig.IsFullAotEnabled)
-            {
-                _ilAnalyzer.Analyse(driverCodeinfo, mode.Value, vmConfig, NullLogger.Instance);
-                _ilAnalyzer.Analyse(targetCodeInfo, mode.Value, vmConfig, NullLogger.Instance);
-                if (driverCodeinfo.IlInfo.Mode == ILMode.FULL_AOT_MODE)
-                {
-                    driverCodeinfo.IlInfo.PrecompiledContract = Activator.CreateInstance(_environment.CodeInfo.IlInfo.DynamicContractType, [
-                        _evmState, _stateProvider, _spec, _blockhashProvider, _txTracer, _logger, _environment.CodeInfo.IlInfo.ContractMetadata.EmbeddedData
-                    ]) as IPrecompiledContract;
-                }
-                if (targetCodeInfo.IlInfo.Mode == ILMode.FULL_AOT_MODE)
-                {
-                    targetCodeInfo.IlInfo.PrecompiledContract = Activator.CreateInstance(_environment.CodeInfo.IlInfo.DynamicContractType, [
-                        _evmState, _stateProvider, _spec, _blockhashProvider, _txTracer, _logger, _environment.CodeInfo.IlInfo.ContractMetadata.EmbeddedData
-                    ]) as IPrecompiledContract;
-                }
-            }
-
             _environment = new ExecutionEnvironment
             (
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: driverCodeinfo,
+                codeInfo: driverCodeInfo,
                 value: 0,
                 transferValue: 0,
                 txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
@@ -169,8 +160,6 @@ namespace Nethermind.Evm.Benchmark
             );
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
-            
-
         }
 
         public void Run()
@@ -180,7 +169,7 @@ namespace Nethermind.Evm.Benchmark
 
         public void Reset()
         {
-            _stateProvider.Reset();
+            //_stateProvider.Reset();
         }
 
         public override string ToString()
@@ -192,13 +181,13 @@ namespace Nethermind.Evm.Benchmark
     }
 
     [MemoryDiagnoser]
-    public class EvmBenchmarks
+    public class EvmBenchmarks()
     {
-        public static IEnumerable<ILocalSetup> GetBenchmarkSamples()
-        {
-            IEnumerable<(string, byte[])> GetBenchmarkSamplesGen(byte[] argBytes)
-            {
-                yield return ($"Fib With args {new UInt256(argBytes)}", Prepare.EvmCode
+        static byte[] fibbBytecode(byte[] argBytes) => Prepare.EvmCode
+                        .JUMPDEST()
+                        .PUSHx([0, 0])
+                        .POP()
+
                         .PushData(argBytes)
                         .COMMENT("1st/2nd fib number")
                         .PushData(0)
@@ -207,7 +196,7 @@ namespace Nethermind.Evm.Benchmark
                         .JUMPDEST()
                         .DUPx(3)
                         .ISZERO()
-                        .PushData(26 + argBytes.Length)
+                        .PushData(5 + 26 + argBytes.Length)
                         .JUMPI()
                         .COMMENT("fib step")
                         .DUPx(2)
@@ -222,7 +211,7 @@ namespace Nethermind.Evm.Benchmark
                         .SWAPx(1)
                         .SUB()
                         .SWAPx(2)
-                        .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
+                        .PushData(5 + 5 + argBytes.Length).COMMENT("goto MAINLOOP")
                         .JUMP()
 
                         .COMMENT("CLEANUP:")
@@ -232,9 +221,13 @@ namespace Nethermind.Evm.Benchmark
                         .POP()
                         .COMMENT("done: requested fib number is the only element on the stack!")
                         .STOP()
-                        .Done);
+                        .Done;
 
-                yield return ($"IsPrime With args {new UInt256(argBytes)}", Prepare.EvmCode
+        static byte[] isPrimeBytecode(byte[] argBytes) => Prepare.EvmCode
+                        .JUMPDEST()
+                        .PUSHx([0])
+                        .POP()
+
                         .PUSHx(argBytes)
                         .COMMENT("Store variable(n) in Memory")
                         .MSTORE(0)
@@ -249,7 +242,7 @@ namespace Nethermind.Evm.Benchmark
                         .MUL()
                         .MLOAD(0)
                         .LT()
-                        .PushData(47 + argBytes.Length)
+                        .PushData(4 + 47 + argBytes.Length)
                         .JUMPI()
                         .COMMENT("We check if n % i == 0")
                         .MLOAD(32)
@@ -258,7 +251,7 @@ namespace Nethermind.Evm.Benchmark
                         .ISZERO()
                         .DUPx(1)
                         .COMMENT("if 0 we jump to the end")
-                        .PushData(51 + argBytes.Length)
+                        .PushData(4 + 51 + argBytes.Length)
                         .JUMPI()
                         .POP()
                         .COMMENT("increment Indexer(i)")
@@ -266,30 +259,79 @@ namespace Nethermind.Evm.Benchmark
                         .ADD(1)
                         .MSTORE(32)
                         .COMMENT("Loop back to top of conditional loop")
-                        .PushData(9 + argBytes.Length)
+                        .PushData(4 + 9 + argBytes.Length)
                         .JUMP()
                         .COMMENT("return 0")
                         .JUMPDEST()
                         .PushData(0)
                         .STOP()
                         .JUMPDEST()
-                        .Done);
+                        .Done;
+        public static IEnumerable<ILocalSetup> GetBenchmarkSamples()
+        {
+            int mode = Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
 
-            }
+            UInt256[] f_args = [1, 23, 101, 1023, 2047, 4999];
+            UInt256[] p_args = [1, 23, 1023, 8000009, 16000057];
 
-            UInt256[] args = [1, 23, 101, 4999];
-
-            foreach (var arg in args)
+            foreach (var arg in f_args)
             {
                 byte[] bytes = new byte[32];
                 arg.ToBigEndian(bytes);
                 var argBytes = bytes.WithoutLeadingZeros().ToArray();
-                foreach (var bytecode in GetBenchmarkSamplesGen(argBytes))
+                var bytecode = fibbBytecode(argBytes);
+
+                string benchName = $"Fib With args {new UInt256(argBytes)}";
+
+                if (mode.HasFlag(1))
                 {
-                    yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std::" + bytecode.Item1, bytecode.Item2, null);
-                    //yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + bytecode.Item1, bytecode.Item2, ILMode.PATTERN_BASED_MODE);
-                    //yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + bytecode.Item1, bytecode.Item2, ILMode.PARTIAL_AOT_MODE);
-                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + bytecode.Item1, bytecode.Item2, ILMode.FULL_AOT_MODE);
+                    yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::1::std::" + benchName, bytecode, null);
+                }
+
+                if (mode.HasFlag(2))
+                {
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::2::pat::" + benchName, bytecode, ILMode.PATTERN_BASED_MODE);
+                }
+
+                if (mode.HasFlag(4))
+                {
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::3::jit::" + benchName, bytecode, ILMode.PARTIAL_AOT_MODE);
+                }
+
+                if (mode.HasFlag(8))
+                {
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::4::aot::" + benchName, bytecode, ILMode.FULL_AOT_MODE);
+                }
+            }
+
+
+            foreach (var arg in p_args)
+            {
+                byte[] bytes = new byte[32];
+                arg.ToBigEndian(bytes);
+                var argBytes = bytes.WithoutLeadingZeros().ToArray();
+
+                string benchName = $"Prim With args {new UInt256(argBytes)}";
+                var bytecode = isPrimeBytecode(argBytes);
+
+                if (mode.HasFlag(1))
+                {
+                    yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::1::std::" + benchName, bytecode, null);
+                }
+
+                if (mode.HasFlag(2))
+                {
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::2::pat::" + benchName, bytecode, ILMode.PATTERN_BASED_MODE);
+                }
+
+                if (mode.HasFlag(4))
+                {
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::3::jit::" + benchName, bytecode, ILMode.PARTIAL_AOT_MODE);
+                }
+
+                if (mode.HasFlag(8))
+                {
+                    yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::4::aot::" + benchName, bytecode, ILMode.FULL_AOT_MODE);
                 }
             }
         }
@@ -323,12 +365,27 @@ namespace Nethermind.Evm.Benchmark
         public IEnumerable<ILocalSetup> GetBenchmarkSamples()
         {
             byte[] bytecode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE") ?? string.Empty);
+            int mode = Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
             string BenchmarkName = Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME") ?? string.Empty;
+            if (mode.HasFlag(1))
+            {
+                yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::1::std::" + BenchmarkName, bytecode, null);
+            }
 
-            yield return new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std::" +  BenchmarkName, bytecode, null);
-            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::pat::" + BenchmarkName, bytecode, ILMode.PATTERN_BASED_MODE);
-            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::jit::" + BenchmarkName, bytecode, ILMode.PARTIAL_AOT_MODE);
-            yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot::" + BenchmarkName, bytecode, ILMode.FULL_AOT_MODE);
+            if (mode.HasFlag(2))
+            {
+                yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::2::pat::" + BenchmarkName, bytecode, ILMode.PATTERN_BASED_MODE);
+            }
+
+            if (mode.HasFlag(4))
+            {
+                yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::3::jit::" + BenchmarkName, bytecode, ILMode.PARTIAL_AOT_MODE);
+            }
+
+            if (mode.HasFlag(8))
+            {
+                yield return new LocalSetup<NotTracing, IsOptimizing>("ILEVM::4::aot::" + BenchmarkName, bytecode, ILMode.FULL_AOT_MODE);
+            }
         }
 
         [ParamsSource(nameof(GetBenchmarkSamples))]

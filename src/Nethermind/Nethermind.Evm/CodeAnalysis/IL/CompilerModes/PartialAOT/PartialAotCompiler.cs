@@ -94,6 +94,8 @@ internal static class PartialAOT
         envLoader.LoadProgramCounter(method, locals, false);
         method.StoreLocal(locals.programCounter);
 
+        ReleaseSpecEmit.DeclareOpcodeValidityCheckVariables(method, contractMetadata, locals);
+
         // if last ilvmstate was a jump
         envLoader.LoadResult(method, locals, true);
         method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
@@ -114,27 +116,6 @@ internal static class PartialAOT
         {
             OpcodeInfo op = segmentMetadata.Segment[i];
 
-            if (!bakeInTracerCalls && segmentMetadata.SubSegments.ContainsKey(i))
-                currentSegment = segmentMetadata.SubSegments[i];
-            // if tracing mode is off, 
-            if (!bakeInTracerCalls)
-            {
-                // we skip compiling unreachable code
-                if (!currentSegment.IsReachable)
-                {
-                    i = currentSegment.End;
-                    continue;
-                }
-
-                // and we emit failure for failing jumpless segment at start 
-                if (currentSegment.IsFailing)
-                {
-                    method.Branch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
-                    i = currentSegment.End;
-                    continue;
-                }
-            }
-
             if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
@@ -143,47 +124,54 @@ internal static class PartialAOT
                 method.StoreLocal(locals.programCounter);
             }
 
-            if (bakeInTracerCalls)
-                EmitCallToStartInstructionTrace(method, locals.gasAvailable, locals.stackHeadIdx, op, envLoader, locals);
-
-            // check if opcode is activated in current spec, we skip this check for opcodes that are always enabled
-            if (op.Operation.RequiresAvailabilityCheck())
+            if (!config.BakeInTracingInAotModes)
             {
-                envLoader.LoadSpec(method, locals, false);
-                method.LoadConstant((byte)op.Operation);
-                method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
-                method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
-            }
+                if (segmentMetadata.SubSegments.ContainsKey(i))
+                {
+                    currentSegment = segmentMetadata.SubSegments[i];
 
-            // if tracing mode is off, we consume the static gas only at the start of segment
-            if (!bakeInTracerCalls)
-            {
+                    if (currentSegment.RequiresOpcodeCheck)
+                    {
+                        method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
+                    }
+
+                    if (!currentSegment.IsReachable)
+                    {
+                        i = currentSegment.End;
+                        continue;
+                    }
+
+                    // and we emit failure for failing jumpless segment at start 
+                    if (currentSegment.IsFailing)
+                    {
+                        method.Branch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+                        i = currentSegment.End;
+                        continue;
+                    }
+
+                    if (currentSegment.RequiredStack != 0)
+                    {
+                        method.LoadLocal(locals.stackHeadIdx);
+                        method.LoadConstant(currentSegment.RequiredStack);
+                        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
+                    }
+
+                    // we check if locals.stackHeadRef overflow can occur
+                    if (currentSegment.MaxStack != 0)
+                    {
+                        method.LoadLocal(locals.stackHeadIdx);
+                        method.LoadConstant(currentSegment.MaxStack);
+                        method.Add();
+                        method.LoadConstant(EvmStack.MaxStackSize);
+                        method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
+                    }
+                }
+
                 if (currentSegment.StaticGasSubSegmentes.TryGetValue(i, out var gasCost) && gasCost > 0)
                 {
-                    method.LoadLocal(locals.gasAvailable);
-                    method.LoadConstant(gasCost);
-                    method.Subtract();
-                    method.Duplicate();
-                    method.StoreLocal(locals.gasAvailable);
-                    method.LoadConstant((long)0);
-                    method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
+                    method.EmitStaticGasCheck(locals.gasAvailable, gasCost, evmExceptionLabels);
                 }
-            }
-            else
-            {
-                // otherwise we update the gas after each instruction
-                method.LoadLocal(locals.gasAvailable);
-                method.LoadConstant(op.Metadata.GasCost);
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(locals.gasAvailable);
-                method.LoadConstant((long)0);
-                method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
-            }
 
-            // if tracing mode is off, we update the pc only at the end of segment and in jumps
-            if (!bakeInTracerCalls)
-            {
                 if (i == segmentMetadata.Segment.Length - 1 || op.IsTerminating)
                 {
                     method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
@@ -192,35 +180,19 @@ internal static class PartialAOT
             }
             else
             {
-                // otherwise we update the pc after each instruction
+                EmitCallToStartInstructionTrace(method, locals.gasAvailable, locals.stackHeadIdx, op, envLoader, locals);
+                if (op.Operation.RequiresAvailabilityCheck())
+                {
+                    envLoader.LoadSpec(method, locals, false);
+                    method.LoadConstant((byte)op.Operation);
+                    method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+                    method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+                }
+                method.EmitStaticGasCheck(locals.gasAvailable, op.Metadata.GasCost, evmExceptionLabels);
+
                 method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
                 method.StoreLocal(locals.programCounter);
-            }
 
-            // if tracing is off, we check the locals.stackHeadRef requirement of the full jumpless segment at once
-            if (!bakeInTracerCalls)
-            {
-                // we check if locals.stackHeadRef underflow can occur
-                if (currentSegment.RequiredStack != 0)
-                {
-                    method.LoadLocal(locals.stackHeadIdx);
-                    method.LoadConstant(currentSegment.RequiredStack);
-                    method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
-                }
-
-                // we check if locals.stackHeadRef overflow can occur
-                if (currentSegment.MaxStack != 0)
-                {
-                    method.LoadLocal(locals.stackHeadIdx);
-                    method.LoadConstant(currentSegment.MaxStack);
-                    method.Add();
-                    method.LoadConstant(EvmStack.MaxStackSize);
-                    method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
-                }
-            }
-            else
-            {
-                // otherwise we check the locals.stackHeadRef requirement of each instruction
                 method.LoadLocal(locals.stackHeadIdx);
                 method.LoadConstant(op.Metadata.StackBehaviorPop);
                 method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
@@ -234,16 +206,7 @@ internal static class PartialAOT
             }
 
             // else emit
-            switch (op.Operation)
-            {
-                case Instruction.JUMPDEST:
-                    // we do nothing
-                    break;
-                default:
-                    opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
-                    break;
-
-            }
+            opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
             if (bakeInTracerCalls)
             {

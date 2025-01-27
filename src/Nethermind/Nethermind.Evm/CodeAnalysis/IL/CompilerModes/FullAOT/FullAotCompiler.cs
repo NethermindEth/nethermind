@@ -253,17 +253,7 @@ internal static class FullAOT
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
-                // else emit
-                switch (op.Operation)
-                {
-                    case Instruction.JUMPDEST:
-                        // we do nothing
-                        break;
-                    default:
-                        opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
-                        break;
-
-                }
+                opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
                 if (config.BakeInTracingInAotModes)
                 {
