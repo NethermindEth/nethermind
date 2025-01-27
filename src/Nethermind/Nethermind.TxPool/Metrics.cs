@@ -149,5 +149,11 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Number of blob transactions in pool.")]
         public static long BlobTransactionCount { get; set; }
+
+        public static long PendingTransactionsSizeTooLarge { get; set; }
+        public static long PendingTransactionsNullHash { get; set; }
+        public static long TransactionsSourcedPrivateOrderflow { get; internal set; }
+        public static long TransactionsSourcedMemPool { get; internal set; }
+        public static long TransactionsReorged { get; internal set; }
     }
 }
