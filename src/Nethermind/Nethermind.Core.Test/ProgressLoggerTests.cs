@@ -168,7 +168,7 @@ public class ProgressLoggerTests
 
         measuredProgress.LogProgress();
 
-        iLogger.Received(1).Info("Progress              1 /        100 (  0.99 %) [⡆                                    ] queue       99 | skipped      90 Blk/s | current      10 Blk/s");
+        iLogger.Received(1).Info("Progress              1 /        100 (  1.00 %) [⡆                                    ] queue       99 | skipped      90 Blk/s | current      10 Blk/s");
     }
 
     private ProgressLogger CreateProgress()
