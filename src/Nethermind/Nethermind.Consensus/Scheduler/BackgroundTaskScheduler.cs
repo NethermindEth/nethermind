@@ -124,17 +124,14 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             FulfillFunc = fulfillFunc,
         };
 
-        int tasksScheduled = _taskQueue.Reader.Count;
-        if (tasksScheduled % 1000 == 0)
-        {
-            _logger.Warn($"there are {tasksScheduled} tasks scheduled");
-        }
         if (!_taskQueue.Writer.TryWrite(activity))
         {
             request.TryDispose();
             // This should never happen unless something goes very wrong.
             throw new InvalidOperationException("Unable to write to background task queue.");
         }
+
+        Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
     }
 
     public async ValueTask DisposeAsync()
