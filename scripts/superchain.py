@@ -44,6 +44,21 @@ def merge_all(*dicts):
     return reduce(merge, [{}, *dicts])
 
 
+def to_nethermind_accounts(genesis):
+    alloc = lookup(genesis, ["alloc"])
+
+    result = {}
+    for address, account in alloc.items():
+        k = f"0x{address}"
+        v = account
+        if "code" in v and v["code"].startswith("0x"):
+            v["code"] = v['code'][2:]
+
+        result[k] = v
+
+    return result
+
+
 def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
     config = merge_all(superchain, chain)
 
@@ -181,7 +196,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "enr:-LK4QA8FfhaAjlb_BXsXxSfiysR7R52Nhi9JBt4F8SPssu8hdE1BXQQEtVDC3qStCW60LSO7hEsVHv5zm8_6Vnjhcn0Bh2F0dG5ldHOIAAAAAAAAAACEZXRoMpC1MD8qAAAAAP__________gmlkgnY0gmlwhAN4aBKJc2VjcDI1NmsxoQJerDhsJ-KxZ8sHySMOCmTO6sHM3iCFQ6VMvLTe948MyYN0Y3CCI4yDdWRwgiOM",
             "enr:-LK4QKWrXTpV9T78hNG6s8AM6IO4XH9kFT91uZtFg1GcsJ6dKovDOr1jtAAFPnS2lvNltkOGA9k29BUN7lFh_sjuc9QBh2F0dG5ldHOIAAAAAAAAAACEZXRoMpC1MD8qAAAAAP__________gmlkgnY0gmlwhANAdd-Jc2VjcDI1NmsxoQLQa6ai7y9PMN5hpLe5HmiJSlYzMuzP7ZhwRiwHvqNXdoN0Y3CCI4yDdWRwgiOM",
         ],
-        "accounts": lookup(genesis, ["alloc"]),
+        "accounts": to_nethermind_accounts(genesis),
     }
     # Post-processing
 
