@@ -20,18 +20,12 @@ public class ChainSpecFileLoader
 
     public ChainSpecFileLoader(IJsonSerializer serializer, ILogger logger)
     {
-        var jsonLoader = new ChainSpecLoader(new EthereumJsonSerializer());
+        var jsonLoader = new ChainSpecLoader(serializer);
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
             { ".zstd", new ZstdChainSpecLoader(jsonLoader) }
         };
-        _logger = logger;
-    }
-
-    public ChainSpecFileLoader(Dictionary<string, IChainSpecLoader> chainSpecLoaders, ILogger logger)
-    {
-        _chainSpecLoaders = chainSpecLoaders;
         _logger = logger;
     }
 
