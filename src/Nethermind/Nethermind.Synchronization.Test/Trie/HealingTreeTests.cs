@@ -124,6 +124,21 @@ public class HealingTreeTests
     [TestCase(INodeStorage.KeyScheme.HalfPath)]
     public async Task HealingTreeTest(INodeStorage.KeyScheme keyScheme)
     {
+        await using IContainer server = CreateNode();
+        await using IContainer client = CreateNode();
+
+        // Add some data to the server.
+        Hash256 stateRoot = FillStorage(server);
+
+        RandomCopyState(server, client);
+
+        ISyncPeerPool clientSyncPeerPool = client.Resolve<ISyncPeerPool>();
+        clientSyncPeerPool.Start();
+        clientSyncPeerPool.AddPeer(server.Resolve<SyncPeerMock>());
+
+        // Make sure that the client have the same data.
+        AssertStorage(client);
+
         IContainer CreateNode()
         {
             ConfigProvider configProvider = new ConfigProvider();
@@ -144,15 +159,7 @@ public class HealingTreeTests
                 .Build();
         }
 
-        await using IContainer server = CreateNode();
-        await using IContainer client = CreateNode();
-
-        IDb clientStateDb = client.ResolveNamed<IDb>(DbNames.State);
-        IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
-
-        // Add some data to the server.
-        Hash256 stateRoot;
-        {
+        Hash256 FillStorage(IContainer server) {
             IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
             mainWorldState.StateRoot = Keccak.EmptyTreeHash;
 
@@ -172,10 +179,13 @@ public class HealingTreeTests
             mainWorldState.Commit(Cancun.Instance);
             mainWorldState.CommitTree(1);
 
-            stateRoot = mainWorldState.StateRoot;
+            return mainWorldState.StateRoot;
         }
 
-        {
+        void RandomCopyState(IContainer server, IContainer client) {
+            IDb clientStateDb = client.ResolveNamed<IDb>(DbNames.State);
+            IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
+
             Random random = new Random(0);
             using ArrayPoolList<KeyValuePair<byte[], byte[]?>> allValues = serverStateDb.GetAll().ToPooledList(10);
             // Sort for reproducability
@@ -191,12 +201,7 @@ public class HealingTreeTests
             }
         }
 
-        ISyncPeerPool clientSyncPeerPool = client.Resolve<ISyncPeerPool>();
-        clientSyncPeerPool.Start();
-        clientSyncPeerPool.AddPeer(server.Resolve<SyncPeerMock>());
-
-        // Make sure that the client have the same data.
-        {
+        void AssertStorage(IContainer client){
             IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
             mainWorldState.StateRoot = stateRoot;
 
@@ -216,5 +221,4 @@ public class HealingTreeTests
             }
         }
     }
-
 }
