@@ -64,6 +64,13 @@ let lastDuplicate = 0;
 let lastHashesReceived = 0;
 let lastNow = 0;
 
+function addCapped(array: Datum[], datum: Datum) {
+  array.push(datum);
+  if (array.length > 60) {
+    array.shift();
+  }
+}
+
 function updateText(element: HTMLElement, value: string): void {
   if (element.innerText !== value) {
     // Don't update the DOM if the value is the same
@@ -110,16 +117,11 @@ function updateTxPool(txPool: TxPool) {
   const currentHashesReceived = txPool.hashesReceived;
 
   if (lastNow !== 0) {
-    seriesHashes.push({ t: nowMs, v: currentHashesReceived - lastHashesReceived });
-    if (seriesHashes.length > 60) { seriesHashes.shift(); }
-    seriesReceived.push({ t: nowMs, v: currentReceived - lastReceived });
-    if (seriesReceived.length > 60) { seriesReceived.shift(); }
-    seriesDuplicate.push({ t: nowMs, v: currentDuplicate - lastDuplicate });
-    if (seriesDuplicate.length > 60) { seriesDuplicate.shift(); }
-    seriesTxPool.push({ t: nowMs, v: currentTxPool - lastTxPool });
-    if (seriesTxPool.length > 60) { seriesTxPool.shift(); }
-    seriesBlock.push({ t: nowMs, v: currentBlock - lastBlock });
-    if (seriesBlock.length > 60) { seriesBlock.shift(); }
+    addCapped(seriesHashes, { t: nowMs, v: currentHashesReceived - lastHashesReceived });
+    addCapped(seriesReceived, { t: nowMs, v: currentReceived - lastReceived });
+    addCapped(seriesDuplicate, { t: nowMs, v: currentDuplicate - lastDuplicate });
+    addCapped(seriesTxPool, { t: nowMs, v: currentTxPool - lastTxPool });
+    addCapped(seriesBlock, { t: nowMs, v: currentBlock - lastBlock });
   }
 
 
@@ -223,13 +225,8 @@ sse.addEventListener("system", (e) => {
   }
 
   const now = performance.now();
-  let newCpuDatum = { t: now, v: data.userPercent + data.privilegedPercent };
-  seriesTotalCpu.push(newCpuDatum);
-  if (seriesTotalCpu.length > 60) { seriesTotalCpu.shift(); }
-
-  let newMemoryDatum = { t: now, v: memoryMb };
-  seriesMemory.push(newMemoryDatum);
-  if (seriesMemory.length > 60) { seriesMemory.shift(); }
+  addCapped(seriesTotalCpu, { t: now, v: data.userPercent + data.privilegedPercent });
+  addCapped(seriesMemory, { t: now, v: memoryMb });
 
   if (document.hidden) return;
 
