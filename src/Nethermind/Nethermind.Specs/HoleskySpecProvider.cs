@@ -24,7 +24,8 @@ public class HoleskySpecProvider : ISpecProvider
         {
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => Shanghai.Instance,
-            _ => Cancun.Instance
+            < PragueTimestamp => Cancun.Instance,
+            _ => Prague.Instance
         };
     }
 
