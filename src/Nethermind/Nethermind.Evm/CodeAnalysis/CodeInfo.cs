@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using IlevmMode = int;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using System.Linq;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -24,16 +25,19 @@ namespace Nethermind.Evm.CodeAnalysis
         public void NoticeExecution(IlAnalyzer analyzer, IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
-            if (_callCount > Math.Max(vmConfig.PartialAotThreshold, vmConfig.PatternMatchingThreshold))
+            int[] maxThresholds = [vmConfig.PartialAotThreshold, vmConfig.PartialAotThreshold, vmConfig.PatternMatchingThreshold];
+            if (_callCount > maxThresholds.Max())
                 return;
 
             Interlocked.Increment(ref _callCount);
             // use Interlocked just in case of concurrent execution to run it only once
-            IlevmMode mode = vmConfig.IsPartialAotEnabled && _callCount == vmConfig.PartialAotThreshold
+            IlevmMode mode = vmConfig.IsFullAotEnabled && _callCount == vmConfig.FullAotThreshold
+                ? ILMode.FULL_AOT_MODE
+                : vmConfig.IsPartialAotEnabled && _callCount == vmConfig.PartialAotThreshold
                 ? ILMode.PARTIAL_AOT_MODE
                 : vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
-                    ? ILMode.PATTERN_BASED_MODE
-                    : ILMode.NO_ILVM;
+                ? ILMode.PATTERN_BASED_MODE
+                : ILMode.NO_ILVM;
 
             if (mode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
                 return;
@@ -41,6 +45,7 @@ namespace Nethermind.Evm.CodeAnalysis
             analyzer.Enqueue(this, mode, vmConfig, logger);
 
         }
+
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
         public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>(), null);

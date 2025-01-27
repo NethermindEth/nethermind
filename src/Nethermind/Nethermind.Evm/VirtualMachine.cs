@@ -1,5 +1,5 @@
 
-// #define ILVM_DEBUG
+#define ILVM_DEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -187,12 +187,17 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #if ILVM_DEBUG
         _vmConfig = new VMConfig
         {
-            IsJitEnabled = true,
-            AggressiveJitMode = true,
+            IsPartialAotEnabled = false,
+            IsFullAotEnabled = true,
             IsPatternMatchingEnabled = false,
-            BakeInTracingInJitMode = false,
-            JittingThreshold = 1,
-            PatternMatchingThreshold = int.MaxValue
+            
+            AggressivePartialAotMode = true,
+            BakeInTracingInAotModes = true,
+
+            FullAotThreshold = 5,
+            PatternMatchingThreshold = int.MaxValue,
+            AnalysisQueueMaxSize = 8,
+            PartialAotThreshold = int.MaxValue,
         };
 #else
         _vmConfig = vmConfig;
