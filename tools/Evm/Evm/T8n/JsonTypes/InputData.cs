@@ -34,10 +34,7 @@ public class InputData
             {
                 var transaction = Txs[i].ToTransaction();
                 transaction.SenderAddress = Txs[i] is LegacyTransactionForRpc ? ((LegacyTransactionForRpc)Txs[i]).From : null;
-                if (transaction.SenderAddress is null)
-                {
-                    SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
-                }
+                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
 
                 transactions.Add(transaction);
             }

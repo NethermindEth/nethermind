@@ -112,7 +112,11 @@ public class T8nExecutionResult
             Code = code
         };
 
-        accountState.Storage = storageTxTracer.GetStorage(address) ?? [];
+        foreach (UInt256 index in storageTxTracer.GetStorageIndexes(address))
+        {
+            ReadOnlySpan<byte> value = stateProvider.Get(new StorageCell(address, index));
+            if (!value.IsEmpty) accountState.Storage[index] = value.ToArray();
+        }
 
         return accountState;
     }

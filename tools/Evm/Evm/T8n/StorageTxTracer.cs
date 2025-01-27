@@ -9,7 +9,7 @@ namespace Evm.T8n;
 
 public class StorageTxTracer : TxTracer, IBlockTracer
 {
-    private readonly Dictionary<Address, Dictionary<UInt256, byte[]>> _storages = new();
+    private readonly Dictionary<Address, List<UInt256>> _storages = new();
     public bool IsTracingRewards => false;
     public override bool IsTracingOpLevelStorage => true;
 
@@ -21,13 +21,13 @@ public class StorageTxTracer : TxTracer, IBlockTracer
             _storages[address] = [];
         }
 
-        _storages[address][storageIndex] = newValue.ToArray();
+        _storages[address].Add(storageIndex);
     }
 
-    public Dictionary<UInt256, byte[]>? GetStorage(Address address)
+    public List<UInt256> GetStorageIndexes(Address address)
     {
-        _storages.TryGetValue(address, out Dictionary<UInt256, byte[]>? storage);
-        return storage;
+        _storages.TryGetValue(address, out List<UInt256>? storage);
+        return storage ?? [];
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
