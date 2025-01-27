@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+extern alias BouncyCastle;
 
 using Nethermind.Cli;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Org.BouncyCastle.Utilities.Encoders;
+using BouncyCastle::Org.BouncyCastle.Utilities.Encoders;
 
 namespace SendBlobs;
 internal class BlobSender
@@ -55,7 +57,8 @@ internal class BlobSender
         UInt256? maxFeePerBlobGasArgs,
         ulong feeMultiplier,
         UInt256? maxPriorityFeeGasArgs,
-        bool waitForInclusion)
+        bool waitForInclusion,
+        IReleaseSpec spec)
     {
         List<(Signer, ulong)> signers = [];
 
@@ -146,7 +149,7 @@ internal class BlobSender
                     return;
                 }
 
-                (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult, excessBlobs);
+                (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult, excessBlobs, spec);
 
                 maxPriorityFeePerGas *= feeMultiplier;
                 maxGasPrice *= feeMultiplier;
@@ -191,7 +194,8 @@ internal class BlobSender
         UInt256 maxFeePerBlobGasArgs,
         ulong feeMultiplier,
         UInt256? maxPriorityFeeGasArgs,
-        bool waitForInclusion)
+        bool waitForInclusion,
+        IReleaseSpec spec)
     {
         int n = 0;
         data = data
@@ -243,7 +247,7 @@ internal class BlobSender
             return;
         }
 
-        (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult!, 1);
+        (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult!, 1, spec);
 
         maxPriorityFeePerGas *= feeMultiplier;
         maxGasPrice *= feeMultiplier;
@@ -256,7 +260,7 @@ internal class BlobSender
     }
 
     private async Task<(UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas)> GetGasPrices
-        (UInt256? defaultGasPrice, UInt256? defaultMaxPriorityFeePerGas, UInt256? defaultMaxFeePerBlobGas, BlockModel<Hash256> block, ulong excessBlobs)
+        (UInt256? defaultGasPrice, UInt256? defaultMaxPriorityFeePerGas, UInt256? defaultMaxFeePerBlobGas, BlockModel<Hash256> block, ulong excessBlobs, IReleaseSpec spec)
     {
         (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) result = new();
 
@@ -282,11 +286,12 @@ internal class BlobSender
 
         if (defaultMaxFeePerBlobGas is null)
         {
-            ulong excessBlobsReserve = 2 * Eip4844Constants.TargetBlobGasPerBlock;
+            ulong excessBlobsReserve = 2 * spec.TargetBlobCount;
             BlobGasCalculator.TryCalculateFeePerBlobGas(
                 (block.ExcessBlobGas ?? 0) +
-                excessBlobs * Eip4844Constants.MaxBlobGasPerBlock +
+                excessBlobs * spec.MaxBlobCount +
                 excessBlobsReserve,
+                spec.BlobBaseFeeUpdateFraction,
                 out UInt256 blobGasPrice);
             result.maxFeePerBlobGas = blobGasPrice;
         }
