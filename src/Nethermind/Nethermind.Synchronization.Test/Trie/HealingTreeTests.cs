@@ -159,7 +159,8 @@ public class HealingTreeTests
                 .Build();
         }
 
-        Hash256 FillStorage(IContainer server) {
+        Hash256 FillStorage(IContainer server)
+        {
             IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
             mainWorldState.StateRoot = Keccak.EmptyTreeHash;
 
@@ -182,7 +183,8 @@ public class HealingTreeTests
             return mainWorldState.StateRoot;
         }
 
-        void RandomCopyState(IContainer server, IContainer client) {
+        void RandomCopyState(IContainer server, IContainer client)
+        {
             IDb clientStateDb = client.ResolveNamed<IDb>(DbNames.State);
             IDb serverStateDb = server.ResolveNamed<IDb>(DbNames.State);
 
@@ -201,7 +203,8 @@ public class HealingTreeTests
             }
         }
 
-        void AssertStorage(IContainer client){
+        void AssertStorage(IContainer client)
+        {
             IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
             mainWorldState.StateRoot = stateRoot;
 
