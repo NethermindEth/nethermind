@@ -111,7 +111,6 @@ public class ForkInfoTests
     [TestCase(5, 1_717_305_664ul, "0x9b192ad0", 1_739_352_768ul, "Future Cancun timestamp")]
     [TestCase(5, 1_739_352_768ul, "0xf818a0d6", 0ul, "First Prague timestamp")]
     [TestCase(5, 1_759_352_768ul, "0xf818a0d6", 0ul, "Future Prague timestamp")]
-
     public void Fork_id_and_hash_as_expected_on_holesky(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.HoleskyGenesis, forkHashHex, next, description, HoleskySpecProvider.Instance, "holesky.json");
