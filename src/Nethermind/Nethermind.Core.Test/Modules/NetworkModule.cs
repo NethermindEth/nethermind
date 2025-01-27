@@ -26,6 +26,8 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -70,6 +72,14 @@ public class NetworkModule(IInitConfig initConfig) : Module
             .AddSingleton<ForkInfo>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
+
+            .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
+            {
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                ctx.Resolve<IWorldStateManager>().InitializeNetwork(
+                    new GetNodeDataTrieNodeRecovery(peerPool, logManager),
+                    new SnapTrieNodeRecovery(peerPool, logManager));
+            })
 
             // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
@@ -129,8 +139,6 @@ public class NetworkModule(IInitConfig initConfig) : Module
             })
 
             ;
-
-        // TODO: Add `WorldStateManager.InitializeNetwork`.
     }
 
 }
