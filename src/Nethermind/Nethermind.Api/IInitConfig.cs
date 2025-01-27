@@ -90,7 +90,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "1_000_000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "65536", HiddenFromDocs = true)]
     int BackgroundTaskMaxNumber { get; set; }
 }
 
