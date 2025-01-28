@@ -548,7 +548,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
             Address? delegationAddress = null;
-            ICodeInfo codeInfo = null;
+            ICodeInfo? codeInfo = null;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
             if (tx.IsContractCreation)
             {
@@ -565,6 +565,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (delegationAddress is not null)
                     accessTracker.WarmUp(delegationAddress);
             }
+            codeInfo ??= CodeInfo.Empty;
             codeInfo.AnalyseInBackgroundIfRequired();
             if (spec.UseHotAndColdStorage)
             {

@@ -11,6 +11,7 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
+[Explicit("Legacy ethereum/tests EOF tests currently are based on a Prague spec, which lacks EOF.")]
 public class EOFTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
@@ -23,11 +24,13 @@ public class EOFTests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var eip3540Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP3540").LoadTests());
-        var eip3670Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP3670").LoadTests());
-        var eip4200Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP4200").LoadTests());
-        var eip4750Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP4750").LoadTests());
-        var eip5450Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP5450").LoadTests());
-        return eip3540Loader.Concat(eip3670Loader).Concat(eip4200Loader).Concat(eip4750Loader).Concat(eip5450Loader);
+        return [];
+
+        //var eip3540Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP3540").LoadTests());
+        //var eip3670Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP3670").LoadTests());
+        //var eip4200Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP4200").LoadTests());
+        //var eip4750Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP4750").LoadTests());
+        //var eip5450Loader = (IEnumerable<GeneralStateTest>)(new TestsSourceLoader(new LoadEofTestsStrategy(), "stEIP5450").LoadTests());
+        //return eip3540Loader.Concat(eip3670Loader).Concat(eip4200Loader).Concat(eip4750Loader).Concat(eip5450Loader);
     }
 }

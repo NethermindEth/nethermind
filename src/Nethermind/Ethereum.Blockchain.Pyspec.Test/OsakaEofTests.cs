@@ -19,8 +19,8 @@ public class OsakaEofTests : EofTestBase
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
-            ArchiveName = "fixtures_eip7692-osaka.tar.gz",
-            ArchiveVersion = "eip7692@v2.0.0"
+            ArchiveName = "fixtures_eip7692.tar.gz",
+            ArchiveVersion = "eip7692@v2.1.0"
         }, $"fixtures/eof_tests/osaka");
         return loader.LoadTests().Cast<EofTest>().Select(t => new TestCaseData(t)
             .SetName(t.Name)
