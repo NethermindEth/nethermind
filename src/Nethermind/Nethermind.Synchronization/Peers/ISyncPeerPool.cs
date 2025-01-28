@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.Peers
                 cancellationToken: cancellationToken);
             try
             {
-                if (allocation is null) return default;
+                if (allocation?.Current?.SyncPeer is null) return default;
                 return await func(allocation.Current?.SyncPeer);
             }
             finally

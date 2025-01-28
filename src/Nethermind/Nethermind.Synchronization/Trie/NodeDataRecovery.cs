@@ -3,11 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Tasks;
+using Nethermind.Core.Utils;
+using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Healing;
 using Nethermind.Stats;
@@ -18,16 +23,18 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
 
-public class HashNodeRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage): IPathRecovery
+public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, ILogManager logManager): IPathRecovery
 {
-    private static readonly IPeerAllocationStrategy SnapPeerStrategy =
+    private static readonly IPeerAllocationStrategy NodePeerStrategy =
         new CanServeByHashPeerAllocationStrategy(
             new BySpeedStrategy(TransferSpeedType.Latency, false));
 
-    public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath)
+    private const int ConcurrentAttempt = 3;
+    private readonly ILogger _logger = logManager.GetClassLogger<NodeDataRecovery>();
+
+    public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromMilliseconds(10000));
+        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
         Hash256 currentHash = startingNodeHash;
         TreePath currentPath = startingPath;
@@ -37,12 +44,20 @@ public class HashNodeRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage):
 
         do
         {
-            byte[]? nodeRlp = await FetchRlp(address, currentPath, currentHash, cts.Token);
+            // In case of deeper node that already exist.
+            byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
+            if (nodeRlp is null)
+            {
+                nodeRlp = await FetchRlp(address, currentPath, currentHash, cts.Token);
+            }
+
             if (nodeRlp == null)
             {
-                // Failure!!!!
+                if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
                 return null;
             }
+
+            recoveredNodes[currentPath] = nodeRlp;
 
             TrieNode? node = new TrieNode(NodeType.Unknown, nodeRlp);
             node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
@@ -63,7 +78,6 @@ public class HashNodeRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage):
                 currentPath = currentPath.Append(node.Key);
                 if (currentPath != fullPathAsTreePath)
                 {
-                    Console.Error.WriteLine($"Got unexpected final path {currentPath} instead of {fullPathAsTreePath}");
                     return null;
                 }
                 break;
@@ -76,17 +90,34 @@ public class HashNodeRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage):
 
     private async Task<byte[]?> FetchRlp(Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)
     {
-        // In case of deeper node that already exist.
-        byte[]? rlp = nodeStorage.Get(address, path, hash);
-        if (rlp is not null) return rlp;
-
         try
         {
-            // TODO: Multiple pear, catch exception on each of them separately.
-            return await peerPool.AllocateAndRun((peer) =>
-            {
-                return RecoverNodeFromPeer(peer, hash, cancellationToken);
-            }, SnapPeerStrategy, AllocationContexts.State, cancellationToken);
+            Task<byte[]?>[] tasks = Enumerable.Range(0, ConcurrentAttempt)
+                .Select(_ =>
+                {
+                    return peerPool.AllocateAndRun((peer) =>
+                    {
+                        if (peer == null) return null;
+                        try
+                        {
+                            return RecoverNodeFromPeer(peer, hash, cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
+                        catch (Exception ex)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Error recovering node from {peer} {ex}");
+                        }
+
+                        return null;
+                    }, NodePeerStrategy, AllocationContexts.State, cancellationToken);
+                })
+                .ToArray();
+
+            return await Wait.ForPassingTask(
+                result => result is not null,
+                tasks);
         }
         catch (OperationCanceledException)
         {
@@ -99,7 +130,7 @@ public class HashNodeRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage):
         if (syncPeer.ProtocolVersion < EthVersions.Eth67)
         {
             IOwnedReadOnlyList<byte[]>? data = await syncPeer.GetNodeData([hash], cancellationToken);
-            if (data?.Count > 0)
+            if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
                 return data[0];
             }
@@ -107,7 +138,7 @@ public class HashNodeRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage):
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataPeer))
         {
             IOwnedReadOnlyList<byte[]>? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
-            if (data?.Count > 0)
+            if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
                 return data[0];
             }

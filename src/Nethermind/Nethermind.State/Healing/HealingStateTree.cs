@@ -71,7 +71,7 @@ public class HealingStateTree : StateTree
     {
         if (_recovery is not null)
         {
-            IDictionary<TreePath, byte[]>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            IDictionary<TreePath, byte[]>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 foreach (KeyValuePair<TreePath, byte[]> kv in rlps)

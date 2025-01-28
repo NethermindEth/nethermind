@@ -122,7 +122,7 @@ public class HealingTreeTests
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash)]
-    // [TestCase(INodeStorage.KeyScheme.HalfPath)]
+    [TestCase(INodeStorage.KeyScheme.HalfPath)]
     public async Task HealingTreeTest(INodeStorage.KeyScheme keyScheme)
     {
         await using IContainer server = CreateNode();

@@ -69,7 +69,7 @@ public class HealingStorageTree : StorageTree
     {
         if (_recovery is not null)
         {
-            IDictionary<TreePath, byte[]>? rlps = _recovery.Recover(_stateRoot, ValueKeccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            IDictionary<TreePath, byte[]>? rlps = _recovery.Recover(_stateRoot, ValueKeccak.Compute(_address.Bytes), missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 foreach (KeyValuePair<TreePath, byte[]> kv in rlps)
