@@ -145,8 +145,9 @@ jobs:
           
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
-            if [[ $REF_NAME == refs/heads/release/* ]]; then
-              CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}")
+            if [[ $CLEAN_REF == release/* ]]; then
+              CLEAN_REF=$(echo "$CLEAN_REF" | sed 's/[^a-zA-Z0-9._-]/-/g')
               docker_image="nethermindeth/nethermind:$CLEAN_REF"
             else
               docker_image="nethermindeth/nethermind:master"
