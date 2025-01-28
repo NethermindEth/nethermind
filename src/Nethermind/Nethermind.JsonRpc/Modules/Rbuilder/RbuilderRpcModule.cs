@@ -128,9 +128,14 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
 
 
-        worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address, out AccountStruct account);
+        if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
+                out AccountStruct account))
+        {
+            return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance, account.CodeHash));
+        }
 
-        return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance, account.CodeHash));
+
+        return ResultWrapper<AccountState>.Fail("Account not found");
     }
 
 

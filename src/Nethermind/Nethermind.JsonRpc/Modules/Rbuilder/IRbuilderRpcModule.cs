@@ -53,7 +53,7 @@ public class AccountChange
 
 public class AccountState
 {
-    public AccountState(UInt256? nonce, UInt256? balance, Hash256? codeHash)
+    public AccountState(UInt256 nonce, UInt256 balance, ValueHash256 codeHash)
     {
         Nonce = nonce;
         Balance = balance;
@@ -61,11 +61,11 @@ public class AccountState
     }
 
     [JsonPropertyName("nonce")]
-    public UInt256? Nonce { get; set; }
+    public UInt256 Nonce { get; set; }
 
     [JsonPropertyName("balance")]
-    public UInt256? Balance { get; set; }
+    public UInt256 Balance { get; set; }
 
     [JsonPropertyName("code_hash")]
-    public Hash256? CodeHash { get; set; }
+    public Hash256 CodeHash { get; set; }
 }
