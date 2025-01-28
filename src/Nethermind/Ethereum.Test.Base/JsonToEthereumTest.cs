@@ -229,11 +229,11 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
+        public static IEnumerable<GeneralStateTest> Convert(string name, string category, GeneralStateTestJson testJson)
         {
             if (testJson.LoadFailure is not null)
             {
-                return Enumerable.Repeat(new GeneralStateTest { Name = name, LoadFailure = testJson.LoadFailure }, 1);
+                return Enumerable.Repeat(new GeneralStateTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure }, 1);
             }
 
             List<GeneralStateTest> blockchainTests = new();
@@ -249,6 +249,7 @@ namespace Ethereum.Test.Base
                     {
                         test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
                     }
+                    test.Category = category;
 
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
@@ -278,15 +279,16 @@ namespace Ethereum.Test.Base
             return blockchainTests;
         }
 
-        public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
+        public static BlockchainTest Convert(string name, string category, BlockchainTestJson testJson)
         {
             if (testJson.LoadFailure is not null)
             {
-                return new BlockchainTest { Name = name, LoadFailure = testJson.LoadFailure };
+                return new BlockchainTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure };
             }
 
             BlockchainTest test = new();
             test.Name = name;
+            test.Category = category;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionForkActivation = testJson.TransitionForkActivation;
@@ -318,9 +320,7 @@ namespace Ethereum.Test.Base
             List<EofTest> tests = new();
             foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
             {
-                var index = namedTest.Key.IndexOf(".py::");
-                var name = namedTest.Key.Substring(index + 5);
-                string category = namedTest.Key.Substring(0, index).Replace("tests/osaka/eip7692_eof_v1/", "");
+                (string name, string category) = GetNameAndCategory(namedTest.Key);
 
                 string? description = null;
                 string? url = null;
@@ -375,7 +375,8 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                tests.AddRange(Convert(namedTest.Key, namedTest.Value));
+                (string name, string category) = GetNameAndCategory(namedTest.Key);
+                tests.AddRange(Convert(name, category, namedTest.Value));
             }
 
             return tests;
@@ -411,10 +412,38 @@ namespace Ethereum.Test.Base
                     testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                 }
 
-                testsByName.Add(Convert(testName, testSpec));
+                (string name, string category) = GetNameAndCategory(testName);
+                testsByName.Add(Convert(name, category, testSpec));
             }
 
             return testsByName;
+        }
+
+        private static (string name, string category) GetNameAndCategory(string key)
+        {
+            key = key.Replace('\\', '/');
+            var index = key.IndexOf(".py::");
+            var name = key.Substring(index + 5);
+            string category = key.Substring(0, index);
+            int startIndex = 0;
+            for (var i = 0; i < 3; i++)
+            {
+                int newIndex = category.IndexOf("/", startIndex);
+                if (index < 0)
+                {
+                    break;
+                }
+                if (index + 1 < category.Length)
+                {
+                    startIndex = index + 1;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            category = category.Substring(startIndex);
+            return (name, category);
         }
     }
 }
