@@ -68,7 +68,7 @@ public class SnapServer : ISnapServer
 
     private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment()) && (_lastNStateRootTracker?.HasStateRoot(stateRoot) != false);
+        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment()) || (_lastNStateRootTracker?.HasStateRoot(stateRoot) == false);
     }
 
     public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
