@@ -50,7 +50,7 @@ internal class StackPool
     }
 }
 
-internal static class EvmStack
+public static class EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
