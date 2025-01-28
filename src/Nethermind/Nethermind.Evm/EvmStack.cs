@@ -426,28 +426,3 @@ public ref struct EvmStack<TTracing>
         }
     }
 }
-
-public static class EvmStack
-{
-    public const int RegisterLength = 1;
-    public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1025;
-    public const int WordSize = 32;
-    public const int AddressSize = 20;
-
-    [StackTraceHidden]
-    [DoesNotReturn]
-    internal static void ThrowEvmStackUnderflowException()
-    {
-        Metrics.EvmExceptions++;
-        throw new EvmStackUnderflowException();
-    }
-
-    [StackTraceHidden]
-    [DoesNotReturn]
-    internal static void ThrowEvmStackOverflowException()
-    {
-        Metrics.EvmExceptions++;
-        throw new EvmStackOverflowException();
-    }
-}

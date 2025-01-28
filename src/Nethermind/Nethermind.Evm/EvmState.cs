@@ -235,42 +235,4 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         public int Offset;
         public int Height;
     }
-
-    private class StackPool
-    {
-        private readonly int _maxCallStackDepth;
-        private readonly Stack<(byte[] dataStack, ReturnState[] returnStack)> _stackPool;
-        private int _stackPoolDepth;
-
-        public StackPool(int maxCallStackDepth = VirtualMachine.MaxCallDepth * 2)
-        {
-            _maxCallStackDepth = maxCallStackDepth;
-            _stackPool = new Stack<(byte[], ReturnState[])>(32);
-        }
-
-        public void ReturnStacks(byte[] dataStack, ReturnState[] returnStack)
-        {
-            _stackPool.Push((dataStack, returnStack));
-        }
-
-        public (byte[], ReturnState[]) RentStacks()
-        {
-            if (_stackPool.TryPop(out var result))
-            {
-                return result;
-            }
-
-            _stackPoolDepth++;
-            if (_stackPoolDepth > _maxCallStackDepth)
-            {
-                // EvmStack.ThrowEvmStackOverflowException();
-                throw new InvalidOperationException("EVM stack overflow");
-            }
-
-            return (
-                new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
-                new ReturnState[EvmStack.ReturnStackSize]
-            );
-        }
-    }
 }
