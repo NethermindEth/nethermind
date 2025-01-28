@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
@@ -23,7 +22,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
 #pragma warning disable CS9113 // Parameter is unread.
-public class PathNodeRecovery(ISyncPeerPool peerPool, ILogManager logManager): IPathRecovery
+public class SnapNodeRecovery(ISyncPeerPool peerPool, ILogManager logManager): IPathRecovery
 #pragma warning restore CS9113 // Parameter is unread.
 {
     // Pick by reduced latency instead of throughput
@@ -36,28 +35,20 @@ public class PathNodeRecovery(ISyncPeerPool peerPool, ILogManager logManager): I
 
     public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath)
     {
-        Console.Error.WriteLine($"Trying to recovery {address} {startingPath}");
         using CancellationTokenSource cts = new();
         cts.CancelAfter(TimeSpan.FromMilliseconds(10000));
 
         try
         {
-            Console.Error.WriteLine($"Cancel token is {cts.Token.GetHashCode()}");
+            // TODO: Multiple pear, catch exception on each of them separately.
             return await peerPool.AllocateAndRun((peer) =>
             {
-                Console.Error.WriteLine($"Call {peer} to recover");
-                // TODO: Catch all exception
                 return RecoverFromPeer(peer, rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token);
             }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
         }
-        catch (Exception e)
+        catch (OperationCanceledException)
         {
-            Console.Error.WriteLine($"Thrown {e}");
-            throw;
-        }
-        finally
-        {
-            Console.Error.WriteLine($"Done");
+            return null;
         }
     }
 
@@ -133,9 +124,6 @@ public class PathNodeRecovery(ISyncPeerPool peerPool, ILogManager logManager): I
         Dictionary<ValueHash256, byte[]> nodes = new Dictionary<ValueHash256, byte[]>();
         foreach (var proof in proofs)
         {
-            TrieNode n = new TrieNode(NodeType.Unknown, proof);
-            n.ResolveNode(emptyResolver, TreePath.Empty);
-            Console.Error.WriteLine($"Proof node path {ValueKeccak.Compute(proof)} {n.NodeType} {(n.Key != null ? TreePath.FromNibble(n.Key) : "null")}");
             nodes[ValueKeccak.Compute(proof)] = proof;
         }
         nodes[ValueKeccak.Compute(value)] = value;
