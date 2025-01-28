@@ -126,7 +126,8 @@ public class InitializeNetwork : IStep
         _api.WorldStateManager!.InitializeNetwork(
             new PathNodeRecovery(
                 new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
-                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager)
+                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
+                _api.LogManager
             )
         );
 
