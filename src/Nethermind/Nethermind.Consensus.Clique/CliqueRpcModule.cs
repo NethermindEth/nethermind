@@ -54,9 +54,13 @@ namespace Nethermind.Consensus.Clique
             cliqueBlockProducer.UncastVote(signer);
         }
 
-        public Snapshot GetSnapshot()
+        public Snapshot GetSnapshot(long? number = null)
         {
             Block head = _blockTree.Head;
+            if (number is not null && head.Number != number)
+            {
+                head = _blockTree.FindBlock(number.Value);
+            }
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
@@ -69,35 +73,35 @@ namespace Nethermind.Consensus.Clique
         public Address[] GetSigners()
         {
             Block head = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(static s => s.Key).ToArray();
         }
 
         public Address[] GetSigners(long number)
         {
             BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => s.Key).ToArray();
+                .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated()
         {
             Block header = _blockTree.Head;
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+                .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
         public Address[] GetSigners(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => s.Key).ToArray();
+                .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+                .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
         public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash) => ResultWrapper<bool>.Success(ProduceBlock(parentHash));
@@ -105,7 +109,7 @@ namespace Nethermind.Consensus.Clique
         public ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals() =>
             ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
 
-        public ResultWrapper<Snapshot> clique_getSnapshot() => ResultWrapper<Snapshot>.Success(GetSnapshot());
+        public ResultWrapper<Snapshot> clique_getSnapshot(long? number) => ResultWrapper<Snapshot>.Success(GetSnapshot(number));
 
         public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash) => ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
 

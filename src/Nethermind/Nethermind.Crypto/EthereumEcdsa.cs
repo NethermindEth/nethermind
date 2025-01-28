@@ -3,13 +3,10 @@
 
 using System;
 using System.Globalization;
-using System.IO;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-using Nethermind.Logging;
+using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
@@ -35,6 +32,10 @@ namespace Nethermind.Crypto
         public EthereumEcdsa(ulong chainId)
         {
             _chainIdValue = chainId;
+        }
+
+        public EthereumEcdsa(ISpecProvider specProvider) : this(specProvider.ChainId)
+        {
         }
 
         public Address? RecoverAddress(Signature signature, Hash256 message)

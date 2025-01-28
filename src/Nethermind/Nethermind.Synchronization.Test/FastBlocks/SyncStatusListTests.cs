@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -10,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Synchronization.FastBlocks;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
@@ -50,10 +52,42 @@ public class SyncStatusListTests
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
         SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
 
-        BlockInfo?[] infos = new BlockInfo?[500];
-        syncStatusList.GetInfosForBatch(infos);
+        BlockInfo?[] infos;
+        syncStatusList.TryGetInfosForBatch(500, static (_) => false, out infos);
 
-        infos.Count((it) => it is not null).Should().Be(101);
+        infos.Count(static (it) => it is not null).Should().Be(101);
+    }
+
+    [Test]
+    public void Will_skip_existing_keys()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindCanonicalBlockInfo(Arg.Any<long>())
+            .Returns((Func<CallInfo, BlockInfo>)((ci) =>
+            {
+                long blockNumber = (long)ci[0];
+                return new BlockInfo(TestItem.KeccakA, 0)
+                {
+                    BlockNumber = blockNumber
+                };
+            }));
+
+        SyncStatusList syncStatusList = new SyncStatusList(blockTree, 100000, null, 1000);
+
+        HashSet<long> needToFetchBlocks = [99999, 99995, 99950, 99000, 99001, 99003, 85000];
+
+        List<long> TryGetInfos()
+        {
+            BlockInfo?[] infos;
+            syncStatusList.TryGetInfosForBatch(50, (bi) => !needToFetchBlocks.Contains(bi.BlockNumber), out infos);
+            return infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber).ToList();
+        }
+
+        TryGetInfos().Should().BeEquivalentTo([99999, 99995]); // first two as it will try the first 50 only
+        TryGetInfos().Should().BeEquivalentTo([99950]); // Then the next 50
+        TryGetInfos().Should().BeEquivalentTo([99000, 99001, 99003]); // If the next 50 failed, it will try looking far back.
+        TryGetInfos().Should().BeEmpty(); // If it look far back enough and still does not find anything it will just return so that progress can update.
+        TryGetInfos().Should().BeEquivalentTo([85000]); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
     }
 
     [Test]
@@ -148,5 +182,5 @@ public class SyncStatusListTests
     }
 
     private static FastBlockStatusList CreateFastBlockStatusList(int length, bool parallel = true) =>
-        new(Enumerable.Range(0, length).Select(i => (FastBlockStatus)(i % 3)).ToList(), parallel);
+        new(Enumerable.Range(0, length).Select(static i => (FastBlockStatus)(i % 3)).ToList(), parallel);
 }

@@ -42,7 +42,7 @@ public class SerializationTestBase
 
     protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
     {
-        TestRoundtrip(item, (a, b) => a!.Equals(b), converter, description);
+        TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
     }
 
     protected void TestRoundtrip<T>(T item, string description)
@@ -69,7 +69,7 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer(converters);
 
         string result = serializer.Serialize(item);
-        Assert.That(result, Is.EqualTo(expectedResult.Replace("+", "\\u002B")), result.Replace("\"", "\\\""));
+        Assert.That(result, Is.EqualTo(expectedResult), result.Replace("\"", "\\\""));
     }
 
     private static IJsonSerializer BuildSerializer(params JsonConverter[] converters) => new EthereumJsonSerializer(converters);

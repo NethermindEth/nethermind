@@ -313,7 +313,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {
-            BitArray result = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
+            _ = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
         }
 
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]
@@ -387,7 +387,7 @@ namespace Nethermind.Core.Test
                 {
                     var thisArray = GenerateRandom(length);
                     var valueArray = GenerateRandom(length);
-                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte)b).ToArray();
+                    var resultArray = thisArray.Zip(valueArray, static (b1, b2) => b1 | b2).Select(static b => (byte)b).ToArray();
                     return new TestCaseData(thisArray, valueArray, resultArray);
                 }
 

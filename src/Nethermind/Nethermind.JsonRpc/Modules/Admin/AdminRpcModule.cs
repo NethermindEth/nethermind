@@ -5,18 +5,23 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 public class AdminRpcModule : IAdminRpcModule
 {
+    private readonly ChainParameters _parameters;
     private readonly IBlockTree _blockTree;
     private readonly INetworkConfig _networkConfig;
     private readonly IPeerPool _peerPool;
@@ -24,16 +29,23 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
+    private readonly IVerifyTrieStarter _verifyTrieStarter;
+    private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
+    private readonly IAdminEraService _eraService;
 
     public AdminRpcModule(
         IBlockTree blockTree,
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
+        IVerifyTrieStarter verifyTrieStarter,
+        IStateReader stateReader,
         IEnode enode,
+        IAdminEraService eraService,
         string dataDir,
-        ManualPruningTrigger pruningTrigger)
+        ManualPruningTrigger pruningTrigger,
+        ChainParameters parameters)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -41,31 +53,42 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
+        _verifyTrieStarter = verifyTrieStarter ?? throw new ArgumentNullException(nameof(verifyTrieStarter));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _pruningTrigger = pruningTrigger;
+        _eraService = eraService;
+        _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
         BuildNodeInfo();
     }
 
     private void BuildNodeInfo()
     {
-        _nodeInfo = new NodeInfo();
-        _nodeInfo.Name = ProductInfo.ClientId;
-        _nodeInfo.Enode = _enode.Info;
-        byte[] publicKeyBytes = _enode.PublicKey?.Bytes;
-        _nodeInfo.Id = (publicKeyBytes is null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
-        _nodeInfo.Ip = _enode.HostIp?.ToString();
-        _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
-        _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;
-        _nodeInfo.Ports.Listener = _networkConfig.P2PPort;
+        _nodeInfo = new NodeInfo
+        {
+            Name = ProductInfo.ClientId,
+            Enode = _enode.Info,
+            Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
+            Ip = _enode.HostIp?.ToString(),
+            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
+            Ports =
+            {
+                Discovery = _networkConfig.DiscoveryPort,
+                Listener = _networkConfig.P2PPort
+            }
+        };
+
         UpdateEthProtocolInfo();
     }
 
     private void UpdateEthProtocolInfo()
     {
         _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.ChainId;
+        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
+        _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
         _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
         _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols["eth"].Config = _parameters;
     }
 
     public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
@@ -124,8 +147,50 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<bool>.Success(true);
     }
 
+    public ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block)
+    {
+        BlockHeader? header = _blockTree.FindHeader(block);
+        if (header is null)
+        {
+            return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
+        }
+
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
+    }
+
     public ResultWrapper<PruningStatus> admin_prune()
     {
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
+    }
+
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start = 0, int end = 0)
+    {
+        return ResultWrapper<string>.Success(_eraService.ExportHistory(destination, start, end));
+    }
+
+    public Task<ResultWrapper<string>> admin_importHistory(string source, int start = 0, int end = 0, string? accumulatorFile = null)
+    {
+        return ResultWrapper<string>.Success(_eraService.ImportHistory(source, start, end, accumulatorFile));
+    }
+
+    public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
+    {
+        BlockHeader? header = _blockTree.FindHeader(block);
+        if (header is null)
+        {
+            return ResultWrapper<string>.Fail("Unable to find block. Unable to know state root to verify.");
+        }
+
+        if (!_stateReader.HasStateForBlock(header))
+        {
+            return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
+        }
+
+        if (!_verifyTrieStarter.TryStartVerifyTrie(header))
+        {
+            return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
+        }
+
+        return ResultWrapper<string>.Success("Starting.");
     }
 }

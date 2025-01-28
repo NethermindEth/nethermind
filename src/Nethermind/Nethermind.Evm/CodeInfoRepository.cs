@@ -44,10 +44,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             [Blake2FPrecompile.Address] = new CodeInfo(Blake2FPrecompile.Instance),
 
             [G1AddPrecompile.Address] = new CodeInfo(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new CodeInfo(G1MulPrecompile.Instance),
             [G1MSMPrecompile.Address] = new CodeInfo(G1MSMPrecompile.Instance),
             [G2AddPrecompile.Address] = new CodeInfo(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new CodeInfo(G2MulPrecompile.Instance),
             [G2MSMPrecompile.Address] = new CodeInfo(G2MSMPrecompile.Instance),
             [PairingCheckPrecompile.Address] = new CodeInfo(PairingCheckPrecompile.Instance),
             [MapFpToG1Precompile.Address] = new CodeInfo(MapFpToG1Precompile.Instance),
@@ -68,6 +66,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
+        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
+    }
+
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
         delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
         {
@@ -78,7 +81,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
-            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress, vmSpec);
+            if (followDelegation)
+                cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress, vmSpec);
         }
 
         return cachedCodeInfo;
@@ -133,6 +137,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
     {
+        if (codeSource == Address.Zero)
+        {
+            state.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
+            return;
+        }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
         Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
@@ -157,9 +166,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         ICodeInfo codeInfo = InternalGetCachedCode(worldState, address, spec);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
-            : TryGetDelegatedAddress(codeInfo.MachineCode.Span, out Address? delegationAddress)
-                ? worldState.GetCodeHash(delegationAddress)
-                : codeHash;
+            : codeHash;
     }
 
     /// <remarks>
@@ -170,7 +177,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
+            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
             return true;
         }
 

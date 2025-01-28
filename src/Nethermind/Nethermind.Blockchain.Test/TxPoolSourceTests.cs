@@ -30,23 +30,20 @@ public class TxPoolSourceTests
             .ToDictionary(
                 pair => new AddressAsKey(new Address((new byte[19]).Concat(new byte[] { (byte)pair.index }).ToArray())),
                 pair => new Transaction[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
-        txPool.GetPendingTransactions().Returns(new Transaction[0]);
+        txPool.GetPendingTransactions().Returns([]);
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>()).Returns(true);
 
-        TestEip4844Config eip4844Config = new(customMaxBlobGasPerBlock);
-
-        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, eip4844Config);
+        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader { }, long.MaxValue);
         int blobsCount = txs.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0);
 
         Assert.Multiple(() =>
         {
-            Assert.That((ulong)blobsCount * eip4844Config.GasPerBlob, Is.LessThanOrEqualTo(eip4844Config.MaxBlobGasPerBlock));
-            Assert.That(blobsCount, Is.LessThanOrEqualTo(eip4844Config.GetMaxBlobsPerBlock()));
+            Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxBlobCount));
         });
     }
 

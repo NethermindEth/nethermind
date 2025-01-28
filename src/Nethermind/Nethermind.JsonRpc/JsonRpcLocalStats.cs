@@ -60,8 +60,8 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 
         BuildReport();
 
-        MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
-        MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
+        MethodStats methodStats = _currentStats.GetOrAdd(report.Method, static _ => new MethodStats());
+        MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, static _ => new MethodStats());
 
         long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
 
@@ -143,7 +143,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
             _reportStringBuilder.AppendLine(ReportHeader);
             _reportStringBuilder.AppendLine(_divider);
             MethodStats total = new();
-            foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(kv => kv.Key))
+            foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(static kv => kv.Key))
             {
                 total.AvgTimeOfSuccesses = total.Successes + methodStats.Value.Successes == 0
                     ? 0
@@ -179,10 +179,10 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
     [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>
         $"{key,-40}| " +
-        $"{methodStats.Successes.ToString(),9} | " +
+        $"{methodStats.Successes,9} | " +
         $"{((double)methodStats.AvgTimeOfSuccesses / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
         $"{((double)methodStats.MaxTimeOfSuccess / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
-        $"{methodStats.Errors.ToString(),9} | " +
+        $"{methodStats.Errors,9} | " +
         $"{((double)methodStats.AvgTimeOfErrors / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
         $"{((double)methodStats.MaxTimeOfError / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
         $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture),10} | " +

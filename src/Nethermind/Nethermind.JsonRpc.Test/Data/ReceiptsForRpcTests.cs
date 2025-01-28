@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             UInt256 effectiveGasPrice = new(5526);
             ReceiptForRpc receiptForRpc = new(txHash, receipt1, new(effectiveGasPrice));
-            long?[] indexes = receiptForRpc.Logs.Select(log => log.LogIndex).ToArray();
+            long?[] indexes = receiptForRpc.Logs.Select(static log => log.LogIndex).ToArray();
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));

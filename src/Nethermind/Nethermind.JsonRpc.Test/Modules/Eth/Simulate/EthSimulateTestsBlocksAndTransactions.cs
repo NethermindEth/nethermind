@@ -12,8 +12,8 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -81,7 +81,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data.Count, Is.EqualTo(7));
 
         SimulateBlockResult blockResult = data.Last();
-        blockResult.Calls.Select(c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
+        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
 
     }
 
@@ -157,9 +157,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(data.Count, Is.EqualTo(9));
 
         SimulateBlockResult blockResult = data[0];
-        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
+        Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
         blockResult = data.Last();
-        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
+        Assert.That(blockResult.Calls.Count, Is.EqualTo(2));
     }
 
     /// <summary>

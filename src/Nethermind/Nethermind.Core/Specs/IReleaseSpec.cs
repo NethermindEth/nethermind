@@ -332,11 +332,29 @@ namespace Nethermind.Core.Specs
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
 
+        /// OP Holocene
+        bool IsOpHoloceneEnabled { get; }
+
+        /// Taiko Ontake
+        bool IsOntakeEnabled { get; }
+
+        /// <summary>
+        ///  Increase call data cost
+        /// </summary>
+        bool IsEip7623Enabled { get; }
+
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
+
+        /// <summary>
+        /// EIP-7780: Add blob schedule to EL config files
+        /// </summary>
+        public ulong TargetBlobCount { get; }
+        public ulong MaxBlobCount { get; }
+        public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 

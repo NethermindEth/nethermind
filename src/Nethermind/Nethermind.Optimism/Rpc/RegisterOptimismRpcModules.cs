@@ -10,7 +10,6 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -23,14 +22,12 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     private readonly OptimismNethermindApi _api;
     private readonly ILogger _logger;
     private readonly IOptimismConfig _config;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
 
     public RegisterOptimismRpcModules(INethermindApi api) : base(api)
     {
         _api = (OptimismNethermindApi)api;
         _config = _api.Config<IOptimismConfig>();
         _logger = _api.LogManager.GetClassLogger();
-        _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -45,7 +42,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
 
@@ -81,7 +78,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
 
         sequencerJsonRpcClient,
-            _api.WorldState,
+            _api.WorldStateManager.GlobalWorldState,
             _api.EthereumEcdsa,
             sealer,
             _api.SpecHelper);
@@ -93,11 +90,11 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
     {
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
 

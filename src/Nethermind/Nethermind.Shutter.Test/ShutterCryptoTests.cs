@@ -177,11 +177,10 @@ class ShutterCryptoTests
     )]
     public void Can_verify_validator_registration_signature(string msgHex, string sigHex, string pkHex)
     {
-        Assert.That(ShutterCrypto.CheckValidatorRegistrySignature(
-            Convert.FromHexString(pkHex),
-            Convert.FromHexString(sigHex),
-            Convert.FromHexString(msgHex)
-        ));
+        BlsSigner.AggregatedPublicKey pk = new();
+        pk.Decode(Convert.FromHexString(pkHex));
+
+        Assert.That(ShutterCrypto.CheckValidatorRegistrySignatures(pk, Convert.FromHexString(sigHex), Convert.FromHexString(msgHex)));
     }
 
     [Test]
@@ -205,7 +204,7 @@ class ShutterCryptoTests
     )]
     public void Can_verify_decryption_key_signatures(ulong instanceId, ulong eon, ulong slot, ulong txPointer, string keyperAddress, string sigHex, string[] identityPreimagesHex)
     {
-        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).Select(b => (ReadOnlyMemory<byte>)b);
+        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).Select(static b => (ReadOnlyMemory<byte>)b);
         Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, txPointer, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
     }
 }

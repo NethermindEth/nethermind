@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -19,6 +20,7 @@ using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
@@ -87,6 +89,22 @@ namespace Nethermind.Synchronization
             WireMultiSyncModeSelector();
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+
+            if (syncConfig.GCOnFeedFinished)
+            {
+                SyncModeSelector.Changed += GCOnFeedFinished;
+            }
+
+            // Make unit test faster.
+            SyncModeSelector.Update();
+        }
+
+        private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
+        {
+            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlocks))
+            {
+                GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            }
         }
 
         private void StartFullSyncComponents()
@@ -218,12 +236,13 @@ namespace Nethermind.Synchronization
             SyncEvent?.Invoke(this, e);
         }
 
-        public Task StopAsync()
+        public async ValueTask DisposeAsync()
         {
             _syncCancellation?.Cancel();
 
-            return Task.WhenAny(
-                Task.Delay(FeedsTerminationTimeout),
+            Task timeout = Task.Delay(FeedsTerminationTimeout);
+            Task completedFirst = await Task.WhenAny(
+                timeout,
                 Task.WhenAll(
                     fullSyncComponent.Feed.FeedTask,
                     fastSyncComponent.Feed.FeedTask,
@@ -232,6 +251,13 @@ namespace Nethermind.Synchronization
                     fastHeaderComponent.Feed.FeedTask,
                     oldBodiesComponent.Feed.FeedTask,
                     oldReceiptsComponent.Feed.FeedTask));
+
+            if (completedFirst == timeout)
+            {
+                if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+            }
+
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
 
         private void WireMultiSyncModeSelector()
@@ -254,11 +280,6 @@ namespace Nethermind.Synchronization
             });
             feed?.SyncModeSelectorOnChanged(SyncModeSelector.Current);
         }
-
-        public void Dispose()
-        {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
-        }
     }
 }
 
@@ -277,6 +298,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
+            .AddSingleton<ISyncPointers, SyncPointers>()
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
@@ -290,21 +312,34 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<HeadersSyncBatch>>()
 
+            // Default TotalDifficulty calculation strategy used when processing headers
+            .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
+
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
-            .Register(ctx => ctx
+            .Register(static ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
 
+        ConfigureStateSyncComponent(builder);
         ConfigureSnapComponent(builder);
         ConfigureReceiptSyncComponent(builder);
         ConfigureBodiesSyncComponent(builder);
-        ConfigureStateSyncComponent(builder);
 
         builder
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync);
+
+        builder
+            .RegisterType<SyncPeerPool>()
+            .As<ISyncPeerPool>()
+            .As<IPeerDifficultyRefreshPool>()
+            .SingleInstance();
+
+        builder
+            .Map<IReceiptFinder, IReceiptStorage>(static (storage) => storage)
+            .AddSingleton<ISyncServer, SyncServer>();
     }
 
     private void ConfigureFullSync(ContainerBuilder scopeConfig)
@@ -377,12 +412,21 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
-            .AddSingleton<TreeSync>();
+            .AddSingleton<StateSyncPivot>()
+            .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
 
         // Disable it by setting noop
         if (!syncConfig.FastSync) serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
+
+        if (syncConfig.FastSync && syncConfig.VerifyTrieOnStateSyncFinished)
+        {
+            serviceCollection
+                .RegisterType<VerifyStateOnStateSyncFinished>()
+                .WithAttributeFiltering()
+                .As<IStartable>();
+        }
     }
 
     private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>

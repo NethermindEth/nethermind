@@ -110,11 +110,14 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public static readonly IntrinsicGasTxValidator Instance = new();
     private IntrinsicGasTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
         // This is unnecessarily calculated twice - at validation and execution times.
-        transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec)
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        return transaction.GasLimit < intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
+    }
 }
 
 public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
@@ -189,14 +192,15 @@ public sealed class BlobFieldsTxValidator : ITxValidator
             { To: null } => TxErrorMessages.TxMissingTo,
             { MaxFeePerBlobGas: null } => TxErrorMessages.BlobTxMissingMaxFeePerBlobGas,
             { BlobVersionedHashes: null } => TxErrorMessages.BlobTxMissingBlobVersionedHashes,
-            _ => ValidateBlobFields(transaction)
+            _ => ValidateBlobFields(transaction, releaseSpec)
         };
 
-    private ValidationResult ValidateBlobFields(Transaction transaction)
+    private ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        return totalDataGas > Eip4844Constants.MaxBlobGasPerTransaction ? TxErrorMessages.BlobTxGasLimitExceeded
+        var maxBlobGasPerTxn = spec.GetMaxBlobGasPerBlock();
+        return totalDataGas > maxBlobGasPerTxn ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTxn)
             : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
             : ValidateBlobVersionedHashes();
 
@@ -328,15 +332,6 @@ public sealed class AuthorizationListTxValidator : ITxValidator
         transaction.AuthorizationList switch
         {
             null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
-            var authorizationList when authorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)) =>
-                TxErrorMessages.InvalidAuthoritySignature,
             _ => ValidationResult.Success
         };
-
-    private bool ValidateAuthoritySignature(Signature signature)
-    {
-        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
-
-        return sValue < Secp256K1Curve.HalfNPlusOne && signature.RecoveryId is 0 or 1;
-    }
 }

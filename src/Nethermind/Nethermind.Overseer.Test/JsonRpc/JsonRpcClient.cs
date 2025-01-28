@@ -27,11 +27,11 @@ namespace Nethermind.Overseer.Test.JsonRpc
         }
 
         public Task<JsonRpcResponse<T>> PostAsync<T>(string method)
-            => PostAsync<T>(method, Array.Empty<object>());
+            => PostAsync<T>(method, []);
 
         public async Task<JsonRpcResponse<T>> PostAsync<T>(string method, object[] @params)
         {
-            string methodToCall = method.Contains("_") ? method : $"{_methodPrefix}{method}";
+            string methodToCall = method.Contains('_') ? method : $"{_methodPrefix}{method}";
             Console.WriteLine($"Sending {methodToCall} to {_host}");
             var request = new JsonRpcRequest(methodToCall, @params);
             var payload = GetPayload(request);

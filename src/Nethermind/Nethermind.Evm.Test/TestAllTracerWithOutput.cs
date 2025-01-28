@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Test
 {
@@ -40,20 +40,20 @@ namespace Nethermind.Evm.Test
 
         public long Refund { get; private set; }
 
-        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
+        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new();
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            GasSpent = gasSpent.SpentGas;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
-            GasSpent = gasSpent;
+            GasSpent = gasSpent.SpentGas;
             Error = error;
-            ReturnValue = output ?? Array.Empty<byte>();
+            ReturnValue = output ?? [];
             StatusCode = Evm.StatusCode.Failure;
         }
 

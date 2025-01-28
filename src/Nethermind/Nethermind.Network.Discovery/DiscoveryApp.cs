@@ -135,7 +135,7 @@ public class DiscoveryApp : IDiscoveryApp
             return;
         }
 
-        foreach (INodeLifecycleManager unreachable in _discoveryManager.GetNodeLifecycleManagers().Where(x => x.State == NodeLifecycleState.Unreachable))
+        foreach (INodeLifecycleManager unreachable in _discoveryManager.GetNodeLifecycleManagers().Where(static x => x.State == NodeLifecycleState.Unreachable))
         {
             unreachable.ResetUnreachableStatus();
         }
@@ -207,7 +207,7 @@ public class DiscoveryApp : IDiscoveryApp
 
                 //Check if we were able to communicate with any trusted nodes or persisted nodes
                 //if so no need to replay bootstrapping, we can start discovery process
-                if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count != 0)
+                if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
                 {
                     break;
                 }
@@ -342,12 +342,12 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
-            if (managers.Any(x => x.State == NodeLifecycleState.Active))
+            if (managers.Any(static x => x.State == NodeLifecycleState.Active))
             {
                 break;
             }
 
-            if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count != 0)
+            if (_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count != 0)
             {
                 if (_logger.IsTrace)
                     _logger.Trace(
@@ -386,7 +386,7 @@ public class DiscoveryApp : IDiscoveryApp
 
         if (_logger.IsInfo)
             _logger.Info(
-                $"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
+                $"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(static x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
         return reachedNodeCounter > 0;
     }
 
@@ -433,7 +433,7 @@ public class DiscoveryApp : IDiscoveryApp
                 _logger.Error($"Error during discovery refresh process: {e}");
             }
 
-            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(static x => x.BondedItemsCount);
             waitTimeTimeMs =
                 nodesCountAfterDiscovery < 16
                     ? 10
@@ -491,7 +491,7 @@ public class DiscoveryApp : IDiscoveryApp
     {
         // TODO: Rewrote this to properly support throttling.
         Channel<Node> ch = Channel.CreateBounded<Node>(64); // Some reasonably large value
-        EventHandler<NodeEventArgs> handler = (_, args) =>
+        void handler(object? _, NodeEventArgs args)
         {
             if (!ch.Writer.TryWrite(args.Node))
             {
@@ -502,7 +502,7 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 _nodesLocator.ShouldThrottle = false;
             }
-        };
+        }
 
         try
         {

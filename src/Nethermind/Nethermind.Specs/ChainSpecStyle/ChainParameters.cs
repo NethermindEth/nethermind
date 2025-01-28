@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -97,6 +99,7 @@ public class ChainParameters
     /// </summary>
     public long? Eip1559BaseFeeMinValueTransition { get; set; }
 
+    public long? OntakeTransition { get; set; }
     /// <summary>
     /// Optional, minimal value of EIP1559 base fee
     /// </summary>
@@ -130,6 +133,10 @@ public class ChainParameters
     public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
+    public ulong? OpHoloceneTransitionTimestamp { get; set; }
+    public ulong? Eip7623TransitionTimestamp { get; set; }
+
+    public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
 
     #region EIP-4844 parameters
     /// <summary>
@@ -139,22 +146,10 @@ public class ChainParameters
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
 
     /// <summary>
-    /// Gets or sets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
-    /// </summary>
-    public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
-
-    /// <summary>
     /// Gets or sets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei, defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
     /// </summary>
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
-
-    /// <summary>
-    /// Gets or sets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
-    /// </summary>
-    public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
 
     /// <summary>
     /// Enables blob gas fee collection for Gnosis chain

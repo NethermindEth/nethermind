@@ -30,12 +30,10 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
-        public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
-
-        public long? LowestInsertedBodyNumber
+        public BlockHeader? LowestInsertedHeader
         {
-            get => _wrapped.LowestInsertedBodyNumber;
-            set => _wrapped.LowestInsertedBodyNumber = value;
+            get => _wrapped.LowestInsertedHeader;
+            set { }
         }
 
         public long? BestPersistedState
@@ -93,6 +91,8 @@ namespace Nethermind.Blockchain
         public Hash256 SafeHash => _wrapped.SafeHash;
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
+
+        public bool HasBlock(long blockNumber, Hash256 blockHash) => _wrapped.HasBlock(blockNumber, blockHash);
 
         public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 

@@ -248,7 +248,14 @@ public class FullPrunerTests
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                     FullPruningCompletionBehavior = completionBehavior
-                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<IPruningTrieStore>(), LimboLogs.Instance);
+                },
+                BlockTree,
+                StateReader,
+                ProcessExitSource,
+                _chainEstimations,
+                DriveInfo,
+                new TrieStore(NodeStorage, LimboLogs.Instance),
+                LimboLogs.Instance);
         }
 
         public async Task RunFullPruning()
@@ -427,7 +434,7 @@ public class FullPrunerTests
 
     class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContextWithStorage>
     {
-        private INodeStorage _nodeStorageToCompareTo;
+        private readonly INodeStorage _nodeStorageToCompareTo;
 
         public TrieCopiedNodeVisitor(INodeStorage nodeStorage)
         {

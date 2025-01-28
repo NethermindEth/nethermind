@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -48,6 +47,7 @@ using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -56,13 +56,12 @@ namespace Nethermind.Runner.Test.Ethereum
         public static NethermindApi ContextWithMocks()
         {
             var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec())
+                new ChainSpec { Parameters = new ChainParameters(), })
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),
                 BlockTree = Substitute.For<IBlockTree>(),
-                SyncServer = Substitute.For<ISyncServer>(),
                 DbProvider = TestMemDbProvider.Init(),
                 PeerManager = Substitute.For<IPeerManager>(),
                 PeerPool = Substitute.For<IPeerPool>(),
@@ -95,19 +94,17 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
-                WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
+                VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>(),
+                MainNodeStorage = Substitute.For<INodeStorage>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),
                 NodeStatsManager = Substitute.For<INodeStatsManager>(),
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
-                SyncPeerPool = Substitute.For<ISyncPeerPool>(),
-                PeerDifficultyRefreshPool = Substitute.For<IPeerDifficultyRefreshPool>(),
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
-                TrieStore = Substitute.For<ITrieStore>(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
@@ -118,16 +115,21 @@ namespace Nethermind.Runner.Test.Ethereum
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                BadBlocksStore = Substitute.For<IBlockStore>(),
+                BadBlocksStore = Substitute.For<IBadBlockStore>(),
+                ProcessExit = Substitute.For<IProcessExitSource>(),
 
                 ApiWithNetworkServiceContainer = new ContainerBuilder()
                     .AddSingleton(Substitute.For<ISyncModeSelector>())
                     .AddSingleton(Substitute.For<ISyncProgressResolver>())
+                    .AddSingleton(Substitute.For<ISyncPointers>())
                     .AddSingleton(Substitute.For<ISynchronizer>())
+                    .AddSingleton(Substitute.For<ISyncPeerPool>())
+                    .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
+                    .AddSingleton(Substitute.For<ISyncServer>())
                     .Build(),
             };
 
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            api.WorldStateManager = WorldStateManager.CreateForTest(api.DbProvider, LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }

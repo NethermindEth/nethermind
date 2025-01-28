@@ -173,7 +173,7 @@ public class SessionTests
         bool shouldStop = false;
         int i = 0;
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        Action addProtocol = () =>
+        void addProtocol()
         {
             IProtocolHandler required = Substitute.For<IProtocolHandler>();
             required.ProtocolCode.Returns("p2p");
@@ -186,7 +186,7 @@ public class SessionTests
                 protocolHandler.MessageIdSpaceSize.Returns(10);
                 session.AddProtocolHandler(protocolHandler);
             }
-        };
+        }
 
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
@@ -478,9 +478,9 @@ public class SessionTests
     public void Cannot_receive_before_initialized()
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Array.Empty<byte>())));
+        Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, [])));
         session.Handshake(TestItem.PublicKeyA);
-        Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Array.Empty<byte>())));
+        Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, [])));
         session.Init(5, _channelHandlerContext, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
@@ -514,8 +514,8 @@ public class SessionTests
 
         session.InitiateDisconnect(DisconnectReason.Other);
 
-        session.ReceiveMessage(new Packet("p2p", 3, Array.Empty<byte>()));
-        p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+        session.ReceiveMessage(new Packet("p2p", 3, []));
+        p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "p2p" && p.PacketType == 3));
     }
 
     [Test]
@@ -580,16 +580,16 @@ public class SessionTests
 
         byte[] data = new byte[10];
         session.ReceiveMessage(new Packet("---", 3, data));
-        p2p.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+        p2p.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "p2p" && p.PacketType == 3));
 
         session.ReceiveMessage(new Packet("---", 11, data));
-        aaa.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "aaa" && p.PacketType == 1));
+        aaa.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "aaa" && p.PacketType == 1));
 
         session.ReceiveMessage(new Packet("---", 21, data));
-        bbb.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "bbb" && p.PacketType == 1));
+        bbb.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "bbb" && p.PacketType == 1));
 
         session.ReceiveMessage(new Packet("---", 25, data));
-        ccc.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "ccc" && p.PacketType == 0));
+        ccc.Received().HandleMessage(Arg.Is<Packet>(static p => p.Protocol == "ccc" && p.PacketType == 0));
 
         session.ReceiveMessage(new Packet("---", 100, data));
 

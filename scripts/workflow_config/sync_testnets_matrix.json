@@ -37,7 +37,7 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
     "timeout": 180,
-    "agent": "g6-standard-16"
+    "agent": "g6-standard-6"
   },
   {
     "network": "op-sepolia",
@@ -45,7 +45,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-8"
+    "agent": "g6-standard-6"
   },
   {
     "network": "base-sepolia",
@@ -53,7 +53,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-8"
+    "agent": "g6-standard-6"
   },
   {
     "network": "op-mainnet",
@@ -61,7 +61,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-16"
+    "agent": "g6-standard-6"
   },
   {
     "network": "base-mainnet",
@@ -69,7 +69,23 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-16"
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "taiko-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "taiko-hekla",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
   },
   {
     "network": "joc-mainnet",
@@ -92,7 +108,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 360,
     "agent": "g6-standard-6"
   },
   {

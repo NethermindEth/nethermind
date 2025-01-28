@@ -12,7 +12,7 @@ namespace Nethermind.State
         public static byte[] GetCode(this IReadOnlyStateProvider stateProvider, Address address)
         {
             stateProvider.TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash) ?? Array.Empty<byte>();
+            return !account.HasCode ? [] : stateProvider.GetCode(account.CodeHash) ?? [];
         }
         /// <summary>
         /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.
@@ -27,11 +27,11 @@ namespace Nethermind.State
             this IReadOnlyStateProvider stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<bool>? isDelegatedCode = null) =>
+            Func<Address, bool>? isDelegatedCode = null) =>
             spec.IsEip3607Enabled
             && stateProvider.HasCode(sender)
             && (!spec.IsEip7702Enabled
-                || (!isDelegatedCode?.Invoke() ?? !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
+                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
     }
 
 }

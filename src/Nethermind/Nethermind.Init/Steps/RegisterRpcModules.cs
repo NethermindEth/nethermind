@@ -7,8 +7,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -20,13 +22,13 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.JsonRpc.Modules.Rpc;
 
 namespace Nethermind.Init.Steps;
 
@@ -34,7 +36,7 @@ namespace Nethermind.Init.Steps;
 public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
+    protected readonly IJsonRpcConfig _jsonRpcConfig;
 
     public RegisterRpcModules(INethermindApi api)
     {
@@ -64,6 +66,14 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.PeerManager);
 
+        // Used only by rpc
+        _api.EthSyncingInfo = new EthSyncingInfo(
+            _api.BlockTree,
+            _api.SyncPointers!,
+            _api.Config<ISyncConfig>(),
+            _api.SyncModeSelector!,
+            _api.SyncProgressResolver!,
+            _api.LogManager);
         _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.LogManager);
 
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
@@ -81,11 +91,9 @@ public class RegisterRpcModules : IStep
 
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         RpcLimits.Init(_jsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-
 
         StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
@@ -98,23 +106,7 @@ public class RegisterRpcModules : IStep
         ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, _jsonRpcConfig.Timeout);
 
-        DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
-            _api.DbProvider,
-            _api.BlockTree,
-            _jsonRpcConfig,
-            _api.BlockValidator,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            new ReceiptMigration(_api),
-            _api.ConfigProvider,
-            _api.SpecProvider,
-            _api.SyncModeSelector,
-            _api.BadBlocksStore,
-            _api.FileSystem,
-            _api.LogManager);
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
+        RegisterDebugRpcModule(rpcModuleProvider);
 
         RegisterTraceRpcModule(rpcModuleProvider);
 
@@ -131,15 +123,21 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Enode);
 
         ManualPruningTrigger pruningTrigger = new();
-        _api.PruningTrigger.Add(pruningTrigger);
+        _api.PruningTrigger?.Add(pruningTrigger);
+        (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
+
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
+            _api.VerifyTrieStarter!,
+            _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
+            _api.AdminEraService,
             initConfig.BaseDbPath,
-            pruningTrigger);
+            pruningTrigger,
+            getFromApi.ChainSpec.Parameters);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
@@ -174,15 +172,10 @@ public class RegisterRpcModules : IStep
 
         _api.JsonRpcLocalStats = jsonRpcLocalStats;
 
-        SubscriptionFactory subscriptionFactory = new(
-            _api.LogManager,
-            _api.BlockTree,
-            _api.TxPool,
-            _api.ReceiptMonitor,
-            _api.FilterStore,
-            _api.EthSyncingInfo!,
-            _api.SpecProvider,
-            rpcModuleProvider.Serializer);
+        SubscriptionFactory subscriptionFactory = new();
+
+        // Register the standard subscription types in the dictionary
+        subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo);
 
         _api.SubscriptionFactory = subscriptionFactory;
 
@@ -197,10 +190,43 @@ public class RegisterRpcModules : IStep
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 
-        if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
-        ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
+        if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
+        ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
 
         await Task.CompletedTask;
+    }
+
+    protected virtual void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
+    {
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
+        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
+        StepDependencyException.ThrowIfNull(_api.BlockValidator);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.KeyStore);
+        StepDependencyException.ThrowIfNull(_api.PeerPool);
+        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+
+        DebugModuleFactory debugModuleFactory = new(
+            _api.WorldStateManager,
+            _api.DbProvider,
+            _api.BlockTree,
+            _jsonRpcConfig,
+            _api.BlockValidator,
+            _api.BlockPreprocessor,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
+            new ReceiptMigration(_api),
+            _api.ConfigProvider,
+            _api.SpecProvider,
+            _api.SyncModeSelector,
+            _api.BadBlocksStore,
+            _api.FileSystem,
+            _api.LogManager);
+        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
     }
 
     protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
@@ -213,7 +239,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
@@ -250,6 +275,7 @@ public class RegisterRpcModules : IStep
     protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
     {
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);

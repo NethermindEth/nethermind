@@ -22,12 +22,11 @@ public class TransactionSubstate
     private static readonly List<LogEntry> _emptyLogs = new(0);
 
     private const string SomeError = "error";
-    private const string Revert = "revert";
+    public const string Revert = "revert";
 
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    public const string RevertedErrorMessagePrefix = "Reverted ";
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
@@ -99,14 +98,11 @@ public class TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Bytes.Length <= 0)
+        if (Output.Bytes.IsEmpty)
             return;
 
         ReadOnlySpan<byte> span = Output.Bytes.Span;
-        Error = string.Concat(
-            RevertedErrorMessagePrefix,
-            TryGetErrorMessage(span) ?? EncodeErrorMessage(span)
-        );
+        Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
@@ -145,7 +141,7 @@ public class TransactionSubstate
             return EncodeErrorMessage(binaryMessage);
         }
 
-        start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+        start = new UInt256(span[..WordSize], isBigEndian: true);
         if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
 
         length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);

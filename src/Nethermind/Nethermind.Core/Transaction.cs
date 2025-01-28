@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -32,6 +31,9 @@ namespace Nethermind.Core
         /// </summary>
         public TxType Type { get; set; }
 
+        // Taiko Anchor transaction
+        public bool IsAnchorTx { get; set; }
+
         // Optimism deposit transaction fields
         // SourceHash uniquely identifies the source of the deposit
         public Hash256? SourceHash { get; set; }
@@ -46,10 +48,10 @@ namespace Nethermind.Core
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
-        public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
-        public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
-        public bool SupportsAuthorizationList => Type == TxType.SetCode && Type != TxType.DepositTx;
+        public bool SupportsAccessList => Type.SupportsAccessList();
+        public bool Supports1559 => Type.Supports1559();
+        public bool SupportsBlobs => Type.SupportsBlobs();
+        public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -196,9 +198,9 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this);
+            return _size ??= sizeCalculator.GetLength(this, shouldCountBlobs);
         }
 
         public string ToShortString()
@@ -231,8 +233,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? Array.Empty<byte>()).ToHexString()}");
-            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? Array.Empty<byte>()).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Signature: {Signature?.Bytes.ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
@@ -335,7 +337,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx);
+        int GetLength(Transaction tx, bool shouldCountBlobs = true);
     }
 
     /// <summary>

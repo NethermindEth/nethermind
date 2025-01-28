@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -92,7 +93,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (itemsRemaining >= 5 && decoderContext.Position != headerCheck)
                 {
-                    blockHeader.RequestsRoot = decoderContext.DecodeKeccak();
+                    blockHeader.RequestsHash = decoderContext.DecodeKeccak();
                 }
             }
 
@@ -184,7 +185,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (itemsRemaining >= 5 && rlpStream.Position != headerCheck)
                 {
-                    blockHeader.RequestsRoot = rlpStream.DecodeKeccak();
+                    blockHeader.RequestsHash = rlpStream.DecodeKeccak();
                 }
             }
 
@@ -256,9 +257,9 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.ParentBeaconBlockRoot);
             }
 
-            if (header.RequestsRoot is not null)
+            if (header.RequestsHash is not null)
             {
-                rlpStream.Encode(header.RequestsRoot);
+                rlpStream.Encode(header.RequestsHash);
             }
         }
 
@@ -300,9 +301,8 @@ namespace Nethermind.Serialization.Rlp
                                 + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
                                 + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
-                                + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
-                                + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value))
-                                + (item.RequestsRoot is null ? 0 : Rlp.LengthOf(item.RequestsRoot));
+                                + ((item.BlobGasUsed is not null || item.ExcessBlobGas is not null) ? Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault()) + Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault()) : 0)
+                                + (item.RequestsHash is null ? 0 : Rlp.LengthOf(item.RequestsHash));
 
             if (notForSealing)
             {

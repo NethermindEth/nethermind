@@ -4,7 +4,6 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -138,7 +137,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository sut = new();
 
-        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(delegationCode).ValueHash256);
+        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -196,7 +195,7 @@ public class CodeInfoRepositoryTests
         using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
         Span<byte> code = stackalloc byte[rlp.Length + 1];
         code[0] = Eip7702Constants.Magic;
-        rlp.AsSpan().CopyTo(code.Slice(1));
+        rlp.AsSpan().CopyTo(code[1..]);
         EthereumEcdsa ecdsa = new(1);
         Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
 

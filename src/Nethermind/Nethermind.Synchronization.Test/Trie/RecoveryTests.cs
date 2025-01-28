@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.State.Healing;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Trie;
@@ -85,7 +86,11 @@ public class RecoveryTests
     }
 
     [TearDown]
-    public void TearDown() => _syncPeerPool?.Dispose();
+    public void TearDown()
+    {
+        _syncPeerPool?.DisposeAsync();
+        _snapRequest?.Dispose();
+    }
 
     [Test]
     public async Task can_recover_eth66()

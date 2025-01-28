@@ -27,7 +27,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly IShutterEon _eon;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ShutterTxLoader _txLoader;
-    private readonly Dictionary<ulong, byte[]> _validatorsInfo;
+    private readonly ShutterValidatorsInfo _validatorsInfo;
     private readonly ILogManager _logManager;
     private readonly IAbiEncoder _abiEncoder;
     private readonly IBlockTree _blockTree;
@@ -41,7 +41,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
-    private readonly object _syncObject = new();
+    private readonly Lock _syncObject = new();
 
     public ShutterBlockHandler(
         ulong chainId,
@@ -50,7 +50,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         IBlockTree blockTree,
         IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,
-        Dictionary<ulong, byte[]> validatorsInfo,
+        ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
         ShutterTxLoader txLoader,
         ShutterTime time,
@@ -125,7 +125,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask =>
+        _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
         {
             waitTask.Value.CancellationRegistration.Dispose();
             waitTask.Value.TimeoutCancellationRegistration.Dispose();
@@ -190,9 +190,9 @@ public class ShutterBlockHandler : IShutterBlockHandler
     }
 
 
-    private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)
+    private void CheckAllValidatorsRegistered(in BlockHeader parent, in ShutterValidatorsInfo validatorsInfo)
     {
-        if (validatorsInfo.Count == 0)
+        if (validatorsInfo.IsEmpty)
         {
             return;
         }

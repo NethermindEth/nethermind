@@ -5,14 +5,16 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -23,11 +25,11 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
-        protected override long? LowestInsertedNumber => _blockTree.LowestInsertedBodyNumber;
+        protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
         protected override Func<bool> HasPivot =>
-            () => _blockTree.LowestInsertedBodyNumber is not null && _blockTree.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
+            () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
 
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
@@ -37,32 +39,35 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly IDbMeta _blocksDb;
+        private readonly ISyncPointers _syncPointers;
+        private readonly IDb _blocksDb;
 
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
+        private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
 
         public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            ISyncPointers syncPointers,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            [KeyFilter(DbNames.Blocks)] IDbMeta blocksDb,
+            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
+            _blockTree = blockTree;
+            _syncPointers = syncPointers;
+            _syncPeerPool = syncPeerPool;
+            _syncConfig = syncConfig;
+            _syncReport = syncReport;
+            _blocksDb = blocksDb;
             _flushDbInterval = flushDbInterval;
 
             if (!_syncConfig.FastSync)
@@ -84,8 +89,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksBodies.Reset(0);
-            _syncReport.BodiesInQueue.Reset(0);
+            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
         }
 
         private void ResetSyncStatusList()
@@ -93,7 +97,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _blockTree.LowestInsertedBodyNumber,
+                _syncPointers.LowestInsertedBodyNumber,
                 _syncConfig.AncientBodiesBarrier);
         }
 
@@ -120,8 +124,6 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
-            _syncReport.BodiesInQueue.Update(0);
-            _syncReport.BodiesInQueue.MarkEnd();
             Flush();
         }
 
@@ -130,18 +132,31 @@ namespace Nethermind.Synchronization.FastBlocks
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo?[] infos = new BlockInfo[_requestSize];
-                _syncStatusList.GetInfosForBatch(infos);
+                BlockInfo?[] infos = null;
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) =>
+                       {
+                           bool hasBlock = _blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                           if (hasBlock) _syncReport.FastBlocksBodies.IncrementSkipped();
+                           return hasBlock;
+                       }, out infos))
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    // Otherwise, the progress does not update correctly
+                    _syncPointers.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    UpdateSyncReport();
+                }
+
                 if (infos[0] is not null)
                 {
                     batch = new BodiesSyncBatch(infos);
-                    batch.MinNumber = infos[0].BlockNumber;
+                    // Used for peer allocation. It pick peer which have the at least this number
                     batch.Prioritized = true;
                 }
             }
 
             if (
-                (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
+                (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
                 _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
             )
             {
@@ -155,7 +170,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
-            _blockTree.LowestInsertedBodyNumber = lowestInsertedAtPoint;
+            _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
@@ -210,7 +225,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
-            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
+            BlockBody[]? responses = batch.Response?.Bodies ?? [];
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
@@ -276,7 +291,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void UpdateSyncReport()
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
-            _syncReport.BodiesInQueue.Update(_syncStatusList.QueueSize);
+            _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
         }
 
         private void AdjustRequestSizes(BodiesSyncBatch batch, int validResponsesCount)

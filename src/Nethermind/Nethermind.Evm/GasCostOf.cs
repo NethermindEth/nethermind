@@ -62,6 +62,11 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+        public const long PerAuthBaseCost = 12500; // eip-7702
+        public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7632
+
+        public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
+        public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
 
         public const long DataLoad = 4;
         public const long DataLoadN = 3;
@@ -70,8 +75,6 @@ namespace Nethermind.Evm
         public const long ReturnContract = 0;
         public const long EofCreate = 32000;
         public const long ReturnDataLoad = 3;
-
-
         public const long RJump = 2;
         public const long RJumpi = 4;
         public const long RJumpv = 4;
@@ -81,6 +84,5 @@ namespace Nethermind.Evm
         public const long Callf = 5;
         public const long Jumpf = 5;
         public const long Retf = 3;
-        public const long PerAuthBaseCost = 2500; // eip-7702
     }
 }

@@ -8,9 +8,9 @@ namespace Nethermind.Serialization.Rlp
 {
     public class RlpFactory
     {
-        public long MemorySize => MemorySizes.SmallObjectOverhead
+        public long MemorySize => MemorySizes.ObjectHeaderMethodTable
                                     + MemorySizes.Align(MemorySizes.ArrayOverhead + _data.Length)
-                                    + MemorySizes.Align(sizeof(int));
+                                    + MemorySizes.Align(MemorySizes.RefSize + sizeof(int));
 
         private readonly CappedArray<byte> _data;
 

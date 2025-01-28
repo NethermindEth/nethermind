@@ -48,7 +48,7 @@ public class MetricsTests
 
     public struct CustomLabelType(int num1, int num2, int num3) : IMetricLabels
     {
-        public string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
+        public readonly string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
     }
 
     [Test]
@@ -157,7 +157,7 @@ public class MetricsTests
         foreach (string dll in dlls)
         {
             Assembly assembly = Assembly.LoadFile(dll);
-            Type[] configs = assembly.GetExportedTypes().Where(t => t.Name == "Metrics").ToArray();
+            Type[] configs = assembly.GetExportedTypes().Where(static t => t.Name == "Metrics").ToArray();
 
             foreach (Type metricsType in configs)
             {

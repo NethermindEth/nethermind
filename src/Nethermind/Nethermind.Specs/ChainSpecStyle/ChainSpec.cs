@@ -6,6 +6,7 @@ using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -34,15 +35,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public string SealEngineType { get; set; }
 
-        public AuRaParameters AuRa { get; set; }
-
-        public CliqueParameters Clique { get; set; }
-
-        public EthashParameters Ethash { get; set; }
-
-        public OptimismParameters Optimism { get; set; }
-
         public ChainParameters Parameters { get; set; }
+
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 
@@ -83,5 +78,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? ShanghaiTimestamp { get; set; }
 
         public ulong? CancunTimestamp { get; set; }
+
+        public ulong? PragueTimestamp { get; set; }
     }
 }

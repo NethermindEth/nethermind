@@ -2,27 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using System;
+using Nethermind.Int256;
 
 namespace Nethermind.Core;
 public class AuthorizationTuple(
-    ulong chainId,
+    UInt256 chainId,
     Address codeAddress,
     ulong nonce,
     Signature sig,
     Address? authority = null)
 {
     public AuthorizationTuple(
-        ulong chainId,
+        UInt256 chainId,
         Address codeAddress,
         ulong nonce,
-        ulong yParity,
-        byte[] r,
-        byte[] s,
-        Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, yParity + Signature.VOffset), authority)
+        byte yParity,
+        UInt256 r,
+        UInt256 s,
+        Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, (ulong)yParity + Signature.VOffset), authority)
     { }
 
-    public ulong ChainId { get; } = chainId;
+    public UInt256 ChainId { get; } = chainId;
     public Address CodeAddress { get; protected set; } = codeAddress;
     public ulong Nonce { get; } = nonce;
     public Signature AuthoritySignature { get; protected set; } = sig;

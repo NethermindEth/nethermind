@@ -2,102 +2,123 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.CommandLine;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
-using CommandLine;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
+namespace Nethermind.Test.Runner;
 
-namespace Nethermind.Test.Runner
+internal class Program
 {
-    internal class Program
+    public class Options
     {
-        public class Options
+        public static CliOption<string> Input { get; } =
+            new("--input", "-i") { Description = "Set the state test input file or directory. Either 'input' or 'stdin' is required." };
+
+        public static CliOption<string> Filter { get; } =
+            new("--filter", "-f") { Description = "Set the test name that you want to run. Could also be a regular expression." };
+
+        public static CliOption<bool> BlockTest { get; } =
+            new("--blockTest", "-b") { Description = "Set test as blockTest. if not, it will be by default assumed a state test." };
+
+        public static CliOption<bool> EofTest { get; } =
+            new("--eofTest", "-e") { Description = "Set test as eofTest. if not, it will be by default assumed a state test." };
+        public static CliOption<bool> TraceAlways { get; } =
+            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]" };
+
+        public static CliOption<bool> TraceNever { get; } =
+            new("--neverTrace", "-n") { Description = "Set to never trace (by default traces are only generated for failing tests). [Only for State Test]" };
+
+        public static CliOption<bool> ExcludeMemory { get; } =
+            new("--memory", "-m") { Description = "Exclude memory trace. [Only for State Test]" };
+
+        public static CliOption<bool> ExcludeStack { get; } =
+            new("--stack", "-s") { Description = "Exclude stack trace. [Only for State Test]" };
+
+        public static CliOption<bool> Wait { get; } =
+            new("--wait", "-w") { Description = "Wait for input after the test run." };
+
+        public static CliOption<bool> Stdin { get; } =
+            new("--stdin", "-x") { Description = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
+    }
+
+    public static async Task<int> Main(params string[] args)
+    {
+        CliRootCommand rootCommand =
+        [
+            Options.Input,
+            Options.Filter,
+            Options.BlockTest,
+            Options.EofTest,
+            Options.TraceAlways,
+            Options.TraceNever,
+            Options.ExcludeMemory,
+            Options.ExcludeStack,
+            Options.Wait,
+            Options.Stdin
+        ];
+        rootCommand.SetAction(Run);
+
+        CliConfiguration configuration = new(rootCommand);
+
+        return await configuration.InvokeAsync(args);
+    }
+
+    private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
+    {
+        WhenTrace whenTrace = WhenTrace.WhenFailing;
+
+        if (parseResult.GetValue(Options.TraceNever))
+            whenTrace = WhenTrace.Never;
+
+        if (parseResult.GetValue(Options.TraceAlways))
+            whenTrace = WhenTrace.Always;
+
+        string input = parseResult.GetValue(Options.Input);
+
+        if (parseResult.GetValue(Options.Stdin))
+            input = Console.ReadLine();
+
+        while (!string.IsNullOrWhiteSpace(input))
         {
-            [Option('i', "input", Required = false, HelpText = "Set the state test input file or directory. Either 'input' or 'stdin' is required")]
-            public string Input { get; set; }
+            if (parseResult.GetValue(Options.BlockTest))
+                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter)));
+            else if (parseResult.GetValue(Options.EofTest))
+                await RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
+            else
+                RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
+                    !parseResult.GetValue(Options.ExcludeMemory),
+                    !parseResult.GetValue(Options.ExcludeStack),
+                    parseResult.GetValue(Options.Filter)));
 
-            [Option('f', "filter", Required = false, HelpText = "Set the test name that you want to run. Could also be a regular expression")]
-            public string Filter { get; set; }
+            if (!parseResult.GetValue(Options.Stdin))
+                break;
 
-            [Option('b', "blockTest", Required = false, HelpText = "Set test as blockTest. if not, it will be by default assumed a state test.")]
-            public bool BlockTest { get; set; }
-
-            [Option('e', "eofTest", Required = false, HelpText = "Set test as eofTest. if not, it will be by default assumed a state test.")]
-            public bool EofTest { get; set; }
-
-            [Option('t', "trace", Required = false, HelpText = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]")]
-            public bool TraceAlways { get; set; }
-
-            [Option('n', "neverTrace", Required = false, HelpText = "Set to never trace (by default traces are only generated for failing tests). [Only for State Test]")]
-            public bool TraceNever { get; set; }
-
-            [Option('m', "memory", Required = false, HelpText = "Exclude memory trace. [Only for State Test]")]
-            public bool ExcludeMemory { get; set; }
-
-            [Option('s', "stack", Required = false, HelpText = "Exclude stack trace. [Only for State Test]")]
-            public bool ExcludeStack { get; set; }
-
-            [Option('w', "wait", Required = false, HelpText = "Wait for input after the test run.")]
-            public bool Wait { get; set; }
-
-            [Option('x', "stdin", Required = false, HelpText = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read.")]
-            public bool Stdin { get; set; }
+            input = Console.ReadLine();
         }
 
-        public static async Task Main(params string[] args)
-        {
-            ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
-            if (result is Parsed<Options> options)
-                await Run(options.Value);
-        }
+        if (parseResult.GetValue(Options.Wait))
+            Console.ReadLine();
 
-        private static async Task Run(Options options)
-        {
-            WhenTrace whenTrace = WhenTrace.WhenFailing;
-            if (options.TraceNever)
-                whenTrace = WhenTrace.Never;
+        return 0;
+    }
 
-            if (options.TraceAlways)
-                whenTrace = WhenTrace.Always;
+    private static async Task RunBlockTest(string path, Func<ITestSourceLoader, IBlockchainTestRunner> testRunnerBuilder)
+    {
+        ITestSourceLoader source = Path.HasExtension(path)
+            ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
+            : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
+        await testRunnerBuilder(source).RunTestsAsync();
+    }
 
-            string input = options.Input;
-            if (options.Stdin)
-                input = Console.ReadLine();
-
-            while (!string.IsNullOrWhiteSpace(input))
-            {
-
-                if (options.BlockTest)
-                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter));
-                else if (options.EofTest)
-                    RunEofTest(input, source => new EofTestsRunner(source, options.Filter));
-                else
-                    RunStateTest(input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack, options.Filter));
-                if (!options.Stdin)
-                    break;
-
-                input = Console.ReadLine();
-            }
-
-            if (options.Wait)
-                Console.ReadLine();
-        }
-
-        private static async Task RunBlockTest(string path, Func<ITestSourceLoader, IBlockchainTestRunner> testRunnerBuilder)
-        {
-            ITestSourceLoader source = Path.HasExtension(path)
-                ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
-                : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
-            await testRunnerBuilder(source).RunTestsAsync();
-        }
-
-        private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
+        private static async Task RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
         {
             ITestSourceLoader source = Path.HasExtension(path)
                 ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
                 : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
-            testRunnerBuilder(source).RunTests();
+            await testRunnerBuilder(source).RunTestsAsync();
         }
 
         private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)

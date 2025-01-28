@@ -156,7 +156,7 @@ namespace Nethermind.Core.Collections
         {
             ArgumentNullException.ThrowIfNull(other);
 
-            ISet<T> set = other.ToHashSet();
+            HashSet<T> set = other.ToHashSet();
             return Count == set.Count && IsSupersetOf(set);
         }
 

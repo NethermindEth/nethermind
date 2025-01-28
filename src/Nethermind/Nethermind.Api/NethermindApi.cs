@@ -9,7 +9,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
@@ -52,12 +51,12 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Era1;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
@@ -71,6 +70,7 @@ namespace Nethermind.Api
             LogManager = logManager;
             ChainSpec = chainSpec;
             CryptoRandom = new CryptoRandom();
+            DisposeStack = new DisposableStack(logManager);
             DisposeStack.Push(CryptoRandom);
         }
 
@@ -79,10 +79,10 @@ namespace Nethermind.Api
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
 
             // TODO: reuse the same trie cache here
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                WorldStateManager!,
+            OverridableTxProcessingEnv txProcessingEnv = new(
+                WorldStateManager!.CreateOverridableWorldScope(),
                 readOnlyTree,
-                SpecProvider,
+                SpecProvider!,
                 LogManager);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
@@ -97,7 +97,7 @@ namespace Nethermind.Api
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
-                readOnlyTxProcessingEnv,
+                txProcessingEnv,
                 simulateReadOnlyBlocksProcessingEnvFactory,
                 TxPool,
                 ReceiptFinder,
@@ -190,21 +190,23 @@ namespace Nethermind.Api
         public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
 
         public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
+        public ISyncPointers? SyncPointers => ApiWithNetworkServiceContainer?.Resolve<ISyncPointers>();
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IPivot? Pivot { get; set; }
-        public ISyncPeerPool? SyncPeerPool { get; set; }
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
+        public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();
+        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
-        public ISyncServer? SyncServer { get; set; }
-        public IWorldState? WorldState { get; set; }
+        public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
+        public INodeStorage? MainNodeStorage { get; set; }
+        public CompositePruningTrigger? PruningTrigger { get; set; }
+        public IVerifyTrieStarter? VerifyTrieStarter { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITrieStore? TrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -224,24 +226,24 @@ namespace Nethermind.Api
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
+        public IAdminEraService AdminEraService { get; set; } = null!;
         public IWallet? Wallet { get; set; }
-        public IBlockStore? BadBlocksStore { get; set; }
+        public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ISubscriptionFactory? SubscriptionFactory { get; set; }
-        public ProtectedPrivateKey? NodeKey { get; set; }
+        public IProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>
         /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>.
         /// </summary>
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec { get; set; }
-        public DisposableStack DisposeStack { get; } = new();
+        public DisposableStack DisposeStack { get; }
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
-        public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
 

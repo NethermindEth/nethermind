@@ -35,14 +35,14 @@ namespace Nethermind.Blockchain.Test
             {
                 ProperTransactionsSelectedTestCase allTransactionsSelected = ProperTransactionsSelectedTestCase.Default;
                 allTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    allTransactionsSelected.Transactions.OrderBy(t => t.Nonce));
+                    allTransactionsSelected.Transactions.OrderBy(static t => t.Nonce));
                 yield return new TestCaseData(allTransactionsSelected).SetName("All transactions selected");
 
                 ProperTransactionsSelectedTestCase twoTransactionSelectedDueToLackOfSenderAddress =
                     ProperTransactionsSelectedTestCase.Default;
                 twoTransactionSelectedDueToLackOfSenderAddress.Transactions.First().SenderAddress = null;
                 twoTransactionSelectedDueToLackOfSenderAddress.ExpectedSelectedTransactions.AddRange(
-                    twoTransactionSelectedDueToLackOfSenderAddress.Transactions.OrderBy(t => t.Nonce).Take(2));
+                    twoTransactionSelectedDueToLackOfSenderAddress.Transactions.OrderBy(static t => t.Nonce).Take(2));
                 yield return new TestCaseData(twoTransactionSelectedDueToLackOfSenderAddress).SetName(
                     "Two transaction selected due to lack of sender address");
             }
@@ -153,16 +153,16 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase maxTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
                 maxTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 maxTransactionsSelected.BaseFee = 1;
-                maxTransactionsSelected.Transactions.ForEach(tx =>
+                maxTransactionsSelected.Transactions.ForEach(static tx =>
                 {
                     tx.Type = TxType.Blob;
                     tx.BlobVersionedHashes = new byte[1][];
                     tx.MaxFeePerBlobGas = 1;
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob - 1][];
+                    new byte[maxTransactionsSelected.ReleaseSpec.MaxBlobCount - 1][];
                 maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    maxTransactionsSelected.Transactions.OrderBy(t => t.Nonce).Take(2));
+                    maxTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).Take(2));
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
 
                 ProperTransactionsSelectedTestCase enoughTransactionsSelected =
@@ -171,16 +171,16 @@ namespace Nethermind.Blockchain.Test
                 enoughTransactionsSelected.BaseFee = 1;
 
                 Transaction[] expectedSelectedTransactions =
-                    enoughTransactionsSelected.Transactions.OrderBy(t => t.Nonce).ToArray();
+                    enoughTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).ToArray();
                 expectedSelectedTransactions[0].Type = TxType.Blob;
                 expectedSelectedTransactions[0].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob][];
+                    new byte[enoughTransactionsSelected.ReleaseSpec.MaxBlobCount][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
                 expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
                 enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    expectedSelectedTransactions.Where((_, index) => index != 1));
+                    expectedSelectedTransactions.Where(static (_, index) => index != 1));
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
                     "Enough shard blob transactions and others selected");
             }

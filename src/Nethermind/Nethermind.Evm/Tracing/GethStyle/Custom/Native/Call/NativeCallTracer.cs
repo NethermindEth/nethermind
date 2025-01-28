@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -160,28 +161,27 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
-        firstCallFrame.GasUsed = gasSpent;
+        firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
-        firstCallFrame.GasUsed = gasSpent;
+        firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        int revertedPrefixLength = TransactionSubstate.RevertedErrorMessagePrefix.Length;
-        if (errorType == EvmExceptionType.Revert && error.Length > revertedPrefixLength)
+        if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error[revertedPrefixLength..]);
+            firstCallFrame.RevertReason = ValidateRevertReason(error);
         }
 
         if (_config.WithLog)

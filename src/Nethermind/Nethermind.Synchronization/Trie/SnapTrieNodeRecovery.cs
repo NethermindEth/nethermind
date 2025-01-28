@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
 {
-    public SnapTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
+    public SnapTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager, bool alwaysRecover = false) : base(syncPeerPool, logManager, alwaysRecover)
     {
     }
 
@@ -29,7 +29,7 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
         requestAccountAndStoragePaths.Group.Length switch
         {
             1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}",
-            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1).Select(g => g.ToHexString()))}",
+            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1).Select(static g => g.ToHexString()))}",
             _ => "",
         };
 

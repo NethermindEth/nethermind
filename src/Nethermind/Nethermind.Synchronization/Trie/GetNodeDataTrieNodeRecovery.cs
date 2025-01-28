@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Hash256>>
 {
-    public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
+    public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager, bool alwaysRecover = false) : base(syncPeerPool, logManager, alwaysRecover)
     {
     }
 

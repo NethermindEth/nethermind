@@ -56,8 +56,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, Block block, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.BlockHash, Is.EqualTo(block.Hash));
     }
 
@@ -68,8 +67,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.TransactionPosition, Is.EqualTo(0));
     }
 
@@ -79,8 +77,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()));
     }
 
@@ -90,8 +87,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, Transaction tx) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash));
     }
 
@@ -101,8 +97,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.CallType, Is.EqualTo("call"));
     }
 
@@ -114,8 +109,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] initCode = Prepare.EvmCode
             .ForInitOf(deployedCode)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteInitAndTraceParityCall(initCode);
+        (ParityLikeTxTrace trace, _, _) = ExecuteInitAndTraceParityCall(initCode);
         Assert.That(trace.Action.CallType, Is.EqualTo("create"));
     }
 
@@ -125,8 +119,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.Gas, Is.EqualTo(79000));
     }
 
@@ -136,8 +129,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.CallType, Is.EqualTo("call"));
     }
 
@@ -147,8 +139,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.From, Is.EqualTo(Sender));
     }
 
@@ -158,8 +149,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.To, Is.EqualTo(Recipient));
     }
 
@@ -172,8 +162,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         byte[] input = Bytes.FromHexString(SampleHexData2);
         UInt256 value = 1.Ether();
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(input, value, code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
         Assert.That(trace.Action.Input, Is.EqualTo(input));
     }
 
@@ -186,8 +175,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         byte[] input = Bytes.FromHexString(SampleHexData2);
         UInt256 value = 1.Ether();
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(input, value, code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
         Assert.That(trace.Action.Value, Is.EqualTo(value));
     }
 
@@ -197,8 +185,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.Result.GasUsed, Is.EqualTo(3));
     }
 
@@ -211,8 +198,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData("0x0")
             .Op(Instruction.RETURN)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         Assert.That(trace.Action.Result.Output, Is.EqualTo(Bytes.FromHexString(SampleHexData1.PadLeft(64, '0'))));
     }
 
@@ -237,9 +223,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Call(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        int[] depths = new int[]
+        (ParityLikeTxTrace trace, Block _, Transaction _) = ExecuteAndTraceParityCall(code);
+        _ = new int[]
         {
             1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
             2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
@@ -276,9 +261,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .DelegateCall(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        int[] depths = new int[]
+        (ParityLikeTxTrace trace, Block _, Transaction _) = ExecuteAndTraceParityCall(code);
+        _ = new int[]
         {
             1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
             2, 2, 2, 2, 2, 2, 2, 2, 2, // DELEGATE CALL
@@ -312,9 +296,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .CallCode(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        int[] depths = new int[]
+        (ParityLikeTxTrace trace, Block _, Transaction _) = ExecuteAndTraceParityCall(code);
+        _ = new int[]
         {
             1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
             2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
@@ -553,9 +536,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .StaticCall(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        int[] depths = new int[]
+        (ParityLikeTxTrace trace, Block _, Transaction _) = ExecuteAndTraceParityCall(code);
+        _ = new int[]
         {
             1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
             2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
@@ -574,9 +556,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Call(IdentityPrecompile.Address, 50000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        int[] depths = new int[]
+        (ParityLikeTxTrace trace, Block _, Transaction _) = ExecuteAndTraceParityCall(code);
+        _ = new int[]
         {
             1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
             2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
@@ -604,8 +585,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Call(TestItem.AddressC, 40000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
         // call to AddressC and should ignore precompile
         Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
@@ -643,9 +623,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Call(TestItem.AddressC, 40000)
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        int[] depths = new int[]
+        (ParityLikeTxTrace trace, Block _, Transaction _) = ExecuteAndTraceParityCall(code);
+        _ = new int[]
         {
             1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
             2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
@@ -756,8 +735,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
-
-        (ParityLikeTxTrace trace, _, Transaction tx) = ExecuteAndTraceParityCall(code);
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
         Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
         Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
@@ -793,7 +771,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
         tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
-        Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Array.Empty<byte>(), "Error"));
+        Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, [], "Error"));
     }
 
     [Test]
@@ -801,7 +779,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
         tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
-        Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Array.Empty<byte>(), new LogEntry[] { }));
+        Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, [], []));
     }
 
     [Test]
@@ -818,7 +796,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -826,7 +804,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -834,7 +812,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, traceTypes);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -842,7 +820,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-        TransactionResult result = _processor.Execute(transaction, block.Header, tracer);
+        _ = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 }

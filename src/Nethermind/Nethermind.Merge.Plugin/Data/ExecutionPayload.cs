@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Nethermind.Core.ConsensusRequests;
+using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -32,7 +32,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public long BlockNumber { get; set; }
 
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
@@ -52,7 +52,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+    protected byte[][] _encodedTransactions = [];
 
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
@@ -77,23 +77,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
 
     /// <summary>
-    /// Gets or sets a collection of <see cref="DepositRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
+    /// Gets or sets a collection of <see cref="ExecutionRequest"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
-    public virtual Deposit[]? DepositRequests { get; set; }
-
-
-    /// <summary>
-    /// Gets or sets a collection of <see cref="WithdrawalRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
-    /// </summary>
-    public virtual WithdrawalRequest[]? WithdrawalRequests { get; set; }
-
-    /// <summary>
-    /// Gets or sets a collection of <see cref="ConsolidationRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
-    /// </summary>
-    public virtual ConsolidationRequest[]? ConsolidationRequests { get; set; }
+    [JsonIgnore]
+    public virtual byte[][]? ExecutionRequests { get; set; }
 
 
     /// <summary>
@@ -189,14 +177,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         }
     }
 
-    private Transaction[]? _transactions = null;
+    protected Transaction[]? _transactions = null;
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select((t, i) =>
+        .Select(static (t, i) =>
         {
             try
             {
@@ -215,7 +203,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
             .ToArray();
         _transactions = transactions;
     }
@@ -232,12 +220,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return ValidationResult.Fail;
         }
 
-        if (spec.RequestsEnabled)
-        {
-            error = "ExecutionPayloadV4 expected";
-            return ValidationResult.Fail;
-        }
-
         int actualVersion = GetExecutionPayloadVersion();
 
         error = actualVersion switch
@@ -250,9 +232,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    private int GetExecutionPayloadVersion() => this switch
+    protected virtual int GetExecutionPayloadVersion() => this switch
     {
-        { DepositRequests: not null, WithdrawalRequests: not null, ConsolidationRequests: not null } => 4,
+        { ExecutionRequests: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1

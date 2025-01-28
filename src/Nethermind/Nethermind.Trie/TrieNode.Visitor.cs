@@ -3,11 +3,13 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Cpu;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -19,8 +21,6 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int BranchesCount = 16;
-
         /// <summary>
         /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
         /// `nextToVisit`. Also, it assume the node is already resolved.
@@ -65,12 +65,7 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                     {
                         visitor.VisitExtension(nodeContext, this, trieVisitContext.ToVisitContext());
-                        TrieNode child = GetChild(nodeResolver, ref emptyPath, 0);
-                        if (child is null)
-                        {
-                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        }
-
+                        TrieNode child = GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         child.ResolveKey(nodeResolver, ref emptyPath, false);
                         TNodeContext childContext = nodeContext.Add(Key!);
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
@@ -187,31 +182,46 @@ namespace Nethermind.Trie
                         }
 
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        void VisitMultiThread(TreePath parentPath, ITreeVisitor<TNodeContext> treeVisitor, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, TrieNode?[] children)
+                        void VisitMultiThread(TreePath parentPath, ITreeVisitor<TNodeContext> treeVisitor, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext)
                         {
-                            var copy = nodeContext;
+                            // we need to preallocate children
+                            TNodeContext contextCopy = nodeContext;
 
-                            // multithreaded route
-                            Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCores, i =>
+                            ArrayPoolList<Task>? tasks = null;
+                            for (int i = 0; i < BranchesCount; i++)
                             {
-                                visitContext.Semaphore.Wait();
-                                try
+                                if (i < BranchesCount - 1 && visitContext.ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
                                 {
-                                    TreePath closureParentPath = parentPath;
+                                    tasks ??= new ArrayPoolList<Task>(BranchesCount);
+                                    tasks.Add(SpawnChildVisit(parentPath, i, GetChild(nodeResolver, ref parentPath, i), returner));
+                                }
+                                else
+                                {
+                                    VisitChild(ref parentPath, i, GetChild(nodeResolver, ref parentPath, i), trieNodeResolver, treeVisitor, contextCopy, visitContext);
+                                }
+                            }
+
+                            if (tasks is { Count: > 0 })
+                            {
+                                Task.WaitAll(tasks.AsSpan());
+                                tasks.Dispose();
+                            }
+                            return;
+
+                            Task SpawnChildVisit(TreePath closureParentPath, int i, TrieNode? childNode, ConcurrencyController.Slot slotReturner) =>
+                                Task.Run(() =>
+                                {
+                                    using ConcurrencyController.Slot _ = slotReturner;
+
                                     // we need to have separate context for each thread as context tracks level and branch child index
                                     TrieVisitContext childContext = visitContext.Clone();
-                                    VisitChild(ref closureParentPath, i, children[i], trieNodeResolver, treeVisitor, copy, childContext);
-                                }
-                                finally
-                                {
-                                    visitContext.Semaphore.Release();
-                                }
-                            });
+                                    VisitChild(ref closureParentPath, i, childNode, trieNodeResolver, treeVisitor, contextCopy, childContext);
+                                });
                         }
 
                         static void VisitAllSingleThread(TrieNode currentNode, ref TreePath path, ITreeVisitor<TNodeContext> visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, TrieVisitContext visitContext)
                         {
-                            TrieNode?[] output = new TrieNode?[16];
+                            TrieNode?[] output = new TrieNode?[BranchesCount];
                             currentNode.ResolveAllChildBranch(nodeResolver, ref path, output);
                             path.AppendMut(0);
                             for (int i = 0; i < 16; i++)
@@ -234,23 +244,11 @@ namespace Nethermind.Trie
                         trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
-                        if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
+                        // Limiting the multithread path to top state tree and first level storage double the throughput on mainnet.
+                        // Top level state split to 16^3 while storage is 16, which should be ok for large contract in most case.
+                        if (trieVisitContext.MaxDegreeOfParallelism != 1 && (trieVisitContext.IsStorage ? path.Length == 0 : path.Length <= 2))
                         {
-                            // we need to preallocate children
-                            TrieNode?[] children = new TrieNode?[BranchesCount];
-                            for (int i = 0; i < BranchesCount; i++)
-                            {
-                                children[i] = GetChild(nodeResolver, ref path, i);
-                            }
-
-                            if (trieVisitContext.Semaphore.CurrentCount > 1)
-                            {
-                                VisitMultiThread(path, visitor, nodeContext, nodeResolver, trieVisitContext, children);
-                            }
-                            else
-                            {
-                                VisitSingleThread(ref path, visitor, nodeContext, nodeResolver, trieVisitContext);
-                            }
+                            VisitMultiThread(path, visitor, nodeContext, nodeResolver, trieVisitContext);
                         }
                         else
                         {
@@ -273,12 +271,7 @@ namespace Nethermind.Trie
                     {
                         visitor.VisitExtension(nodeContext, this, trieVisitContext);
                         trieVisitContext.AddVisited();
-                        TrieNode child = GetChild(nodeResolver, ref path, 0);
-                        if (child is null)
-                        {
-                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        }
-
+                        TrieNode child = GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         int previousPathLength = AppendChildPath(ref path, 0);
                         child.ResolveKey(nodeResolver, ref path, false);
                         TNodeContext childContext = nodeContext.Add(Key!);

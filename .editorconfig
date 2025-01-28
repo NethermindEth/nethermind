@@ -9,7 +9,7 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-file_header_template = SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
+file_header_template = SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
 
 [*.cs]
 indent_size = 4
@@ -89,3 +89,9 @@ csharp_style_expression_bodied_local_functions = false:silent
 csharp_style_var_for_built_in_types = true:silent
 csharp_style_var_when_type_is_apparent = true:suggestion
 csharp_style_var_elsewhere = false:suggestion
+
+# Coding convention
+
+dotnet_diagnostic.IDE0005.severity = suggestion
+dotnet_diagnostic.IDE0041.severity = error
+

@@ -9,6 +9,7 @@ using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
@@ -58,6 +59,10 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
+        public ValueHash256(UInt256 uint256, bool isBigEndian = true) : this(isBigEndian ? uint256.ToBigEndian() : uint256.ToLittleEndian())
+        {
+        }
+
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
         public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
@@ -87,7 +92,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
@@ -112,6 +117,11 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static implicit operator Hash256(in ValueHash256 keccak) => new(keccak);
+
+        public UInt256 ToUInt256(bool isBigEndian = true)
+        {
+            return new UInt256(Bytes, isBigEndian: isBigEndian);
+        }
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
@@ -134,8 +144,7 @@ namespace Nethermind.Core.Crypto
         public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         public const int MemorySize =
-            MemorySizes.SmallObjectOverhead -
-            MemorySizes.RefSize +
+            MemorySizes.ObjectHeaderMethodTable +
             Size;
 
         private readonly ValueHash256 _hash256;
@@ -182,7 +191,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
@@ -278,7 +287,7 @@ namespace Nethermind.Core.Crypto
 
         public byte[] ThreadStaticBytes()
         {
-            if (_threadStaticBuffer is null) _threadStaticBuffer = new byte[Size];
+            _threadStaticBuffer ??= new byte[Size];
             Bytes.CopyTo(_threadStaticBuffer);
             return _threadStaticBuffer;
         }

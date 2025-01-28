@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/op-sepolia.json",
+    "GenesisHash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
+    "BaseDbPath": "nethermind_db/op-sepolia-archive",
+    "LogFileName": "op-sepolia-archive.logs.txt",
+    "DisableGcOnNewPayload": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
+  "Pruning": {
+    "Mode": "None"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Optimism": {
+    "SequencerUrl": "https://sepolia-sequencer.optimism.io"
+  }
+}

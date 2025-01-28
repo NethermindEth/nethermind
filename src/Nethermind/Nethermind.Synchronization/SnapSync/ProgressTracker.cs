@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -58,22 +58,18 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
 
-        private readonly Pivot _pivot;
+        private readonly FastSync.StateSyncPivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, [KeyFilter(DbNames.State)] IDb db, ILogManager logManager, ISyncConfig syncConfig)
-            : this(blockTree, db, logManager, syncConfig.SnapSyncAccountRangePartitionCount)
-        {
-        }
-
-        public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
+        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
-            _pivot = new Pivot(blockTree, logManager);
+            _pivot = pivot;
 
-            if (accountRangePartitionCount < 1 || accountRangePartitionCount > 256)
-                throw new ArgumentException("Account range partition must be between 1 to 256.");
+            int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
+            if (accountRangePartitionCount < 1)
+                throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;
             SetupAccountRangePartition();
@@ -84,23 +80,20 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void SetupAccountRangePartition()
         {
-            // Confusingly dividing the range evenly via UInt256 for example, consistently cause root hash mismatch.
-            // The mismatch happens on exactly the same partition every time, suggesting tome kind of boundary issues
-            // either on proof generation or validation.
-            byte curStartingPath = 0;
-            int partitionSize = (256 / _accountRangePartitionCount);
+            uint curStartingPath = 0;
+            uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (ulong)_accountRangePartitionCount);
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
                 Hash256 startingPath = new Hash256(Keccak.Zero.Bytes);
-                startingPath.Bytes[0] = curStartingPath;
+                BinaryPrimitives.WriteUInt32BigEndian(startingPath.Bytes, curStartingPath);
 
                 partition.NextAccountPath = startingPath;
                 partition.AccountPathStart = startingPath;
 
-                curStartingPath += (byte)partitionSize;
+                curStartingPath += partitionSize;
 
                 Hash256 limitPath;
 
@@ -112,7 +105,7 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     limitPath = new Hash256(Keccak.Zero.Bytes);
-                    limitPath.Bytes[0] = curStartingPath;
+                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.Bytes, curStartingPath);
                 }
 
                 partition.AccountPathLimit = limitPath;
@@ -144,6 +137,12 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
+            if (_pivot.GetPivotHeader() is null)
+            {
+                nextBatch = null;
+                return false;
+            }
+
             Interlocked.Increment(ref _reqCount);
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
@@ -320,6 +319,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash)
         {
+            _pivot.UpdatedStorages.Add(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
 
@@ -442,7 +442,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (_logger.IsTrace || (_logger.IsDebug && _reqCount % 1000 == 0))
             {
-                int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
+                int moreAccountCount = AccountRangePartitions.Count(static kv => kv.Value.MoreAccountsToRight);
 
                 _logger.Debug(
                     $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - Requests Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} - Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}");

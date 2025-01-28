@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.SnapSync;
@@ -28,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
         public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
-        public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+        public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3500);
         private static readonly TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
 
         private readonly LatencyBasedRequestSizer _requestSizer = new(
@@ -88,6 +89,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public override void Dispose()
         {
+            // Clear Events if set
+            ProtocolInitialized = null;
         }
 
         public override void HandleMessage(ZeroPacket message)
@@ -253,7 +256,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 Proofs = ArrayPoolList<byte[]>.Empty(),
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
             };
-            StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
+            StorageRange? storageRange = getStorageRangeMessage.StorageRange;
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IOwnedReadOnlyList<byte[]> proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
             StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
@@ -284,7 +287,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StorageRangeMessage response = await _requestSizer.MeasureLatency(bytesLimit =>
                 SendRequest(new GetStorageRangeMessage()
                 {
-                    StoragetRange = range,
+                    StorageRange = range,
                     ResponseBytes = bytesLimit
                 }, _getStorageRangeRequests, token));
 

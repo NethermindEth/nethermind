@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -14,13 +14,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Find;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.State;
 using NSubstitute;
-
 namespace Nethermind.Shutter.Test;
-
 public class ShutterApiSimulator(
     ShutterEventSimulator eventSimulator,
     IAbiEncoder abiEncoder,
@@ -32,11 +31,14 @@ public class ShutterApiSimulator(
     ISpecProvider specProvider,
     ITimestamper timestamper,
     IWorldStateManager worldStateManager,
+    IFileSystem fileSystem,
+    IKeyStoreConfig keyStoreConfig,
     IShutterConfig cfg,
-    Dictionary<ulong, byte[]> validatorsInfo,
+    ShutterValidatorsInfo validatorsInfo,
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, ShutterTestsCommon.SlotLength)
+        logManager, specProvider, timestamper, worldStateManager, fileSystem,
+        keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
 {
     public int EonUpdateCalled = 0;
     public int KeysValidated = 0;
@@ -67,7 +69,6 @@ public class ShutterApiSimulator(
     {
         var receipts = new TxReceipt[logs.Length];
         block.Header.Bloom = new(logs);
-
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
@@ -110,7 +111,7 @@ public class ShutterApiSimulator(
 
 
     // fake out P2P module
-    protected override void InitP2P(IShutterConfig cfg, ILogManager logManager)
+    protected override void InitP2P(IPAddress _)
     {
         P2P = Substitute.For<IShutterP2P>();
     }

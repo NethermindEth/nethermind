@@ -19,7 +19,7 @@ public readonly struct CappedArray<T>
     where T : struct
 {
     private readonly static CappedArray<T> _null = default;
-    private readonly static CappedArray<T> _empty = new CappedArray<T>(Array.Empty<T>());
+    private readonly static CappedArray<T> _empty = new CappedArray<T>([]);
     public static ref readonly CappedArray<T> Null => ref _null;
     public static ref readonly CappedArray<T> Empty => ref _empty;
     public static object NullBoxed { get; } = _null;
@@ -109,7 +109,7 @@ public readonly struct CappedArray<T>
         T[]? array = _array;
 
         if (array is null) return null;
-        if (array.Length == 0) return Array.Empty<T>();
+        if (array.Length == 0) return [];
         if (_length == array.Length) return array;
         return AsSpan().ToArray();
     }

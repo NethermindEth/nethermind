@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -30,10 +30,10 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new((CodeInfo.Empty, readOnlyMemory),
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted \u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
         }
 
         [Test]
@@ -44,10 +44,10 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new((CodeInfo.Empty, readOnlyMemory),
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted \u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
         }
 
         [Test]
@@ -58,10 +58,10 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new((CodeInfo.Empty, readOnlyMemory),
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted 0x08c379a000000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000");
+            transactionSubstate.Error.Should().Be("0x08c379a000000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000");
         }
 
         [Test]
@@ -78,10 +78,10 @@ namespace Nethermind.Evm.Test
                 (CodeInfo.Empty, readOnlyMemory),
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted 0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
+            transactionSubstate.Error.Should().Be("0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
         }
 
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Test
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1a, // String length
                     0x4e, 0x6f, 0x74, 0x20, 0x65, 0x6e, 0x6f, 0x75, 0x67, 0x68, 0x20, 0x45, 0x74, 0x68, 0x65, 0x72, 0x20, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x64, 0x2e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // String data
                 },
-                "Reverted Not enough Ether provided.");
+                "Not enough Ether provided.");
 
             yield return (
                 new byte[]
@@ -104,10 +104,10 @@ namespace Nethermind.Evm.Test
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
                     0x52, 0x65, 0x71, 0x3a, 0x3a, 0x55, 0x6e, 0x41, 0x75, 0x74, 0x68, 0x41, 0x75, 0x64, 0x69, 0x74, 0x6f, 0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
                 },
-                "Reverted Req::UnAuthAuditor");
+                "Req::UnAuthAuditor");
 
             // Invalid case
-            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, "Reverted 0x08c379a0ff");
+            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, "0x08c379a0ff");
         }
 
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
@@ -118,7 +118,7 @@ namespace Nethermind.Evm.Test
                     0x4e, 0x48, 0x7b, 0x71, // Function selector for Panic(uint256)
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // Panic code 0x0
                 },
-                "Reverted generic panic");
+                "generic panic");
 
             yield return (
                 new byte[]
@@ -126,7 +126,7 @@ namespace Nethermind.Evm.Test
                     0x4e, 0x48, 0x7b, 0x71, // Function selector for Panic(uint256)
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22 // Panic code 0x22
                 },
-                "Reverted invalid encoded storage byte array accessed");
+                "invalid encoded storage byte array accessed");
 
             yield return (
                 new byte[]
@@ -134,10 +134,10 @@ namespace Nethermind.Evm.Test
                     0x4e, 0x48, 0x7b, 0x71,
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF // Unknown panic code
                 },
-                "Reverted unknown panic code (0xff)");
+                "unknown panic code (0xff)");
 
             // Invalid case
-            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, "Reverted 0xf0288c28");
+            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, "0xf0288c28");
         }
 
         [Test]
@@ -151,7 +151,7 @@ namespace Nethermind.Evm.Test
                 (CodeInfo.Empty, readOnlyMemory),
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
 
@@ -175,10 +175,10 @@ namespace Nethermind.Evm.Test
                 (CodeInfo.Empty, readOnlyMemory),
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted 0x41413231206469646e2774207061792070726566756e64");
+            transactionSubstate.Error.Should().Be("0x41413231206469646e2774207061792070726566756e64");
         }
     }
 }

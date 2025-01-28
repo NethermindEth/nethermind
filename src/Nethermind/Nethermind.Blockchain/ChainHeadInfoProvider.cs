@@ -17,6 +17,10 @@ namespace Nethermind.Blockchain
 {
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
+        private readonly IBlockTree _blockTree;
+        // For testing
+        public bool HasSynced { private get; init; }
+
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
         {
@@ -35,6 +39,7 @@ namespace Nethermind.Blockchain
             CodeInfoRepository = codeInfoRepository;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
+            _blockTree = blockTree;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
@@ -51,15 +56,30 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
+        public bool IsSyncing
+        {
+            get
+            {
+                if (HasSynced)
+                {
+                    return false;
+                }
+
+                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 2);
+                return isSyncing;
+            }
+        }
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
+            IReleaseSpec spec = SpecProvider.GetSpec(e.Block.Header);
             HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
             CurrentFeePerBlobGas =
-                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, out UInt256 currentFeePerBlobGas)
+                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);

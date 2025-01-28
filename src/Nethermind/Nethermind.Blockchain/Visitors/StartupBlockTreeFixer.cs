@@ -15,7 +15,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class StartupBlockTreeFixer : IBlockTreeVisitor
+    public class StartupBlockTreeFixer : IBlockTreeVisitor, IDisposable
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
@@ -33,11 +33,9 @@ namespace Nethermind.Blockchain.Visitors
         private long? _lastProcessedLevel;
         private long? _processingGapStart;
 
-        private TaskCompletionSource _dbBatchProcessed;
-        private long _currentDbLoadBatchEnd;
         private bool _firstBlockVisited = true;
         private bool _suggestBlocks = true;
-        private readonly long _batchSize;
+        private readonly BlockTreeSuggestPacer _blockTreeSuggestPacer;
 
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig,
@@ -47,34 +45,16 @@ namespace Nethermind.Blockchain.Visitors
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
             _stateReader = stateReader;
             _logger = logger;
 
-            _batchSize = batchSize;
             long assumedHead = _blockTree.Head?.Number ?? 0;
             _startNumber = Math.Max(syncConfig.PivotNumberParsed, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
-            if (_blocksToLoad != 0)
-            {
-                _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            }
-
             LogPlannedOperation();
-        }
-
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
-        {
-            if (_dbBatchProcessed is not null)
-            {
-                if (e.Block.Number == _currentDbLoadBatchEnd)
-                {
-                    TaskCompletionSource completionSource = _dbBatchProcessed;
-                    _dbBatchProcessed = null;
-                    completionSource.SetResult();
-                }
-            }
         }
 
         public bool PreventsAcceptingNewBlocks => true;
@@ -119,7 +99,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void WarnAboutProcessingGaps(ChainLevelInfo chainLevelInfo)
         {
-            bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(b => b.WasProcessed) ?? false;
+            bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(static b => b.WasProcessed) ?? false;
             if (thisLevelWasProcessed)
             {
                 if (_processingGapStart is not null)
@@ -168,9 +148,10 @@ namespace Nethermind.Blockchain.Visitors
 
             if (!_suggestBlocks) return BlockVisitOutcome.None;
 
+            Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
+
             long i = block.Number - StartLevelInclusive;
-            if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 &&
-                _blockTree.Head.Number + _batchSize < block.Number)
+            if (!waitSuggestQueue.IsCompleted)
             {
                 if (_logger.IsInfo)
                 {
@@ -178,12 +159,7 @@ namespace Nethermind.Blockchain.Visitors
                         $"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                 }
 
-                _dbBatchProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                {
-                    _currentDbLoadBatchEnd = block.Number - _batchSize;
-                    await _dbBatchProcessed.Task;
-                }
+                await waitSuggestQueue;
             }
 
             return BlockVisitOutcome.Suggest;
@@ -265,6 +241,11 @@ namespace Nethermind.Blockchain.Visitors
                     _logger.Info(
                         $"Found {_blocksToLoad} block tree levels to review for fixes starting from {StartLevelInclusive}");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTreeSuggestPacer.Dispose();
         }
     }
 }
