@@ -2091,49 +2091,23 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
 
-                        Address delegatedAddress;
                         if (_state.IsDeadAccount(address))
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            if (env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, spec, out delegatedAddress))
+                            if (spec.IsEofEnabled)
                             {
-                                if (!_state.AccountExists(delegatedAddress))
+                                Memory<byte> code = _state.GetCode(address);
+                                if (IsEof(code, out _))
                                 {
-                                    stack.PushZero();
-                                }
-                                else
-                                {
-                                    if (spec.IsEofEnabled)
-                                    {
-                                        ICodeInfo codeInfo = env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(_state, address, spec);
-
-                                        if (IsEof(codeInfo.MachineCode, out _))
-                                        {
-                                            stack.PushBytes(EofHash256);
-                                            break;
-                                        }
-                                    }
-
-                                    stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address, spec).BytesAsSpan);
+                                    stack.PushBytes(EofHash256);
+                                    break;
                                 }
                             }
-                            else
-                            {
-                                if (spec.IsEofEnabled)
-                                {
-                                    Memory<byte> code = _state.GetCode(address);
-                                    if (IsEof(code, out _))
-                                    {
-                                        stack.PushBytes(EofHash256);
-                                        break;
-                                    }
-                                }
 
-                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
-                            }
+                            stack.PushBytes(_state.GetCodeHash(address).Bytes);
                         }
 
                         break;
