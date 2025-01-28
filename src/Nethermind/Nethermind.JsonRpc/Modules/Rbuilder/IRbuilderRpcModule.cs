@@ -60,6 +60,13 @@ public class AccountState
         CodeHash = codeHash;
     }
 
+    public AccountState()
+    {
+        Nonce = 0;
+        Balance = 0;
+        CodeHash = Keccak.OfAnEmptyString;
+    }
+
     [JsonPropertyName("nonce")]
     public UInt256 Nonce { get; set; }
 

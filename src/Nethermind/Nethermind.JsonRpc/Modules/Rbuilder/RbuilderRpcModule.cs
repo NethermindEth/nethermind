@@ -135,7 +135,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
 
 
-        return ResultWrapper<AccountState>.Fail("Account not found");
+        return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
 
