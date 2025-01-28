@@ -7,6 +7,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -17,12 +18,14 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class ShardBlobBlockValidatorTests
 {
+    private readonly ITransactionProcessor _transactionProcessor = Substitute.For<ITransactionProcessor>();
+
     [TestCaseSource(nameof(BlobGasFieldsPerForkTestCases))]
-    public static bool Blob_gas_fields_should_be_set(IReleaseSpec spec, ulong? blobGasUsed, ulong? excessBlobGas)
+    public bool Blob_gas_fields_should_be_set(IReleaseSpec spec, ulong? blobGasUsed, ulong? excessBlobGas)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
-        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, _transactionProcessor, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
@@ -36,7 +39,7 @@ public class ShardBlobBlockValidatorTests
     public bool Blobs_per_block_count_is_valid(ulong blobGasUsed)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, _transactionProcessor, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
                 .WithWithdrawalsRoot(TestItem.KeccakA)

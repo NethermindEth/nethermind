@@ -27,7 +27,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
@@ -64,7 +63,6 @@ public partial class BlockProcessor(
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-    private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(specProvider.ChainId);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -261,11 +259,6 @@ public partial class BlockProcessor(
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
 
-        if (_specProvider.GetSpec(block.Header).InclusionListsEnabled)
-        {
-            ValidateInclusionList(suggestedBlock, block);
-        }
-
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts);
@@ -286,41 +279,6 @@ public partial class BlockProcessor(
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
-    }
-
-    // move to block validator
-    private void ValidateInclusionList(Block suggestedBlock, Block block)
-    {
-        if (suggestedBlock.InclusionListTransactions is null)
-        {
-            throw new InvalidBlockException(block, "Block did not have inclusion list");
-        }
-
-        if (block.GasUsed >= block.GasLimit)
-        {
-            return;
-        }
-
-        foreach (byte[] txBytes in suggestedBlock.InclusionListTransactions)
-        {
-            Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-            if (block.Transactions.Contains(tx))
-            {
-                continue;
-            }
-
-            if (block.GasUsed + tx.GasLimit > block.GasLimit)
-            {
-                continue;
-            }
-
-            bool couldIncludeTx = _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
-            if (couldIncludeTx)
-            {
-                throw new InvalidBlockException(block, "Block excludes valid inclusion list transaction");
-            }
-        }
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>

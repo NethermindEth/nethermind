@@ -24,7 +24,6 @@ public class Block
         Body = body ?? throw new ArgumentNullException(nameof(body));
     }
 
-    // todo: move inclusion list to block body?
     public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,

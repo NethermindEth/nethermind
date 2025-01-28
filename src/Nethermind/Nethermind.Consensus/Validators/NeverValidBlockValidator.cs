@@ -67,5 +67,10 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
+        public bool ValidateInclusionList(Block block, out string? error)
+        {
+            error = null;
+            return false;
+        }
     }
 }

@@ -482,6 +482,13 @@ public partial class BlockDownloaderTests
             return true;
         }
 
+        public bool ValidateInclusionList(Block block, out string? error)
+        {
+            Thread.Sleep(1000);
+            error = string.Empty;
+            return true;
+        }
+
         public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
         {
             Thread.Sleep(1000);

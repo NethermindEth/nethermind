@@ -27,4 +27,10 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
 
     public bool Validate(BlockHeader header, bool isUncle, out string? error) =>
         baseBlockValidator.Validate(header, isUncle, out error);
+
+    public bool ValidateInclusionList(Block block, out string? error)
+    {
+        error = null;
+        return true;
+    }
 }

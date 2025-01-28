@@ -279,9 +279,6 @@ namespace Nethermind.Synchronization.Test
             HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
             Always txValidator = Always.Valid;
             UnclesValidator unclesValidator = new(tree, headerValidator, logManager);
-            BlockValidator blockValidator =
-                new(txValidator, headerValidator, unclesValidator, specProvider, logManager);
-
             ISyncConfig syncConfig = _synchronizerType == SynchronizerType.Fast
                 ? SyncConfig.WithFastSync
                 : SyncConfig.WithFullSyncOnly;
@@ -289,6 +286,9 @@ namespace Nethermind.Synchronization.Test
             RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
                 new(specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+
+            BlockValidator blockValidator =
+                new(txValidator, headerValidator, unclesValidator, specProvider, txProcessor, logManager);
 
             BlockProcessor blockProcessor = new(
                 specProvider,

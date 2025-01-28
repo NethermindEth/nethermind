@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -19,6 +20,8 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
+    private readonly ITransactionProcessor _transactionProcessor = Substitute.For<ITransactionProcessor>();
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_uncles_than_allowed_returns_false()
     {
@@ -27,7 +30,7 @@ public class BlockValidatorTests
         releaseSpec.MaximumUncleCount = 0;
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
         Assert.That(noiseRemoved, Is.True);
 
@@ -96,7 +99,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
 
@@ -111,7 +114,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
         string? error;
@@ -129,7 +132,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
 
@@ -144,7 +147,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
         string? error;
@@ -189,7 +192,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
         string? error;
 
         sut.ValidateSuggestedBlock(

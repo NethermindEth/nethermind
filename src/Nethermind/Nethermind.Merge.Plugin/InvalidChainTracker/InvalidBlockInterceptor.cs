@@ -118,6 +118,31 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
+    // todo: better code reuse in this file
+    public bool ValidateInclusionList(Block block, out string? error)
+    {
+        bool result = headerValidator.ValidateInclusionList(block, out error);
+
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+
+            if (ShouldNotTrackInvalidation(block.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
+
+                return false;
+            }
+
+            invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+        }
+
+        invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
+
+        return result;
+
+    }
+
     private static bool ShouldNotTrackInvalidation(Block block) =>
         ShouldNotTrackInvalidation(block.Header) ||
         // Body does not match header, but it does not mean the hash that the header point to is invalid.

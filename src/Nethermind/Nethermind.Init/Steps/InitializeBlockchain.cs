@@ -164,6 +164,7 @@ namespace Nethermind.Init.Steps
                 _api.HeaderValidator,
                 _api.UnclesValidator,
                 _api.SpecProvider,
+                _api.TransactionProcessor,
                 _api.LogManager);
         }
 

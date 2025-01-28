@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -40,6 +41,8 @@ namespace Nethermind.Synchronization.Test;
 [Parallelizable(ParallelScope.All)]
 public class SyncServerTests
 {
+    private readonly ITransactionProcessor _transactionProcessor = Substitute.For<ITransactionProcessor>();
+
     [Test]
     public void When_finding_hash_it_does_not_load_headers()
     {
@@ -235,6 +238,7 @@ public class SyncServerTests
             mergeHeaderValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
+            _transactionProcessor,
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
@@ -458,6 +462,7 @@ public class SyncServerTests
             headerValidatorWithInterceptor,
             Always.Valid,
             MainnetSpecProvider.Instance,
+            _transactionProcessor,
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
@@ -498,6 +503,7 @@ public class SyncServerTests
             headerValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
+            _transactionProcessor,
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
