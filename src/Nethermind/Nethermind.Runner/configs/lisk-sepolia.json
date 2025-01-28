@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/lisk-sepolia.json.zstd",
+    "GenesisHash": "0xead3e6ddd08ae7e27fd952b74ceb468ba889047ac96b351dd13bd55e5faf3372",
     "BaseDbPath": "nethermind_db/lisk-sepolia",
     "LogFileName": "lisk-sepolia.logs.txt"
   },

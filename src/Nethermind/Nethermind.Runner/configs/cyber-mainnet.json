@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/cyber-mainnet.json.zstd",
+    "GenesisHash": "0x0bbf36c47db3b42b40b2e6cadc183612337d1ac8602eb9e57071ae0043e70fc7",
     "BaseDbPath": "nethermind_db/cyber-mainnet",
     "LogFileName": "cyber-mainnet.logs.txt"
   },

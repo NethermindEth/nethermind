@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/lisk-mainnet.json.zstd",
+    "GenesisHash": "0x5a693d1d8ee27b8e62868d0349af430a2d2e173c8c8988e7b0c9ef91893cbf00",
     "BaseDbPath": "nethermind_db/lisk-mainnet",
     "LogFileName": "lisk-mainnet.logs.txt"
   },

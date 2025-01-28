@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/arena-z-mainnet.json.zstd",
+    "GenesisHash": "0xbe7112a730b1fae8d94115271adc600559ebe87c75df1d2df9414bd7298eb7fb",
     "BaseDbPath": "nethermind_db/arena-z-mainnet",
     "LogFileName": "arena-z-mainnet.logs.txt"
   },

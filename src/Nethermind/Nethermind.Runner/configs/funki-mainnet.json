@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/funki-mainnet.json.zstd",
+    "GenesisHash": "0x7d2831dd811c616d073342a3074f2ce737c6b200b8192f9528e8bf32b1fac83e",
     "BaseDbPath": "nethermind_db/funki-mainnet",
     "LogFileName": "funki-mainnet.logs.txt"
   },

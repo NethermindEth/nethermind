@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/pivotal-sepolia.json.zstd",
+    "GenesisHash": "0xac7379723e9ff584c00e1cbeb20e76c36dbc98dc8bf2146d1df317b7b6636b91",
     "BaseDbPath": "nethermind_db/pivotal-sepolia",
     "LogFileName": "pivotal-sepolia.logs.txt"
   },

@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/swan-mainnet.json.zstd",
+    "GenesisHash": "0x834c39d79eb75c4c52d745e624750b817b66eb13e483b035c42ec3aa5cfa7429",
     "BaseDbPath": "nethermind_db/swan-mainnet",
     "LogFileName": "swan-mainnet.logs.txt"
   },

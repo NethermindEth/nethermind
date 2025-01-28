@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/swell-mainnet.json.zstd",
+    "GenesisHash": "0x92379973a1576876b7337a9ce89e2a7a9cb99887f55e6045ed2069d5d98d9319",
     "BaseDbPath": "nethermind_db/swell-mainnet",
     "LogFileName": "swell-mainnet.logs.txt"
   },

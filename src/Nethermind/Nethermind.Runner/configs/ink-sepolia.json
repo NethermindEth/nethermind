@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/ink-sepolia.json.zstd",
+    "GenesisHash": "0xe5fd5cf0be56af58ad5751b401410d6b7a09d830fa459789746a3d0dd1c79834",
     "BaseDbPath": "nethermind_db/ink-sepolia",
     "LogFileName": "ink-sepolia.logs.txt"
   },
