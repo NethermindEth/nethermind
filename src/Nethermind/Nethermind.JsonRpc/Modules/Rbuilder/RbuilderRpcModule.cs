@@ -120,6 +120,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Get account: {address}]");
 
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
@@ -133,6 +134,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                     out AccountStruct account))
             {
+
+               Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Finish get account success: {address}]");
                 return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
                     account.CodeHash));
             }
@@ -142,6 +145,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         {
         }
 
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Finish get account fail: {address}]");
         return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
