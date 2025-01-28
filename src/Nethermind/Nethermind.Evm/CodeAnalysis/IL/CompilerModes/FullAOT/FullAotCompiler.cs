@@ -31,7 +31,7 @@ public class EvmGeneratedContract(string Address) : Attribute
 
 internal static class FullAOT
 {
-    public delegate bool MoveNextDelegate(EvmState env, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer tracer, ILogger logger,  ref ILChunkExecutionState state);
+    public delegate bool MoveNextDelegate(EvmState env, IWorldState state, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, ref ReadOnlyMemory<byte> returnDataBuffer, ITxTracer tracer, ILogger logger,  ref ILChunkExecutionState result);
     
     public static Type CompileContract(ContractMetadata contractMetadata, IVMConfig vmConfig)
     {
@@ -43,7 +43,7 @@ internal static class FullAOT
         ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("ContractsModule");
         ValueHash256 codeHash = Keccak.Compute(contractMetadata.TargetCodeInfo.MachineCode.Span);
         TypeBuilder contractStructBuilder = moduleBuilder.DefineType(codeHash.ToString(), TypeAttributes.Public |
-            TypeAttributes.Sealed | TypeAttributes.SequentialLayout | TypeAttributes.BeforeFieldInit, typeof(ValueType), [typeof(IPrecompiledContract)]);
+            TypeAttributes.Sealed, typeof(Object), [typeof(IPrecompiledContract)]);
 
         contractStructBuilder.SetCustomAttribute(new CustomAttributeBuilder(typeof(EvmGeneratedContract).GetConstructor([typeof(string)]), [contractMetadata.TargetCodeInfo.Address?.ToString()]));
 
@@ -62,7 +62,7 @@ internal static class FullAOT
 
         var constructor = contractBuilder.DefineConstructor(
             MethodAttributes.Public, CallingConventions.HasThis,
-            [typeof(ContractMetadata), typeof(IWorldState), typeof(ISpecProvider), typeof(IBlockhashProvider), typeof(ICodeInfoRepository)]
+            [typeof(ContractMetadata), typeof(ISpecProvider), typeof(IBlockhashProvider), typeof(ICodeInfoRepository)]
         );
 
         var constructorIL = constructor.GetILGenerator();
@@ -70,19 +70,19 @@ internal static class FullAOT
         LocalBuilder evmState = constructorIL.DeclareLocal(typeof(EvmState));
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_2);
-        constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_WORLSTATE]);
+        ConstructorInfo? ci = typeof(object).GetConstructor(Type.EmptyTypes);
+        constructorIL.Emit(OpCodes.Call, ci!);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_3);
+        constructorIL.Emit(OpCodes.Ldarg_2);
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_SPEC_PROVIDER]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_S, 4);
+        constructorIL.Emit(OpCodes.Ldarg_3);
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_BLOCKHASH_PROVIDER]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_S, 5);
+        constructorIL.Emit(OpCodes.Ldarg_S, 4);
         constructorIL.Emit(OpCodes.Stfld, Fields[FullAotEnvLoader.PROP_CODEINFO_REPOSITORY]);
 
         constructorIL.Emit(OpCodes.Ldarg_0);
