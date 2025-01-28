@@ -25,7 +25,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
 /// Provides
 /// </summary>
-public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepo)
+public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepo)
 {
     public class AnalysisWork(CodeInfo codeInfo, IlevmMode mode)
     {
@@ -237,7 +237,7 @@ public class IlAnalyzer(IWorldState worldState, ISpecProvider specProvider, IBlo
         var contractType = FullAOT.CompileContract(contractMetadata, vmConfig);
 
         ilinfo.DynamicContractType = contractType;
-        ilinfo.PrecompiledContract = (IPrecompiledContract)Activator.CreateInstance(contractType, contractMetadata, worldState, specProvider, blockhashProvider, codeInfoRepo);
+        ilinfo.PrecompiledContract = (IPrecompiledContract)Activator.CreateInstance(contractType, contractMetadata, specProvider, blockhashProvider, codeInfoRepo);
         Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 

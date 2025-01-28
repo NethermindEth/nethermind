@@ -22,7 +22,6 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 {
     private TypeBuilder _contractDynamicType;
 
-    public const string PROP_WORLSTATE = "WorldState";
     public const string PROP_SPEC_PROVIDER = "SpecProvider";
     public const string PROP_BLOCKHASH_PROVIDER = "BlockhashProvider";
     public const string PROP_CODEINFO_REPOSITORY = "codeInfoRepository";
@@ -30,15 +29,16 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
     public const string PROP_IMMEDIATES_DATA = "EmbeddedData";
 
     public const int IMPLICIT_THIS_INDEX = 0;
-    public const int REF_EVMSTATE_INDEX = 1;
-    public const int REF_GASAVAILABLE_INDEX = 2;
-    public const int REF_PROGRAMCOUNTER_INDEX = 3;
-    public const int REF_STACKHEAD_INDEX = 4;
-    public const int REF_STACKHEADREF_INDEX = 5;
-    public const int REF_RETURNDATABUFFER_INDEX = 6;
-    public const int OBJ_TXTRACER_INDEX = 7;
-    public const int OBJ_LOGGER_INDEX = 8;
-    public const int REF_CURRENT_STATE = 9;
+    public const int REF_EVMSTATE_INDEX = IMPLICIT_THIS_INDEX + 1;
+    public const int OBJ_WORLDSTATE_INDEX = REF_EVMSTATE_INDEX + 1;
+    public const int REF_GASAVAILABLE_INDEX = OBJ_WORLDSTATE_INDEX + 1;
+    public const int REF_PROGRAMCOUNTER_INDEX = REF_GASAVAILABLE_INDEX + 1;
+    public const int REF_STACKHEAD_INDEX = REF_PROGRAMCOUNTER_INDEX + 1;
+    public const int REF_STACKHEADREF_INDEX = REF_STACKHEAD_INDEX + 1;
+    public const int REF_RETURNDATABUFFER_INDEX = REF_STACKHEADREF_INDEX + 1;
+    public const int OBJ_TXTRACER_INDEX = REF_RETURNDATABUFFER_INDEX + 1;
+    public const int OBJ_LOGGER_INDEX = OBJ_TXTRACER_INDEX + 1;
+    public const int REF_CURRENT_STATE = OBJ_LOGGER_INDEX + 1;
 
     public Dictionary<string, FieldBuilder> Fields { get; } = new();
 
@@ -53,10 +53,6 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 
         PropertyBuilder blockhashProviderProp = _contractDynamicType.EmitProperty<IBlockhashProvider>(PROP_BLOCKHASH_PROVIDER, true, true, out fieldBuilder);
         Fields.Add(PROP_BLOCKHASH_PROVIDER, fieldBuilder);
-
-        PropertyBuilder worldStateProp = _contractDynamicType.EmitProperty<IWorldState>(PROP_WORLSTATE, true, true, out fieldBuilder);
-        Fields.Add(PROP_WORLSTATE, fieldBuilder);
-
 
         PropertyBuilder immediatesDataProp = _contractDynamicType.EmitProperty<byte[][]>(PROP_IMMEDIATES_DATA, true, true, out fieldBuilder);
         Fields.Add(PROP_IMMEDIATES_DATA, fieldBuilder);
@@ -329,11 +325,10 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 
     public override void LoadWorldState(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
         if (loadAddress)
-            il.LoadFieldAddress(Fields[PROP_WORLSTATE]);
+            il.LoadArgumentAddress(OBJ_WORLDSTATE_INDEX);
         else
-            il.LoadField(Fields[PROP_WORLSTATE]);
+            il.LoadArgument(OBJ_WORLDSTATE_INDEX);
     }
 
     public override void LoadReturnDataBuffer(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)

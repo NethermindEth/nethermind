@@ -182,7 +182,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
         if(typeof(IsOptimizing) == typeof(TOptimizing))
         {
-            IlAnalyzer = new IlAnalyzer(_state, specProvider, _blockhashProvider, codeInfoRepository);
+            IlAnalyzer = new IlAnalyzer(specProvider, _blockhashProvider, codeInfoRepository);
         }
 #if ILVM_DEBUG
         _vmConfig = new VMConfig
@@ -725,7 +725,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
                 int programCounter = vmState.ProgramCounter;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlState;
-                if (precompiledContract.MoveNext(vmState, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger, ref chunkExecutionState))
+                if (precompiledContract.MoveNext(vmState, _state, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger, ref chunkExecutionState))
                 {
                     UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
                     return new CallResult(chunkExecutionState.CallResult);

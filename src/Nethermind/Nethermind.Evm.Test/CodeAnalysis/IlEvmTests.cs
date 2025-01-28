@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, config);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
 
-            ilAnalyzer = new IlAnalyzer(TestState, SpecProvider, _blockhashProvider, CodeInfoRepository);
+            ilAnalyzer = new IlAnalyzer(SpecProvider, _blockhashProvider, CodeInfoRepository);
 
             var code = Prepare.EvmCode
                 .PushData(23)
