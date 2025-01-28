@@ -172,7 +172,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        
+
         Transaction tx1 = Build.A.Transaction
             .WithNonce(0)
             .WithMaxFeePerGas(10.GWei())
@@ -180,7 +180,7 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        
+
         Transaction tx2 = Build.A.Transaction
             .WithNonce(1)
             .WithMaxFeePerGas(15.GWei())
@@ -188,14 +188,14 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        
+
         chain.TxPool.SubmitTx(tx1, TxHandlingOptions.PersistentBroadcast);
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
-        
+
         byte[][]? inclusionList = (await rpc.engine_getInclusionList()).Data;
         inclusionList.Should().NotBeEmpty();
         inclusionList.Length.Should().Be(2);
-        
+
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
         Assert.Multiple(() =>
@@ -206,110 +206,6 @@ public partial class EngineModuleTests
     }
 
     // todo: check block built includes IL
-
-    // [TestCase(
-    //     "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
-    //     // "0xf0236ebae0c5f54f79b061b37484ef12c76e73bff21c704053847664a5ab8659",
-    //     "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b",
-    //     "0x651832fe5119239f")]
-    // public async Task NewPayloadV5_should_accept_block_with_satisfied_inclusion_list_V5(string blockHash, string stateRoot, string payloadId)
-    // {
-    //     using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
-    //     IEngineRpcModule rpc = CreateEngineModule(chain);
-    //     Hash256 prevRandao = Keccak.Zero;
-    //     Hash256 startingHead = chain.BlockTree.HeadHash;
-
-    //     Address feeRecipient = TestItem.AddressC;
-    //     ulong timestamp = Timestamper.UnixTime.Seconds;
-        
-    //     // Create a transaction that will use up all gas
-    //     Transaction tx = Build.A.Transaction
-    //         .WithNonce(0)
-    //         .WithMaxFeePerGas(10.GWei())
-    //         .WithMaxPriorityFeePerGas(2.GWei())
-    //         .WithGasLimit(chain.BlockTree.Head!.GasLimit)  // Use all available gas
-    //         .WithTo(TestItem.AddressA)
-    //         .SignedAndResolved(TestItem.PrivateKeyB)
-    //         .TestObject;
-        
-    //     // Create another transaction for the inclusion list that wouldn't fit
-    //     Transaction inclusionTx = Build.A.Transaction
-    //         .WithNonce(1)
-    //         .WithMaxFeePerGas(15.GWei())
-    //         .WithMaxPriorityFeePerGas(3.GWei())
-    //         .WithGasLimit(100_000)
-    //         .WithTo(TestItem.AddressB)
-    //         .SignedAndResolved(TestItem.PrivateKeyB)
-    //         .TestObject;
-        
-    //     // byte[][] inclusionListTransactions = [Rlp.Encode(inclusionTx).Bytes];
-    //     // byte[][] inclusionListTransactions = [Rlp.Encode(tx).Bytes];
-    //     byte[][] inclusionListTransactions = [];
-        
-    //     // var payloadAttrs = new
-    //     // {
-    //     //     timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
-    //     //     prevRandao = Keccak.Zero.ToString(),
-    //     //     suggestedFeeRecipient = TestItem.AddressC.ToString(),
-    //     //     withdrawals = new[] { new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 } },
-    //     //     parentBeaconBlockRoot = Keccak.Zero,
-    //     //     inclusionListTransactions
-    //     // };
-        
-    //     string expectedPayloadId = payloadId;
-        
-    //     Hash256 expectedBlockHash = new(blockHash);
-    //     Block block = new(
-    //         new(
-    //             startingHead,
-    //             Keccak.OfAnEmptySequenceRlp,
-    //             feeRecipient,
-    //             UInt256.Zero,
-    //             1,
-    //             chain.BlockTree.Head!.GasLimit,
-    //             timestamp,
-    //             Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
-    //         )
-    //         {
-    //             BlobGasUsed = 0,
-    //             ExcessBlobGas = 0,
-    //             BaseFeePerGas = 0,
-    //             Bloom = Bloom.Empty,
-    //             GasUsed = 0,
-    //             Hash = expectedBlockHash,
-    //             MixHash = prevRandao,
-    //             ParentBeaconBlockRoot = Keccak.Zero,
-    //             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-    //             StateRoot = new(stateRoot)
-    //         },
-    //         Array.Empty<Transaction>(),
-    //         Array.Empty<BlockHeader>(),
-    //         Array.Empty<Withdrawal>());
-    //     block.InclusionListTransactions = inclusionListTransactions;
-    //     GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
-
-    //     string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
-    //         chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), 
-    //         "[]",
-    //         Keccak.Zero.ToString(true),
-    //         "[]",
-    //         chain.JsonSerializer.Serialize(inclusionListTransactions));
-        
-    //     JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-    //     PayloadStatusV1? result = successResponse?.Result as PayloadStatusV1;
-        
-    //     successResponse.Should().NotBeNull();
-    //     response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-    //     {
-    //         Id = successResponse?.Id,
-    //         Result = new PayloadStatusV1
-    //         {
-    //             LatestValidHash = expectedBlockHash,
-    //             Status = PayloadStatus.Valid,
-    //             ValidationError = null
-    //         }
-    //     }));
-    // }
 
     [TestCase(
         "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
@@ -324,7 +220,7 @@ public partial class EngineModuleTests
 
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        
+
         Transaction censoredTx = Build.A.Transaction
             .WithNonce(0)
             .WithMaxFeePerGas(10.GWei())
@@ -335,9 +231,9 @@ public partial class EngineModuleTests
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
         byte[][] inclusionListTransactions = [Rlp.Encode(censoredTx).Bytes];
-        
+
         string expectedPayloadId = payloadId;
-        
+
         Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
             new(
@@ -370,15 +266,15 @@ public partial class EngineModuleTests
         GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), 
+            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)),
             "[]",
             Keccak.Zero.ToString(true),
             "[]",
             chain.JsonSerializer.Serialize(inclusionListTransactions));
-        
+
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
         PayloadStatusV1? result = successResponse?.Result as PayloadStatusV1;
-        
+
         successResponse.Should().NotBeNull();
         response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
