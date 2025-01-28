@@ -2092,9 +2092,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
 
                         Address delegatedAddress;
-                        if (_state.AccountExists(address)
-                            && !_state.IsDeadAccount(address)
-                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, spec, out delegatedAddress) || _state.AccountExists(delegatedAddress)))
+                        if (_state.IsDeadAccount(address))
                         {
                             stack.PushZero();
                         }
@@ -3220,7 +3218,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             value: value
         );
         EvmState callState = EvmState.RentFrame(
-            gasAvailable,
+            callGas,
             outputDestination: 0,
             outputLength: 0,
             instruction switch
