@@ -252,7 +252,7 @@ namespace Nethermind.Consensus.Producers
 
             IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
 
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals, payloadAttributes?.InclusionListTransactions);
         }
     }
 }

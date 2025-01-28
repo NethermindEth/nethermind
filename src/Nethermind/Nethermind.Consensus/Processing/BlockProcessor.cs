@@ -64,6 +64,7 @@ public partial class BlockProcessor(
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+    private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(specProvider.ChainId);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -262,7 +263,7 @@ public partial class BlockProcessor(
 
         if (_specProvider.GetSpec(block.Header).InclusionListsEnabled)
         {
-            ValidateInclusionList(block);
+            ValidateInclusionList(suggestedBlock, block);
         }
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
@@ -287,20 +288,23 @@ public partial class BlockProcessor(
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
-    private void ValidateInclusionList(Block block)
+    // move to block validator
+    private void ValidateInclusionList(Block suggestedBlock, Block block)
     {
-        bool isValid =
-            block.InclusionListTransactions is null ||
-            block.GasUsed >= block.GasLimit;
+        if (suggestedBlock.InclusionListTransactions is null)
+        {
+            throw new InvalidBlockException(block, "Block did not have inclusion list");
+        }
 
-        if (isValid)
+        if (block.GasUsed >= block.GasLimit)
         {
             return;
         }
 
-        foreach (byte[] txBytes in block.InclusionListTransactions)
+        foreach (byte[] txBytes in suggestedBlock.InclusionListTransactions)
         {
-            Transaction tx = Rlp.Decode<Transaction>(txBytes);
+            Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
             if (block.Transactions.Contains(tx))
             {
                 continue;
@@ -311,8 +315,7 @@ public partial class BlockProcessor(
                 continue;
             }
 
-            bool couldIncludeTx = _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
-
+            bool couldIncludeTx = _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             if (couldIncludeTx)
             {
                 throw new InvalidBlockException(block, "Block excludes valid inclusion list transaction");

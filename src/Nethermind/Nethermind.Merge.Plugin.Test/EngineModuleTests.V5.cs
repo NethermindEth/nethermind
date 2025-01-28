@@ -1,15 +1,13 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -18,6 +16,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -28,7 +27,7 @@ public partial class EngineModuleTests
         "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
         "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
         "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x651832fe5119239f")]
+        "0xa90e8b68e4923ef7")]
     public virtual async Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -45,13 +44,11 @@ public partial class EngineModuleTests
             safeBlockHash = startingHead.ToString(),
             finalizedBlockHash = Keccak.Zero.ToString()
         };
-        Withdrawal[] withdrawals = new[]
-        {
+        Withdrawal[] withdrawals =
+        [
             new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
-        };
-        Transaction tx = Build.A.Transaction.WithNonce(0).WithMaxFeePerGas(9.GWei()).WithMaxPriorityFeePerGas(9.GWei())
-            .WithGasLimit(100_000).WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] inclusionListTransactions = [Rlp.Encode(tx).Bytes];
+        ];
+        byte[][] inclusionListTransactions = []; // empty inclusion list satisfied by default
         var payloadAttrs = new
         {
             timestamp = timestamp.ToHexString(true),
@@ -112,7 +109,8 @@ public partial class EngineModuleTests
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
-            withdrawals);
+            withdrawals,
+            inclusionListTransactions);
         GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
@@ -147,7 +145,7 @@ public partial class EngineModuleTests
             safeBlockHash = expectedBlockHash.ToString(true),
             finalizedBlockHash = startingHead.ToString(true)
         };
-        @params = new[] { chain.JsonSerializer.Serialize(fcuState), null };
+        @params = [chain.JsonSerializer.Serialize(fcuState), null];
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -169,190 +167,228 @@ public partial class EngineModuleTests
         }));
     }
 
+    [Test]
+    public async Task Can_get_inclusion_list_V5()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        
+        Transaction tx1 = Build.A.Transaction
+            .WithNonce(0)
+            .WithMaxFeePerGas(10.GWei())
+            .WithMaxPriorityFeePerGas(2.GWei())
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        
+        Transaction tx2 = Build.A.Transaction
+            .WithNonce(1)
+            .WithMaxFeePerGas(15.GWei())
+            .WithMaxPriorityFeePerGas(3.GWei())
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        
+        chain.TxPool.SubmitTx(tx1, TxHandlingOptions.PersistentBroadcast);
+        chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
+        
+        byte[][]? inclusionList = (await rpc.engine_getInclusionList()).Data;
+        inclusionList.Should().NotBeEmpty();
+        inclusionList.Length.Should().Be(2);
+        
+        byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
+        byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
+        Assert.Multiple(() =>
+        {
+            Assert.That(inclusionList[0].SequenceEqual(tx1Bytes));
+            Assert.That(inclusionList[1].SequenceEqual(tx2Bytes));
+        });
+    }
 
-    // [Test]
-    // public async Task NewPayloadV4_reject_payload_with_bad_authorization_list_rlp()
+    // todo: check block built includes IL
+
+    // [TestCase(
+    //     "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
+    //     // "0xf0236ebae0c5f54f79b061b37484ef12c76e73bff21c704053847664a5ab8659",
+    //     "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b",
+    //     "0x651832fe5119239f")]
+    // public async Task NewPayloadV5_should_accept_block_with_satisfied_inclusion_list_V5(string blockHash, string stateRoot, string payloadId)
     // {
-    //     ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-    //     using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
+    //     using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
     //     IEngineRpcModule rpc = CreateEngineModule(chain);
-    //     Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
-    //         .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+    //     Hash256 prevRandao = Keccak.Zero;
+    //     Hash256 startingHead = chain.BlockTree.HeadHash;
 
-    //     Transaction invalidSetCodeTx = Build.A.Transaction
-    //       .WithType(TxType.SetCode)
-    //       .WithNonce(0)
-    //       .WithMaxFeePerGas(9.GWei())
-    //       .WithMaxPriorityFeePerGas(9.GWei())
-    //       .WithGasLimit(100_000)
-    //       .WithAuthorizationCode(new JsonRpc.Test.Modules.Eth.EthRpcModuleTests.AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
-    //       .WithTo(TestItem.AddressA)
-    //       .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-
-    //     Block invalidBlock = Build.A.Block
-    //         .WithNumber(chain.BlockTree.Head!.Number + 1)
-    //         .WithTimestamp(chain.BlockTree.Head!.Timestamp + 12)
-    //         .WithTransactions([invalidSetCodeTx])
-    //         .WithParentBeaconBlockRoot(chain.BlockTree.Head!.ParentBeaconBlockRoot)
-    //         .WithBlobGasUsed(0)
-    //         .WithExcessBlobGas(0)
-    //         .TestObject;
-
-    //     ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
-
-    //     var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
-
-    //     Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
-    // }
-
-    // [TestCase(30)]
-    // public async Task can_progress_chain_one_by_one_v4(int count)
-    // {
-    //     using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
-    //     IEngineRpcModule rpc = CreateEngineModule(chain);
-    //     Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
-    //         .LastOrDefault()?.BlockHash ?? Keccak.Zero;
-    //     chain.BlockTree.HeadHash.Should().Be(lastHash);
-    //     Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-    //     last.Should().NotBeNull();
-    //     last!.IsGenesis.Should().BeTrue();
-    // }
-
-    // [TestCase(30)]
-    // public async Task can_progress_chain_one_by_one_v4_with_requests(int count)
-    // {
-    //     ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-    //     using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-    //     IEngineRpcModule rpc = CreateEngineModule(chain);
-    //     Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
-    //         .LastOrDefault()?.BlockHash ?? Keccak.Zero;
-    //     chain.BlockTree.HeadHash.Should().Be(lastHash);
-    //     Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-    //     last.Should().NotBeNull();
-    //     last!.IsGenesis.Should().BeTrue();
-
-    //     Block? head = chain.BlockTree.Head;
-    //     head!.ExecutionRequests!.ToArray().Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
-    // }
-
-    // private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
-    //     MergeTestBlockchain chain,
-    //     int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
-    // {
-    //     List<ExecutionPayload> blocks = new();
-    //     ExecutionPayload parentBlock = startingParentBlock;
-    //     parentBlock.TryGetBlock(out Block? block);
-    //     UInt256? startingTotalDifficulty = block!.IsGenesis
-    //         ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
-    //     BlockHeader parentHeader = block!.Header;
-    //     parentHeader.TotalDifficulty = startingTotalDifficulty +
-    //                                    parentHeader.Difficulty;
-    //     for (int i = 0; i < count; i++)
-    //     {
-    //         ExecutionPayloadV3? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
-    //             parentBlock.Timestamp + 12,
-    //             random ?? TestItem.KeccakA, Address.Zero);
-    //         PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, [], Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : new byte[][] { [], [], [] })).Data;
-    //         payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
-    //         if (setHead)
-    //         {
-    //             Hash256 newHead = getPayloadResult!.BlockHash;
-    //             ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
-    //             ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV3(forkchoiceStateV1);
-    //             setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-    //             setHeadResponse.Data.PayloadId.Should().Be(null);
-    //         }
-
-    //         blocks.Add(getPayloadResult);
-    //         parentBlock = getPayloadResult;
-    //         parentBlock.TryGetBlock(out block!);
-    //         block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
-    //         parentHeader = block.Header;
-    //     }
-
-    //     return blocks;
-    // }
-
-    // private async Task<ExecutionPayloadV3> BuildAndGetPayloadOnBranchV4(
-    //     IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
-    //     ulong timestamp, Hash256 random, Address feeRecipient)
-    // {
-    //     PayloadAttributes payloadAttributes =
-    //         new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient, ParentBeaconBlockRoot = Keccak.Zero, Withdrawals = [] };
-
-    //     // we're using payloadService directly, because we can't use fcU for branch
-    //     string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
-
-    //     ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-    //         await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId));
-    //     return getPayloadResult.Data!.ExecutionPayload!;
-    // }
-
-
-    // private static IEnumerable<IList<byte[]>> GetPayloadRequestsTestCases()
-    // {
-    //     yield return ExecutionRequestsProcessorMock.Requests;
-    // }
-
-    // private async Task<ExecutionPayloadV3> BuildAndSendNewBlockV4(
-    //     IEngineRpcModule rpc,
-    //     MergeTestBlockchain chain,
-    //     bool waitForBlockImprovement,
-    //     Withdrawal[]? withdrawals)
-    // {
-    //     Hash256 head = chain.BlockTree.HeadHash;
+    //     Address feeRecipient = TestItem.AddressC;
     //     ulong timestamp = Timestamper.UnixTime.Seconds;
-    //     Hash256 random = Keccak.Zero;
-    //     Address feeRecipient = Address.Zero;
-    //     ExecutionPayloadV3 executionPayload = await BuildAndGetPayloadResultV4(rpc, chain, head,
-    //         Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
-    //     ResultWrapper<PayloadStatusV1> executePayloadResult =
-    //         await rpc.engine_newPayloadV4(executionPayload, [], executionPayload.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
-    //     executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
-    //     return executionPayload;
-    // }
-
-    // private async Task<ExecutionPayloadV3> BuildAndGetPayloadResultV4(
-    //     IEngineRpcModule rpc,
-    //     MergeTestBlockchain chain,
-    //     Hash256 headBlockHash,
-    //     Hash256 finalizedBlockHash,
-    //     Hash256 safeBlockHash,
-    //     ulong timestamp,
-    //     Hash256 random,
-    //     Address feeRecipient,
-    //     Withdrawal[]? withdrawals,
-    //     bool waitForBlockImprovement = true)
-    // {
-    //     using SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
-
-    //     if (waitForBlockImprovement)
-    //     {
-    //         chain.PayloadPreparationService!.BlockImproved += (s, e) =>
+        
+    //     // Create a transaction that will use up all gas
+    //     Transaction tx = Build.A.Transaction
+    //         .WithNonce(0)
+    //         .WithMaxFeePerGas(10.GWei())
+    //         .WithMaxPriorityFeePerGas(2.GWei())
+    //         .WithGasLimit(chain.BlockTree.Head!.GasLimit)  // Use all available gas
+    //         .WithTo(TestItem.AddressA)
+    //         .SignedAndResolved(TestItem.PrivateKeyB)
+    //         .TestObject;
+        
+    //     // Create another transaction for the inclusion list that wouldn't fit
+    //     Transaction inclusionTx = Build.A.Transaction
+    //         .WithNonce(1)
+    //         .WithMaxFeePerGas(15.GWei())
+    //         .WithMaxPriorityFeePerGas(3.GWei())
+    //         .WithGasLimit(100_000)
+    //         .WithTo(TestItem.AddressB)
+    //         .SignedAndResolved(TestItem.PrivateKeyB)
+    //         .TestObject;
+        
+    //     // byte[][] inclusionListTransactions = [Rlp.Encode(inclusionTx).Bytes];
+    //     // byte[][] inclusionListTransactions = [Rlp.Encode(tx).Bytes];
+    //     byte[][] inclusionListTransactions = [];
+        
+    //     // var payloadAttrs = new
+    //     // {
+    //     //     timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
+    //     //     prevRandao = Keccak.Zero.ToString(),
+    //     //     suggestedFeeRecipient = TestItem.AddressC.ToString(),
+    //     //     withdrawals = new[] { new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 } },
+    //     //     parentBeaconBlockRoot = Keccak.Zero,
+    //     //     inclusionListTransactions
+    //     // };
+        
+    //     string expectedPayloadId = payloadId;
+        
+    //     Hash256 expectedBlockHash = new(blockHash);
+    //     Block block = new(
+    //         new(
+    //             startingHead,
+    //             Keccak.OfAnEmptySequenceRlp,
+    //             feeRecipient,
+    //             UInt256.Zero,
+    //             1,
+    //             chain.BlockTree.Head!.GasLimit,
+    //             timestamp,
+    //             Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
+    //         )
     //         {
-    //             blockImprovementLock.Release(1);
-    //         };
-    //     }
+    //             BlobGasUsed = 0,
+    //             ExcessBlobGas = 0,
+    //             BaseFeePerGas = 0,
+    //             Bloom = Bloom.Empty,
+    //             GasUsed = 0,
+    //             Hash = expectedBlockHash,
+    //             MixHash = prevRandao,
+    //             ParentBeaconBlockRoot = Keccak.Zero,
+    //             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
+    //             StateRoot = new(stateRoot)
+    //         },
+    //         Array.Empty<Transaction>(),
+    //         Array.Empty<BlockHeader>(),
+    //         Array.Empty<Withdrawal>());
+    //     block.InclusionListTransactions = inclusionListTransactions;
+    //     GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
 
-    //     ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-    //     PayloadAttributes payloadAttributes = new PayloadAttributes
+    //     string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
+    //         chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), 
+    //         "[]",
+    //         Keccak.Zero.ToString(true),
+    //         "[]",
+    //         chain.JsonSerializer.Serialize(inclusionListTransactions));
+        
+    //     JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+    //     PayloadStatusV1? result = successResponse?.Result as PayloadStatusV1;
+        
+    //     successResponse.Should().NotBeNull();
+    //     response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
     //     {
-    //         Timestamp = timestamp,
-    //         PrevRandao = random,
-    //         SuggestedFeeRecipient = feeRecipient,
-    //         ParentBeaconBlockRoot = Keccak.Zero,
-    //         Withdrawals = withdrawals,
-    //     };
-
-    //     ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result;
-    //     string? payloadId = result.Data.PayloadId;
-
-    //     if (waitForBlockImprovement)
-    //         await blockImprovementLock.WaitAsync(10000);
-
-    //     ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-    //         await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
-
-    //     return getPayloadResult.Data!.ExecutionPayload!;
+    //         Id = successResponse?.Id,
+    //         Result = new PayloadStatusV1
+    //         {
+    //             LatestValidHash = expectedBlockHash,
+    //             Status = PayloadStatus.Valid,
+    //             ValidationError = null
+    //         }
+    //     }));
     // }
+
+    [TestCase(
+        "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
+        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b",
+        "0x651832fe5119239f")]
+    public async Task NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot, string payloadId)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 prevRandao = Keccak.Zero;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Address feeRecipient = TestItem.AddressC;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
+        
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0)
+            .WithMaxFeePerGas(10.GWei())
+            .WithMaxPriorityFeePerGas(2.GWei())
+            .WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA)
+            .WithSenderAddress(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        byte[][] inclusionListTransactions = [Rlp.Encode(censoredTx).Bytes];
+        
+        string expectedPayloadId = payloadId;
+        
+        Hash256 expectedBlockHash = new(blockHash);
+        Block block = new(
+            new(
+                startingHead,
+                Keccak.OfAnEmptySequenceRlp,
+                feeRecipient,
+                UInt256.Zero,
+                1,
+                chain.BlockTree.Head!.GasLimit,
+                timestamp,
+                Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
+            )
+            {
+                BlobGasUsed = 0,
+                ExcessBlobGas = 0,
+                BaseFeePerGas = 0,
+                Bloom = Bloom.Empty,
+                GasUsed = 0,
+                Hash = expectedBlockHash,
+                MixHash = prevRandao,
+                ParentBeaconBlockRoot = Keccak.Zero,
+                ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
+                StateRoot = new(stateRoot),
+                RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash,
+            },
+            Array.Empty<Transaction>(),
+            Array.Empty<BlockHeader>(),
+            Array.Empty<Withdrawal>(),
+            inclusionListTransactions);
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
+
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
+            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), 
+            "[]",
+            Keccak.Zero.ToString(true),
+            "[]",
+            chain.JsonSerializer.Serialize(inclusionListTransactions));
+        
+        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        PayloadStatusV1? result = successResponse?.Result as PayloadStatusV1;
+        
+        successResponse.Should().NotBeNull();
+        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        {
+            Id = successResponse?.Id,
+            Result = new PayloadStatusV1
+            {
+                LatestValidHash = Keccak.Zero,
+                Status = PayloadStatus.Invalid,
+                ValidationError = "Block excludes valid inclusion list transaction"
+            }
+        }));
+    }
 }

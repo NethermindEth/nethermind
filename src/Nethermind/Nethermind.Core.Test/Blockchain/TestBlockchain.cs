@@ -368,6 +368,11 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithEmptyRequestsHash();
         }
 
+        if (SpecProvider.GenesisSpec.InclusionListsEnabled)
+        {
+            genesisBlockBuilder.WithInclusionListTransactions([]);
+        }
+
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }

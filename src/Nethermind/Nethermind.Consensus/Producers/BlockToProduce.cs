@@ -32,10 +32,10 @@ namespace Nethermind.Consensus.Producers
         public BlockToProduce(BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
-            IEnumerable<Withdrawal>? withdrawals = null)
-            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals)
+            IEnumerable<Withdrawal>? withdrawals = null,
+            IEnumerable<byte[]>? inclusionListTransactions = null)
+            : base(blockHeader, transactions, uncles, withdrawals, inclusionListTransactions)
         {
-            Transactions = transactions;
         }
 
         public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);

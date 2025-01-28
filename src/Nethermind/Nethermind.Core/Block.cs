@@ -24,13 +24,16 @@ public class Block
         Body = body ?? throw new ArgumentNullException(nameof(body));
     }
 
+    // todo: move inclusion list to block body?
     public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        IEnumerable<byte[]>? inclusionListTransactions = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        InclusionListTransactions = inclusionListTransactions?.ToArray();
     }
 
     public Block(BlockHeader header) : this(

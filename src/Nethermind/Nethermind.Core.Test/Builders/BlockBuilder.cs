@@ -288,5 +288,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
+
+        public BlockBuilder WithInclusionListTransactions(params byte[][]? inclusionListTransactions)
+        {
+            TestObjectInternal.InclusionListTransactions = inclusionListTransactions;
+            return this;
+        }
     }
 }
