@@ -423,6 +423,10 @@ namespace Ethereum.Test.Base
         {
             key = key.Replace('\\', '/');
             var index = key.IndexOf(".py::");
+            if (index < 0)
+            {
+                return (key, "");
+            }
             var name = key.Substring(index + 5);
             string category = key.Substring(0, index);
             int startIndex = 0;
