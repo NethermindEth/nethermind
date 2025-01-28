@@ -430,7 +430,7 @@ public class BlockValidator(
         {
             Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
             tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-            if (block.Transactions.Contains(tx))
+            if (block.Transactions.Any(t => t.Hash == tx.Hash)) // todo: search more efficiently
             {
                 continue;
             }
