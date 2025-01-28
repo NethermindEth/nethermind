@@ -104,7 +104,7 @@ public class PivotUpdator
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
-            else if (_attemptsLeft-- < 0)
+            else if (_syncConfig.MaxAttemptsToUpdatePivot == -1 || _attemptsLeft-- > 0)
             {
                 Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
             }

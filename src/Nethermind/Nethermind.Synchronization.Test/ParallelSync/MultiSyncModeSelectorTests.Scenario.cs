@@ -476,7 +476,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(currentBlock);
                             SyncProgressResolver.FindBestFullBlock().Returns(0); //no full blocks available
-                            SyncProgressResolver.FindBestFullState().Returns(currentBlock - 4); //pivot is set to header, but then header follows the head of the chain 
+                            SyncProgressResolver.FindBestFullState().Returns(currentBlock - 4); //pivot is set to header, but then header follows the head of the chain
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
@@ -873,7 +873,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _syncProgressSetups.Add(
                         () =>
                         {
-                            SyncConfig.MaxAttemptsToUpdatePivot = -1;
+                            SyncConfig.MaxAttemptsToUpdatePivot = 3;
                             BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
                             BeaconSyncStrategy.MergeTransitionFinished.Returns(true);
                             return "merge sync pivot not resolved yet";
