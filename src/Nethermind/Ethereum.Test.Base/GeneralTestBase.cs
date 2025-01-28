@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,10 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 
 namespace Ethereum.Test.Base
 {
@@ -57,9 +62,6 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-
             ISpecProvider specProvider = new CustomSpecProvider(
                 ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                 ((ForkActivation)1, test.Fork));
@@ -69,22 +71,17 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            TrieStore trieStore = new(stateDb, _logManager);
-            WorldState stateProvider = new(trieStore, codeDb, _logManager);
-            IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            CodeInfoRepository codeInfoRepository = new();
-            IVirtualMachine virtualMachine = new VirtualMachine(
-                blockhashProvider,
-                specProvider,
-                codeInfoRepository,
-                _logManager);
+            IConfigProvider configProvider = new ConfigProvider();
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
+                .AddSingleton(specProvider)
+                .AddSingleton(_logManager)
+                .Build();
 
-            TransactionProcessor transactionProcessor = new(
-                specProvider,
-                stateProvider,
-                virtualMachine,
-                codeInfoRepository,
-                _logManager);
+            MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
+            IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+            ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
             InitializeTestState(test.Pre, stateProvider, specProvider);
 
@@ -136,7 +133,7 @@ namespace Ethereum.Test.Base
             TransactionResult? txResult = null;
             if (txIsValid)
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
             else
             {
@@ -173,7 +170,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        public static void InitializeTestState(Dictionary<Address, AccountState> preState, WorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
