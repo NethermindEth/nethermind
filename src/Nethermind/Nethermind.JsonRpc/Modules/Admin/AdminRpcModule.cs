@@ -10,12 +10,12 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -29,18 +29,20 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
-    private readonly IBlockingVerifyTrie _blockingVerifyTrie;
+    private readonly IVerifyTrieStarter _verifyTrieStarter;
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
+    private readonly IAdminEraService _eraService;
 
     public AdminRpcModule(
         IBlockTree blockTree,
         INetworkConfig networkConfig,
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
-        IBlockingVerifyTrie blockingVerifyTrie,
+        IVerifyTrieStarter verifyTrieStarter,
         IStateReader stateReader,
         IEnode enode,
+        IAdminEraService eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
         ChainParameters parameters)
@@ -51,9 +53,10 @@ public class AdminRpcModule : IAdminRpcModule
         _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
-        _blockingVerifyTrie = blockingVerifyTrie ?? throw new ArgumentNullException(nameof(blockingVerifyTrie));
+        _verifyTrieStarter = verifyTrieStarter ?? throw new ArgumentNullException(nameof(verifyTrieStarter));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _pruningTrigger = pruningTrigger;
+        _eraService = eraService;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
         BuildNodeInfo();
@@ -160,6 +163,16 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start = 0, int end = 0)
+    {
+        return ResultWrapper<string>.Success(_eraService.ExportHistory(destination, start, end));
+    }
+
+    public Task<ResultWrapper<string>> admin_importHistory(string source, int start = 0, int end = 0, string? accumulatorFile = null)
+    {
+        return ResultWrapper<string>.Success(_eraService.ImportHistory(source, start, end, accumulatorFile));
+    }
+
     public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
     {
         BlockHeader? header = _blockTree.FindHeader(block);
@@ -173,7 +186,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<string>.Fail("Unable to start verify trie. State for block missing.");
         }
 
-        if (!_blockingVerifyTrie.TryStartVerifyTrie(header))
+        if (!_verifyTrieStarter.TryStartVerifyTrie(header))
         {
             return ResultWrapper<string>.Fail("Unable to start verify trie. Verify trie already running.");
         }

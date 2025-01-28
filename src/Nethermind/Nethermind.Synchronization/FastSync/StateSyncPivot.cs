@@ -27,24 +27,12 @@ namespace Nethermind.Synchronization.FastSync
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
 
-            if (_logger.IsDebug)
-            {
-                if (_bestHeader is not null)
-                {
-                    BlockHeader? currentHeader = blockTree.FindHeader(_bestHeader.Number);
-                    if (currentHeader?.StateRoot != _bestHeader.StateRoot)
-                    {
-                        _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader?.StateRoot}");
-                    }
-                }
-            }
-
             return _bestHeader;
         }
 
         public void UpdateHeaderForcefully()
         {
-            if ((blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader?.Number)
+            if (_bestHeader is null || (blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }
