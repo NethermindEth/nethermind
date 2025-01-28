@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/sseed-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/sseed-mainnet.json.zst",
     "GenesisHash": "0x0e5eb156fd2ea921d57ee4921191a2a46ebe3a11854ee7a63a5c6c580aa99219",
     "BaseDbPath": "nethermind_db/sseed-mainnet",
     "LogFileName": "sseed-mainnet.logs.txt"

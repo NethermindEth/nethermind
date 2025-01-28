@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/automata-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/automata-mainnet.json.zst",
     "GenesisHash": "0x11bb44203634fd85571a9971e6f09d633cbf22826681f809283081ff4e1b5192",
     "BaseDbPath": "nethermind_db/automata-mainnet",
     "LogFileName": "automata-mainnet.logs.txt"

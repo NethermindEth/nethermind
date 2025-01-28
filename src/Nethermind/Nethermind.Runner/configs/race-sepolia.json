@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/race-sepolia.json.zstd",
+    "ChainSpecPath": "chainspec/race-sepolia.json.zst",
     "GenesisHash": "0x994d67464c3368b8eb6f9770087399486b25d721a1868b95bb37de327b49ab89",
     "BaseDbPath": "nethermind_db/race-sepolia",
     "LogFileName": "race-sepolia.logs.txt"

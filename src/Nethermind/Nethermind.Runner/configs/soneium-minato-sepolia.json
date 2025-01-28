@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/soneium-minato-sepolia.json.zstd",
+    "ChainSpecPath": "chainspec/soneium-minato-sepolia.json.zst",
     "GenesisHash": "0x7ec49d93fa8f47c00e98cc5965cd3903a8faa9238743d2eba0e0550ab4c45c43",
     "BaseDbPath": "nethermind_db/soneium-minato-sepolia",
     "LogFileName": "soneium-minato-sepolia.logs.txt"

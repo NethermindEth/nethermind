@@ -53,7 +53,7 @@ namespace Nethermind.Runner.Test
             tryLoad.Should().Throw<FileNotFoundException>();
         }
 
-        [TestCase("chainspec/arena-z-mainnet.json.zstd", 7897UL)]
+        [TestCase("chainspec/arena-z-mainnet.json.zst", 7897UL)]
         public void Zstandard_Compressed_ChainSpec(string chainSpecPath, ulong chainId)
         {
             _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()

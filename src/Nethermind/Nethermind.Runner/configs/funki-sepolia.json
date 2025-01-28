@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/funki-sepolia.json.zstd",
+    "ChainSpecPath": "chainspec/funki-sepolia.json.zst",
     "GenesisHash": "0xcebbf8fc7d0fab412866fe1e7df73c721104550ec35e55d173064acb2c0aeac9",
     "BaseDbPath": "nethermind_db/funki-sepolia",
     "LogFileName": "funki-sepolia.logs.txt"

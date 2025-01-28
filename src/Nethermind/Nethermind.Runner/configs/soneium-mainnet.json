@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/soneium-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/soneium-mainnet.json.zst",
     "GenesisHash": "0x295d22d269634c7d0055b33b887519362d0b31899e97109d1789a8a168de1b21",
     "BaseDbPath": "nethermind_db/soneium-mainnet",
     "LogFileName": "soneium-mainnet.logs.txt"

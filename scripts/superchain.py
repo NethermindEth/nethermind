@@ -209,7 +209,7 @@ def to_nethermind_runner(chain_name, l1, chain):
     runner = {
         "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
         "Init": {
-            "ChainSpecPath": f"chainspec/{qualified_name}.json.zstd",
+            "ChainSpecPath": f"chainspec/{qualified_name}.json.zst",
             "GenesisHash": lookup(chain, ["genesis", "l2", "hash"]),
             "BaseDbPath": f"nethermind_db/{qualified_name}",
             "LogFileName": f"{qualified_name}.logs.txt",
@@ -317,7 +317,7 @@ def main(tmp_dir, output_dir):
         logging.debug(f"Compressing `{file}`")
         with (
             open(path.join(tmp_dir, file), "rb") as json_config,
-            open(path.join(output_dir, "chainspec", f"{file}.zstd"), "wb+") as zstd_file,
+            open(path.join(output_dir, "chainspec", f"{file}.zst"), "wb+") as zstd_file,
         ):
             zcompressor.copy_stream(json_config, zstd_file)
 

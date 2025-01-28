@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/orderly-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/orderly-mainnet.json.zst",
     "GenesisHash": "0xe53c94ddd42714239429bd132ba2fa080c7e5cc7dca816ec6e482ec0418e6d7f",
     "BaseDbPath": "nethermind_db/orderly-mainnet",
     "LogFileName": "orderly-mainnet.logs.txt"

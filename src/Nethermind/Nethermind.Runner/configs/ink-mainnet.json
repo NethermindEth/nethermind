@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/ink-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/ink-mainnet.json.zst",
     "GenesisHash": "0x23a2658170ba70d014ba0d0d2709f8fbfe2fa660cd868c5f282f991eecbe38ee",
     "BaseDbPath": "nethermind_db/ink-mainnet",
     "LogFileName": "ink-mainnet.logs.txt"

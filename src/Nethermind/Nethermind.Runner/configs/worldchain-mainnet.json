@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/worldchain-mainnet.json.zst",
     "GenesisHash": "0x70d316d2e0973b62332ba2e9768dd7854298d7ffe77f0409ffdb8d859f2d3fa3",
     "BaseDbPath": "nethermind_db/worldchain-mainnet",
     "LogFileName": "worldchain-mainnet.logs.txt"

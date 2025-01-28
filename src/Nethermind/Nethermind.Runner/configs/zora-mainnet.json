@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/zora-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/zora-mainnet.json.zst",
     "GenesisHash": "0x47555a45a1af8d4728ca337a1e48375a83919b1ea16591e070a07388b7364e29",
     "BaseDbPath": "nethermind_db/zora-mainnet",
     "LogFileName": "zora-mainnet.logs.txt"

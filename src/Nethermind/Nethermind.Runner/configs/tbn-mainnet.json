@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/tbn-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/tbn-mainnet.json.zst",
     "GenesisHash": "0xe222b4b07ee9c885d13ee341823c92aa449f9769ac68fb5f1e1d4e602a990a4a",
     "BaseDbPath": "nethermind_db/tbn-mainnet",
     "LogFileName": "tbn-mainnet.logs.txt"

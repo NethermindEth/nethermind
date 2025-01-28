@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/polynomial-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/polynomial-mainnet.json.zst",
     "GenesisHash": "0x1b5e76ad2f290fb6fa2c60755d8c52942dbefedab76d01091e24080d5c129fd0",
     "BaseDbPath": "nethermind_db/polynomial-mainnet",
     "LogFileName": "polynomial-mainnet.logs.txt"

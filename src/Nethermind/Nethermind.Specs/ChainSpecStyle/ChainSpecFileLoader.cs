@@ -24,7 +24,7 @@ public class ChainSpecFileLoader
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
-            { ".zstd", new ZstdChainSpecLoader(jsonLoader) }
+            { ".zst", new ZstdChainSpecLoader(jsonLoader) }
         };
         _logger = logger;
     }
@@ -88,7 +88,7 @@ public class ChainSpecFileLoader
             {
                 missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
                 string[] jsonFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
-                string[] zstdFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.zstd");
+                string[] zstdFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.zst");
 
                 var configFiles = Enumerable.Empty<string>().Concat(jsonFiles).Concat(zstdFiles);
                 foreach (var configFile in configFiles)

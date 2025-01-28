@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/xterio-eth-mainnet.json.zstd",
+    "ChainSpecPath": "chainspec/xterio-eth-mainnet.json.zst",
     "GenesisHash": "0xb99fa3b9c265fe5364ed7ee2aca78535aaffd04e7b21f40383ed19a1c6d1d63b",
     "BaseDbPath": "nethermind_db/xterio-eth-mainnet",
     "LogFileName": "xterio-eth-mainnet.logs.txt"
