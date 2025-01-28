@@ -86,7 +86,7 @@ internal class Program
             if (parseResult.GetValue(Options.BlockTest))
                 await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter)));
             else if (parseResult.GetValue(Options.EofTest))
-                await RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
+                RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
             else
                 RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
@@ -113,12 +113,12 @@ internal class Program
         await testRunnerBuilder(source).RunTestsAsync();
     }
 
-    private static async Task RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
+    private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
     {
         ITestSourceLoader source = Path.HasExtension(path)
             ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
             : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
-        await testRunnerBuilder(source).RunTestsAsync();
+        testRunnerBuilder(source).RunTests();
     }
 
     private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
@@ -128,5 +128,4 @@ internal class Program
             : new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), path);
         testRunnerBuilder(source).RunTests();
     }
-}
 }
