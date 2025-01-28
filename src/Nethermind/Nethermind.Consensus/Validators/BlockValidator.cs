@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
@@ -426,11 +427,13 @@ public class BlockValidator(
             return true;
         }
 
+        var blockTxHashes = new HashSet<Hash256>(block.Transactions.Select(tx => tx.Hash));
+
         foreach (byte[] txBytes in block.InclusionListTransactions)
         {
             Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
             tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-            if (block.Transactions.Any(t => t.Hash == tx.Hash)) // todo: search more efficiently
+            if (blockTxHashes.Contains(tx.Hash))
             {
                 continue;
             }
