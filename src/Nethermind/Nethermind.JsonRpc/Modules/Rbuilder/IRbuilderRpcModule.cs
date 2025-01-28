@@ -24,7 +24,14 @@ public interface IRbuilderRpcModule: IRpcModule
         IsSharable = true,
         ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter block, IDictionary<Address, AccountChange> accountDiff);
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Get account data",
+        IsSharable = true,
+        ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block);
 }
+
 
 public class AccountChange
 {
@@ -42,4 +49,23 @@ public class AccountChange
 
     [JsonPropertyName("changed_slots")]
     public IDictionary<UInt256, UInt256>? ChangedSlots { get; set; }
+}
+
+public class AccountState
+{
+    public AccountState(UInt256? nonce, UInt256? balance, Hash256? codeHash)
+    {
+        Nonce = nonce;
+        Balance = balance;
+        CodeHash = codeHash;
+    }
+
+    [JsonPropertyName("nonce")]
+    public UInt256? Nonce { get; set; }
+
+    [JsonPropertyName("balance")]
+    public UInt256? Balance { get; set; }
+
+    [JsonPropertyName("code_hash")]
+    public Hash256? CodeHash { get; set; }
 }
