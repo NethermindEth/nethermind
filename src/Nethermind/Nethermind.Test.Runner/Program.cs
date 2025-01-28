@@ -113,20 +113,20 @@ internal class Program
         await testRunnerBuilder(source).RunTestsAsync();
     }
 
-        private static async Task RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
-        {
-            ITestSourceLoader source = Path.HasExtension(path)
-                ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
-                : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
-            await testRunnerBuilder(source).RunTestsAsync();
-        }
-
-        private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
-        {
-            ITestSourceLoader source = Path.HasExtension(path)
-                ? new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), path)
-                : new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), path);
-            testRunnerBuilder(source).RunTests();
-        }
+    private static async Task RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
+    {
+        ITestSourceLoader source = Path.HasExtension(path)
+            ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
+            : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
+        await testRunnerBuilder(source).RunTestsAsync();
     }
+
+    private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
+    {
+        ITestSourceLoader source = Path.HasExtension(path)
+            ? new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), path)
+            : new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), path);
+        testRunnerBuilder(source).RunTests();
+    }
+}
 }

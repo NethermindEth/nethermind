@@ -71,12 +71,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             return executionType switch
             {
-                ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE or ExecutionType.TXCREATE  => "create",
-                ExecutionType.CALL or ExecutionType.TRANSACTION  => "call",
-                ExecutionType.DELEGATECALL  => "delegatecall",
-                ExecutionType.STATICCALL  => "staticcall",
-                ExecutionType.CALLCODE  => "callcode",
-                _  => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
+                ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE or ExecutionType.TXCREATE => "create",
+                ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
+                ExecutionType.DELEGATECALL => "delegatecall",
+                ExecutionType.STATICCALL => "staticcall",
+                ExecutionType.CALLCODE => "callcode",
+                _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
             };
         }
 
@@ -84,8 +84,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             return executionType switch
             {
-                ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE or ExecutionType.TXCREATE  => "create",
-                _   => "call"
+                ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE or ExecutionType.TXCREATE => "create",
+                _ => "call"
             };
         }
 
@@ -379,11 +379,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             return callType switch
             {
-                ExecutionType.CREATE  => "create",
-                ExecutionType.CREATE2  => "create2",
-                ExecutionType.EOFCREATE  => "create3",
-                ExecutionType.TXCREATE  => "create4",
-                _  => null
+                ExecutionType.CREATE => "create",
+                ExecutionType.CREATE2 => "create2",
+                ExecutionType.EOFCREATE => "create3",
+                ExecutionType.TXCREATE => "create4",
+                _ => null
             };
         }
 

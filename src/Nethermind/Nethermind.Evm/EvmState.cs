@@ -32,7 +32,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public int ReturnStackHead;
     internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
-    public int FunctionIndex {  get; set; }
+    public int FunctionIndex { get; set; }
     public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
     private bool _canRestore;
     public bool IsStatic { get; private set; } // TODO: move to CallEnv

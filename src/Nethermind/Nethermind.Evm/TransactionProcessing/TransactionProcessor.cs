@@ -570,7 +570,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.UseTxAccessLists)
                     accessTracker.WarmUp(tx.AccessList); // eip-2930
-                
+
                 if (spec.AddCoinbaseToTxAccessList)
                     accessTracker.WarmUp(blCtx.Header.GasBeneficiary!);
 
