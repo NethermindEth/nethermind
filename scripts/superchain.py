@@ -44,6 +44,17 @@ def merge_all(*dicts):
     return reduce(merge, [{}, *dicts])
 
 
+def filter_none(d):
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def one_of(*args):
+    for arg in args:
+        if arg is not None:
+            return arg
+    return None
+
+
 def to_nethermind_accounts(genesis):
     alloc = lookup(genesis, ["alloc"])
 
@@ -52,7 +63,7 @@ def to_nethermind_accounts(genesis):
         k = f"0x{address}"
         v = account
         if "code" in v and v["code"].startswith("0x"):
-            v["code"] = v['code'][2:]
+            v["code"] = v["code"][2:]
 
         result[k] = v
 
@@ -137,24 +148,25 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "opHoloceneTransitionTimestamp": hex(lookup(config, ["hardforks", "holocene_time"])),
             "terminalTotalDifficulty": "0x0",
         },
-        "genesis": {
-            "seal": {
-                "ethereum": {
-                    "nonce": lookup(genesis, ["nonce"]),
-                    "mixHash": lookup(genesis, ["mixHash"]),
-                }
-            },
-            "number": lookup(genesis, ["number"]),
-            "difficulty": lookup(genesis, ["difficulty"]),
-            "author": lookup(genesis, ["author"]),
-            "timestamp": lookup(genesis, ["timestamp"]),
-            "parentHash": lookup(genesis, ["parentHash"]),
-            "extraData": lookup(genesis, ["extraData"]),
-            "stateUnavailable": lookup(genesis, ["stateUnavailable"]),
-            "gasLimit": lookup(genesis, ["gasLimit"]),
-            "baseFeePerGas": lookup(genesis, ["baseFeePerGas"]),
-            "stateRoot": genesis.get("stateHash"),
-        },
+        "genesis": filter_none(
+            {
+                "seal": {
+                    "ethereum": {
+                        "nonce": lookup(genesis, ["nonce"]),
+                        "mixHash": lookup(genesis, ["mixHash"]),
+                    }
+                },
+                "number": lookup(genesis, ["number"]),
+                "difficulty": lookup(genesis, ["difficulty"]),
+                "author": one_of(lookup(genesis, ["author"]), lookup(genesis, ["coinbase"])),
+                "timestamp": lookup(genesis, ["timestamp"]),
+                "parentHash": lookup(genesis, ["parentHash"]),
+                "extraData": lookup(genesis, ["extraData"]),
+                "gasLimit": lookup(genesis, ["gasLimit"]),
+                "baseFeePerGas": lookup(genesis, ["baseFeePerGas"]),
+                "stateRoot": genesis.get("stateHash"),
+            }
+        ),
         "nodes": [
             "enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303",
             "enode://22a8232c3abc76a16ae9d6c3b164f98775fe226f0917b0ca871128a74a8e9630b458460865bab457221f1d448dd9791d24c4e5d88786180ac185df813a68d4de@3.209.45.79:30303",
@@ -185,11 +197,9 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
     }
     # Post-processing
 
-    ## Genesis
-    nethermind["genesis"] = {k: v for k, v in nethermind["genesis"].items() if v is not None}
-
     ## Optimism specific
     if chain_name == "op" and l1 == "mainnet":
+        nethermind["genesis"]["stateUnavailable"] = True
         nethermind["params"]["terminalTotalDifficulty"] = 210470125
         nethermind["params"]["eip2565Transition"] = "0x3C45B0"
         nethermind["params"]["eip2929Transition"] = "0x3C45B0"
