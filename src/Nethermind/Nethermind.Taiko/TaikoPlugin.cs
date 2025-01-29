@@ -239,7 +239,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
-            new GetInclusionListTransactionsHandler(_api.TxPool),
+            new GetInclusionListTransactionsHandler(_api.BlockTree, EmptyTxSource.Instance),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

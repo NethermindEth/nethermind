@@ -294,6 +294,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
             if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
             if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
+            if (_api.TransactionComparerProvider is null) throw new ArgumentNullException(nameof(_api.TransactionComparerProvider));
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
             while (!_api.BlockProcessingQueue.IsEmpty)
@@ -324,6 +325,9 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
+
+            TxPoolTxSourceFactory txPoolTxSourceFactory = new(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _blocksConfig, _api.LogManager);
+            TxPoolTxSource inclusionListTxSource = txPoolTxSourceFactory.Create();
 
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -365,7 +369,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
-                new GetInclusionListTransactionsHandler(_api.TxPool),
+                new GetInclusionListTransactionsHandler(_api.BlockTree, inclusionListTxSource),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);
