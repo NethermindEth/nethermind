@@ -5,7 +5,6 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -40,9 +39,6 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
-
-                // todo: right place to add here? maybe create a plugin
-                txSource = txSource.Then(new InclusionListTxSource());
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
                     ? baseBlockProducerFactory.InitBlockProducer(txSource)

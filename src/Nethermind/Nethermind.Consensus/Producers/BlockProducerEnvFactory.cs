@@ -123,7 +123,8 @@ namespace Nethermind.Consensus.Producers
             ILogManager logManager)
         {
             TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
-            return additionalTxSource.Then(txPoolSource);
+            InclusionListTxSource inclusionListTxSource = new(_specProvider.ChainId);
+            return additionalTxSource.Then(txPoolSource).Then(inclusionListTxSource);
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
