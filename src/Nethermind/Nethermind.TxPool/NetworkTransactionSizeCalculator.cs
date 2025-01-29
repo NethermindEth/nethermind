@@ -17,8 +17,6 @@ public class NetworkTransactionSizeCalculator : ITransactionSizeCalculator
 
     public int GetLength(Transaction tx, bool shouldCountBlobs)
     {
-        return shouldCountBlobs
-            ? _txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)
-            : _txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping);
+        return _txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
     }
 }
