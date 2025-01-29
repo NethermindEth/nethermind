@@ -439,7 +439,7 @@ namespace Ethereum.Test.Base
                 }
                 if (index + 1 < category.Length)
                 {
-                    startIndex = index + 1;
+                    startIndex = newIndex + 1;
                 }
                 else
                 {
