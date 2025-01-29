@@ -517,10 +517,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.Nonce != WorldState.GetNonce(tx.SenderAddress!))
+            UInt256 stateNonce = WorldState.GetNonce(tx.SenderAddress!);
+            if (tx.Nonce > stateNonce)
             {
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
-                return TransactionResult.WrongTransactionNonce;
+                return TransactionResult.TransactionNonceTooHigh(tx, stateNonce);
+            }
+            if (tx.Nonce < stateNonce)
+            {
+                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
+                return TransactionResult.TransactionNonceTooLow(tx, stateNonce);
             }
 
             WorldState.IncrementNonce(tx.SenderAddress);
@@ -824,6 +830,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult SenderHasDeployedCode = "sender has deployed code";
         public static readonly TransactionResult SenderNotSpecified = "sender not specified";
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = "EIP-3860 - transaction size over max init code size";
-        public static readonly TransactionResult WrongTransactionNonce = "wrong transaction nonce";
+        public static TransactionResult TransactionNonceTooHigh(Transaction tx, UInt256 stNonce) => $"err: nonce too high: address {tx.SenderAddress}, tx: {tx.Nonce} state: {stNonce} (supplied gas {tx.GasLimit})";
+        public static TransactionResult TransactionNonceTooLow(Transaction tx, UInt256 stNonce) => $"err: nonce too high: address {tx.SenderAddress}, tx: {tx.Nonce} state: {stNonce} (supplied gas {tx.GasLimit})";
     }
 }
