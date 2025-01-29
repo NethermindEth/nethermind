@@ -66,7 +66,6 @@ public class HealingStateTree : StateTree
         }
     }
 
-    // private bool Recover(in ValueHash256 rlpHash, TreePath missingNodePath, Hash256 rootHash)
     private bool Recover(in TreePath missingNodePath, in ValueHash256 hash, Hash256 fullPath)
     {
         if (_recovery is not null)
@@ -80,10 +79,6 @@ public class HealingStateTree : StateTree
                     TrieStore.Set(kv.Key, nodeHash, kv.Value);
                 }
                 return true;
-            }
-            else
-            {
-                Console.Error.WriteLine($"Failed to recover node {missingNodePath}");
             }
         }
 

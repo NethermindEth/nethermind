@@ -79,10 +79,6 @@ public class HealingStorageTree : StorageTree
                 }
                 return true;
             }
-            else
-            {
-                Console.Error.WriteLine($"Failed to recover node {missingNodePath}");
-            }
         }
 
         return false;
