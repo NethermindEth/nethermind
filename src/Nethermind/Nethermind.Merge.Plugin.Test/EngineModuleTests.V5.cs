@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -23,6 +22,8 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    private const int responseId = 67;
+
     [TestCase(
         "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
         "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
@@ -35,110 +36,58 @@ public partial class EngineModuleTests
             await CreateBlockchain(Osaka.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
-        Hash256 prevRandao = Keccak.Zero;
-        Address feeRecipient = TestItem.AddressC;
-        ulong timestamp = Timestamper.UnixTime.Seconds;
-        var fcuState = new
-        {
-            headBlockHash = startingHead.ToString(),
-            safeBlockHash = startingHead.ToString(),
-            finalizedBlockHash = Keccak.Zero.ToString()
-        };
+        Hash256 expectedBlockHash = new(blockHash);
+
         Withdrawal[] withdrawals =
         [
             new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         ];
         byte[][] inclusionListTransactions = []; // empty inclusion list satisfied by default
-        var payloadAttrs = new
-        {
-            timestamp = timestamp.ToHexString(true),
-            prevRandao = prevRandao.ToString(),
-            suggestedFeeRecipient = feeRecipient.ToString(),
-            withdrawals,
-            parentBeaconBlockRoot = Keccak.Zero,
-            inclusionListTransactions
-        };
-        string?[] @params =
-        [
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
-        ];
 
+        string?[] @params = InitForkchoiceParams(chain, inclusionListTransactions, withdrawals);
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.Multiple(() =>
         {
-            Id = successResponse.Id,
-            Result = new ForkchoiceUpdatedV1Result
-            {
-                PayloadId = payloadId,
-                PayloadStatus = new PayloadStatusV1
-                {
-                    LatestValidHash = new(latestValidHash),
-                    Status = PayloadStatus.Valid,
-                    ValidationError = null,
-                }
-            }
-        }));
-
-        Hash256 expectedBlockHash = new(blockHash);
-        Block block = new(
-            new(
-                startingHead,
-                Keccak.OfAnEmptySequenceRlp,
-                feeRecipient,
-                UInt256.Zero,
-                1,
-                chain.BlockTree.Head!.GasLimit,
-                timestamp,
-                Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
-            )
-            {
-                BlobGasUsed = 0,
-                ExcessBlobGas = 0,
-                BaseFeePerGas = 0,
-                Bloom = Bloom.Empty,
-                GasUsed = 0,
-                Hash = expectedBlockHash,
-                MixHash = prevRandao,
-                ParentBeaconBlockRoot = Keccak.Zero,
-                ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-                StateRoot = new(stateRoot),
-            },
-            Array.Empty<Transaction>(),
-            Array.Empty<BlockHeader>(),
-            withdrawals,
-            inclusionListTransactions);
-        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(ExpectedValidForkchoiceResponse(chain, payloadId, latestValidHash)));
+        });
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", payloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Block block = ExpectedBlock(chain, blockHash, stateRoot, [], inclusionListTransactions, withdrawals, chain.BlockTree.Head!.ReceiptsRoot!, 0);
+        Assert.Multiple(() =>
         {
-            Id = successResponse.Id,
-            Result = expectedPayload
-        }));
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(ExpectedGetPayloadResponse(chain, block, UInt256.Zero)));
+        });
+
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[]", "[]");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        string expectedNewPayloadResponse = chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
-            Id = successResponse.Id,
+            Id = responseId,
             Result = new PayloadStatusV1
             {
                 LatestValidHash = expectedBlockHash,
                 Status = PayloadStatus.Valid,
                 ValidationError = null
             }
-        }));
+        });
 
-        fcuState = new
+        Assert.Multiple(() =>
+        {
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(expectedNewPayloadResponse));
+        });
+
+
+        var fcuState = new
         {
             headBlockHash = expectedBlockHash.ToString(true),
             safeBlockHash = expectedBlockHash.ToString(true),
@@ -149,21 +98,11 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.Multiple(() =>
         {
-            Id = successResponse.Id,
-            Result = new ForkchoiceUpdatedV1Result
-            {
-                PayloadId = null,
-                PayloadStatus = new PayloadStatusV1
-                {
-                    LatestValidHash = expectedBlockHash,
-                    Status = PayloadStatus.Valid,
-                    ValidationError = null
-                }
-            }
-        }));
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(ExpectedValidForkchoiceResponse(chain, null, expectedBlockHash.ToString(true))));
+        });
     }
 
     [Test]
@@ -230,6 +169,159 @@ public partial class EngineModuleTests
         byte[][] inclusionListTransactions = [Rlp.Encode(censoredTx).Bytes];
 
         Hash256 expectedBlockHash = new(blockHash);
+        Block block = ExpectedBlock(chain, blockHash, stateRoot, [], inclusionListTransactions, [], chain.BlockTree.Head!.ReceiptsRoot!, 0);
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
+
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
+            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)),
+            "[]",
+            Keccak.Zero.ToString(true),
+            "[]",
+            chain.JsonSerializer.Serialize(inclusionListTransactions));
+        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+
+        string expectedNewPayloadResponse = chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        {
+            Id = responseId,
+            Result = new PayloadStatusV1
+            {
+                LatestValidHash = Keccak.Zero,
+                Status = PayloadStatus.Invalid,
+                ValidationError = "Block excludes valid inclusion list transaction"
+            }
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(expectedNewPayloadResponse));
+        });
+    }
+
+    [TestCase(
+        "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
+        "0x6ee90247ca4b3cc8092f032a1c4b30e878797eb12c9852a598aa561410eb31bf",
+        "0x3c3e0bb8ade764491e6073541192a076b10e0f550c3ba6635a8f48cc9cc96996",
+        "0x17812ce24578c28c",
+        "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
+        "0x2632e314a000",
+        "0x5208")]
+    public async Task Should_build_block_with_inclusion_list_transactions_V5(
+        string latestValidHash,
+        string blockHash,
+        string stateRoot,
+        string payloadId,
+        string receiptsRoot,
+        string blockFees,
+        string gasUsed)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0)
+            .WithMaxFeePerGas(10.GWei())
+            .WithMaxPriorityFeePerGas(2.GWei())
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        byte[] txBytes = Rlp.Encode(tx).Bytes;
+        byte[][] inclusionListTransactions = [txBytes];
+
+        string?[] @params = InitForkchoiceParams(chain, inclusionListTransactions);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
+        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(ExpectedValidForkchoiceResponse(chain, payloadId, latestValidHash)));
+        });
+
+        Block block = ExpectedBlock(
+            chain,
+            blockHash,
+            stateRoot,
+            [tx],
+            inclusionListTransactions,
+            [],
+            new Hash256(receiptsRoot),
+            Convert.ToInt64(gasUsed, 16));
+
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", payloadId);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Is.EqualTo(ExpectedGetPayloadResponse(chain, block, new UInt256(Convert.ToUInt64(blockFees, 16)))));
+        });
+    }
+
+    private string?[] InitForkchoiceParams(MergeTestBlockchain chain, byte[][] inclusionListTransactions, Withdrawal[]? withdrawals = null)
+    {
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
+        Address feeRecipient = TestItem.AddressC;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
+
+        var fcuState = new
+        {
+            headBlockHash = startingHead.ToString(true),
+            safeBlockHash = startingHead.ToString(true),
+            finalizedBlockHash = Keccak.Zero.ToString(true)
+        };
+
+        var payloadAttrs = new
+        {
+            timestamp = timestamp.ToHexString(true),
+            prevRandao = prevRandao.ToString(),
+            suggestedFeeRecipient = feeRecipient.ToString(),
+            withdrawals = withdrawals ?? [],
+            parentBeaconBlockRoot = Keccak.Zero,
+            inclusionListTransactions
+        };
+
+        string?[] @params =
+        [
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttrs)
+        ];
+
+        return @params;
+    }
+
+    private static string ExpectedValidForkchoiceResponse(MergeTestBlockchain chain, string? payloadId, string latestValidHash)
+        => chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse {
+            Id = responseId,
+            Result = new ForkchoiceUpdatedV1Result
+            {
+                PayloadId = payloadId,
+                PayloadStatus = new PayloadStatusV1
+                {
+                    LatestValidHash = new(latestValidHash),
+                    Status = PayloadStatus.Valid,
+                    ValidationError = null,
+                }
+            }
+        });
+    
+    private Block ExpectedBlock(
+        MergeTestBlockchain chain,
+        string blockHash,
+        string stateRoot,
+        Transaction[] transactions,
+        byte[][] inclusionListTransactions,
+        Withdrawal[] withdrawals,
+        Hash256 receiptsRoot,
+        long gasUsed)
+    {
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
+        Address feeRecipient = TestItem.AddressC;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
+
+        Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
             new(
                 startingHead,
@@ -246,110 +338,24 @@ public partial class EngineModuleTests
                 ExcessBlobGas = 0,
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
-                GasUsed = 0,
+                GasUsed = gasUsed,
                 Hash = expectedBlockHash,
                 MixHash = prevRandao,
                 ParentBeaconBlockRoot = Keccak.Zero,
-                ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
+                ReceiptsRoot = receiptsRoot,
                 StateRoot = new(stateRoot),
-                RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash,
             },
-            Array.Empty<Transaction>(),
+            transactions,
             Array.Empty<BlockHeader>(),
-            Array.Empty<Withdrawal>(),
+            withdrawals,
             inclusionListTransactions);
-        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
-
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)),
-            "[]",
-            Keccak.Zero.ToString(true),
-            "[]",
-            chain.JsonSerializer.Serialize(inclusionListTransactions));
-        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-        {
-            Id = successResponse?.Id,
-            Result = new PayloadStatusV1
-            {
-                LatestValidHash = Keccak.Zero,
-                Status = PayloadStatus.Invalid,
-                ValidationError = "Block excludes valid inclusion list transaction"
-            }
-        }));
+        
+        return block;
     }
-
-    [TestCase("0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928", "0x17812ce24578c28c")]
-    public async Task Should_build_block_with_inclusion_list_transactions_V5(string latestValidHash, string payloadId)
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        Hash256 startingHead = chain.BlockTree.HeadHash;
-        Hash256 prevRandao = Keccak.Zero;
-        Address feeRecipient = TestItem.AddressC;
-        ulong timestamp = Timestamper.UnixTime.Seconds;
-
-        Transaction tx = Build.A.Transaction
-            .WithNonce(0)
-            .WithMaxFeePerGas(10.GWei())
-            .WithMaxPriorityFeePerGas(2.GWei())
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyB)
-            .TestObject;
-        byte[] txBytes = Rlp.Encode(tx).Bytes;
-        byte[][] inclusionListTransactions = [txBytes];
-
-        var fcuState = new
+    private static string ExpectedGetPayloadResponse(MergeTestBlockchain chain, Block block, UInt256 blockFees)
+        => chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
-            headBlockHash = startingHead.ToString(),
-            safeBlockHash = startingHead.ToString(),
-            finalizedBlockHash = Keccak.Zero.ToString()
-        };
-
-        var payloadAttrs = new
-        {
-            timestamp = timestamp.ToHexString(true),
-            prevRandao = prevRandao.ToString(),
-            suggestedFeeRecipient = feeRecipient.ToString(),
-            withdrawals = Array.Empty<Withdrawal>(),
-            parentBeaconBlockRoot = Keccak.Zero,
-            inclusionListTransactions
-        };
-
-        string?[] @params =
-        [
-            chain.JsonSerializer.Serialize(fcuState),
-            chain.JsonSerializer.Serialize(payloadAttrs)
-        ];
-
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
-        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-        {
-            Id = successResponse.Id,
-            Result = new ForkchoiceUpdatedV1Result
-            {
-                PayloadId = payloadId,
-                PayloadStatus = new PayloadStatusV1
-                {
-                    LatestValidHash = new(latestValidHash),
-                    Status = PayloadStatus.Valid,
-                    ValidationError = null,
-                }
-            }
-        }));
-
-        ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId));
-        ExecutionPayloadV3 payload = getPayloadResult.Data!.ExecutionPayload!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(payload.Transactions, Has.Length.EqualTo(1));
-            Assert.That(payload.Transactions[0], Is.EqualTo(txBytes));
+            Id = responseId,
+            Result = new GetPayloadV4Result(block, blockFees, new BlobsBundleV1(block), executionRequests: [])
         });
-    }
 }
