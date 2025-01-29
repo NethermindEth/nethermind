@@ -79,7 +79,8 @@ public class NetworkModule(IInitConfig initConfig) : Module
                 ctx.Resolve<IWorldStateManager>().InitializeNetwork(
                     new PathNodeRecovery(
                         new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
-                        new SnapRangeRecovery(peerPool!, logManager)
+                        new SnapRangeRecovery(peerPool!, logManager),
+                        logManager
                     )
                 );
             })

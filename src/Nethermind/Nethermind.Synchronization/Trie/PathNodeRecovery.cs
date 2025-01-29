@@ -21,25 +21,32 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
 
     public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken = default)
     {
-        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
+        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource(TimeSpan.FromSeconds(3));
 
-        if (_logger.IsDebug) _logger.Debug($"Repairing path {address ?? Hash256.Zero}:{fullPath}");
+        if (_logger.IsDebug) _logger.Debug($"Repairing path {address ?? Hash256.Zero}:{fullPath} starting from {startingPath}");
 
-        var res = await Wait.ForPassingTask(
-            (res) => res != null,
-            nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
-            snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
-        );
-
-        if (res == null)
+        try
         {
-            if (_logger.IsWarn) _logger.Warn($"Failed to recover path {address ?? Hash256.Zero}:{fullPath}");
-        }
-        else
-        {
-            if (_logger.IsWarn) _logger.Warn($"Fetched {res.Count} nodes to repair path {address ?? Hash256.Zero}:{fullPath}");
-        }
+            IDictionary<TreePath, byte[]>? res = await Wait.ForPassingTask(
+                (res) => res != null,
+                nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
+                snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
+            );
 
-        return res;
+            if (res == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to recover path {address ?? Hash256.Zero}:{fullPath}");
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Fetched {res.Count} nodes to repair path {address ?? Hash256.Zero}:{fullPath} starting from {startingPath}");
+            }
+
+            return res;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
     }
 }

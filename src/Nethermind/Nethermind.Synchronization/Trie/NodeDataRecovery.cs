@@ -15,6 +15,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Healing;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -38,7 +39,20 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
         Hash256 currentHash = startingNodeHash;
         TreePath currentPath = startingPath;
-        TreePath fullPathAsTreePath = new TreePath(fullPath, 64);
+        TreePath queryPath = new TreePath(fullPath, 64);
+
+        // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
+        // So we change the query to match the missing node path.
+        if (queryPath.Truncate(startingPath.Length) != startingPath)
+        {
+            int remainingLength = 64 - startingPath.Length;
+            TreePath newQueryPath = startingPath;
+            for (int i = 0; i < remainingLength; i++)
+            {
+                newQueryPath.Append(0);
+            }
+            queryPath = newQueryPath;
+        }
 
         Dictionary<TreePath, byte[]> recoveredNodes = new();
 
@@ -48,7 +62,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
             if (nodeRlp is null)
             {
-                nodeRlp = await FetchRlp(address, currentPath, currentHash, cts.Token);
+                nodeRlp = await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
             }
 
             if (nodeRlp == null)
@@ -64,7 +78,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
             if (node.IsBranch)
             {
-                int childIndex = fullPathAsTreePath[currentPath.Length];
+                int childIndex = queryPath[currentPath.Length];
                 currentHash = node.GetChildHash(childIndex);
                 currentPath.AppendMut(childIndex);
             }
@@ -75,60 +89,52 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             }
             else if (node.IsLeaf)
             {
-                currentPath = currentPath.Append(node.Key);
-                if (currentPath != fullPathAsTreePath)
-                {
-                    return null;
-                }
                 break;
             }
 
-        } while (currentPath != fullPathAsTreePath);
+        } while (currentHash is not null);
 
         return recoveredNodes;
     }
 
-    private async Task<byte[]?> FetchRlp(Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)
+    private async Task<byte[]?> FetchRlp(Hash256 rootHash, Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)
     {
-        try
-        {
-            Task<byte[]?>[] tasks = Enumerable.Range(0, ConcurrentAttempt)
-                .Select(_ =>
+        Task<byte[]?>[] tasks = Enumerable.Range(0, ConcurrentAttempt)
+            .Select(_ =>
+            {
+                return peerPool.AllocateAndRun2(async (peer) =>
                 {
-                    return peerPool.AllocateAndRun((peer) =>
+                    if (peer == null) return null;
+                    try
                     {
-                        if (peer == null) return null;
-                        try
-                        {
-                            return RecoverNodeFromPeer(peer, hash, cancellationToken);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                        }
-                        catch (Exception ex)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"Error recovering node from {peer} {ex}");
-                        }
+                        byte[]? res = await RecoverNodeFromPeer(peer.SyncPeer, rootHash, address, path, hash, cancellationToken);
+                        if (res is null) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
+                        return res;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Error recovering node from {peer} {ex}");
+                        peerPool.ReportWeakPeer(peer, AllocationContexts.State);
+                    }
 
-                        return null;
-                    }, NodePeerStrategy, AllocationContexts.State, cancellationToken);
-                })
-                .ToArray();
+                    return null;
+                }, NodePeerStrategy, AllocationContexts.State, cancellationToken);
+            })
+            .ToArray();
 
-            return await Wait.ForPassingTask(
-                result => result is not null,
-                tasks);
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
+        return await Wait.ForPassingTask(
+            result => result is not null,
+            tasks);
     }
 
-    private async Task<byte[]?> RecoverNodeFromPeer(ISyncPeer syncPeer, Hash256 hash, CancellationToken cancellationToken)
+    private async Task<byte[]?> RecoverNodeFromPeer(ISyncPeer syncPeer, Hash256 rootHash, Hash256? address, TreePath treePath, Hash256 hash, CancellationToken cancellationToken)
     {
         if (syncPeer.ProtocolVersion < EthVersions.Eth67)
         {
+            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via eth");
             IOwnedReadOnlyList<byte[]>? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
@@ -137,10 +143,47 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         }
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataPeer))
         {
+            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via nodedata");
             IOwnedReadOnlyList<byte[]>? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
                 return data[0];
+            }
+        }
+        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");
+            PathGroup group;
+            if (address is null)
+            {
+                group = new PathGroup()
+                {
+                    Group = [
+                        Nibbles.EncodePath(treePath)
+                    ]
+                };
+            }
+            else
+            {
+                group = new PathGroup()
+                {
+                    Group = [
+                        address.Bytes.ToArray(),
+                        Nibbles.EncodePath(treePath)
+                    ]
+                };
+            }
+
+            using IOwnedReadOnlyList<byte[]>? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
+            {
+                RootHash = rootHash,
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
+                { group },
+            }, cancellationToken);
+
+            if (item is not null && item.Count > 0)
+            {
+                return item[0];
             }
         }
 
