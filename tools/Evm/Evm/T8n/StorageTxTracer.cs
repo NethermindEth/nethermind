@@ -24,7 +24,7 @@ public class StorageTxTracer : TxTracer, IBlockTracer
         _storages[address].Add(storageIndex);
     }
 
-    public List<UInt256> GetStorageIndexes(Address address)
+    public List<UInt256> GetStorageKeys(Address address)
     {
         _storages.TryGetValue(address, out List<UInt256>? storage);
         return storage ?? [];

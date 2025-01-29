@@ -59,7 +59,11 @@ public class InputData
 
     private static void SignTransaction(Transaction transaction, TransactionMetaData transactionMetaData, LegacyTransactionForRpc txLegacy)
     {
-        if (transactionMetaData.SecretKey is not null)
+        if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue && txLegacy.V.Value >= 27)
+        {
+            transaction.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
+        }
+        else if (transactionMetaData.SecretKey is not null)
         {
             var privateKey = new PrivateKey(transactionMetaData.SecretKey);
             transaction.SenderAddress = privateKey.Address;
@@ -67,10 +71,6 @@ public class InputData
             EthereumEcdsa ecdsa = new(transaction.ChainId ?? TestBlockchainIds.ChainId);
 
             ecdsa.Sign(privateKey, transaction, transactionMetaData.Protected ?? true);
-        }
-        else if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue)
-        {
-            transaction.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
         }
     }
 }

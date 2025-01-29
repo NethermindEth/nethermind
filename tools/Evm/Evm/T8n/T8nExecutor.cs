@@ -6,6 +6,7 @@ using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -17,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -58,15 +60,14 @@ public static class T8nExecutor
         GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
-        var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
-        withdrawalProcessor.ProcessWithdrawals(block, test.Spec);
-
         ApplyRewards(block, stateProvider, test.OverridableReleaseSpec, test.SpecProvider);
 
         CompositeBlockTracer compositeBlockTracer = new();
 
         StorageTxTracer storageTxTracer = new();
+        ProofBlockTracer proofBlockTracer = new(null, false);
         compositeBlockTracer.Add(storageTxTracer);
+        compositeBlockTracer.Add(proofBlockTracer);
         if (test.IsTraceEnabled)
         {
             compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new FileSystem()));
@@ -130,10 +131,16 @@ public static class T8nExecutor
 
         blockReceiptsTracer.EndBlockTrace();
 
+        var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
+        withdrawalProcessor.ProcessWithdrawals(block, test.Spec);
+
+        ExecutionRequestsProcessor _executionRequestsProcessor = new ExecutionRequestsProcessor(transactionProcessor);
+        _executionRequestsProcessor.ProcessExecutionRequests(block, stateProvider, transactionExecutionReport.SuccessfulTransactionReceipts.ToArray(), test.Spec);
+
         stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
         stateProvider.CommitTree(test.CurrentNumber);
 
-        return T8nExecutionResult.ConstructT8nExecutionResult(stateProvider, block, test, storageTxTracer,
+        return T8nExecutionResult.ConstructT8nExecutionResult(stateProvider, block, test, storageTxTracer, proofBlockTracer.BuildResult().ToList(),
             blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
     }
 

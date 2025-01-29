@@ -24,4 +24,6 @@ public class PostState
     public UInt256? CurrentBaseFee { get; set; }
     public UInt256? CurrentExcessBlobGas { get; set; }
     public UInt256? BlobGasUsed { get; set; }
+    public Hash256? RequestsHash { get; set; }
+    public byte[][]? Requests { get; set; }
 }

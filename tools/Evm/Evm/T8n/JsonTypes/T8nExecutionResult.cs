@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -25,6 +26,7 @@ public class T8nExecutionResult
         Block block,
         T8nTest test,
         StorageTxTracer storageTracer,
+        List<ProofTxTracer> proofTxTracerList,
         BlockReceiptsTracer blockReceiptsTracer,
         ISpecProvider specProvider,
         TransactionExecutionReport txReport)
@@ -57,49 +59,58 @@ public class T8nExecutionResult
             CurrentBaseFee = test.CurrentBaseFee,
             CurrentExcessBlobGas = block.ExcessBlobGas,
             BlobGasUsed = blobGasUsed,
+            RequestsHash = block.RequestsHash,
+            Requests = block.ExecutionRequests,
         };
 
         T8nExecutionResult t8NExecutionResult = new()
         {
             PostState = postState,
             TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes,
-            Accounts = CollectAccounts(test, stateProvider, storageTracer, block),
+            Accounts = CollectAccounts(test, stateProvider, storageTracer, block, proofTxTracerList),
         };
 
         return t8NExecutionResult;
     }
 
-    private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, WorldState stateProvider, StorageTxTracer storageTracer, Block block)
+    private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, WorldState stateProvider,
+        StorageTxTracer storageTracer, Block block, List<ProofTxTracer> proofTxTracerList)
     {
-        Dictionary<Address, AccountState?> accounts = test.Alloc.Keys.ToDictionary(address => address,
-            address => GetAccountState(address, stateProvider, storageTracer));
-
-        accounts.AddRange(test.Ommers.ToDictionary(ommer => ommer.Address,
-            ommer => GetAccountState(ommer.Address, stateProvider, storageTracer)));
-
-        if (block.Beneficiary is not null)
+        var addresses = CollectAccountAddresses(test, block, proofTxTracerList);
+        Dictionary<Address, AccountState> accounts = new();
+        foreach (var address in addresses)
         {
-            accounts[block.Beneficiary] = GetAccountState(block.Beneficiary, stateProvider, storageTracer);
+            List<UInt256> storageKeys = storageTracer.GetStorageKeys(address);
+            if (test.Alloc.TryGetValue(address, out var accountsState))
+            {
+                storageKeys.AddRange(accountsState.Storage.Keys);
+            }
+
+            accountsState = GetAccountState(address, stateProvider, storageKeys);
+            if (accountsState is not null) accounts.Add(address, accountsState);
         }
 
-        foreach (Transaction tx in test.Transactions)
-        {
-            if (tx.To is not null && !accounts.ContainsKey(tx.To))
-            {
-                accounts[tx.To] = GetAccountState(tx.To, stateProvider, storageTracer);
-            }
-            if (tx.SenderAddress is not null && !accounts.ContainsKey(tx.SenderAddress))
-            {
-                accounts[tx.SenderAddress] = GetAccountState(tx.SenderAddress, stateProvider, storageTracer);
-            }
-        }
-
-        return accounts
-            .Where(addressAndAccount => addressAndAccount.Value is not null)
-            .ToDictionary(addressAndAccount => addressAndAccount.Key, addressAndAccount => addressAndAccount.Value!);
+        return accounts;
     }
 
-    private static AccountState? GetAccountState(Address address, WorldState stateProvider, StorageTxTracer storageTxTracer)
+    private static HashSet<Address> CollectAccountAddresses(T8nTest test, Block block, List<ProofTxTracer> proofTxTracerList)
+    {
+        HashSet<Address> addresses = [];
+        addresses.AddRange(test.Alloc.Keys);
+        addresses.AddRange(test.Ommers.Select(ommer => ommer.Address));
+        addresses.AddRange(block.Withdrawals?.Select(withdrawal => withdrawal.Address) ?? []);
+        if (block.Beneficiary is not null) addresses.Add(block.Beneficiary);
+        foreach (Transaction tx in test.Transactions)
+        {
+            if (tx.SenderAddress is not null) addresses.Add(tx.SenderAddress);
+            if (tx.To is not null) addresses.Add(tx.To);
+        }
+        addresses.AddRange(proofTxTracerList.SelectMany(tracer => tracer.Accounts));
+
+        return addresses;
+    }
+
+    private static AccountState? GetAccountState(Address address, WorldState stateProvider, List<UInt256> storageKeys)
     {
         if (!stateProvider.AccountExists(address))  return null;
 
@@ -112,10 +123,10 @@ public class T8nExecutionResult
             Code = code
         };
 
-        foreach (UInt256 index in storageTxTracer.GetStorageIndexes(address))
+        foreach (UInt256 storageKey in storageKeys)
         {
-            ReadOnlySpan<byte> value = stateProvider.Get(new StorageCell(address, index));
-            if (!value.IsEmpty) accountState.Storage[index] = value.ToArray();
+            ReadOnlySpan<byte> value = stateProvider.Get(new StorageCell(address, storageKey));
+            if (!value.IsEmpty) accountState.Storage[storageKey] = value.ToArray();
         }
 
         return accountState;
