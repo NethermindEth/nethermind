@@ -145,6 +145,18 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
+    public ResultWrapper<Hash256> rbuilder_getBlockHash(BlockParameter block)
+    {
+
+        BlockHeader? blockHeader = blockFinder.FindHeader(block);
+        if (blockHeader is null)
+        {
+            return ResultWrapper<Hash256>.Fail("Block not found");
+        }
+
+        return ResultWrapper<Hash256>.Success(blockHeader.Hash);
+    }
+
 
     private class PooledIWorldStatePolicy(IWorldStateManager worldStateManager): IPooledObjectPolicy<IOverridableWorldScope>
     {
