@@ -127,6 +127,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ReturnStackHead = 0;
         ExecutionType = executionType;
         ProgramCounter = 0;
+        FunctionIndex = 0;
         IsTopLevel = isTopLevel;
         _canRestore = !isTopLevel;
         IsStatic = isStatic;

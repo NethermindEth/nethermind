@@ -194,8 +194,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
-        => InnerTracer.StartOperation(pc, opcode, gas, env);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+        => InnerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
 
     public void ReportOperationError(EvmExceptionType error)
         => InnerTracer.ReportOperationError(error);

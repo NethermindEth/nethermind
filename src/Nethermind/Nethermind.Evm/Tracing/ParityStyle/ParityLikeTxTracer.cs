@@ -217,12 +217,14 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             };
         }
 
-        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
             operationTrace.Pc = pc + env.CodeInfo.PcOffset();
             operationTrace.Cost = gas;
+            // skip codeSection
+            // skip functionDepth
             _currentOperation = operationTrace;
             _currentPushList.Clear();
             _currentVmTrace.Ops.Add(operationTrace);
