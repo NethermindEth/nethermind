@@ -11,6 +11,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
+[Explicit("These tests are not yet updated to devnet-6")]
 public class OsakaBlockChainTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
