@@ -71,9 +71,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 int txSize = size;
                 TxType txType = (TxType)type;
 
-                // long maxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
-                // if (txSize > maxSize)
-                //     continue;
+                long maxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
+                if (txSize > maxSize)
+                    continue;
 
                 if (txSize > packetSizeLeft && toRequestCount > 0)
                 {
