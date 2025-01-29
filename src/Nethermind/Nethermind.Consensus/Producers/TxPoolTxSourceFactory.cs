@@ -38,4 +38,4 @@ namespace Nethermind.Consensus.Producers
             return new TxPoolTxSource(_txPool, _specProvider, _transactionComparerProvider, _logManager, txSourceFilterPipeline);
         }
     }
-} 
+}

@@ -292,7 +292,8 @@ public partial class EngineModuleTests
     }
 
     private static string ExpectedValidForkchoiceResponse(MergeTestBlockchain chain, string? payloadId, string latestValidHash)
-        => chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse {
+        => chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        {
             Id = responseId,
             Result = new ForkchoiceUpdatedV1Result
             {
@@ -305,7 +306,7 @@ public partial class EngineModuleTests
                 }
             }
         });
-    
+
     private Block ExpectedBlock(
         MergeTestBlockchain chain,
         string blockHash,
@@ -349,7 +350,7 @@ public partial class EngineModuleTests
             Array.Empty<BlockHeader>(),
             withdrawals,
             inclusionListTransactions);
-        
+
         return block;
     }
     private static string ExpectedGetPayloadResponse(MergeTestBlockchain chain, Block block, UInt256 blockFees)
