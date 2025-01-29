@@ -30,6 +30,13 @@ public interface IRbuilderRpcModule: IRpcModule
         IsSharable = true,
         ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block);
+
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Gets block hash",
+        IsSharable = true,
+        ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    ResultWrapper<Hash256> rbuilder_getBlockHash(BlockParameter block);
 }
 
 
