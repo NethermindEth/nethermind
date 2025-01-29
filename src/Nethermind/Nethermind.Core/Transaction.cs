@@ -195,9 +195,13 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs = true)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this, shouldCountBlobs);
+            if (_size is not null) return _size.Value;
+
+            int size = sizeCalculator.GetLength(this, shouldCountBlobs);
+            if (shouldCountBlobs) _size = size;
+            return size;
         }
 
         public string ToShortString()
