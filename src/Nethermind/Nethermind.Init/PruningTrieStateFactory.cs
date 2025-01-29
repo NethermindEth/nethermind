@@ -131,7 +131,7 @@ public class PruningTrieStateFactory(
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
-        TrieStore trieStore =  new TrieStore(
+        TrieStore trieStore = new TrieStore(
             mainNodeStorage,
             pruningStrategy,
             persistenceStrategy,

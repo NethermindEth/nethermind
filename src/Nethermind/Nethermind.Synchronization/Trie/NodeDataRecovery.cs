@@ -24,7 +24,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
 
-public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, ILogManager logManager): IPathRecovery
+public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, ILogManager logManager) : IPathRecovery
 {
     private static readonly IPeerAllocationStrategy NodePeerStrategy =
         new CanServeByHashPeerAllocationStrategy(

@@ -24,7 +24,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
-public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager): IPathRecovery
+public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : IPathRecovery
 {
     // Pick by reduced latency instead of throughput
     private static readonly IPeerAllocationStrategy SnapPeerStrategy =

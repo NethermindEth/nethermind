@@ -5,7 +5,7 @@ using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies;
 
-public class CanServeByHashPeerAllocationStrategy: FilterPeerAllocationStrategy
+public class CanServeByHashPeerAllocationStrategy : FilterPeerAllocationStrategy
 {
     public CanServeByHashPeerAllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy)
     {

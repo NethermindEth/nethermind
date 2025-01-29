@@ -61,7 +61,7 @@ public class HealingTreeTests
             return stateTree;
         }
 
-        TreePath path = TreePath.FromNibble([ 1, 2 ]);
+        TreePath path = TreePath.FromNibble([1, 2]);
         Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
         recovery_works(successfullyRecovered, null, path, fullPath, CreateHealingStateTree);
     }
@@ -74,7 +74,7 @@ public class HealingTreeTests
             new(trieStore.GetTrieStore(addressPath), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
                 _key, recovery);
 
-        TreePath path = TreePath.FromNibble([ 1, 2 ]);
+        TreePath path = TreePath.FromNibble([1, 2]);
         Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
 
         recovery_works(successfullyRecovered, addressPath, path, fullPath, CreateHealingStorageTree);
@@ -98,7 +98,7 @@ public class HealingTreeTests
         trieStore.TrieNodeRlpStore.Returns(db);
 
         IPathRecovery recovery = Substitute.For<IPathRecovery>();
-        recovery.Recover(Arg.Any<Hash256>(),Arg.Is<Hash256?>(address), Arg.Is<TreePath>(path), _key, fullPath)
+        recovery.Recover(Arg.Any<Hash256>(), Arg.Is<Hash256?>(address), Arg.Is<TreePath>(path), _key, fullPath)
             .Returns(successfullyRecovered ? Task.FromResult<IDictionary<TreePath, byte[]>?>(
                 new Dictionary<TreePath, byte[]>()
                 {
