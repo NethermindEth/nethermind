@@ -14,6 +14,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
 
@@ -52,7 +53,7 @@ public class OptimismCL : IDisposable
         _beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa,
             _logger, _cancellationTokenSource.Token);
         _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _cancellationTokenSource.Token, logManager);
-        _driver = new Driver(_l1Bridge, config, engineParameters, _logger);
+        _driver = new Driver(_l1Bridge, _l2EthRpc, config, engineParameters, _logger);
     }
 
     public void Start()

@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
-public class DepositTransactionBuilder(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters)
+public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameters engineParameters)
 {
     private const int SystemTxDataLengthEcotone = 164;
 
@@ -42,7 +42,7 @@ public class DepositTransactionBuilder(ISpecProvider specProvider, CLChainSpecEn
         {
             Type = TxType.DepositTx,
             Data = data,
-            ChainId = specProvider.ChainId,
+            ChainId = chainId,
             SenderAddress = engineParameters.SystemTransactionSender,
             To = engineParameters.SystemTransactionTo,
             GasLimit = 1000000,

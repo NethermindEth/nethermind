@@ -3,16 +3,12 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Linq;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.Int256;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Rlp;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
@@ -30,32 +26,13 @@ public static class SystemConfigUpdate
 }
 
 public class SystemConfigDeriver(
-    CLChainSpecEngineParameters rollupConfig,
-    IReceiptFinder receiptFinder,
-    IOptimismSpecHelper specHelper
+    CLChainSpecEngineParameters rollupConfig
 ) : ISystemConfigDeriver
 {
-    public SystemConfig SystemConfigFromL2Payload(ExecutionPayload l2Payload)
+    public SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit)
     {
-        if (l2Payload.Transactions.Length == 0)
-        {
-            throw new ArgumentException("No txs in payload");
-        }
-        Transaction depositTx = TxDecoder.Instance.Decode(l2Payload.Transactions[0]);
-        if (depositTx.Type != TxType.DepositTx)
-        {
-            throw new ArgumentException("First tx is not deposit tx");
-        }
-
-        if (depositTx.Data is null)
-        {
-            throw new ArgumentException("System tx data is null");
-        }
-
         // TODO: all SystemConfig parameters should be encoded in tx.Data();
-        ReadOnlySpan<byte> data = depositTx.Data.Value.Span;
-        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, l2Payload.ExtraData);
-
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, extraData);
         byte[] scalar = new byte[32];
         scalar[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], l1BlockInfo.BlobBaseFeeScalar);
@@ -63,26 +40,24 @@ public class SystemConfigDeriver(
         return new SystemConfig()
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
-            GasLimit = (ulong)l2Payload.GasLimit,
+            GasLimit = gasLimit,
             Scalar = scalar
         };
     }
 
-    public SystemConfig UpdateSystemConfigFromL1BLock(SystemConfig systemConfig, BlockHeader l1Block)
+    public SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, ReceiptForRpc[] receipts)
     {
         var config = systemConfig;
-        var blockHash = l1Block.Hash ?? throw new ArgumentNullException(nameof(l1Block));
-        var receipts = receiptFinder.Get(blockHash);
 
-        foreach (var receipt in receipts)
+        foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.StatusCode != StatusCode.Success) continue;
+            if (receipt.Status != StatusCode.Success) continue;
 
             foreach (var log in receipt.Logs ?? [])
             {
                 if (log.Address == rollupConfig.L1SystemConfigAddress && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
                 {
-                    config = UpdateSystemConfigFromLogEvent(config, l1Block, log);
+                    config = UpdateSystemConfigFromLogEvent(config, log);
                 }
             }
         }
@@ -90,7 +65,7 @@ public class SystemConfigDeriver(
         return config;
     }
 
-    private SystemConfig UpdateSystemConfigFromLogEvent(SystemConfig systemConfig, BlockHeader header, LogEntry log)
+    private SystemConfig UpdateSystemConfigFromLogEvent(SystemConfig systemConfig, LogEntryForRpc log)
     {
         if (log.Topics.Length != 3) throw new ArgumentException($"Expected 3 event topics (event identity, indexed version, indexed updateType), got {log.Topics.Length}");
         if (log.Topics[0] != SystemConfigUpdate.EventABIHash) throw new ArgumentException($"Invalid {nameof(SystemConfig)} update event: {log.Topics[0]}, expected {SystemConfigUpdate.EventABIHash}");
@@ -122,7 +97,7 @@ public class SystemConfigDeriver(
             var overhead = (byte[])decoded[2];
             var scalar = (byte[])decoded[3];
 
-            if (specHelper.IsEcotone(header))
+            // if (specHelper.IsEcotone(header))
             {
                 if (!ValidEcotoneL1SystemConfigScalar(scalar))
                 {
@@ -138,14 +113,14 @@ public class SystemConfigDeriver(
                     Overhead = new byte[32]
                 };
             }
-            else
-            {
-                systemConfig = systemConfig with
-                {
-                    Overhead = overhead,
-                    Scalar = scalar,
-                };
-            }
+            // else
+            // {
+            //     systemConfig = systemConfig with
+            //     {
+            //         Overhead = overhead,
+            //         Scalar = scalar,
+            //     };
+            // }
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {

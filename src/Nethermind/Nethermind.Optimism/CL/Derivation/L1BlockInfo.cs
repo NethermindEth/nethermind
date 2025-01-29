@@ -6,7 +6,8 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -37,6 +38,7 @@ public class L1BlockInfoBuilder
             throw new ArgumentException("System tx data length is incorrect");
         }
 
+        // TODO check MethodId
         uint methodId = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
         uint baseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
         uint blobBaseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
@@ -65,6 +67,24 @@ public class L1BlockInfoBuilder
             BlobBaseFee = blobBaseFee,
             BlockHash = blockHash,
             BatcherAddress = batcherAddress
+        };
+    }
+
+    public static L1BlockInfo FromL1BlockAndSystemConfig(BlockForRpc block, SystemConfig config)
+    {
+        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, out UInt256 feePerBlobGas);
+        return new()
+        {
+            MethodId = 0,
+            BaseFeeScalar = config.BaseFeeScalar,
+            BlobBaseFeeScalar = config.BlobBaseFeeScalar,
+            SequenceNumber = 0,
+            Timestamp = block.Timestamp.ToUInt64(null),
+            Number = (ulong)block.Number!.Value,
+            BaseFee = block.BaseFeePerGas!.Value,
+            BlobBaseFee = feePerBlobGas,
+            BlockHash = block.Hash,
+            BatcherAddress = config.BatcherAddress,
         };
     }
 }

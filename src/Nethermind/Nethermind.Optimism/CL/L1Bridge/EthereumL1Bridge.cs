@@ -4,11 +4,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumL1Bridge : IL1Bridge
 {
@@ -78,5 +79,15 @@ public class EthereumL1Bridge : IL1Bridge
     public Task<BlockForRpc?> GetBlock(ulong blockNumber)
     {
         return _ethL1Api.GetBlockByNumber(blockNumber, true);
+    }
+
+    public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash)
+    {
+        return _ethL1Api.GetBlockByHash(blockHash, true);
+    }
+
+    public Task<ReceiptForRpc[]?> GetReceiptsByBlockHash(Hash256 blockHash)
+    {
+        return _ethL1Api.GetReceiptsByHash(blockHash);
     }
 }

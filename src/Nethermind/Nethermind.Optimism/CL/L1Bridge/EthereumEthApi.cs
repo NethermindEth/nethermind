@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Client;
@@ -10,7 +11,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumEthApi : IEthApi
 {
@@ -24,7 +25,7 @@ public class EthereumEthApi : IEthApi
 
     public Task<ReceiptForRpc[]?> GetReceiptsByHash(Hash256 blockHash)
     {
-        return _ethRpcClient.Post<ReceiptForRpc[]?>("eth_getBlockReceipts", new object[] { blockHash });
+        return _ethRpcClient.Post<ReceiptForRpc[]>("eth_getBlockReceipts", new object[] { blockHash });
     }
 
     public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash, bool fullTxs)
@@ -34,6 +35,6 @@ public class EthereumEthApi : IEthApi
 
     public Task<BlockForRpc?> GetBlockByNumber(ulong blockNumber, bool fullTxs)
     {
-        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByNumber", new object[] { blockNumber, fullTxs });
+        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByNumber", new BlockParameter((long)blockNumber), fullTxs);
     }
 }

@@ -15,7 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumBeaconApi : IBeaconApi
 {

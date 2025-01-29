@@ -6,8 +6,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
@@ -18,20 +21,31 @@ public class Driver : IDisposable
     private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
     private readonly CLChainSpecEngineParameters _engineParameters;
+    private readonly IDerivationPipeline _derivationPipeline;
+    private readonly ISystemConfigDeriver _systemConfigDeriver;
+    private readonly IL2BlockTree _l2BlockTree;
+    private readonly IEthRpcModule _l2EthRpc;
 
     private readonly IChannelStorage _channelStorage;
 
-    public Driver(IL1Bridge l1Bridge, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
+    public Driver(IL1Bridge l1Bridge, IEthRpcModule l2EthRpc, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
         _config = config;
         _l1Bridge = l1Bridge;
         _logger = logger;
         _channelStorage = new ChannelStorage();
         _engineParameters = engineParameters;
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
+        PayloadAttributesDeriver payloadAttributesDeriver = new(480, _systemConfigDeriver,
+            new DepositTransactionBuilder(480, engineParameters), logger);
+        _l2BlockTree = new L2BlockTree();
+        _l2EthRpc = l2EthRpc;
+        _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
     }
 
     public void Start()
     {
+        InsertBlock();
         _channelStorage.OnChannelBuilt += OnChannelBuilt;
         // _l1Bridge.OnNewL1Head += OnNewL1Head;
     }
@@ -43,6 +57,7 @@ public class Driver : IDisposable
         RlpStream rlpStream = new(decompressed);
         ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
         BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
+        _derivationPipeline.ConsumeV1Batches(batches);
         // TODO: put into batch queue
     }
 
@@ -92,6 +107,23 @@ public class Driver : IDisposable
                 }
             }
         }
+    }
+
+    private void InsertBlock()
+    {
+        var block = _l2EthRpc.eth_getBlockByNumber(new(9176832), true).Data;
+        OptimismTransactionForRpc tx = (OptimismTransactionForRpc)block.Transactions.First();
+        SystemConfig config =
+            _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
+        L2Block nativeBlock = new()
+        {
+            Hash = block.Hash,
+            Number = (ulong)block.Number!.Value,
+            Timestamp = block.Timestamp.ToUInt64(null),
+            ParentHash = block.ParentHash,
+            SystemConfig = config,
+        };
+        _l2BlockTree.AddBlock(nativeBlock);
     }
 
     private void ProcessCalldataBatcherTransaction(Transaction transaction)

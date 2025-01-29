@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Merge.Plugin.Data;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL;
 
 public interface ISystemConfigDeriver
 {
-    SystemConfig SystemConfigFromL2Payload(ExecutionPayload l2Payload);
-    SystemConfig UpdateSystemConfigFromL1BLock(SystemConfig systemConfig, BlockHeader l1Block);
+    SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit);
+    SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, ReceiptForRpc[] receipts);
 }
 
 /// <summary>
@@ -58,6 +59,10 @@ public record SystemConfig
     /// pre-Holocene codebases causes the rollup config to be rejected.
     /// </summary>
     public bool MarshalPreHolocene { get; init; }
+    // BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], l1BlockInfo.BlobBaseFeeScalar);
+    // BinaryPrimitives.WriteUInt32BigEndian(scalar[28..32], l1BlockInfo.BaseFeeScalar);
+    public uint BlobBaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar[24..28]);
+    public uint BaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar[28..32]);
 
     public virtual bool Equals(SystemConfig? other)
     {

@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.L1Bridge;
 
 public interface IEthApi
 {

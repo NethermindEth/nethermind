@@ -24,7 +24,7 @@ public class L1BlockInfoBuilderTests
         l1BlockInfo.Number.Should().Be(21670913);
         l1BlockInfo.BaseFee.Should().Be(6278383865);
 
-        DepositTransactionBuilder depositTransactionBuilder = new DepositTransactionBuilder(MainnetSpecProvider.Instance, new CLChainSpecEngineParameters());
+        DepositTransactionBuilder depositTransactionBuilder = new DepositTransactionBuilder(1, new CLChainSpecEngineParameters());
         Transaction tx = depositTransactionBuilder.BuildSystemTransaction(l1BlockInfo);
 
         tx.Data!.Value.ToArray().Should().BeEquivalentTo(data);
