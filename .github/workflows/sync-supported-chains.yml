@@ -186,7 +186,7 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.10.3 \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
