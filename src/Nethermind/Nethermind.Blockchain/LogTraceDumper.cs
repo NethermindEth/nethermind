@@ -70,7 +70,7 @@ public static class BlockTraceDumper
             }
             else
             {
-                blockHash = string.Join("|", blocks.Select(b => b.Hash));
+                blockHash = string.Join("|", blocks.Select(b => b.Hash.ToString()));
             }
         }
 
