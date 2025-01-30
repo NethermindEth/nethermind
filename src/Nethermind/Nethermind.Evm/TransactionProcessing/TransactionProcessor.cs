@@ -462,7 +462,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
                 {
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                    return TransactionResult.MinerPremiumNegative;
+                    return TransactionResult.FeeCapTooLow(tx, header.BaseFeePerGas);
                 }
 
                 UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
@@ -819,7 +819,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = "insufficient MaxFeePerGas for sender balance";
         public static readonly TransactionResult InsufficientSenderBalance = "insufficient sender balance";
         public static readonly TransactionResult MalformedTransaction = "malformed";
-        public static readonly TransactionResult MinerPremiumNegative = "miner premium is negative";
+        public static TransactionResult FeeCapTooLow(Transaction tx, UInt256 baseFee) => $"err: max fee per gas less than block base fee: address {tx.SenderAddress}, maxFeePerGas: {tx.GetGasFeeCap()}, baseFee: {baseFee} (supplied gas {tx.GasLimit})";
         public static readonly TransactionResult NonceOverflow = "nonce overflow";
         public static readonly TransactionResult SenderHasDeployedCode = "sender has deployed code";
         public static readonly TransactionResult SenderNotSpecified = "sender not specified";

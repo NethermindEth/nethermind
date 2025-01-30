@@ -249,6 +249,11 @@ namespace Nethermind.Core
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
 
+        public UInt256 GetGasFeeCap(bool isEip1559Enabled = true)
+        {
+            return isEip1559Enabled && Supports1559 ? MaxFeePerGas : GasPrice;
+        }
+
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
             public Transaction Create()

@@ -17,7 +17,7 @@ namespace Nethermind.Core
         public static bool TryCalculatePremiumPerGas(this Transaction tx, in UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
             bool freeTransaction = tx.IsFree();
-            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice;
+            UInt256 feeCap = tx.GetGasFeeCap();
             if (baseFeePerGas > feeCap)
             {
                 premiumPerGas = UInt256.Zero;
