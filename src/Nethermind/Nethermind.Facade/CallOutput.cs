@@ -5,9 +5,9 @@ using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Facade;
 
-public class CallOutput(string? error, long gasLimit)
+public class CallOutput
 {
-    public string? Error => error == null ? error : $"err: {error} (supplied gas {gasLimit})";
+    public string? Error { get; set; }
 
     public byte[] OutputData { get; set; } = [];
 

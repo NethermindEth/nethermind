@@ -156,8 +156,9 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
 
-            return new CallOutput(tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error, tx.GasLimit)
+            return new CallOutput
             {
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
@@ -201,8 +202,9 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
-            return new CallOutput(tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, tx.GasLimit)
+            return new CallOutput
             {
+                Error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit),
                 GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
@@ -219,8 +221,9 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!), header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
-            return new CallOutput(tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error, tx.GasLimit)
+            return new CallOutput
             {
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
@@ -428,6 +431,12 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        {
+            string? error = txResult.Success ? tracerError : txResult.Error;
+            return error != null ? $"err: {error} (supplied gas {gasLimit})" : null;
         }
     }
 }
