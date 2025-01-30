@@ -16,7 +16,7 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(ResolveIps))]
-    public class SetupKeyStore : IStep
+    public class SetupKeyStore : InitStep, IStep
     {
         private readonly IApiWithBlockchain _api;
 
@@ -25,7 +25,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public async Task Execute(CancellationToken cancellationToken)
+        protected override async Task Setup(CancellationToken cancellationToken)
         {
             (IApiWithStores get, IApiWithBlockchain set) = _api.ForInit;
             // why is the await Task.Run here?

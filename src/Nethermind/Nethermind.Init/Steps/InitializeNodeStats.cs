@@ -10,7 +10,7 @@ using Nethermind.Stats;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies]
-    public class InitializeNodeStats : IStep
+    public class InitializeNodeStats : InitStep, IStep
     {
         private readonly IApiWithNetwork _api;
 
@@ -19,7 +19,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public Task Execute(CancellationToken _)
+        protected override Task Setup(CancellationToken cancellationToken)
         {
             INetworkConfig config = _api.Config<INetworkConfig>();
 

@@ -9,7 +9,7 @@ using Nethermind.Api;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(SetupKeyStore))]
-    public class FilterBootnodes : IStep
+    public class FilterBootnodes : InitStep, IStep
     {
         private readonly IApiWithStores _api;
 
@@ -18,7 +18,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public Task Execute(CancellationToken _)
+        protected override Task Setup(CancellationToken _)        
         {
             if (_api.ChainSpec is null)
             {

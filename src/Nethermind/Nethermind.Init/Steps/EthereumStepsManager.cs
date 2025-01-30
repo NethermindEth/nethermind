@@ -37,6 +37,8 @@ namespace Nethermind.Init.Steps
 
             _allSteps = loader.LoadSteps(_api.GetType()).ToList();
             _allStepsByBaseType = _allSteps.ToDictionary(static s => s.StepBaseType, static s => s);
+
+            _logger.Info("" + string.Join(Environment.NewLine, _allSteps.Select((s) => s.ToString())));
         }
 
         private async Task ReviewDependencies(CancellationToken cancellationToken)
@@ -86,32 +88,26 @@ namespace Nethermind.Init.Steps
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            while (_allSteps.Any(static s => s.Stage != StepInitializationStage.Complete))
+            RunOneRoundOfInitialization(cancellationToken);
+
+            Task current;
+            do
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                RunOneRoundOfInitialization(cancellationToken);
-                await ReviewDependencies(cancellationToken);
-                ReviewFailedAndThrow();
-            }
-
-            await Task.WhenAll(_allPending);
-            ReviewFailedAndThrow();
+                current = await Task.WhenAny(_allRequiredSteps);
+                ReviewFailedAndThrow(current);
+                _allRequiredSteps.Remove(current);
+            } while (_allRequiredSteps.Any(s => !s.IsCompleted));
         }
 
-        private readonly ConcurrentQueue<Task> _allPending = new();
+        private readonly List<Task> _allRequiredSteps = new();
 
         private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
         {
-            int startedThisRound = 0;
+            Dictionary<Type, IStep> createdSteps = [];
+
             foreach (StepInfo stepInfo in _allSteps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                if (stepInfo.Stage != StepInitializationStage.WaitingForExecution)
-                {
-                    continue;
-                }
 
                 IStep? step = CreateStepInstance(stepInfo);
                 if (step is null)
@@ -119,39 +115,34 @@ namespace Nethermind.Init.Steps
                     if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step {stepInfo}");
                     continue;
                 }
+                createdSteps.Add(step.GetType(), step);
+            }
 
+            foreach (StepInfo stepInfo in _allSteps)
+            {
+                if (!createdSteps.ContainsKey(stepInfo.StepType))
+                {
+                    throw new StepDependencyException($"Initialization failed because {stepInfo} could not be created.");
+                }
+                IStep step = createdSteps[stepInfo.StepType];
+                
+                Task task = ExecuteStep(step, stepInfo, createdSteps, cancellationToken);
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-
-                stepInfo.Stage = StepInitializationStage.Executing;
-                startedThisRound++;
-                Task task = ExecuteStep(step, stepInfo, cancellationToken);
 
                 if (step.MustInitialize)
                 {
-                    _allPending.Enqueue(task);
-                }
-                else
-                {
-                    stepInfo.Stage = StepInitializationStage.Complete;
-                }
-            }
-
-            if (startedThisRound == 0 && _allPending.All(static t => t.IsCompleted))
-            {
-                Interlocked.Increment(ref _foreverLoop);
-                if (_foreverLoop > 100)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Didn't start any initialization steps during initialization round and all previous steps are already completed.");
+                    _allRequiredSteps.Add(task);
                 }
             }
         }
 
-        private async Task ExecuteStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
+        private async Task ExecuteStep(IStep step, StepInfo stepInfo, Dictionary<Type, IStep> steps, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                await step.Execute(cancellationToken);
+                IEnumerable<Task> dependencies = stepInfo.Dependencies.Select(t => steps[t].StepCompleted);
+                await step.Execute(dependencies, cancellationToken);
 
                 if (_logger.IsDebug)
                     _logger.Debug(
@@ -159,7 +150,7 @@ namespace Nethermind.Init.Steps
 
                 stepInfo.Stage = StepInitializationStage.Complete;
             }
-            catch (Exception exception)
+            catch (Exception exception) when (exception is not TaskCanceledException) 
             {
                 if (step.MustInitialize)
                 {
@@ -181,8 +172,6 @@ namespace Nethermind.Init.Steps
             }
             finally
             {
-                _autoResetEvent.Set();
-
                 if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name,-24} complete");
             }
         }
@@ -202,13 +191,10 @@ namespace Nethermind.Init.Steps
             return step;
         }
 
-        private int _foreverLoop;
-
-        private void ReviewFailedAndThrow()
+        private void ReviewFailedAndThrow(Task task)
         {
-            Task? anyFaulted = _allPending.FirstOrDefault(static t => t.IsFaulted);
-            if (anyFaulted?.IsFaulted == true && anyFaulted?.Exception is not null)
-                ExceptionDispatchInfo.Capture(anyFaulted.Exception.GetBaseException()).Throw();
+            if (task?.IsFaulted == true && task?.Exception is not null)
+                ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
         }
     }
 }

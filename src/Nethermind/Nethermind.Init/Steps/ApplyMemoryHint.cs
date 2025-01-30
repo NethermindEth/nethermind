@@ -13,7 +13,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(MigrateConfigs))]
-    public sealed class ApplyMemoryHint : IStep
+    public sealed class ApplyMemoryHint : InitStep, IStep
     {
         private readonly INethermindApi _api;
         private readonly IInitConfig _initConfig;
@@ -32,7 +32,7 @@ namespace Nethermind.Init.Steps
             _txPoolConfig = api.Config<ITxPoolConfig>();
         }
 
-        public Task Execute(CancellationToken _)
+        protected override Task Setup(CancellationToken _)
         {
             MemoryHintMan memoryHintMan = new(_api.LogManager);
             uint cpuCount = (uint)Environment.ProcessorCount;

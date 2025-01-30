@@ -58,7 +58,7 @@ public static class NettyMemoryEstimator
     typeof(InitializePlugins),
     typeof(EraStep),
     typeof(InitializeBlockchain))]
-public class InitializeNetwork : IStep
+public class InitializeNetwork : InitStep, IStep
 {
     public const string PeersDbPath = "peers";
 
@@ -75,7 +75,7 @@ public class InitializeNetwork : IStep
         _syncConfig = _api.Config<ISyncConfig>();
     }
 
-    public async Task Execute(CancellationToken cancellationToken)
+    protected override async Task Setup(CancellationToken cancellationToken)    
     {
         await Initialize(cancellationToken);
     }

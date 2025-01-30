@@ -21,7 +21,7 @@ using Nethermind.State.Repositories;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
-    public class InitializeBlockTree : IStep
+    public class InitializeBlockTree : InitStep, IStep
     {
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
@@ -31,7 +31,7 @@ namespace Nethermind.Init.Steps
             (_get, _set) = api.ForInit;
         }
 
-        public Task Execute(CancellationToken cancellationToken)
+        protected override Task Setup(CancellationToken cancellationToken)        
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();

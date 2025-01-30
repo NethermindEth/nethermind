@@ -11,7 +11,7 @@ namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree),
         typeof(InitializePrecompiles))] // Unfortunately EngineRPC API need review blockTree
-    public class StartBlockProducer : IStep
+    public class StartBlockProducer : InitStep, IStep
     {
         private readonly IApiWithBlockchain _api;
 
@@ -20,7 +20,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public Task Execute(CancellationToken _)
+        protected override Task Setup(CancellationToken cancellationToken)
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction() && _api.BlockProducer is not null)
             {

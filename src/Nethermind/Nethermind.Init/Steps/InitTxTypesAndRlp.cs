@@ -15,12 +15,12 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
-    public class InitTxTypesAndRlp(INethermindApi api) : IStep
+    public class InitTxTypesAndRlp(INethermindApi api) : InitStep, IStep
     {
         private readonly INethermindApi _api = api ?? throw new ArgumentNullException(nameof(api));
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual Task Execute(CancellationToken _)
+        protected override Task Setup(CancellationToken cancellationToken)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 

@@ -25,7 +25,7 @@ public class InitDatabaseSnapshot : InitDatabase
         _logger = _api.LogManager.GetClassLogger();
     }
 
-    public override async Task Execute(CancellationToken cancellationToken)
+    protected override async Task Setup(CancellationToken cancellationToken)
     {
         switch (_api.Config<IInitConfig>().DiagnosticMode)
         {
@@ -38,7 +38,7 @@ public class InitDatabaseSnapshot : InitDatabase
                 break;
         }
 
-        await base.Execute(cancellationToken);
+        await base.Setup(cancellationToken);
     }
 
     private async Task InitDbFromSnapshot(CancellationToken cancellationToken)

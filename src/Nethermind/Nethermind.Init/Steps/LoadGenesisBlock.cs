@@ -15,7 +15,7 @@ using Nethermind.State;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins))]
-    public class LoadGenesisBlock : IStep
+    public class LoadGenesisBlock : InitStep, IStep
     {
         private readonly IApiWithBlockchain _api;
         private readonly ILogger _logger;
@@ -29,7 +29,7 @@ namespace Nethermind.Init.Steps
             _genesisProcessedTimeout = TimeSpan.FromMilliseconds(_api.Config<IBlocksConfig>().GenesisTimeoutMs);
         }
 
-        public async Task Execute(CancellationToken _)
+        protected override async Task Setup(CancellationToken _)
         {
             _initConfig = _api.Config<IInitConfig>();
             Hash256? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash);

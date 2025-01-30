@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -119,7 +120,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepLong : IStep
     {
-        public async Task Execute(CancellationToken cancellationToken)
+        public Task StepCompleted => Task.CompletedTask;
+
+        public async Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             await Task.Delay(100000, cancellationToken);
         }
@@ -131,7 +134,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepForever : IStep
     {
-        public async Task Execute(CancellationToken cancellationToken)
+        public Task StepCompleted => Task.CompletedTask;
+        public async Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             await Task.Delay(100000);
         }
@@ -143,7 +147,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepA : IStep
     {
-        public Task Execute(CancellationToken cancellationToken)
+        public Task StepCompleted => Task.CompletedTask;
+        public Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -156,7 +161,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(typeof(StepC))]
     public class StepB : IStep
     {
-        public Task Execute(CancellationToken cancellationToken)
+        public Task StepCompleted => Task.CompletedTask;
+        public Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -168,7 +174,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public abstract class StepC : IStep
     {
-        public virtual Task Execute(CancellationToken cancellationToken)
+        public Task StepCompleted => Task.CompletedTask;
+        public virtual Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -176,7 +183,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public abstract class StepD : IStep
     {
-        public virtual Task Execute(CancellationToken cancellationToken)
+        public Task StepCompleted => Task.CompletedTask;
+        public Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -191,7 +199,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
 
-        public override async Task Execute(CancellationToken cancellationToken)
+        public override async Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
         {
             await Task.Run(static () => throw new TestException());
         }

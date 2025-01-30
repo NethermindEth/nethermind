@@ -9,7 +9,7 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Steps;
 
-public class LogHardwareInfo : IStep
+public class LogHardwareInfo : InitStep, IStep
 {
     private readonly ILogger _logger;
 
@@ -20,7 +20,7 @@ public class LogHardwareInfo : IStep
         _logger = api.LogManager.GetClassLogger();
     }
 
-    public Task Execute(CancellationToken cancellationToken)
+    protected override Task Setup(CancellationToken _)    
     {
         if (!_logger.IsInfo) return Task.CompletedTask;
 

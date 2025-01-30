@@ -21,7 +21,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
-    public class InitDatabase : IStep
+    public class InitDatabase : InitStep, IStep
     {
         private readonly INethermindApi _api;
 
@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public virtual async Task Execute(CancellationToken _)
+        protected override async Task Setup(CancellationToken cancellationToken)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
 
