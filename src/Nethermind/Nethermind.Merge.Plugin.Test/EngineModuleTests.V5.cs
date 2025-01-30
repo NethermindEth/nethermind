@@ -131,13 +131,14 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
 
         byte[][]? inclusionList = (await rpc.engine_getInclusionList()).Data;
-        inclusionList.Should().NotBeEmpty();
-        inclusionList.Length.Should().Be(2);
 
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
+
         Assert.Multiple(() =>
         {
+            Assert.That(inclusionList, Is.Not.Null);
+            Assert.That(inclusionList, Has.Length.EqualTo(2));
             Assert.That(inclusionList[0].SequenceEqual(tx1Bytes));
             Assert.That(inclusionList[1].SequenceEqual(tx2Bytes));
         });
