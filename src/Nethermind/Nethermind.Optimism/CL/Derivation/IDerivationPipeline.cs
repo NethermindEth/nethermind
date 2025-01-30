@@ -11,5 +11,5 @@ public interface IDerivationPipeline
 {
     Task ConsumeV1Batches(BatchV1[] batches);
     Task ConsumeV0Batches(BatchV0[] batches);
-    event Action<OptimismPayloadAttributes[]>? OnL2BlocksDerived;
+    event Action<OptimismPayloadAttributes[], ulong>? OnL2BlocksDerived;
 }

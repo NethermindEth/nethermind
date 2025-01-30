@@ -73,7 +73,7 @@ public class DerivationPipeline : IDerivationPipeline
 
         var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
 
-        OnL2BlocksDerived?.Invoke(pa);
+        OnL2BlocksDerived?.Invoke(pa, l2Parent.Number);
     }
 
     private ulong GetNumberOfBits(BigInteger number)
@@ -94,5 +94,5 @@ public class DerivationPipeline : IDerivationPipeline
         throw new NotImplementedException();
     }
 
-    public event Action<OptimismPayloadAttributes[]>? OnL2BlocksDerived;
+    public event Action<OptimismPayloadAttributes[], ulong>? OnL2BlocksDerived;
 }

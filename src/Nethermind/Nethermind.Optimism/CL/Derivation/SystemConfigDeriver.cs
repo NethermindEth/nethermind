@@ -31,12 +31,11 @@ public class SystemConfigDeriver(
 {
     public SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit)
     {
-        // TODO: all SystemConfig parameters should be encoded in tx.Data();
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, extraData);
         byte[] scalar = new byte[32];
         scalar[0] = 1;
-        BinaryPrimitives.WriteUInt32BigEndian(scalar[24..28], l1BlockInfo.BlobBaseFeeScalar);
-        BinaryPrimitives.WriteUInt32BigEndian(scalar[28..32], l1BlockInfo.BaseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BlobBaseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(28), l1BlockInfo.BaseFeeScalar);
         return new SystemConfig()
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,

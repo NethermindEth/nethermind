@@ -9,6 +9,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
 
@@ -20,6 +21,9 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
     private readonly DepositTransactionBuilder _depositTransactionBuilder;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly ILogger _logger;
+
+    OptimismTxDecoder<Transaction> decoder = new();
+
 
     public PayloadAttributesDeriver(ulong chainId, ISystemConfigDeriver systemConfigDeriver, DepositTransactionBuilder depositTransactionBuilder, ILogger logger)
     {
@@ -36,40 +40,35 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         ulong txIdx = 0;
         int originIdx = 0;
         ulong l2ParentTimestamp = l2Parent.Timestamp;
-        SystemConfig currentSystemConfig =
-            _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(l2Parent.SystemConfig, l1Receipts[originIdx]);
-        L1BlockInfo currentL1OriginBlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origins[0], currentSystemConfig);
-        Transaction currentSystemTransaction =
-            _depositTransactionBuilder.BuildSystemTransaction(currentL1OriginBlockInfo);
-        currentSystemTransaction.Nonce = l2Parent.Number + 2;
-        payloadAttributes[0] =
-            BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origins[0], currentSystemConfig,
-                currentSystemTransaction, 0, 0);
-        for (int i = 1; i < (int)batch.BlockCount; i++)
+        SystemConfig currentSystemConfig = l2Parent.SystemConfig;
+        L1BlockInfo currentL1OriginBlockInfo = l2Parent.L1BlockInfo;
+        for (int i = 0; i < (int)batch.BlockCount; i++)
         {
-            if (((batch.OriginBits >> i) & 1) == 1)
+            bool isNewOrigin = ((batch.OriginBits >> i) & 1) == 1;
+            if (isNewOrigin)
             {
-                // New origin => next epoch
                 originIdx++;
-                BlockForRpc l1Origin = l1Origins[originIdx];
                 currentSystemConfig =
                     _systemConfigDeriver.UpdateSystemConfigFromL1BLockReceipts(currentSystemConfig, l1Receipts[originIdx]);
 
-                currentL1OriginBlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, currentSystemConfig);
-                currentSystemTransaction = _depositTransactionBuilder.BuildSystemTransaction(currentL1OriginBlockInfo);
-                currentSystemTransaction.Nonce = l2Parent.Number + 2 + (ulong)i;
-
-                payloadAttributes[i] = BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origin,
-                    currentSystemConfig, currentSystemTransaction, i, txIdx);
+                currentL1OriginBlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origins[originIdx], currentSystemConfig, 0);
             }
             else
             {
-                currentSystemTransaction.Nonce = l2Parent.Number + 2 + (ulong)i;
-                Transaction[] txs =
-                    new[] { currentSystemTransaction }.Concat(BuildUserTransactions(batch, txIdx,
-                        batch.BlockTxCounts[i])).ToArray();
-                payloadAttributes[i] = BuildOneBlock(l1Origins[originIdx], l2ParentTimestamp, currentSystemConfig, txs);
+                currentL1OriginBlockInfo.SequenceNumber++;
+            }
 
+            Transaction systemTransaction = _depositTransactionBuilder.BuildSystemTransaction(currentL1OriginBlockInfo);
+            systemTransaction.Nonce = l2Parent.Number + 2 + (ulong)i;
+
+            if (isNewOrigin)
+            {
+                payloadAttributes[i] = BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origins[originIdx],
+                currentSystemConfig, systemTransaction, i, txIdx);
+            }
+            else
+            {
+                payloadAttributes[i] = BuildRegularBlock(batch, l2ParentTimestamp, l1Origins[originIdx], currentSystemConfig, systemTransaction, i, txIdx);
             }
 
             l2ParentTimestamp = payloadAttributes[i].Timestamp;
@@ -81,19 +80,32 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
     private OptimismPayloadAttributes BuildFirstBlockInEpoch(BatchV1 batch, ulong l2ParentTimestamp,
         BlockForRpc l1Origin, SystemConfig systemConfig, Transaction systemTransaction, int blockIdx, ulong txsFrom)
     {
-        Transaction[] userDepositTxs = _depositTransactionBuilder.BuildUserDepositTransactions();
-        Transaction[] upgradeTxs = _depositTransactionBuilder.BuildUpgradeTransactions();
-        Transaction[] forceIncludeTxs = _depositTransactionBuilder.BuildForceIncludeTransactions();
+        // Transaction[] userDepositTxs = _depositTransactionBuilder.BuildUserDepositTransactions();
+        // Transaction[] upgradeTxs = _depositTransactionBuilder.BuildUpgradeTransactions();
+        // Transaction[] forceIncludeTxs = _depositTransactionBuilder.BuildForceIncludeTransactions();
         Transaction[] userTransactions = BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx]);
 
-        Transaction[] allTxs = new[] { systemTransaction }.Concat(userDepositTxs).Concat(upgradeTxs)
-            .Concat(forceIncludeTxs).Concat(userTransactions).ToArray();
+        // Transaction[] allTxs = new[] { systemTransaction }.Concat(userDepositTxs).Concat(upgradeTxs)
+        //     .Concat(forceIncludeTxs).Concat(userTransactions).ToArray();
 
-        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, allTxs);
+        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, userTransactions);
     }
 
-    private OptimismPayloadAttributes BuildOneBlock(BlockForRpc l1Origin, ulong l2ParentTimestamp, SystemConfig systemConfig, Transaction[] txs)
+    private OptimismPayloadAttributes BuildRegularBlock(BatchV1 batch, ulong l2ParentTimestamp,
+        BlockForRpc l1Origin, SystemConfig systemConfig, Transaction systemTransaction, int blockIdx, ulong txsFrom)
     {
+        Transaction[] userTransactions = BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx]);
+
+        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, userTransactions);
+    }
+
+    private OptimismPayloadAttributes BuildOneBlock(BlockForRpc l1Origin, ulong l2ParentTimestamp, SystemConfig systemConfig, Transaction systemTx, Transaction[] userTxs)
+    {
+        RlpStream systemTxStream =
+            new(decoder.GetLength(systemTx, RlpBehaviors.SkipTypedWrapping, true, true, _chainId));
+        decoder.Encode(systemTx, systemTxStream, RlpBehaviors.SkipTypedWrapping, true, true, _chainId);
+
+
         OptimismPayloadAttributes payload = new()
         {
             GasLimit = (long)systemConfig.GasLimit,
@@ -103,8 +115,10 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
             Withdrawals = [],
             PrevRandao = l1Origin.MixHash,
             SuggestedFeeRecipient = SequencerFeeVault,
+            Transactions = (new byte[][] { systemTxStream.Data!.ToArray()! }).Concat(userTxs
+                .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+                .ToArray()).ToArray()
         };
-        payload.SetTransactions(txs);
         return payload;
     }
 

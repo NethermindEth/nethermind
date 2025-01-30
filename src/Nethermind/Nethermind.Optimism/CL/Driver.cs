@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -47,6 +49,7 @@ public class Driver : IDisposable
     {
         InsertBlock();
         _channelStorage.OnChannelBuilt += OnChannelBuilt;
+        _derivationPipeline.OnL2BlocksDerived += OnL2BlocksDerived;
         // _l1Bridge.OnNewL1Head += OnNewL1Head;
     }
 
@@ -58,12 +61,108 @@ public class Driver : IDisposable
         ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
         BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
         _derivationPipeline.ConsumeV1Batches(batches);
-        // TODO: put into batch queue
+    }
+
+    private void OnL2BlocksDerived(OptimismPayloadAttributes[] payloadAttributes, ulong l2ParentNumber)
+    {
+        _logger.Error($"CHECKING PAYLOAD ATTRIBUTES");
+        for (int i = 0; i < 1; i++)
+        {
+            var block = _l2EthRpc.eth_getBlockByNumber(new((long)l2ParentNumber + 1 + i), true).Data;
+            var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
+
+            ComparePayloadAttributes(expectedPayloadAttributes, payloadAttributes[i]);
+        }
+    }
+
+    private OptimismPayloadAttributes PayloadAttributesFromBlockForRpc(BlockForRpc block)
+    {
+        OptimismPayloadAttributes result = new()
+        {
+            NoTxPool = true,
+            EIP1559Params = null,
+            GasLimit = block.GasLimit,
+            ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
+            PrevRandao = block.MixHash,
+            SuggestedFeeRecipient = block.Miner,
+            Timestamp = block.Timestamp.ToUInt64(null),
+            Withdrawals = block.Withdrawals?.ToArray()
+        };
+        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t => t.ToTransaction()).ToArray();
+        result.SetTransactions(txs);
+
+        return result;
+    }
+
+    private void ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual)
+    {
+        if (expected.NoTxPool != actual.NoTxPool)
+        {
+            _logger.Error($"Invalid NoTxPool. Expected {expected.NoTxPool}, Actual {actual.NoTxPool}");
+        }
+
+        if (expected.EIP1559Params != actual.EIP1559Params)
+        {
+            _logger.Error($"Invalid Eip1559Params");
+        }
+
+        if (expected.GasLimit != actual.GasLimit)
+        {
+            _logger.Error($"Invalid GasLimit. Expected {expected.GasLimit}, Actual {actual.GasLimit}");
+        }
+
+        if (expected.ParentBeaconBlockRoot != actual.ParentBeaconBlockRoot)
+        {
+            _logger.Error($"Invalid ParentBeaconBlockRoot. Expected {expected.ParentBeaconBlockRoot}, Actual {actual.ParentBeaconBlockRoot}");
+        }
+
+        if (expected.PrevRandao != actual.PrevRandao)
+        {
+            _logger.Error($"Invalid PrevRandao. Expected {expected.PrevRandao}, Actual {actual.PrevRandao}");
+        }
+
+        if (expected.SuggestedFeeRecipient != actual.SuggestedFeeRecipient)
+        {
+            _logger.Error($"Invalid SuggestedFeeRecipient. Expected {expected.SuggestedFeeRecipient}, Actual {actual.SuggestedFeeRecipient}");
+        }
+
+        if (expected.Timestamp != actual.Timestamp)
+        {
+            _logger.Error($"Invalid Timestamp. Expected {expected.Timestamp}, Actual {actual.Timestamp}");
+        }
+
+        if (expected.Withdrawals != actual.Withdrawals)
+        {
+            _logger.Error($"Invalid Withdrawals");
+        }
+
+        if (expected.Transactions!.Length != actual.Transactions!.Length)
+        {
+            _logger.Error($"Invalid Transactions.Length");
+        }
+        //
+        for (int i = 0; i < expected.Transactions.Length; i++)
+        {
+            if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
+            {
+                // _logger.Error($"HERE");
+                // Transaction expectedTransaction =
+                //     decoder.Decode(expected.Transactions[i], new(expected.Transactions[i]), RlpBehaviors.SkipTypedWrapping)!;
+                //
+                // _logger.Error($"HERE2");
+                // Transaction actualTransaction =
+                //     decoder.Decode(actual.Transactions[i], new(actual.Transactions[i]), RlpBehaviors.SkipTypedWrapping)!;;
+                _logger.Error($"Invalid Transaction {i}. Expected:\n{
+                    BitConverter.ToString(expected.Transactions[i]).ToLower().Replace("-", "")}, Actual:\n{
+                        BitConverter.ToString(actual.Transactions[i]).ToLower().Replace("-", "")}");
+                // _logger.Error($"Invalid Transaction. Expected:\n{expectedTransaction}, Actual:\n{actualTransaction}");
+            }
+        }
+        _logger.Error($"CHECKED");
     }
 
     public async void OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
     {
-        _logger.Error($"INVOKED {block.SlotNumber}");
         // Filter batch submitter transaction
         foreach (Transaction transaction in block.Transactions)
         {
@@ -79,12 +178,10 @@ public class Driver : IDisposable
                 }
             }
         }
-        _logger.Error("SLOT PROCESSED");
     }
 
     private async Task ProcessBlobBatcherTransaction(Transaction transaction, ulong slotNumber)
     {
-        _logger.Error($"PROCESS BLOB");
         BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
         while (blobSidecars is null)
         {
@@ -98,11 +195,8 @@ public class Driver : IDisposable
             {
                 if (blobSidecars[j].BlobVersionedHash.SequenceEqual(transaction.BlobVersionedHashes[i]!))
                 {
-                    _logger.Error($"GOT BLOB VERSIONED HASH: {BitConverter.ToString(transaction.BlobVersionedHashes[i]!).Replace("-", "")}");
-                    _logger.Error($"BLOB: {BitConverter.ToString(blobSidecars[j].Blob[..32]).Replace("-", "")}");
                     byte[] data = BlobDecoder.DecodeBlob(blobSidecars[j]);
                     Frame[] frames = FrameDecoder.DecodeFrames(data);
-                    _logger.Error($"FRAME: {frames[0].FrameNumber} {frames[0].IsLast} {frames[0].ChannelId}");
                     _channelStorage.ConsumeFrames(frames);
                 }
             }
@@ -122,6 +216,7 @@ public class Driver : IDisposable
             Timestamp = block.Timestamp.ToUInt64(null),
             ParentHash = block.ParentHash,
             SystemConfig = config,
+            L1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input!, block.ExtraData),
         };
         _l2BlockTree.AddBlock(nativeBlock);
     }

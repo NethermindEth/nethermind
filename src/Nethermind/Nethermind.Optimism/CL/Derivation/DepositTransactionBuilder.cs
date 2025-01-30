@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -17,7 +16,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     public Transaction BuildSystemTransaction(L1BlockInfo blockInfo)
     {
         byte[] data = new byte[SystemTxDataLengthEcotone];
-        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(), blockInfo.MethodId);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(), 1141530144); // TODO method id
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(4), blockInfo.BaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(8), blockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(12), blockInfo.SequenceNumber);
@@ -46,7 +45,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             SenderAddress = engineParameters.SystemTransactionSender,
             To = engineParameters.SystemTransactionTo,
             GasLimit = 1000000,
-            IsOPSystemTransaction = true,
+            IsOPSystemTransaction = false,
             Value = UInt256.Zero,
             SourceHash = sourceHash
         };

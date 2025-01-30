@@ -14,7 +14,6 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public class L1BlockInfo
 {
-    public required uint MethodId;
     public required uint BaseFeeScalar;
     public required uint BlobBaseFeeScalar;
     public required ulong SequenceNumber;
@@ -40,6 +39,10 @@ public class L1BlockInfoBuilder
 
         // TODO check MethodId
         uint methodId = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
+        if (methodId != 1141530144)
+        {
+            throw new ArgumentException($"MethodId is incorrect. {methodId}");
+        }
         uint baseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
         uint blobBaseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
         ulong sequenceNumber = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(8));
@@ -57,7 +60,6 @@ public class L1BlockInfoBuilder
         Address batcherAddress = new(depositTxData.TakeAndMove(20));
         return new()
         {
-            MethodId = methodId,
             BaseFeeScalar = baseFeeScalar,
             BlobBaseFeeScalar = blobBaseFeeScalar,
             SequenceNumber = sequenceNumber,
@@ -70,15 +72,14 @@ public class L1BlockInfoBuilder
         };
     }
 
-    public static L1BlockInfo FromL1BlockAndSystemConfig(BlockForRpc block, SystemConfig config)
+    public static L1BlockInfo FromL1BlockAndSystemConfig(BlockForRpc block, SystemConfig config, ulong sequenceNumber)
     {
         BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, out UInt256 feePerBlobGas);
         return new()
         {
-            MethodId = 0,
             BaseFeeScalar = config.BaseFeeScalar,
             BlobBaseFeeScalar = config.BlobBaseFeeScalar,
-            SequenceNumber = 0,
+            SequenceNumber = sequenceNumber,
             Timestamp = block.Timestamp.ToUInt64(null),
             Number = (ulong)block.Number!.Value,
             BaseFee = block.BaseFeePerGas!.Value,
