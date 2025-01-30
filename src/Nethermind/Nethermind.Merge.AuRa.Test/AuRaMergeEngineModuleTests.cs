@@ -36,7 +36,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -64,10 +63,34 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
+        "0x62853789c9594e0666346ad624e3a2fe73b0d05e7c9566f49a4241da748aa528",
+        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b")]
+    public override Task NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot)
+        => base.NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(blockHash, stateRoot);
+
+    [TestCase(
+        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
+        "0x81a41f22fa776446737cc3dfab96f8536bacfa2fd3d85b0f013b55a6be3ecfe7",
+        "0x6d43db6fab328470c4ad01d6658a317496d373a1892aab8273bf52448beb915e",
+        "0xba04b196bf0014df",
+        "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
+        "0x2632e314a000",
+        "0x5208")]
+    public override Task Should_build_block_with_inclusion_list_transactions_V5(
+        string latestValidHash,
+        string blockHash,
+        string stateRoot,
+        string payloadId,
+        string receiptsRoot,
+        string blockFees,
+        string gasUsed)
+        => base.Should_build_block_with_inclusion_list_transactions_V5(latestValidHash, blockHash, stateRoot, payloadId, receiptsRoot, blockFees, gasUsed);
+
+    [TestCase(
         "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
         "0xea3bdca86662fa8b5399f2c3ff494ced747f07834740ead723ebe023852e9ea1",
         "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
-        "0x408e73636640d863")]
+        "0x6c8286694756e470")]
     public override Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V5(latestValidHash, blockHash, stateRoot, payloadId);
 

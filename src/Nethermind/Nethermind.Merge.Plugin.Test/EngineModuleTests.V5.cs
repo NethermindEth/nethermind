@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -146,9 +145,10 @@ public partial class EngineModuleTests
 
     [TestCase(
         "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
-        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b",
-        "0x651832fe5119239f")]
-    public async Task NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot, string payloadId)
+        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b")]
+    public virtual async Task NewPayloadV5_should_reject_block_with_unsatisfied_inclusion_list_V5(
+        string blockHash,
+        string stateRoot)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -207,7 +207,7 @@ public partial class EngineModuleTests
         "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
         "0x2632e314a000",
         "0x5208")]
-    public async Task Should_build_block_with_inclusion_list_transactions_V5(
+    public virtual async Task Should_build_block_with_inclusion_list_transactions_V5(
         string latestValidHash,
         string blockHash,
         string stateRoot,
