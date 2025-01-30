@@ -121,9 +121,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
     {
 
+        Console.WriteLine($"Getting account {address}");
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
+            Console.WriteLine($"Getting account {address}: block not found");
             return ResultWrapper<AccountState>.Fail("Block not found");
         }
 
@@ -133,15 +135,18 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                     out AccountStruct account))
             {
+                Console.WriteLine($"Got account: {address}");
                 return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
                     account.CodeHash));
             }
 
         }
-        catch
+        catch (Exception e)
         {
+            Console.WriteLine(e);
         }
 
+        Console.WriteLine($"Account not found: {address}");
         return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
