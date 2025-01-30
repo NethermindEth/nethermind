@@ -26,9 +26,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
     {
+        var stopwatch = Stopwatch.StartNew();
         BlockHeader? blockHeader = blockFinder.FindHeader(blockParam);
         if (blockHeader is null)
         {
+            stopwatch.Stop();
             return ResultWrapper<Hash256>.Fail("Block not found");
         }
 
@@ -69,14 +71,16 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                         UInt256 originalBalance = account.Balance;
                         if (accountChange.Balance.Value > originalBalance)
                         {
-                            worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance, releaseSpec);
+                            worldState.AddToBalance(address, accountChange.Balance.Value - originalBalance,
+                                releaseSpec);
                         }
                         else if (accountChange.Balance.Value == originalBalance)
                         {
                         }
                         else
                         {
-                            worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value, releaseSpec);
+                            worldState.SubtractFromBalance(address, originalBalance - accountChange.Balance.Value,
+                                releaseSpec);
                         }
 
                         if (worldState.GetBalance(address) != accountChange.Balance.Value)
@@ -111,12 +115,21 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             worldState.Commit(releaseSpec);
             //worldState.CommitTree(blockHeader.Number + 1);
             worldState.RecalculateStateRoot();
+            stopwatch.Stop();
+            Console.WriteLine($"Rbuilder calculation took {stopwatch.ElapsedMicroseconds()}");
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
         }
         finally
         {
             _overridableWorldScopePool.Return(worldScope);
         }
+
+        Console.WriteLine($"Rbuilder calculation FAIL took {stopwatch.ElapsedMicroseconds()}");
+        return ResultWrapper<Hash256>.Fail("");
     }
 
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
