@@ -121,11 +121,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
     {
 
-        Console.WriteLine($"Getting account {address}");
+        Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Getting account {address}");
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            Console.WriteLine($"Getting account {address}: block not found");
+            Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Getting account {address}: block not found");
             return ResultWrapper<AccountState>.Fail("Block not found");
         }
 
@@ -135,7 +135,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                     out AccountStruct account))
             {
-                Console.WriteLine($"Got account: {address}");
+                Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Got account: {address}");
                 return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
                     account.CodeHash));
             }
@@ -146,7 +146,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             Console.WriteLine(e);
         }
 
-        Console.WriteLine($"Account not found: {address}");
+        Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Account not found: {address}");
         return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
