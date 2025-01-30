@@ -92,7 +92,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
     private async Task<byte[]?> FetchRlp(Hash256 rootHash, Hash256? address, TreePath path, Hash256 hash, CancellationToken cancellationToken)
     {
-        Task<byte[]?>[] tasks = Enumerable.Range(0, ConcurrentAttempt)
+        using ArrayPoolList<Task<byte[]?>> tasks = Enumerable.Range(0, ConcurrentAttempt)
             .Select(_ =>
             {
                 return peerPool.AllocateAndRun2(async (peer) =>
@@ -116,7 +116,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                     return null;
                 }, NodePeerStrategy, AllocationContexts.State, cancellationToken);
             })
-            .ToArray();
+            .ToPooledList(ConcurrentAttempt);
 
         return await Wait.AnyWhere(
             result => result is not null,
