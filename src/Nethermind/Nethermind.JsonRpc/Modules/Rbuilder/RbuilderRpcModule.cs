@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -121,11 +122,14 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
     {
 
-        Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Getting account {address}");
+        Console.WriteLine($"Getting account {address}");
+        var stopwatch = Stopwatch.StartNew();
+
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Getting account {address}: block not found");
+            stopwatch.Stop();
+            Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Getting account {address}: block not found");
             return ResultWrapper<AccountState>.Fail("Block not found");
         }
 
@@ -135,7 +139,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                     out AccountStruct account))
             {
-                Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Got account: {address}");
+                stopwatch.Stop();
+                Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Got account: {address}");
                 return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
                     account.CodeHash));
             }
@@ -146,7 +151,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             Console.WriteLine(e);
         }
 
-        Console.WriteLine($"[{DateTime.Now.ToString("HH:mm:ss.ffff")}]Account not found: {address}");
+        stopwatch.Stop();
+        Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Account not found: {address}");
         return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
