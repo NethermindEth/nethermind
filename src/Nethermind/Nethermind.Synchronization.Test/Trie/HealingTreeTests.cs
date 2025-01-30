@@ -162,6 +162,7 @@ public class HealingTreeTests
         Hash256 FillStorage(IContainer server)
         {
             IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
+            IBlockTree blockTree = server.Resolve<IBlockTree>();
             mainWorldState.StateRoot = Keccak.EmptyTreeHash;
 
             for (int i = 0; i < 100; i++)
@@ -179,6 +180,12 @@ public class HealingTreeTests
 
             mainWorldState.Commit(Cancun.Instance);
             mainWorldState.CommitTree(1);
+
+            // Snap server check for the past 128 block in blocktree explicitly to pass hive test.
+            // So need to simulate block processing..
+            Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
+            blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            blockTree.UpdateMainChain([block], true);
 
             return mainWorldState.StateRoot;
         }
