@@ -201,7 +201,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
         var maxBlobGasPerTxn = spec.GetMaxBlobGasPerBlock();
         return totalDataGas > maxBlobGasPerTxn ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTxn)
-            : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
+            : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs(transaction.GasLimit)
             : ValidateBlobVersionedHashes();
 
         ValidationResult ValidateBlobVersionedHashes()
