@@ -21,7 +21,7 @@ public class EraStep : InitStep, IStep
         _api = api;
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)    
+    protected override async Task Setup(CancellationToken cancellationToken)
     {
         IContainer container = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
             .AddModule(new EraModule())

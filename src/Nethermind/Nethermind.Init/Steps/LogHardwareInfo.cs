@@ -20,7 +20,7 @@ public class LogHardwareInfo : InitStep, IStep
         _logger = api.LogManager.GetClassLogger();
     }
 
-    protected override Task Setup(CancellationToken _)    
+    protected override Task Setup(CancellationToken _)
     {
         if (!_logger.IsInfo) return Task.CompletedTask;
 

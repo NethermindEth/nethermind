@@ -47,7 +47,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override async Task Setup(CancellationToken _)        
+        protected override async Task Setup(CancellationToken _)
         {
             await InitBlockchain();
         }

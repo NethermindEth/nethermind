@@ -21,7 +21,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override async Task Setup(CancellationToken cancellationToken)        
+        protected override async Task Setup(CancellationToken cancellationToken)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");

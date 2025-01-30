@@ -75,7 +75,7 @@ public class InitializeNetwork : InitStep, IStep
         _syncConfig = _api.Config<ISyncConfig>();
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)    
+    protected override async Task Setup(CancellationToken cancellationToken)
     {
         await Initialize(cancellationToken);
     }

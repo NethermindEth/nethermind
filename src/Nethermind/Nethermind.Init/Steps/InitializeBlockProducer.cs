@@ -24,7 +24,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override Task Setup(CancellationToken _)        
+        protected override Task Setup(CancellationToken _)
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {

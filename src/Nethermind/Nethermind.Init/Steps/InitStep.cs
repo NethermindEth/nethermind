@@ -10,7 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Init.Steps;
-public abstract class InitStep 
+public abstract class InitStep
 {
     public Task StepCompleted { private set; get; }
 
@@ -22,7 +22,7 @@ public abstract class InitStep
 
     public async Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
     {
-        cancellationToken.Register(()=> _taskCompletedSource.TrySetCanceled());
+        cancellationToken.Register(() => _taskCompletedSource.TrySetCanceled());
 
         await Task.WhenAll(dependentSteps);
         await Setup(cancellationToken);

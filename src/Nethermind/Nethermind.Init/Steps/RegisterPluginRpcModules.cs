@@ -20,7 +20,7 @@ public class RegisterPluginRpcModules : InitStep, IStep
         _api = api;
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)    
+    protected override async Task Setup(CancellationToken cancellationToken)
     {
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
 

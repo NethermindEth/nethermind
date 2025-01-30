@@ -31,7 +31,7 @@ namespace Nethermind.Init.Steps
             (_get, _set) = api.ForInit;
         }
 
-        protected override Task Setup(CancellationToken cancellationToken)        
+        protected override Task Setup(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();

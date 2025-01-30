@@ -37,58 +37,11 @@ namespace Nethermind.Init.Steps
 
             _allSteps = loader.LoadSteps(_api.GetType()).ToList();
             _allStepsByBaseType = _allSteps.ToDictionary(static s => s.StepBaseType, static s => s);
-
-            _logger.Info("" + string.Join(Environment.NewLine, _allSteps.Select((s) => s.ToString())));
-        }
-
-        private async Task ReviewDependencies(CancellationToken cancellationToken)
-        {
-            bool changedAnything;
-            do
-            {
-                foreach (StepInfo stepInfo in _allSteps)
-                {
-                    _logger.Debug($"{stepInfo} is {stepInfo.Stage}");
-                }
-
-                await _autoResetEvent.WaitOneAsync(cancellationToken);
-
-                if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
-
-                changedAnything = false;
-                foreach (StepInfo stepInfo in _allSteps)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (stepInfo.Stage == StepInitializationStage.WaitingForDependencies)
-                    {
-                        bool allDependenciesFinished = true;
-                        foreach (Type dependency in stepInfo.Dependencies)
-                        {
-                            StepInfo dependencyInfo = _allStepsByBaseType[dependency];
-                            if (dependencyInfo.Stage != StepInitializationStage.Complete)
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"{stepInfo} is waiting for {dependencyInfo}");
-                                allDependenciesFinished = false;
-                                break;
-                            }
-                        }
-
-                        if (allDependenciesFinished)
-                        {
-                            stepInfo.Stage = StepInitializationStage.WaitingForExecution;
-                            changedAnything = true;
-                            if (_logger.IsDebug) _logger.Debug($"{stepInfo} stage changed to {stepInfo.Stage}");
-                            _autoResetEvent.Set();
-                        }
-                    }
-                }
-            } while (changedAnything);
         }
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            RunOneRoundOfInitialization(cancellationToken);
+            CreateAndExecuteSteps(cancellationToken);
 
             Task current;
             do
@@ -101,7 +54,7 @@ namespace Nethermind.Init.Steps
 
         private readonly List<Task> _allRequiredSteps = new();
 
-        private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
+        private void CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
             Dictionary<Type, IStep> createdSteps = [];
 
@@ -122,10 +75,10 @@ namespace Nethermind.Init.Steps
             {
                 if (!createdSteps.ContainsKey(stepInfo.StepType))
                 {
-                    throw new StepDependencyException($"Initialization failed because {stepInfo} could not be created.");
+                    throw new StepDependencyException($"Could not initialize because {stepInfo} could not be created.");
                 }
                 IStep step = createdSteps[stepInfo.StepType];
-                
+
                 Task task = ExecuteStep(step, stepInfo, createdSteps, cancellationToken);
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
 
@@ -147,10 +100,8 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Step {step.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-
-                stepInfo.Stage = StepInitializationStage.Complete;
             }
-            catch (Exception exception) when (exception is not TaskCanceledException) 
+            catch (Exception exception) when (exception is not TaskCanceledException)
             {
                 if (step.MustInitialize)
                 {
@@ -158,8 +109,6 @@ namespace Nethermind.Init.Steps
                         _logger.Error(
                             $"Step {step.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
                             exception);
-
-                    stepInfo.Stage = StepInitializationStage.Failed;
                     throw;
                 }
 
@@ -168,7 +117,6 @@ namespace Nethermind.Init.Steps
                     _logger.Warn(
                         $"Step {step.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
                 }
-                stepInfo.Stage = StepInitializationStage.Complete;
             }
             finally
             {

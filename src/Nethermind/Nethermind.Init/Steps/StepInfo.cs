@@ -31,11 +31,9 @@ namespace Nethermind.Init.Steps
 
         public Type[] Dependencies { get; }
 
-        public StepInitializationStage Stage { get; set; }
-
         public override string ToString()
         {
-            return $"{StepType.Name} : {StepBaseType.Name} ({Stage})";
+            return $"{StepType.Name} : {StepBaseType.Name}";
         }
     }
 }
