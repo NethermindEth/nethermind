@@ -986,6 +986,8 @@ public partial class BlockDownloaderTests
     private class Context(IComponentContext scope)
     {
         public ResponseBuilder ResponseBuilder => scope.Resolve<ResponseBuilder>();
+        public SyncFeedComponent<BlocksRequest> FastSyncFeedComponent =>
+            scope.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed));
         private SyncFeedComponent<BlocksRequest> FullSyncFeedComponent =>
             scope.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed));
         public BlockDownloader BlockDownloader => FullSyncFeedComponent.BlockDownloader;
@@ -994,124 +996,6 @@ public partial class BlockDownloaderTests
         public ISyncPeerPool PeerPool => scope.Resolve<ISyncPeerPool>();
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
         public SyncDispatcher<BlocksRequest> Dispatcher => FullSyncFeedComponent.Dispatcher;
-
-        /*
-        private readonly Block _genesis = Build.A.Block.Genesis.TestObject;
-        private readonly MemDb _blockInfoDb = new();
-        private IBlockTree? _blockTree { get; set; }
-        private Dictionary<long, Hash256> TestHeaderMapping { get; }
-        public InMemoryReceiptStorage ReceiptStorage { get; } = new();
-
-        private SyncBatchSize? _syncBatchSize;
-
-        public SyncBatchSize? SyncBatchSize
-        {
-            get => _syncBatchSize ??= new SyncBatchSize(LimboLogs.Instance);
-            set => _syncBatchSize = value;
-        }
-
-        protected ISpecProvider? _specProvider;
-        protected virtual ISpecProvider SpecProvider => _specProvider ??= MainnetSpecProvider.Instance;
-
-        public virtual IBlockTree BlockTree
-        {
-            get
-            {
-                if (_blockTree is null)
-                {
-                    _blockTree = Build.A.BlockTree()
-                        .WithoutSettingHead
-                        .WithSpecProvider(SpecProvider)
-                        .WithBlockInfoDb(_blockInfoDb)
-                        .TestObject;
-                    _blockTree.SuggestBlock(_genesis);
-                }
-
-                return _blockTree;
-            }
-            set
-            {
-                _blockTree = value;
-            }
-        }
-
-        private ISyncPeerPool? _peerPool;
-        public ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();
-
-        private ResponseBuilder? _responseBuilder;
-        public ResponseBuilder ResponseBuilder =>
-            _responseBuilder ??= new ResponseBuilder(BlockTree, TestHeaderMapping);
-
-        protected IBetterPeerStrategy? _betterPeerStrategy;
-
-        protected virtual IBetterPeerStrategy BetterPeerStrategy =>
-            _betterPeerStrategy ??= new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
-
-        private ActivatedSyncFeed<BlocksRequest?>? _feed;
-
-        public ActivatedSyncFeed<BlocksRequest?> Feed
-        {
-            get => _feed ??= new FullSyncFeed();
-            set => _feed = value;
-        }
-
-        private ISealValidator? _sealValidator;
-        public ISealValidator SealValidator
-        {
-            get => _sealValidator ??= Always.Valid;
-            set => _sealValidator = value;
-        }
-
-        private IBlockValidator? _blockValidator;
-        public IBlockValidator BlockValidator
-        {
-            get => _blockValidator ??= Always.Valid;
-            set => _blockValidator = value;
-        }
-
-        private BlockDownloader? _blockDownloader;
-        public virtual BlockDownloader BlockDownloader => _blockDownloader ??= new BlockDownloader(
-            Feed,
-            PeerPool,
-            BlockTree,
-            BlockValidator,
-            SealValidator,
-            NullSyncReport.Instance,
-            ReceiptStorage,
-            SpecProvider,
-            BetterPeerStrategy,
-            LimboLogs.Instance,
-            SyncBatchSize
-        );
-
-        private SyncDispatcher<BlocksRequest>? _dispatcher;
-        public SyncDispatcher<BlocksRequest> Dispatcher => _dispatcher ??= new SyncDispatcher<BlocksRequest>(
-            new TestSyncConfig()
-            {
-                MaxProcessingThreads = 0,
-            },
-            Feed!,
-            BlockDownloader,
-            PeerPool,
-            PeerAllocationStrategy,
-            LimboLogs.Instance
-        );
-
-        private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
-
-        protected virtual IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
-            _peerAllocationStrategy ??= new BlocksSyncPeerAllocationStrategyFactory();
-
-        public Context()
-        {
-            TestHeaderMapping = new Dictionary<long, Hash256>
-            {
-                {
-                    0, _genesis.Hash!
-                },
-            };
-        }
-        */
     }
 
     private class SyncPeerMock : ISyncPeer

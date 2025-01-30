@@ -345,6 +345,7 @@ public partial class BlockDownloaderTests
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, blockTrees.NotSyncedTreeBuilder.MetadataDb);
         }, new SyncConfig()
         {
+            FastSync = true,
             NonValidatorNode = true,
             DownloadBodiesInFastSync = false,
             DownloadReceiptsInFastSync = false
@@ -369,10 +370,11 @@ public partial class BlockDownloaderTests
             .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
             .Returns(Task.FromResult(peerAllocation));
 
-        ctx.Feed.Activate();
+        SyncFeedComponent<BlocksRequest> fastSyncFeedComponent = ctx.FastSyncFeedComponent;
+        fastSyncFeedComponent.Feed.Activate();
 
         CancellationTokenSource cts = new();
-        Task _ = ctx.Dispatcher.Start(cts.Token);
+        Task _ = fastSyncFeedComponent.Dispatcher.Start(cts.Token);
 
         Assert.That(
             () => ctx.BlockTree.BestKnownNumber,
@@ -493,94 +495,4 @@ public partial class BlockDownloaderTests
         public IBeaconPivot BeaconPivot => _scope.Resolve<IBeaconPivot>();
         public IPoSSwitcher PosSwitcher => _scope.Resolve<IPoSSwitcher>();
     }
-
-    /*
-    class PostMergeContext : Context
-    {
-        protected override ISpecProvider SpecProvider => _specProvider ??= new MainnetSpecProvider(); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
-
-        private BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder? _blockTreeScenario;
-
-        public BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder BlockTreeScenario
-        {
-            get =>
-                _blockTreeScenario ??
-                new BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder();
-            set => _blockTreeScenario = value;
-        }
-
-        public override IBlockTree BlockTree => _blockTreeScenario?.NotSyncedTree ?? base.BlockTree;
-
-        private IDb? _metadataDb;
-        private IDb MetadataDb => (_metadataDb ?? _blockTreeScenario?.NotSyncedTreeBuilder.MetadataDb) ?? (_metadataDb ??= new MemDb());
-
-        private MergeConfig? _mergeConfig;
-
-        public MergeConfig MergeConfig
-        {
-            get => _mergeConfig ??= new MergeConfig
-            { TerminalTotalDifficulty = "58750000000000000000000" }; // Main block downloader test assume pre-merge
-            set => _mergeConfig = value;
-        }
-
-        private BeaconPivot? _beaconPivot;
-
-        private PoSSwitcher? _posSwitcher;
-
-        public PoSSwitcher PosSwitcher => _posSwitcher ??= new(
-            MergeConfig,
-            new TestSyncConfig(),
-            MetadataDb,
-            BlockTree,
-            SpecProvider,
-            new ChainSpec(),
-            LimboLogs.Instance);
-        public BeaconPivot BeaconPivot => _beaconPivot ??= new(new TestSyncConfig(), MetadataDb, BlockTree, _posSwitcher!, LimboLogs.Instance);
-
-        protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=
-            new MergeBetterPeerStrategy(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), PosSwitcher, BeaconPivot, LimboLogs.Instance);
-
-        private IChainLevelHelper? _chainLevelHelper;
-
-        public IChainLevelHelper ChainLevelHelper
-        {
-            get =>
-                _chainLevelHelper ??= new ChainLevelHelper(
-                    BlockTree,
-                    BeaconPivot,
-                    new TestSyncConfig(),
-                    LimboLogs.Instance);
-            set => _chainLevelHelper = value;
-        }
-
-        private MergeBlockDownloader? _mergeBlockDownloader;
-
-        public override BlockDownloader BlockDownloader
-        {
-            get
-            {
-                return _mergeBlockDownloader ??= new(
-                    PosSwitcher,
-                    BeaconPivot,
-                    Feed,
-                    PeerPool,
-                    BlockTree,
-                    BlockValidator,
-                    SealValidator,
-                    NullSyncReport.Instance,
-                    ReceiptStorage,
-                    SpecProvider,
-                    BetterPeerStrategy,
-                    ChainLevelHelper,
-                    Substitute.For<ISyncProgressResolver>(),
-                    LimboLogs.Instance);
-            }
-        }
-
-        private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
-        protected override IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
-            _peerAllocationStrategy ??= new MergeBlocksSyncPeerAllocationStrategyFactory(PosSwitcher, BeaconPivot, LimboLogs.Instance);
-
-    }
-    */
 }
