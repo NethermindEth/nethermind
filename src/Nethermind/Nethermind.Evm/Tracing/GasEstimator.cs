@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Tracing
 
             transaction.GasLimit = gasLimit;
 
-            BlockExecutionContext blCtx = new(block);
+            BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
             _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
             transaction.GasLimit = originalGasLimit;
 

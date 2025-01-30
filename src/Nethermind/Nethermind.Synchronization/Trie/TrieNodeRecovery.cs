@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,26 +11,25 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Trie;
-
-public interface ITrieNodeRecovery<in TRequest>
-{
-    bool CanRecover => BlockchainProcessor.IsMainProcessingThread;
-    Task<byte[]?> Recover(ValueHash256 rlpHash, TRequest request);
-}
 
 public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
     protected readonly ILogger _logger;
+    private readonly bool _alwaysRecover;
     private const int MaxPeersForRecovery = 30;
 
-    protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager)
+    public bool CanRecover => BlockchainProcessor.IsMainProcessingThread || _alwaysRecover;
+
+    protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager, bool alwaysRecover)
     {
         _syncPeerPool = syncPeerPool;
         _logger = logManager?.GetClassLogger<TrieNodeRecovery<TRequest>>() ?? NullLogger.Instance;
+        _alwaysRecover = alwaysRecover;
     }
 
     public async Task<byte[]?> Recover(ValueHash256 rlpHash, TRequest request)

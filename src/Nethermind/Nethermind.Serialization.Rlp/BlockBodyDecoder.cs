@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
+public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
@@ -34,11 +35,11 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
     }
 
     public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
-        (
-            GetTxLength(b.Transactions),
-            GetUnclesLength(b.Uncles),
-            b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
-        );
+    (
+        GetTxLength(b.Transactions),
+        GetUnclesLength(b.Uncles),
+        b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
+    );
 
     private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
 
@@ -75,7 +76,17 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public void Serialize(RlpStream stream, BlockBody body)
+    public BlockBody Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        Span<byte> span = rlpStream.PeekNextItem();
+        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
+        BlockBody response = Decode(ref ctx, rlpBehaviors);
+        rlpStream.SkipItem();
+
+        return response;
+    }
+
+    public void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetBodyLength(body));
         stream.StartSequence(GetTxLength(body.Transactions));
