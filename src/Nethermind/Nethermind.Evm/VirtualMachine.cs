@@ -827,7 +827,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
+                StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, sectionIndex, in stack);
 
             programCounter++;
             Span<byte> bytes;
@@ -3474,10 +3474,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
+    private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, int sectionIndex, in EvmStack<TIsTracing> stackValue)
         where TIsTracing : struct, IIsTracing
     {
-        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
+        bool isEofFrame = vmState.Env.CodeInfo.Version > 0;
+        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env,
+            isEofFrame ? sectionIndex : 0, isEofFrame ? vmState.ReturnStackHead + 1 : 0);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
