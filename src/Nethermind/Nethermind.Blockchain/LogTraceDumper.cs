@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -47,10 +48,31 @@ public static class BlockTraceDumper
 
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
-        Hash256 blockHash,
+        object blocksOrHash,
         ILogger logger)
     {
         string fileName = string.Empty;
+        string condition;
+        string blockHash;
+        if (blocksOrHash is Hash256 failedBlockHash)
+        {
+            condition = "invalid";
+            blockHash = failedBlockHash.ToString();
+        }
+        else
+        {
+            List<Block> blocks = blocksOrHash as List<Block>;
+            condition = "valid on rerun";
+
+            if (blocks.Count == 1)
+            {
+                blockHash = blocks[0].Hash.ToString();
+            }
+            else
+            {
+                blockHash = string.Join("|", blocks.Select(b => b.Hash));
+            }
+        }
 
         try
         {
@@ -61,7 +83,7 @@ public static class BlockTraceDumper
                 IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Receipts trace of invalid block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Receipts trace of {condition} block {blockHash} in file {diagnosticFile.Name}");
             }
 
             if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
@@ -71,7 +93,7 @@ public static class BlockTraceDumper
                 IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Geth-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Geth-style trace of {condition} block {blockHash} in file {diagnosticFile.Name}");
             }
 
             if (blockTracer is ParityLikeBlockTracer parityTracer)
@@ -81,13 +103,13 @@ public static class BlockTraceDumper
                 IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Parity-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Parity-style trace of {condition} block {blockHash} in file {diagnosticFile.Name}");
             }
         }
         catch (IOException e)
         {
             if (logger.IsError)
-                logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
+                logger.Error($"Cannot save trace of {condition} block {blockHash} in file {fileName}", e);
         }
     }
 
