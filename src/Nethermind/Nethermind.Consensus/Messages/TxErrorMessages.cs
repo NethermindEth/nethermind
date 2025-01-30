@@ -46,8 +46,8 @@ public static class TxErrorMessages
     public static string BlobTxGasLimitExceeded(ulong totalDataGas, ulong maxBlobGas) =>
         $"BlobTxGasLimitExceeded: Transaction's totalDataGas={totalDataGas} exceeded MaxBlobGas per transaction={maxBlobGas}.";
 
-    public static string BlobTxMissingBlobs(long gasLimit) =>
-        $"err: blob transaction missing blob hashes (supplied gas {gasLimit})";
+    public const string BlobTxMissingBlobs =
+        "blob transaction missing blob hashes";
 
     public const string MissingBlobVersionedHash =
         "MissingBlobVersionedHash: Must be set.";

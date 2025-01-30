@@ -156,9 +156,8 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
 
-            return new CallOutput
+            return new CallOutput(tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error, tx.GasLimit)
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
@@ -202,9 +201,8 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
-            return new CallOutput
+            return new CallOutput(tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, tx.GasLimit)
             {
-                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
                 GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
@@ -221,9 +219,8 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!), header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
-            return new CallOutput
+            return new CallOutput(tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error, tx.GasLimit)
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
