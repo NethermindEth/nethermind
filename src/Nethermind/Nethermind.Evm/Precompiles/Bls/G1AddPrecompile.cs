@@ -47,12 +47,12 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         if (x.IsInf())
         {
-            return (inputData[BlsConst.LenG1..], true);
+            return (inputData[BlsConst.LenG1..].ToArray(), true);
         }
 
         if (y.IsInf())
         {
-            return (inputData[..BlsConst.LenG1], true);
+            return (inputData[..BlsConst.LenG1].ToArray(), true);
         }
 
         G1 res = x.Add(y);
