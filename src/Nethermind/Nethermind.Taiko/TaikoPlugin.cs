@@ -136,7 +136,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
-        ArgumentNullException.ThrowIfNull(_api.WorldState);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
@@ -168,7 +167,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 scope.WorldState,
                 _api.ReceiptStorage,
                 _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldState),
+                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldStateManager.GlobalWorldState),
                 new BlockhashStore(_api.SpecProvider, scope.WorldState),
                 _api.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));

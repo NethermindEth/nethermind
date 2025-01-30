@@ -124,7 +124,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, blCtx.Header, tracer, opts);
+                return _systemTransactionProcessor.Execute(tx, new BlockExecutionContext(blCtx.Header, SpecProvider.GetSpec(blCtx.Header)), tracer, opts);
             }
 
             return Execute(tx, in blCtx, tracer, opts);
@@ -496,7 +496,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out blobBaseFee);
+                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
@@ -755,14 +755,11 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
         {
             long spentGas = tx.GasLimit;
-            long operationGas = tx.GasLimit;
             var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                operationGas -= unspentGas;
-                spentGas = Math.Max(spentGas, floorGas);
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
@@ -771,11 +768,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
-                // If noValidation we didn't charge for gas, so do not refund
-                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(unspentGas + actualRefund) * gasPrice, spec);
                 spentGas -= actualRefund;
-                operationGas -= actualRefund;
             }
             else if (codeInsertRefund > 0)
             {
@@ -783,12 +776,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding delegations only: " + refund);
-                // If noValidation we didn't charge for gas, so do not refund
-                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)refund * gasPrice, spec);
                 spentGas -= refund;
-                operationGas -= refund;
             }
+
+            long operationGas = spentGas;
+            spentGas = Math.Max(spentGas, floorGas);
+
+            // If noValidation we didn't charge for gas, so do not refund
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
 
             return new GasConsumed(spentGas, operationGas);
         }

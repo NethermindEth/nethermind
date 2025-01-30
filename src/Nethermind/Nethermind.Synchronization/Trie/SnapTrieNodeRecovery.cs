@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
 {
-    public SnapTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
+    public SnapTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager, bool alwaysRecover = false) : base(syncPeerPool, logManager, alwaysRecover)
     {
     }
 

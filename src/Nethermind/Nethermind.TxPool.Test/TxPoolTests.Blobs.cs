@@ -43,6 +43,42 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_reject_blob_tx_if_max_size_is_exceeded([Values(true, false)] bool sizeExceeded, [Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(numberOfBlobs)
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) - (sizeExceeded ? 1 : 0) };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(sizeExceeded ? AcceptTxResult.MaxTxSizeExceeded : AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(sizeExceeded ? 0 : 1);
+        }
+
+        [Test]
+        public void should_calculate_blob_tx_size_properly([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(numberOfBlobs)
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            var txPoolConfig = new TxPoolConfig() { MaxBlobTxSize = tx.GetLength(shouldCountBlobs: false) };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.TryGetPendingBlobTransaction(tx.Hash!, out Transaction blobTx);
+            blobTx!.GetLength().Should().BeGreaterThan((int)txPoolConfig.MaxBlobTxSize);
+        }
+
+        [Test]
         public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
         {
             const int poolSize = 10;

@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -86,28 +87,38 @@ public partial class BlockProcessor(
     {
         if (suggestedBlocks.Count == 0) return [];
 
-        TxHashCalculator.CalculateInBackground(suggestedBlocks);
-        BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
         InitBranch(newBranchStateRoot);
+
+        Block suggestedBlock = suggestedBlocks[0];
+        // Start prewarming as early as possible
+        WaitForCacheClear();
+        (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
+            = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
+
+        BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+
         Hash256 preBlockStateRoot = newBranchStateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
-
-        Task? preWarmTask = null;
         try
         {
             for (int i = 0; i < blocksCount; i++)
             {
-                preWarmTask = null;
                 WaitForCacheClear();
-                Block suggestedBlock = suggestedBlocks[i];
+                suggestedBlock = suggestedBlocks[i];
+                // If prewarmCancellation is not null it means we are in first iteration of loop
+                // and started prewarming at method entry, so don't start it again
+                if (prewarmCancellation is null)
+                {
+                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
+                }
+
                 if (blocksCount > 64 && i % 8 == 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
@@ -121,23 +132,20 @@ public partial class BlockProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
-                bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
-                if (!skipPrewarming)
+                if (prewarmCancellation is not null)
                 {
-                    using CancellationTokenSource cancellationTokenSource = new();
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, _specProvider.GetSpec(suggestedBlock.Header), cancellationTokenSource.Token, _beaconBlockRootHandler);
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
-                    cancellationTokenSource.Cancel();
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
                 else
                 {
+                    // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
                     if (result != default)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
@@ -169,7 +177,13 @@ public partial class BlockProcessor(
                 preBlockStateRoot = processedBlock.StateRoot;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
+                preWarmTask = null;
                 _stateProvider.Reset(resizeCollections: true);
+
+                // Calculate the transaction hashes in the background and release tx sequence memory
+                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
+                // Though we still want to release the memory even if syncing rather than processing live
+                TxHashCalculator.CalculateInBackground(suggestedBlock);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -182,11 +196,26 @@ public partial class BlockProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
             QueueClearCaches(preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
         }
+    }
+
+    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
+    {
+        if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
+
+        CancellationTokenSource prewarmCancellation = new();
+        Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
+                                                   preBlockStateRoot,
+                                                   _specProvider.GetSpec(suggestedBlock.Header),
+                                                   prewarmCancellation.Token,
+                                                   _beaconBlockRootHandler);
+
+        return (prewarmCancellation, preWarmTask);
     }
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
@@ -309,6 +338,11 @@ public partial class BlockProcessor(
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+        // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
+        // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        _stateProvider.Commit(spec);
 
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
@@ -473,13 +507,13 @@ public partial class BlockProcessor(
         }
     }
 
-    private class TxHashCalculator(List<Block> suggestedBlocks) : IThreadPoolWorkItem
+    private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(List<Block> suggestedBlocks)
+        public static void CalculateInBackground(Block suggestedBlock)
         {
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
         }
 
         void IThreadPoolWorkItem.Execute()
@@ -487,13 +521,10 @@ public partial class BlockProcessor(
             // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
-            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
+            foreach (Transaction tx in suggestedBlock.Transactions)
             {
-                foreach (Transaction tx in block.Transactions)
-                {
-                    // Calculate the hashes to release the memory from the transactionSequence
-                    tx.CalculateHashInternal();
-                }
+                // Calculate the hashes to release the memory from the transactionSequence
+                tx.CalculateHashInternal();
             }
         }
     }
