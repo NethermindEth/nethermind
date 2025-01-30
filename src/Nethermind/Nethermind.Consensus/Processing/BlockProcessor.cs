@@ -270,10 +270,10 @@ public partial class BlockProcessor(
     // TODO: move to branch processor
     private void RestoreBranch(Hash256 branchingPointStateRoot)
     {
-        if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
+        if (_logger.IsInfo) _logger.Info($"Restoring the branch checkpoint - {branchingPointStateRoot}");
         _stateProvider.Reset();
         _stateProvider.StateRoot = branchingPointStateRoot;
-        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+        if (_logger.IsInfo) _logger.Info($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
     }
 
     // TODO: block processor pipeline
