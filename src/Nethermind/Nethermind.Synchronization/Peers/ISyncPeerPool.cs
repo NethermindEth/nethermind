@@ -107,14 +107,14 @@ namespace Nethermind.Synchronization.Peers
             AllocationContexts allocationContexts,
             CancellationToken cancellationToken)
         {
-            return syncPeerPool.AllocateAndRun2(
+            return syncPeerPool.AllocateAndRun(
                 (peerInfo) => func(peerInfo?.SyncPeer),
                 peerAllocationStrategy,
                 allocationContexts,
                 cancellationToken);
         }
 
-        public static async Task<T> AllocateAndRun2<T>(
+        public static async Task<T> AllocateAndRun<T>(
             this ISyncPeerPool syncPeerPool,
             Func<PeerInfo, Task<T>> func,
             IPeerAllocationStrategy peerAllocationStrategy,

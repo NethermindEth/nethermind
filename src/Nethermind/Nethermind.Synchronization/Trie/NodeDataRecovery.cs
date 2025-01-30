@@ -95,7 +95,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         using ArrayPoolList<Task<byte[]?>> tasks = Enumerable.Range(0, ConcurrentAttempt)
             .Select(_ =>
             {
-                return peerPool.AllocateAndRun2(async (peer) =>
+                return peerPool.AllocateAndRun(async (peer) =>
                 {
                     if (peer == null) return null;
                     try

@@ -46,7 +46,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             Task<IOwnedReadOnlyList<(TreePath, byte[])>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
                 .Select((_) =>
                 {
-                    return peerPool.AllocateAndRun2(async (peer) =>
+                    return peerPool.AllocateAndRun(async (peer) =>
                         {
                             if (peer == null) return null;
                             try
