@@ -358,15 +358,7 @@ public class InitializeNetwork : IStep
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
-
-        ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            // TODO: Add a proper config for the state persistence depth.
-            snapServer = new LastNRootSnapServer(_api.WorldStateManager!.SnapServer!, new LastNStateRootTracker(_api.BlockTree, 128));
-
-        }
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
@@ -383,7 +375,7 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
-            snapServer,
+            _api.WorldStateManager!,
             _api.LogManager,
             _api.TxGossipPolicy);
 
