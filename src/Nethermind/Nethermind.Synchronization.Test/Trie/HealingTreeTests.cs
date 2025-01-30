@@ -99,12 +99,12 @@ public class HealingTreeTests
 
         IPathRecovery recovery = Substitute.For<IPathRecovery>();
         recovery.Recover(Arg.Any<Hash256>(), Arg.Is<Hash256?>(address), Arg.Is<TreePath>(path), _key, fullPath)
-            .Returns(successfullyRecovered ? Task.FromResult<IDictionary<TreePath, byte[]>?>(
-                new Dictionary<TreePath, byte[]>()
+            .Returns(successfullyRecovered ? Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>?>(
+                new ArrayPoolList<(TreePath, byte[])>(1)
                 {
-                    {path, _rlp}
+                    { (path, _rlp) }
                 }
-            ) : Task.FromResult<IDictionary<TreePath, byte[]>?>(null));
+            ) : Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>?>(null));
 
         T trie = createTrie(trieStore, recovery);
 

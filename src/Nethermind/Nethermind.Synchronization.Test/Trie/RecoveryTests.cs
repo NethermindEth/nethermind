@@ -108,14 +108,14 @@ public class RecoveryTests
     [Test]
     public async Task can_recover_eth66()
     {
-        IDictionary<TreePath, byte[]>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
-        response![_path].Should().BeEquivalentTo(_nodeRlp);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
+        response![0].Should().Be((_path, _nodeRlp));
     }
 
     [Test]
     public async Task cannot_recover_eth66_no_peers()
     {
-        IDictionary<TreePath, byte[]>? response = await Recover(_nodeDataDataRecovery, _peerEth67);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth67);
         response.Should().BeNull();
     }
 
@@ -124,7 +124,7 @@ public class RecoveryTests
     {
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_hash)), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
-        IDictionary<TreePath, byte[]>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         response.Should().BeNull();
     }
 
@@ -132,28 +132,28 @@ public class RecoveryTests
     public async Task cannot_recover_eth66_invalid_rlp()
     {
         _returnedRlp = new byte[] { 5, 6, 7 };
-        IDictionary<TreePath, byte[]>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         response.Should().BeNull();
     }
 
     [Test]
     public async Task can_recover_eth67()
     {
-        IDictionary<TreePath, byte[]>? response = await Recover(_snapRecovery, _peerEth67);
-        response![_path].Should().BeEquivalentTo(_nodeRlp);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67);
+        response![0].Should().Be((_path, _nodeRlp));
     }
 
     [Test]
     public async Task can_recover_eth67_2_peer()
     {
-        IDictionary<TreePath, byte[]>? response = await Recover(_snapRecovery, _peerEth67, _peerEth67_2);
-        response![_path].Should().BeEquivalentTo(_nodeRlp);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67, _peerEth67_2);
+        response![0].Should().Be((_path, _nodeRlp));
     }
 
     [Test]
     public async Task cannot_recover_eth67_no_peers()
     {
-        IDictionary<TreePath, byte[]>? response = await Recover(_snapRecovery, _peerEth66);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth66);
         response.Should().BeNull();
     }
 
@@ -162,11 +162,11 @@ public class RecoveryTests
     {
         _snapSyncPeer.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<AccountsAndProofs>(null!));
-        IDictionary<TreePath, byte[]>? response = await Recover(_snapRecovery, _peerEth66);
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth66);
         response.Should().BeNull();
     }
 
-    private Task<IDictionary<TreePath, byte[]>?> Recover(IPathRecovery recovery, params PeerInfo[] peers)
+    private Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(IPathRecovery recovery, params PeerInfo[] peers)
     {
         _syncPeerPool.InitializedPeers.Returns(peers);
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>

@@ -69,13 +69,13 @@ public class HealingStorageTree : StorageTree
     {
         if (_recovery is not null)
         {
-            IDictionary<TreePath, byte[]>? rlps = _recovery.Recover(_stateRoot, ValueKeccak.Compute(_address.Bytes), missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(_stateRoot, ValueKeccak.Compute(_address.Bytes), missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
             if (rlps is not null)
             {
-                foreach (KeyValuePair<TreePath, byte[]> kv in rlps)
+                foreach ((TreePath, byte[]) kv in rlps)
                 {
-                    ValueHash256 nodeHash = ValueKeccak.Compute(kv.Value);
-                    TrieStore.Set(kv.Key, nodeHash, kv.Value);
+                    ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
+                    TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
                 }
                 return true;
             }

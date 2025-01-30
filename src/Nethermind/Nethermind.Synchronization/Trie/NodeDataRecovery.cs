@@ -33,7 +33,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
     private const int ConcurrentAttempt = 3;
     private readonly ILogger _logger = logManager.GetClassLogger<NodeDataRecovery>();
 
-    public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
+    public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
@@ -43,19 +43,12 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
-        if (queryPath.Truncate(startingPath.Length) != startingPath)
+        if (!queryPath.StartsWith(startingPath))
         {
-            int remainingLength = 64 - startingPath.Length;
-            TreePath newQueryPath = startingPath;
-            for (int i = 0; i < remainingLength; i++)
-            {
-                newQueryPath.Append(0);
-            }
-            queryPath = newQueryPath;
+            queryPath = startingPath.Append(0, 64 - startingPath.Length);
         }
 
-        Dictionary<TreePath, byte[]> recoveredNodes = new();
-
+        ArrayPoolList<(TreePath, byte[])> recoveredNodes = new(1);
         do
         {
             // In case of deeper node that already exist.
@@ -65,13 +58,13 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 nodeRlp = await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
             }
 
-            if (nodeRlp == null)
+            if (nodeRlp is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed to fetch complete path when recovering {fullPath}. Fetched nodes: {recoveredNodes.Count}.");
                 return null;
             }
 
-            recoveredNodes[currentPath] = nodeRlp;
+            recoveredNodes.Add((currentPath, nodeRlp));
 
             TrieNode? node = new TrieNode(NodeType.Unknown, nodeRlp);
             node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
@@ -125,7 +118,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             })
             .ToArray();
 
-        return await Wait.ForPassingTask(
+        return await Wait.AnyWhere(
             result => result is not null,
             tasks);
     }

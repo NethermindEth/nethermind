@@ -18,7 +18,7 @@ public static class Wait
     /// <param name="tasks"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public static async Task<T> ForPassingTask<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
+    public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
     {
         HashSet<Task<T>> taskSet = new HashSet<Task<T>>(tasks);
         while (taskSet.Any())

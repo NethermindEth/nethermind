@@ -37,13 +37,13 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
     private readonly AccountDecoder _accountDecoder = new();
 
-    public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
+    public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
         try
         {
-            Task<IDictionary<TreePath, byte[]>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
+            Task<IOwnedReadOnlyList<(TreePath, byte[])>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
                 .Select((_) =>
                 {
                     return peerPool.AllocateAndRun2(async (peer) =>
@@ -72,7 +72,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 })
                 .ToArray();
 
-            return await Wait.ForPassingTask(
+            return await Wait.AnyWhere(
                 result => result is not null,
                 concurrentAttempts);
         }
@@ -82,7 +82,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         }
     }
 
-    private async Task<IDictionary<TreePath, byte[]>?> RecoverFromPeer(
+    private async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> RecoverFromPeer(
         ISyncPeer peer,
         Hash256 rootHash,
         Hash256? address,
@@ -95,15 +95,10 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
-        if (new TreePath(queryPath, 64).Truncate(startingPath.Length) != startingPath)
+        TreePath queryPathTreePath = new TreePath(queryPath, 64);
+        if (!queryPathTreePath.StartsWith(startingPath))
         {
-            int remainingLength = 64 - startingPath.Length;
-            TreePath newQueryPath = startingPath;
-            for (int i = 0; i < remainingLength; i++)
-            {
-                newQueryPath.Append(0);
-            }
-            queryPath = newQueryPath.Path;
+            queryPath = startingPath.Append(0, 64 - startingPath.Length).Path;
         }
 
         if (address == null)
@@ -165,14 +160,14 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         }
     }
 
-    private IDictionary<TreePath, byte[]>? AssembleResponse(
+    private IOwnedReadOnlyList<(TreePath, byte[])>? AssembleResponse(
         Hash256 startingNodeHash,
         TreePath startingPath,
         Hash256 slotPath,
         byte[] value,
         IReadOnlyList<byte[]> proofs)
     {
-        Dictionary<TreePath, byte[]> result = new Dictionary<TreePath, byte[]>();
+        ArrayPoolList<(TreePath, byte[])> result = new(1);
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
         Dictionary<ValueHash256, byte[]> nodes = new Dictionary<ValueHash256, byte[]>();
@@ -210,7 +205,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             // Eh.. what can you do?
             if (rlp == null) continue;
 
-            result[currentPath] = rlp;
+            result.Add((currentPath, rlp));
 
             TrieNode node = new TrieNode(NodeType.Unknown, rlp);
             node.ResolveNode(emptyResolver, currentPath);

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
@@ -70,13 +71,15 @@ public class HealingStateTree : StateTree
     {
         if (_recovery is not null)
         {
-            IDictionary<TreePath, byte[]>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
+            Console.Error.WriteLine($"recovring {missingNodePath} with hash {hash} and full path {fullPath}");
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
             if (rlps is not null)
             {
-                foreach (KeyValuePair<TreePath, byte[]> kv in rlps)
+                foreach ((TreePath, byte[]) kv in rlps)
                 {
-                    ValueHash256 nodeHash = ValueKeccak.Compute(kv.Value);
-                    TrieStore.Set(kv.Key, nodeHash, kv.Value);
+                    ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
+                    TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
+                    Console.Error.WriteLine($"recovered {kv.Item1}, {kv.Item2.ToHexString()}");
                 }
                 return true;
             }

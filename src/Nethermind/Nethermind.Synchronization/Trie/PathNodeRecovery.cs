@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Tasks;
@@ -19,7 +20,7 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
 {
     private ILogger _logger = logManager.GetClassLogger<PathNodeRecovery>();
 
-    public async Task<IDictionary<TreePath, byte[]>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken = default)
+    public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken = default)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource(TimeSpan.FromSeconds(3));
 
@@ -27,7 +28,7 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
 
         try
         {
-            IDictionary<TreePath, byte[]>? res = await Wait.ForPassingTask(
+            IOwnedReadOnlyList<(TreePath, byte[])>? res = await Wait.AnyWhere(
                 (res) => res != null,
                 nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
                 snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
