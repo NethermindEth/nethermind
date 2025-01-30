@@ -161,9 +161,6 @@ internal class ChainSpecParamsJson
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
-<<<<<<< HEAD
     public ulong? Eip7805TransitionTimestamp { get; set; }
-=======
     public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
->>>>>>> upstream/master
 }

@@ -116,12 +116,6 @@ public static class BlockErrorMessages
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
 
-<<<<<<< HEAD
-    public static string MissingRequests => "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.";
-    public static string RequestsNotEnabled => "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
-    public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) => $"InvalidRequestsHash: Requests hash mismatch in block: expected {expected}, got {actual}";
-    public static string InvalidRequestsOrder => "InvalidRequestsOrder: Requests are not in the correct order in block.";
-=======
     public const string MissingRequests =
         "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.";
 
@@ -129,9 +123,8 @@ public static class BlockErrorMessages
         "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
 
     public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) =>
-        $"InvalidRequestsHash: Requests hash hash mismatch in block: expected {expected}, got {actual}";
+        $"InvalidRequestsHash: Requests hash mismatch in block: expected {expected}, got {actual}";
 
     public const string InvalidRequestsOrder =
         "InvalidRequestsOrder: Requests are not in the correct order in block.";
->>>>>>> upstream/master
 }

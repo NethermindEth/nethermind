@@ -38,13 +38,8 @@ public class ShardBlobBlockValidatorTests
     [TestCaseSource(nameof(BlobsPerBlockCountTestCases))]
     public bool Blobs_per_block_count_is_valid(IReleaseSpec spec, ulong blobGasUsed)
     {
-<<<<<<< HEAD
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, _transactionProcessor, TestLogManager.Instance);
-=======
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
->>>>>>> upstream/master
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, _transactionProcessor, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
                 .WithWithdrawalsRoot(TestItem.KeccakA)
