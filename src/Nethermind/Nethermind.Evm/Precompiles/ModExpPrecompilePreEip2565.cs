@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Precompiles
     [Obsolete("Pre-eip2565 implementation")]
     public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
     {
-        public static ModExpPrecompilePreEip2565 Instance = new ModExpPrecompilePreEip2565();
+        public static ModExpPrecompilePreEip2565 Instance = new();
 
         private ModExpPrecompilePreEip2565()
         {
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 

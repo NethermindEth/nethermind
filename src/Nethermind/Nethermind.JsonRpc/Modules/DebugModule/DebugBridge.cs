@@ -91,8 +91,7 @@ public class DebugBridge : IDebugBridge
 
     public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
 
-    public Task<bool> MigrateReceipts(long blockNumber)
-        => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
+    public Task<bool> MigrateReceipts(long from, long to) => _receiptsMigration.Run(from, to);
 
     public void InsertReceipts(BlockParameter blockParameter, TxReceipt[] txReceipts)
     {
