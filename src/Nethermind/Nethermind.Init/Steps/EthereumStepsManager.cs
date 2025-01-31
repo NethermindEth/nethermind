@@ -19,10 +19,8 @@ namespace Nethermind.Init.Steps
     {
         private readonly ILogger _logger;
 
-        private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
         private readonly INethermindApi _api;
         private readonly List<StepInfo> _allSteps;
-        private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
@@ -36,25 +34,22 @@ namespace Nethermind.Init.Steps
                       ?? throw new ArgumentNullException(nameof(logManager));
 
             _allSteps = loader.LoadSteps(_api.GetType()).ToList();
-            _allStepsByBaseType = _allSteps.ToDictionary(static s => s.StepBaseType, static s => s);
         }
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            CreateAndExecuteSteps(cancellationToken);
-
+            List<Task> allRequiredSteps = CreateAndExecuteSteps(cancellationToken);
             Task current;
             do
             {
-                current = await Task.WhenAny(_allRequiredSteps);
+                current = await Task.WhenAny(allRequiredSteps);
                 ReviewFailedAndThrow(current);
-                _allRequiredSteps.Remove(current);
-            } while (_allRequiredSteps.Any(s => !s.IsCompleted));
+                allRequiredSteps.Remove(current);
+            } while (allRequiredSteps.Any(s => !s.IsCompleted));
         }
 
-        private readonly List<Task> _allRequiredSteps = new();
 
-        private void CreateAndExecuteSteps(CancellationToken cancellationToken)
+        private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
             Dictionary<Type, IStep> createdSteps = [];
 
@@ -70,12 +65,12 @@ namespace Nethermind.Init.Steps
                 }
                 createdSteps.Add(step.GetType(), step);
             }
-
+            List<Task> allRequiredSteps = new();
             foreach (StepInfo stepInfo in _allSteps)
             {
                 if (!createdSteps.ContainsKey(stepInfo.StepType))
                 {
-                    throw new StepDependencyException($"Could not initialize because {stepInfo} could not be created.");
+                    throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.");
                 }
                 IStep step = createdSteps[stepInfo.StepType];
 
@@ -84,9 +79,10 @@ namespace Nethermind.Init.Steps
 
                 if (step.MustInitialize)
                 {
-                    _allRequiredSteps.Add(task);
+                    allRequiredSteps.Add(task);
                 }
             }
+            return allRequiredSteps;
         }
 
         private async Task ExecuteStep(IStep step, StepInfo stepInfo, Dictionary<Type, IStep> steps, CancellationToken cancellationToken)
