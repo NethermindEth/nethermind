@@ -564,25 +564,32 @@ internal sealed partial class EvmInstructions
         stack.PopUInt256(out UInt256 dataOffset);
         stack.PopUInt256(out UInt256 dataLength);
 
+        UInt256 transferValue;
         UInt256 callValue;
         if (typeof(TOpEofCall) == typeof(OpEofStaticCall))
         {
+            transferValue = UInt256.Zero;
             callValue = UInt256.Zero;
         }
         else if (typeof(TOpEofCall) == typeof(OpEofDelegateCall))
         {
+            transferValue = UInt256.Zero;
             callValue = env.Value;
         }
-        else if (!stack.PopUInt256(out callValue))
+        else if (stack.PopUInt256(out transferValue))
+        {
+            callValue = transferValue;
+        }
+        else
         {
             return EvmExceptionType.StackUnderflow;
         }
 
         // 3. If value is non-zero:
         //  a: Halt with exceptional failure if the current frame is in static-mode.
-        if (vm.EvmState.IsStatic && !callValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic && !transferValue.IsZero) return EvmExceptionType.StaticCallViolation;
         //  b. Charge CALL_VALUE_COST gas.
-        if (!callValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (typeof(TOpEofCall) == typeof(OpEofCall) && !transferValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         // 4. If target_address has any of the high 12 bytes set to a non-zero value
         // (i.e. it does not contain a 20-byte address)
@@ -593,7 +600,7 @@ internal sealed partial class EvmInstructions
         }
 
         Address caller = typeof(TOpEofCall) == typeof(OpEofDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address codeSource = new Address(targetBytes[12..].ToArray());
+        Address codeSource = new (targetBytes[12..].ToArray());
         Address target = typeof(TOpEofCall) == typeof(OpEofDelegateCall)
             ? env.ExecutingAccount
             : codeSource;
@@ -605,7 +612,7 @@ internal sealed partial class EvmInstructions
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
 
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
-            || (spec.ClearEmptyAccountWhenTouched && callValue != 0 && state.IsDeadAccount(codeSource)))
+            || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))
         {
             // 7. If target_address is not in the state and the call configuration would result in account creation,
             //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
@@ -620,7 +627,7 @@ internal sealed partial class EvmInstructions
         //  b: Balance of the current account is less than value.
         //  c: Current call stack depth equals 1024.
         if (callGas < GasCostOf.CallStipend ||
-            (!callValue.IsZero && state.GetBalance(env.ExecutingAccount) < callValue) ||
+            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue) ||
             env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnData = null;
@@ -645,7 +652,8 @@ internal sealed partial class EvmInstructions
         //{
         //    _logger.Trace($"caller {caller}");
         //    _logger.Trace($"target {codeSource}");
-        //    _logger.Trace($"value {callValue}");
+        //    _logger.Trace($"transferValue {transferValue}");
+        //    _logger.Trace($"callValue {callValue}");
         //}
 
         ICodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
@@ -671,7 +679,7 @@ internal sealed partial class EvmInstructions
         ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = state.TakeSnapshot();
-        state.SubtractFromBalance(caller, callValue, spec);
+        state.SubtractFromBalance(caller, transferValue, spec);
 
         ExecutionEnvironment callEnv = new
         (
@@ -680,7 +688,7 @@ internal sealed partial class EvmInstructions
             caller: caller,
             codeSource: codeSource,
             executingAccount: target,
-            transferValue: callValue,
+            transferValue: transferValue,
             value: callValue,
             inputData: callData,
             codeInfo: targetCodeInfo
