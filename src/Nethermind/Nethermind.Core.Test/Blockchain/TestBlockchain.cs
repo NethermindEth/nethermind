@@ -190,13 +190,8 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
 
-<<<<<<< HEAD
         _watcher = new BoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-        CodeInfoRepository codeInfoRepository = new();
-=======
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-
->>>>>>> master
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);

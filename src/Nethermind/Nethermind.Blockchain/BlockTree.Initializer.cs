@@ -126,10 +126,22 @@ public partial class BlockTree
 
     private void LoadLowestInsertedHeader()
     {
-        long left = 1L;
-        long right = _syncConfig.PivotNumberParsed;
+        if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedFastHeaderHash))
+        {
+            Hash256? headerHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash)?
+                .AsRlpStream().DecodeKeccak();
+            _lowestInsertedHeader = FindHeader(headerHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
+        else
+        {
+            // Old style binary search.
+            long left = 1L;
+            long right = _syncConfig.PivotNumberParsed;
 
-        LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
+            LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Lowest inserted header set to {LowestInsertedHeader?.Number.ToString() ?? "null"}");
     }
 
     private void LoadBestKnown()
