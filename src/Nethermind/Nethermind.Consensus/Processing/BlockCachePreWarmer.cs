@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
+using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -105,6 +106,9 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                         {
                             using IReadOnlyTxProcessingScope scope = env.Build(state.stateRoot);
                             scope.WorldState.WarmUp(state.block.Withdrawals[i].Address);
+                        }
+                        catch (MissingTrieNodeException)
+                        {
                         }
                         finally
                         {
@@ -276,14 +280,21 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     Transaction tx = state.Block.Transactions[i];
                     Address? sender = tx.SenderAddress;
 
-                    if (sender is not null)
+                    try
                     {
-                        state.Scope.WorldState.WarmUp(sender);
+                        if (sender is not null)
+                        {
+                            state.Scope.WorldState.WarmUp(sender);
+                        }
+
+                        Address to = tx.To;
+                        if (to is not null)
+                        {
+                            state.Scope.WorldState.WarmUp(to);
+                        }
                     }
-                    Address to = tx.To;
-                    if (to is not null)
+                    catch (MissingTrieNodeException)
                     {
-                        state.Scope.WorldState.WarmUp(to);
                     }
 
                     return state;
