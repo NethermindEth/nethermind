@@ -12,6 +12,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -104,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return await base.DownloadHeaders(bestPeer, blocksRequest, cancellation);
         }
 
-        protected override Task<IOwnedReadOnlyList<BlockHeader?>?> HasMoreToSync(PeerInfo bestPeer, long currentNumber, BlocksRequest blocksRequest, CancellationToken cancellation)
+        protected override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, long currentNumber, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -128,13 +129,19 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(0));
         }
 
-        protected override bool CheckAncestorJump(PeerInfo? bestPeer, Block[]? blocks, BlockDownloadContext context, ref long currentNumber)
+        protected override bool CheckAncestorJump(PeerInfo? bestPeer, Hash256? startHeaderHash, ref long currentNumber)
         {
             // No ancestor jump check post merge.
             return true;
         }
 
-        protected override BlockTreeSuggestOptions DetermineSuggestOptions(bool shouldProcess, Block currentBlock)
+        protected override bool CheckAncestorJump(PeerInfo? bestPeer, BlockDownloadContext context, ref long currentNumber)
+        {
+            // No ancestor jump check post merge.
+            return true;
+        }
+
+        protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
             BlockTreeSuggestOptions suggestOptions =
                 shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;

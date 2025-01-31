@@ -155,34 +155,17 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             int headersSynced = 0;
-            int ancestorLookupLevel = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await HasMoreToSync(bestPeer, currentNumber, blocksRequest, cancellation)) is not null)
+            while ((headers = await GetBlockHeaders(bestPeer, currentNumber, blocksRequest, cancellation)) is not null)
             {
                 if (HasBetterPeer) break;
                 int headersSyncedInPreviousRequests = headersSynced;
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 Hash256? startHeaderHash = headers[0]?.Hash;
-                BlockHeader? startHeader = (startHeaderHash is null)
-                    ? null : _blockTree.FindHeader(startHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (startHeader is null)
-                {
-                    ancestorLookupLevel++;
-                    if (ancestorLookupLevel >= _ancestorJumps.Length)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                        throw new EthSyncException("Peer with inconsistent chain in sync");
-                    }
-
-                    int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1];
-                    currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
-                    continue;
-                }
-
-                ancestorLookupLevel = 0;
+                if (!CheckAncestorJump(bestPeer, startHeaderHash, ref currentNumber)) continue;
 
                 for (int i = 1; i < headers.Count; i++)
                 {
@@ -258,7 +241,7 @@ namespace Nethermind.Synchronization.Blocks
             long bestProcessedBlock = 0;
 
             IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await HasMoreToSync(bestPeer, currentNumber, blocksRequest, cancellation)) is not null)
+            while ((headers = await GetBlockHeaders(bestPeer, currentNumber, blocksRequest, cancellation)) is not null)
             {
                 if (HasBetterPeer) break;
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -285,7 +268,7 @@ namespace Nethermind.Synchronization.Blocks
                     break;
                 }
 
-                if (!CheckAncestorJump(bestPeer, blocks, context, ref currentNumber)) continue;
+                if (!CheckAncestorJump(bestPeer, context, ref currentNumber)) continue;
 
                 for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
                 {
@@ -326,7 +309,7 @@ namespace Nethermind.Synchronization.Blocks
             return blocksSynced;
         }
 
-        protected virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> HasMoreToSync(PeerInfo bestPeer, long currentNumber, BlocksRequest blocksRequest, CancellationToken cancellation)
+        protected virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, long currentNumber, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_posTransitionHook.ImprovementRequirementSatisfied(bestPeer)) return null;
             if (currentNumber > bestPeer!.HeadNumber) return null;
@@ -356,11 +339,32 @@ namespace Nethermind.Synchronization.Blocks
             return headers;
         }
 
-        protected virtual bool CheckAncestorJump(PeerInfo? bestPeer, Block[]? blocks, BlockDownloadContext context, ref long currentNumber)
+        protected virtual bool CheckAncestorJump(PeerInfo? bestPeer, Hash256? startHeaderHash, ref long currentNumber)
         {
-            Block blockZero = blocks[0];
+            BlockHeader? startHeader = (startHeaderHash is null)
+                ? null : _blockTree.FindHeader(startHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (startHeader is null)
+            {
+                _ancestorLookupLevel++;
+                if (_ancestorLookupLevel >= _ancestorJumps.Length)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
+                    throw new EthSyncException("Peer with inconsistent chain in sync");
+                }
+
+                int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
+                currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
+                return false;
+            }
+            _ancestorLookupLevel = 0;
+            return true;
+        }
+
+        protected virtual bool CheckAncestorJump(PeerInfo? bestPeer, BlockDownloadContext context, ref long currentNumber)
+        {
             if (context.FullBlocksCount > 0)
             {
+                Block blockZero = context.Blocks[0];
                 bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
                 if (!parentIsKnown)
                 {
@@ -380,7 +384,7 @@ namespace Nethermind.Synchronization.Blocks
             return true;
         }
 
-        protected virtual BlockTreeSuggestOptions DetermineSuggestOptions(bool shouldProcess, Block currentBlock)
+        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
             return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
@@ -394,7 +398,7 @@ namespace Nethermind.Synchronization.Blocks
             bool downloadReceipts,
             TxReceipt[]?[]? receipts, bool shouldMoveToMain)
         {
-            BlockTreeSuggestOptions suggestOptions = DetermineSuggestOptions(shouldProcess, currentBlock);
+            BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
