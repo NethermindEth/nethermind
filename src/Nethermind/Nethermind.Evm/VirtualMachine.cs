@@ -166,10 +166,15 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _state;
     public ReadOnlySpan<byte> ChainId => _chainId;
-    ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
-    object ReturnData { get => _returnData; set => _returnData = value; }
+    public ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
+    public object ReturnData { get => _returnData; set => _returnData = value; }
     object _returnData;
-    IBlockhashProvider BlockhashProvider => _blockhashProvider;
+    public IBlockhashProvider BlockhashProvider => _blockhashProvider;
+
+    public EvmState State => _vmState;
+    EvmState _vmState;
+    public int SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
+    int _sectionIndex;
 
     OpCode[] _opcodeMethods;
 
@@ -778,11 +783,6 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     OutOfGas:
         return CallResult.OutOfGasException;
     }
-
-    EvmState State => _vmState;
-    EvmState _vmState;
-    int SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
-    int _sectionIndex;
 
     [SkipLocalsInit]
     private unsafe CallResult ExecuteCode(scoped ref EvmStack stack, long gasAvailable)
