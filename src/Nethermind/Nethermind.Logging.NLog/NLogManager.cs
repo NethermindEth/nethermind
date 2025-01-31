@@ -20,6 +20,11 @@ namespace Nethermind.Logging.NLog
         private const string DefaultFileTargetName = "file-async_wrapped";
         private const string DefaultFolder = "logs";
 
+        /// <summary>
+        /// The constructor to use when the configuration is not yet initialized.
+        /// </summary>
+        public NLogManager() { /* Log in temp dir? */ }
+
         public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
         {
             Setup(logFileName, logDirectory, logRules);

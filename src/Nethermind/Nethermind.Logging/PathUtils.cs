@@ -16,8 +16,8 @@ public static class PathUtils
     static PathUtils()
     {
         Process process = Process.GetCurrentProcess();
-        if (process.ProcessName.StartsWith("dotnet", StringComparison.InvariantCultureIgnoreCase)
-            || process.ProcessName.Equals("ReSharperTestRunner", StringComparison.InvariantCultureIgnoreCase))
+        if (process.ProcessName.StartsWith("dotnet", StringComparison.OrdinalIgnoreCase)
+            || process.ProcessName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase))
         {
             ExecutingDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
         }
