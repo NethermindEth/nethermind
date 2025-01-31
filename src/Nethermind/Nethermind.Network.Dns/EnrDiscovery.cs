@@ -66,7 +66,7 @@ public class EnrDiscovery : INodeSource
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsDebug) _logger.Error($"failed to parse enr record {nodeRecordText}", e);
+                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR failed to parse enr record {nodeRecordText}", e);
                 }
 
                 if (node is not null)
