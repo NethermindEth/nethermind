@@ -80,7 +80,7 @@ internal unsafe sealed partial class EvmInstructions
         }
         if (spec.ExtCodeHashOpcodeEnabled)
         {
-            lookup[(int)Instruction.EXTCODEHASH] = &InstructionExtCodeHash;
+            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ? &InstructionExtCodeHashEof : &InstructionExtCodeHash;
         }
 
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash;
@@ -90,8 +90,10 @@ internal unsafe sealed partial class EvmInstructions
         lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt256<OpNumber>;
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;
         lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt256<OpGasLimit>;
-        lookup[(int)Instruction.CHAINID] = &InstructionChainId;
-
+        if (spec.ChainIdOpcodeEnabled)
+        {
+            lookup[(int)Instruction.CHAINID] = &InstructionChainId;
+        }
         if (spec.SelfBalanceOpcodeEnabled)
         {
             lookup[(int)Instruction.SELFBALANCE] = &InstructionSelfBalance;

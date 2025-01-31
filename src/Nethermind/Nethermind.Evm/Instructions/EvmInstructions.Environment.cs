@@ -28,8 +28,6 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionChainId(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        if (!vm.Spec.ChainIdOpcodeEnabled) return EvmExceptionType.BadInstruction;
-
         gasAvailable -= GasCostOf.Base;
         stack.PushBytes(vm.ChainId);
 
@@ -70,17 +68,38 @@ internal sealed partial class EvmInstructions
         }
         else
         {
-            if (spec.IsEofEnabled)
-            {
-                Memory<byte> code = state.GetCode(address);
-                if (EofValidator.IsEof(code, out _))
-                {
-                    stack.PushBytes(EofHash256);
-                    return EvmExceptionType.None;
-                }
-            }
-
             stack.PushBytes(state.GetCodeHash(address).Bytes);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExtCodeHashEof(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        IReleaseSpec spec = vm.Spec;
+        gasAvailable -= spec.GetExtCodeHashCost();
+
+        Address address = stack.PopAddress();
+        if (address is null) return EvmExceptionType.StackUnderflow;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+
+        IWorldState state = vm.WorldState;
+        if (state.IsDeadAccount(address))
+        {
+            stack.PushZero();
+        }
+        else
+        {
+            Memory<byte> code = state.GetCode(address);
+            if (EofValidator.IsEof(code, out _))
+            {
+                stack.PushBytes(EofHash256);
+            }
+            else
+            {
+                stack.PushBytes(state.GetCodeHash(address).Bytes);
+            }
         }
 
         return EvmExceptionType.None;
