@@ -384,7 +384,7 @@ public partial class EthRpcModule(
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
 
-    public ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
+    public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
         (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
@@ -428,7 +428,7 @@ public partial class EthRpcModule(
         return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
     }
 
-    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
+    public virtual ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
         UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
@@ -451,7 +451,7 @@ public partial class EthRpcModule(
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
     }
 
-    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
+    public virtual ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
         UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
