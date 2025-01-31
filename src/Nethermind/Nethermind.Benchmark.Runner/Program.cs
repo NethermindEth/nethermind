@@ -27,6 +27,8 @@ using System.IO;
 using Nethermind.Evm.CodeAnalysis.IL;
 using static Nethermind.Evm.VirtualMachine;
 using Microsoft.Diagnostics.Runtime;
+using BenchmarkDotNet.Columns;
+using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -39,14 +41,22 @@ namespace Nethermind.Benchmark.Runner
                 AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
             }
 
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Descriptor);
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Statistics);
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Params);
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Metrics);
+            AddColumnProvider(DefaultColumnProviders.Descriptor);
+            AddColumnProvider(DefaultColumnProviders.Statistics);
+            AddColumnProvider(DefaultColumnProviders.Params);
+            AddColumnProvider(DefaultColumnProviders.Metrics);
             AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
+        }
+    }
+
+    public class PrecompileBenchmarkConfig : DashboardConfig
+    {
+        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core90))
+        {
+            AddColumnProvider(new GasColumnProvider());
         }
     }
 
@@ -207,10 +217,9 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Precompiles.Benchmark.KeccakBenchmark).Assembly
             };
 
-            List<Assembly> simpleJobAssemblies = new()
-            {
-                typeof(EthereumTests.Benchmark.EthereumTests).Assembly,
-            };
+            List<Assembly> simpleJobAssemblies = [
+                // typeof(EthereumTests.Benchmark.EthereumTests).Assembly,
+            ];
 
             if (Debugger.IsAttached)
             {
@@ -227,6 +236,8 @@ namespace Nethermind.Benchmark.Runner
                 {
                     BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
                 }
+
+                BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
             }
         }
     }

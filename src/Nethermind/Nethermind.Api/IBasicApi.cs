@@ -7,8 +7,6 @@ using System.Linq;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -40,7 +38,7 @@ namespace Nethermind.Api
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; set; }
-        ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
         string SealEngineType { get; set; }
@@ -65,8 +63,7 @@ namespace Nethermind.Api
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
-                .AddSingleton(ConfigProvider.GetConfig<IReceiptConfig>())
+                .AddSource(new ConfigRegistrationSource())
                 .AddModule(new DbModule());
 
             return builder;

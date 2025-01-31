@@ -196,7 +196,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         MyTracer tracer = new();
         transactionProcessor.Execute(
                 tx,
-                new BlockExecutionContext(block.Header),
+                new BlockExecutionContext(block.Header, specProvider.GetSpec(block.Header)),
                 tracer);
         return tracer.lastmemline;
     }
@@ -236,11 +236,11 @@ public class MyTracer : ITxTracer, IDisposable
 
     public string lastmemline;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
     }
 

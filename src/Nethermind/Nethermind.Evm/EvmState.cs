@@ -2,198 +2,242 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.State;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm;
+
+/// <summary>
+/// State for EVM Calls
+/// </summary>
+[DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
+public sealed class EvmState : IDisposable // TODO: rename to CallState
 {
+    private static readonly ConcurrentQueue<EvmState> _statePool = new();
+    private static readonly StackPool _stackPool = new();
+
+    public byte[]? DataStack;
+    public int[]? ReturnStack;
+
+    public ILChunkExecutionState IlExecutionStepState;
+
+    public long GasAvailable { get; set; }
+    internal long OutputDestination { get; private set; } // TODO: move to CallEnv
+    internal long OutputLength { get; private set; } // TODO: move to CallEnv
+    public long Refund { get; set; }
+
+    public int DataStackHead;
+
+    public int ReturnStackHead;
+    internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
+    public int ProgramCounter { get; set; }
+    public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
+    private bool _canRestore;
+    public bool IsStatic { get; private set; } // TODO: move to CallEnv
+    public bool IsContinuation { get; set; } // TODO: move to CallEnv
+    public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
+
+    private bool _isDisposed = true;
+
+    private EvmPooledMemory _memory;
+    private Snapshot _snapshot;
+    private ExecutionEnvironment _env;
+    private StackAccessTracker _accessTracker;
+
+#if DEBUG
+    private StackTrace? _creationStackTrace;
+#endif
     /// <summary>
-    /// State for EVM Calls
+    /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
-    [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-    public class EvmState : IDisposable // TODO: rename to CallState
+    public static EvmState RentTopLevel(
+        long gasAvailable,
+        ExecutionType executionType,
+        in Snapshot snapshot,
+        in ExecutionEnvironment env,
+        in StackAccessTracker accessedItems)
     {
-        private static readonly StackPool _stackPool = new();
+        EvmState state = Rent();
+        state.Initialize(
+            gasAvailable,
+            outputDestination: 0L,
+            outputLength: 0L,
+            executionType: executionType,
+            isTopLevel: true,
+            isStatic: false,
+            isCreateOnPreExistingAccount: false,
+            snapshot: snapshot,
+            env: env,
+            stateForAccessLists: accessedItems);
+        return state;
+    }
 
-        public byte[]? DataStack;
+    /// <summary>
+    /// Constructor for a frame <see cref="EvmState"/> beneath top level.
+    /// </summary>
+    public static EvmState RentFrame(
+        long gasAvailable,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isStatic,
+        bool isCreateOnPreExistingAccount,
+        in Snapshot snapshot,
+        in ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists)
+    {
+        EvmState state = Rent();
 
-        public int[]? ReturnStack;
+        state.Initialize(
+            gasAvailable,
+            outputDestination,
+            outputLength,
+            executionType,
+            isTopLevel: false,
+            isStatic: isStatic,
+            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            snapshot: snapshot,
+            env: env,
+            stateForAccessLists: stateForAccessLists);
 
-        public StackAccessTracker AccessTracker => _accessTracker;
+        return state;
+    }
 
-        private readonly StackAccessTracker _accessTracker;
+    private static EvmState Rent() => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
 
-        public int DataStackHead = 0;
-
-        public int ReturnStackHead = 0;
-        private bool _canRestore = true;
-        /// <summary>
-        /// Constructor for a top level <see cref="EvmState"/>.
-        /// </summary>
-        public EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            Snapshot snapshot,
-            in StackAccessTracker accessedItems) : this(gasAvailable,
-                                    env,
-                                    executionType,
-                                    true,
-                                    snapshot,
-                                    0L,
-                                    0L,
-                                    false,
-                                    accessedItems,
-                                    false)
+    private void Initialize(
+        long gasAvailable,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isTopLevel,
+        bool isStatic,
+        bool isCreateOnPreExistingAccount,
+        in Snapshot snapshot,
+        in ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists)
+    {
+        GasAvailable = gasAvailable;
+        OutputDestination = outputDestination;
+        OutputLength = outputLength;
+        Refund = 0;
+        DataStackHead = 0;
+        ReturnStackHead = 0;
+        ExecutionType = executionType;
+        ProgramCounter = 0;
+        IsTopLevel = isTopLevel;
+        _canRestore = !isTopLevel;
+        IsStatic = isStatic;
+        IsContinuation = false;
+        IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        _snapshot = snapshot;
+        _env = env;
+        _accessTracker = new(stateForAccessLists);
+        if (executionType.IsAnyCreate())
         {
+            _accessTracker.WasCreated(env.ExecutingAccount);
         }
-        /// <summary>
-        /// Constructor for a top level <see cref="EvmState"/>.
-        /// </summary>
-        public EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            Snapshot snapshot) : this(gasAvailable,
-                                    env,
-                                    executionType,
-                                    true,
-                                    snapshot,
-                                    0L,
-                                    0L,
-                                    false,
-                                    new StackAccessTracker(),
-                                    false)
+        _accessTracker.TakeSnapshot();
+
+        // Should be disposed when being initialized
+        if (!_isDisposed)
         {
+            ThrowIfNotUninitialized();
         }
-        /// <summary>
-        /// Constructor for a frame <see cref="EvmState"/> beneath top level.
-        /// </summary>
-        internal EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            Snapshot snapshot,
-            long outputDestination,
-            long outputLength,
-            bool isStatic,
-            in StackAccessTracker stateForAccessLists,
-            bool isCreateOnPreExistingAccount) :
-            this(
-                gasAvailable,
-                env,
-                executionType,
-                false,
-                snapshot,
-                outputDestination,
-                outputLength,
-                isStatic,
-                stateForAccessLists,
-                isCreateOnPreExistingAccount)
+        // Mark revived
+        _isDisposed = false;
+
+#if DEBUG
+        _creationStackTrace = new();
+#endif
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowIfNotUninitialized()
         {
+            throw new InvalidOperationException("Already in use");
         }
-        private EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            bool isTopLevel,
-            Snapshot snapshot,
-            long outputDestination,
-            long outputLength,
-            bool isStatic,
-            in StackAccessTracker stateForAccessLists,
-            bool isCreateOnPreExistingAccount)
+    }
+
+    public Address From => ExecutionType switch
+    {
+        ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
+            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+        ExecutionType.DELEGATECALL => Env.ExecutingAccount,
+        _ => throw new ArgumentOutOfRangeException(),
+    };
+
+    public Address To => Env.CodeSource ?? Env.ExecutingAccount;
+    internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+    public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
+    public ref readonly ExecutionEnvironment Env => ref _env;
+    public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
+    public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
+
+    public void Dispose()
+    {
+        // Shouldn't be called multiple times
+        Debug.Assert(!_isDisposed);
+
+        if (_isDisposed) return;
+
+        _isDisposed = true;
+        if (DataStack is not null)
         {
-            GasAvailable = gasAvailable;
-            ExecutionType = executionType;
-            IsTopLevel = isTopLevel;
-            _canRestore = !isTopLevel;
-            Snapshot = snapshot;
-            Env = env;
-            OutputDestination = outputDestination;
-            OutputLength = outputLength;
-            IsStatic = isStatic;
-            IsContinuation = false;
-            IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-            _accessTracker = new(stateForAccessLists);
-            if (executionType.IsAnyCreate())
-            {
-                _accessTracker.WasCreated(env.ExecutingAccount);
-            }
-            _accessTracker.TakeSnapshot();
+            // Only return if initialized
+            _stackPool.ReturnStacks(DataStack, ReturnStack!);
+            DataStack = null;
+            ReturnStack = null;
         }
-
-        public Address From
+        if (_canRestore)
         {
-            get
-            {
-                return ExecutionType switch
-                {
-                    ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
-                    ExecutionType.DELEGATECALL => Env.ExecutingAccount,
-                    _ => throw new ArgumentOutOfRangeException(),
-                };
-            }
+            // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
+            _accessTracker.Restore();
         }
+        _memory.Dispose();
+        // Blank refs to not hold against GC
+        _memory = default;
+        _accessTracker = default;
+        _env = default;
+        _snapshot = default;
 
-        public long GasAvailable { get; set; }
-        public int ProgramCounter { get; set; }
-        public long Refund { get; set; }
+        _statePool.Enqueue(this);
 
-        public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public readonly ExecutionEnvironment Env;
+#if DEBUG
+        GC.SuppressFinalize(this);
+#endif
+    }
 
-        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
-        public bool IsTopLevel { get; } // TODO: move to CallEnv
-        internal long OutputDestination { get; } // TODO: move to CallEnv
-        internal long OutputLength { get; } // TODO: move to CallEnv
-        public bool IsStatic { get; } // TODO: move to CallEnv
-        public bool IsContinuation { get; set; } // TODO: move to CallEnv
-        public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
-        public Snapshot Snapshot { get; } // TODO: move to CallEnv
-
-        private EvmPooledMemory _memory;
-        public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
-        internal ILChunkExecutionState IlState;
-
-        public void Dispose()
+#if DEBUG
+    ~EvmState()
+    {
+        if (!_isDisposed)
         {
-            if (DataStack is not null)
-            {
-                // Only Dispose once
-                _stackPool.ReturnStacks(DataStack, ReturnStack!);
-                DataStack = null;
-                ReturnStack = null;
-            }
-            Restore(); // we are trying to restore when disposing
-            Memory.Dispose();
-            Memory = default;
+            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
         }
+    }
+#endif
 
-        public void InitStacks()
-        {
-            if (DataStack is null)
-            {
-                (DataStack, ReturnStack) = _stackPool.RentStacks();
-            }
-        }
+    public void InitializeStacks()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        public void CommitToParent(EvmState parentState)
+        if (DataStack is null)
         {
-            parentState.Refund += Refund;
-            _canRestore = false; // we can't restore if we committed
+            (DataStack, ReturnStack) = _stackPool.RentStacks();
         }
+    }
 
-        private void Restore()
-        {
-            if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
-            {
-                _accessTracker.Restore();
-            }
-        }
+    public void CommitToParent(EvmState parentState)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+        parentState.Refund += Refund;
+        _canRestore = false; // we can't restore if we committed
     }
 }

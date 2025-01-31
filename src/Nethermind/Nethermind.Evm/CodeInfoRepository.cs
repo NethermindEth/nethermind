@@ -29,30 +29,33 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         return new Dictionary<AddressAsKey, CodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance, EcRecoverPrecompile.Address),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance, Sha256Precompile.Address),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance, Ripemd160Precompile.Address),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance, IdentityPrecompile.Address),
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance, Bn254AddPrecompile.Address),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance, Bn254MulPrecompile.Address),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance, Bn254PairingPrecompile.Address),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance, ModExpPrecompile.Address),
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance, Blake2FPrecompile.Address),
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance, G1AddPrecompile.Address),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance, G1MulPrecompile.Address),
-            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance, G1MSMPrecompile.Address),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance, G2AddPrecompile.Address),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance, G2MulPrecompile.Address),
-            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance, G2MSMPrecompile.Address),
-            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance, PairingCheckPrecompile.Address),
-            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance, MapFpToG1Precompile.Address),
-            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance, MapFp2ToG2Precompile.Address),
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance, PointEvaluationPrecompile.Address),
-            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance, Secp256r1Precompile.Address),
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
+
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
         }.ToFrozenDictionary();
     }
 
-    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)>? precompileCache = null)
+    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
         _localPrecompiles = precompileCache is null
             ? _precompiles
@@ -60,6 +63,11 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
+    {
+        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
+    }
+
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (codeSource.IsPrecompile(vmSpec))
@@ -71,7 +79,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
-            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
+            if (followDelegation)
+                cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
         }
 
         return cachedCodeInfo;
@@ -156,9 +165,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
-            : TryGetDelegatedAddress(codeInfo.MachineCode.Span, out Address? delegationAddress)
-                ? worldState.GetCodeHash(delegationAddress)
-                : codeHash;
+            : codeHash;
     }
 
     /// <remarks>
@@ -179,8 +186,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
-        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache), originalPrecompile.Key.Value);
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
+        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address).MachineCode.Span, out delegatedAddress);
@@ -193,7 +200,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) : IPrecompile
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) : IPrecompile
     {
         public static Address Address => Address.Zero;
 
@@ -201,10 +208,10 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
-            if (!cache.TryGetValue(key, out (ReadOnlyMemory<byte>, bool) result))
+            if (!cache.TryGetValue(key, out (byte[], bool) result))
             {
                 result = precompile.Run(inputData, releaseSpec);
                 // we need to rebuild the key with data copy as the data can be changed by VM processing

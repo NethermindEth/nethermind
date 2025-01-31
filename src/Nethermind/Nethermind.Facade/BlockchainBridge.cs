@@ -128,8 +128,8 @@ namespace Nethermind.Facade
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
-                bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
-                return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                return (txReceipt, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 
             return (null, null, 0);
@@ -225,6 +225,7 @@ namespace Nethermind.Facade
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = accessTxTracer.GasSpent,
+                OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success,
                 AccessList = accessTxTracer.AccessList
@@ -294,11 +295,16 @@ namespace Nethermind.Facade
                 callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
+
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee))
+                {
+                    transaction.MaxFeePerBlobGas = blobBaseFee;
+                }
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader, releaseSpec.BlobBaseFeeUpdateFraction), tracer);
         }
 
         public ulong GetChainId()

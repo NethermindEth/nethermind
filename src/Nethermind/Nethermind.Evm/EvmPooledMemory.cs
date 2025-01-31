@@ -300,7 +300,7 @@ public struct EvmPooledMemory : IEvmMemory
             result++;
         }
 
-        if (result > int.MaxValue)
+        if (result > uint.MaxValue)
         {
             outOfGas = true;
             return 0;

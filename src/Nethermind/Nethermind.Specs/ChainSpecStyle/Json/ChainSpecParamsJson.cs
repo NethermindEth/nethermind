@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -147,13 +148,12 @@ internal class ChainSpecParamsJson
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
-    public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
-    public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
+    public ulong? Eip7623TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
     public Address Eip7251ContractAddress { get; set; }
@@ -161,4 +161,5 @@ internal class ChainSpecParamsJson
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
+    public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
 }
