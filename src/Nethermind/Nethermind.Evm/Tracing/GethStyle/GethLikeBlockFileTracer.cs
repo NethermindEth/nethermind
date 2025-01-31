@@ -52,7 +52,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxFileTracer txTracer)
     {
-        var trace = txTracer.BuildResult();
+        GethLikeTxTrace trace = txTracer.BuildResult();
 
         JsonSerializer.Serialize(_jsonWriter,
             new

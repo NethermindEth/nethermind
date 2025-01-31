@@ -37,7 +37,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
-        var previousTraceEntry = CurrentTraceEntry;
+        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
         var previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
         base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);

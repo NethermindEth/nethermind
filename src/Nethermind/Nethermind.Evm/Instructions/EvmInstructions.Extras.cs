@@ -57,7 +57,7 @@ internal sealed partial class EvmInstructions
 
         gasAvailable -= GasCostOf.BlockHash;
 
-        if (!stack.PopUInt256(out var a)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
         Hash256? blockHash = vm.BlockhashProvider.GetBlockhash(vm.State.Env.TxExecutionContext.BlockExecutionContext.Header, number);

@@ -97,7 +97,7 @@ internal sealed partial class EvmInstructions
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
 
-        var codeSection = vm.State.Env.CodeInfo.MachineCode.Span;
+        ReadOnlySpan<byte> codeSection = vm.State.Env.CodeInfo.MachineCode.Span;
         if (!vm.TxTracer.IsTracingInstructions && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;

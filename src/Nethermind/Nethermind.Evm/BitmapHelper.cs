@@ -34,7 +34,7 @@ public static class BitmapHelper
 
         for (int pc = 0; pc < code.Length;)
         {
-            var opMetadaata = ((Instruction)code[pc]).StackRequirements();
+            (ushort? InputCount, ushort? OutputCount, ushort? immediates) opMetadaata = ((Instruction)code[pc]).StackRequirements();
 
             pc++;
 

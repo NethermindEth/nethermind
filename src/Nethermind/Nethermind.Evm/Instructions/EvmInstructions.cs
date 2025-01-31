@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
@@ -297,8 +298,8 @@ internal unsafe sealed partial class EvmInstructions
         Metrics.IncrementSelfDestructs();
 
         EvmState vmState = vm.State;
-        var spec = vm.Spec;
-        var state = vm.WorldState;
+        IReleaseSpec spec = vm.Spec;
+        IWorldState state = vm.WorldState;
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
 
@@ -377,7 +378,7 @@ internal unsafe sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.Exp;
 
-        if (!stack.PopUInt256(out var a)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         Span<byte> bytes = stack.PopWord256();
 
         int leadingZeros = bytes.LeadingZerosCount();
@@ -413,7 +414,7 @@ internal unsafe sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
 
-        if (!stack.PopUInt256(out var a)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         Span<byte> bytes = stack.PopWord256();
 
         if (a >= BigInt32)
@@ -441,7 +442,7 @@ internal unsafe sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.Low;
 
-        if (!stack.PopUInt256(out var a)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (a >= BigInt32)
         {
             if (!stack.EnsureDepth(1)) return EvmExceptionType.StackUnderflow;

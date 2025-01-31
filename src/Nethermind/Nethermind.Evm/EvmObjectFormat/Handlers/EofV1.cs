@@ -405,7 +405,7 @@ internal class Eof1 : IEofVersionHandler
     {
         Queue<(EofContainer container, ValidationStrategy strategy)> containers = new();
         containers.Enqueue((eofContainer, validationStrategy));
-        while (containers.TryDequeue(out var target))
+        while (containers.TryDequeue(out (EofContainer container, ValidationStrategy strategy) target))
         {
             EofContainer targetContainer = target.container;
             validationStrategy = target.strategy;
@@ -415,7 +415,7 @@ internal class Eof1 : IEofVersionHandler
 
             containerQueue.VisitedContainers[0] = GetValidation(validationStrategy);
 
-            while (containerQueue.TryDequeue(out var worklet))
+            while (containerQueue.TryDequeue(out (int Index, ValidationStrategy Strategy) worklet))
             {
                 if (worklet.Index != 0)
                 {
@@ -497,7 +497,7 @@ internal class Eof1 : IEofVersionHandler
 
         ReadOnlySpan<byte> contractBody = container[startOffset..endOffset];
         ReadOnlySpan<byte> dataBody = container[endOffset..];
-        var typeSection = header.TypeSection;
+        SectionHeader typeSection = header.TypeSection;
         (int typeSectionStart, int typeSectionSize) = (typeSection.Start, typeSection.Size);
 
         if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS + 1)
@@ -553,7 +553,7 @@ internal class Eof1 : IEofVersionHandler
 
         sectionQueue.Enqueue(0, strategy);
 
-        while (sectionQueue.TryDequeue(out var sectionIdx))
+        while (sectionQueue.TryDequeue(out (int Index, ValidationStrategy Strategy) sectionIdx))
         {
             if (sectionQueue.VisitedContainers[sectionIdx.Index] != 0)
                 continue;

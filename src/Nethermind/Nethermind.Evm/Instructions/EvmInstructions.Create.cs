@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
@@ -27,7 +28,7 @@ internal sealed partial class EvmInstructions
     {
         Metrics.IncrementCreates();
 
-        var spec = vm.Spec;
+        IReleaseSpec spec = vm.Spec;
         if (vm.State.IsStatic) return EvmExceptionType.StaticCallViolation;
 
         vm.ReturnData = null;

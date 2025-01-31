@@ -27,7 +27,7 @@ internal sealed partial class EvmInstructions
     {
         Metrics.IncrementCalls();
 
-        var spec = vm.Spec;
+        IReleaseSpec spec = vm.Spec;
         vm.ReturnData = null;
         ref readonly ExecutionEnvironment env = ref vm.State.Env;
         IWorldState state = vm.WorldState;
