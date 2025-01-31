@@ -3,13 +3,13 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm;
-using Int256;
 
-using Nethermind.Core.Crypto;
 using static Nethermind.Evm.VirtualMachine;
+using Int256;
 
 internal sealed partial class EvmInstructions
 {
@@ -60,7 +60,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
-        Hash256? blockHash = vm.BlockhashProvider.GetBlockhash(vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header, number);
+        Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header, number);
 
         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 

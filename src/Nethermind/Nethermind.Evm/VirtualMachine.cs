@@ -6,14 +6,18 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 #if DEBUG
@@ -21,15 +25,10 @@ using Nethermind.Evm.Tracing.Debugger;
 #endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
-
 namespace Nethermind.Evm;
 
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
-
-using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.EvmObjectFormat.Handlers;
-using System.Runtime.InteropServices;
 
 public sealed unsafe class VirtualMachine : IVirtualMachine
 {
@@ -61,100 +60,18 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
-    //private readonly IVirtualMachine _evm;
-
-    public VirtualMachine(
-        IBlockhashProvider? blockhashProvider,
-        ISpecProvider? specProvider,
-        ICodeInfoRepository codeInfoRepository,
-        ILogManager? logManager)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
-        _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-    }
-
-    internal readonly ref struct CallResult
-    {
-        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-        public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);
-        public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
-        public static CallResult Empty(int fromVersion) => new(null, default, null, fromVersion);
-
-        public CallResult(EvmState stateToExecute)
-        {
-            StateToExecute = stateToExecute;
-            Output = (null, Array.Empty<byte>());
-            PrecompileSuccess = null;
-            ShouldRevert = false;
-            ExceptionType = EvmExceptionType.None;
-        }
-
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-        {
-            StateToExecute = null;
-            Output = (null, output);
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            ExceptionType = exceptionType;
-            FromVersion = fromVersion;
-        }
-
-        public CallResult(ICodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-        {
-            StateToExecute = null;
-            Output = (container, output);
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            ExceptionType = exceptionType;
-            FromVersion = fromVersion;
-        }
-
-        private CallResult(EvmExceptionType exceptionType)
-        {
-            StateToExecute = null;
-            Output = (null, StatusCode.FailureBytes);
-            PrecompileSuccess = null;
-            ShouldRevert = false;
-            ExceptionType = exceptionType;
-        }
-
-        public EvmState? StateToExecute { get; }
-        public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
-        public EvmExceptionType ExceptionType { get; }
-        public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-        public bool IsReturn => StateToExecute is null;
-        public bool IsException => ExceptionType != EvmExceptionType.None;
-
-        public int FromVersion { get; }
-    }
-
-    public interface IIsTracing { }
-    public readonly struct NotTracing : IIsTracing { }
-    public readonly struct IsTracing : IIsTracing { }
-
     private readonly byte[] _chainId;
 
-    private readonly IBlockhashProvider _blockhashProvider;
+    private readonly IBlockhashProvider _blockHashProvider;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
-    private IWorldState _state = null!;
     private readonly Stack<EvmState> _stateStack = new();
+    private readonly ICodeInfoRepository _codeInfoRepository;
+
+    private IWorldState _state = null!;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
-    private readonly ICodeInfoRepository _codeInfoRepository;
     private IReleaseSpec _spec;
 
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
@@ -165,14 +82,27 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
     public object ReturnData { get => _returnData; set => _returnData = value; }
     private object _returnData;
-    public IBlockhashProvider BlockhashProvider => _blockhashProvider;
+    public IBlockhashProvider BlockHashProvider => _blockHashProvider;
 
     public EvmState EvmState => _vmState;
     private EvmState _vmState;
     public int SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
     private int _sectionIndex;
 
-    OpCode[] _opcodeMethods;
+    private OpCode[] _opcodeMethods;
+
+    public VirtualMachine(
+        IBlockhashProvider? blockHashProvider,
+        ISpecProvider? specProvider,
+        ICodeInfoRepository codeInfoRepository,
+        ILogManager? logManager)
+    {
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
+        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
+        _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+    }
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
@@ -181,7 +111,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         ILogger? logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
+        _blockHashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
@@ -882,5 +812,68 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
+    }
+
+    internal readonly ref struct CallResult
+    {
+        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
+        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
+        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
+        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
+        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
+        public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);
+        public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
+        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
+        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
+        public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
+        public static CallResult Empty(int fromVersion) => new(null, default, null, fromVersion);
+
+        public CallResult(EvmState stateToExecute)
+        {
+            StateToExecute = stateToExecute;
+            Output = (null, Array.Empty<byte>());
+            PrecompileSuccess = null;
+            ShouldRevert = false;
+            ExceptionType = EvmExceptionType.None;
+        }
+
+        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        {
+            StateToExecute = null;
+            Output = (null, output);
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            ExceptionType = exceptionType;
+            FromVersion = fromVersion;
+        }
+
+        public CallResult(ICodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        {
+            StateToExecute = null;
+            Output = (container, output);
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            ExceptionType = exceptionType;
+            FromVersion = fromVersion;
+        }
+
+        private CallResult(EvmExceptionType exceptionType)
+        {
+            StateToExecute = null;
+            Output = (null, StatusCode.FailureBytes);
+            PrecompileSuccess = null;
+            ShouldRevert = false;
+            ExceptionType = exceptionType;
+        }
+
+        public EvmState? StateToExecute { get; }
+        public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
+        public EvmExceptionType ExceptionType { get; }
+        public bool ShouldRevert { get; }
+        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
+        public bool IsReturn => StateToExecute is null;
+        public bool IsException => ExceptionType != EvmExceptionType.None;
+        public int FromVersion { get; }
     }
 }
