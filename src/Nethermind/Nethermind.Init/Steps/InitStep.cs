@@ -25,13 +25,16 @@ public abstract class InitStep
         cancellationToken.Register(() => _taskCompletedSource.TrySetCanceled());
 
         await Task.WhenAll(dependentSteps);
-        await Setup(cancellationToken);
-        SignalStepCompleted();
-    }
-
-    protected void SignalStepCompleted()
-    {
-        _taskCompletedSource.SetResult();
+        try
+        {
+            await Setup(cancellationToken);
+            _taskCompletedSource.SetResult();
+        }
+        catch (Exception)
+        {
+            _taskCompletedSource.SetCanceled();
+            throw;
+        }
     }
 
     protected abstract Task Setup(CancellationToken cancellationToken);
