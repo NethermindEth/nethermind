@@ -1805,11 +1805,12 @@ namespace Nethermind.TxPool.Test
 
             result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-            result.Should().Be(AcceptTxResult.OnlyOneTxPerDelegatedAccount);
+            result.Should().Be(AcceptTxResult.MoreThanOneTxPerDelegatedAccount);
         }
 
-        [Test]
-        public void Tx_with_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal()
+        [TestCase(true)]
+        [TestCase(true)]
+        public void Tx_with_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
@@ -1842,15 +1843,20 @@ namespace Nethermind.TxPool.Test
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
 
-            result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
+            if (withRemoval)
+            {
+                _txPool.RemoveTransaction(firstTx.Hash);
 
-            result.Should().Be(AcceptTxResult.PendingDelegation);
+                result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-            _txPool.RemoveTransaction(firstTx.Hash);
+                result.Should().Be(AcceptTxResult.Accepted);
+            }
+            else
+            {
+                result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-            result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
-
-            result.Should().Be(AcceptTxResult.AlreadyKnown);
+                result.Should().Be(AcceptTxResult.AlreadyKnown);
+            }
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

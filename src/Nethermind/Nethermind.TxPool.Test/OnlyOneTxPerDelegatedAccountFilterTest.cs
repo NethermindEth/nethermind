@@ -45,11 +45,19 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
     [Test]
     public void Accept_SenderIsDelegatedWithNoTransactionsInPool_ReturnsAccepted()
     {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        CodeInfoRepository codeInfoRepository = new();
+        byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
+        codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
         TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
-        OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), new DelegationCache());
+        OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         TxFilteringState state = new();
 
@@ -107,12 +115,12 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.OnlyOneTxPerDelegatedAccount));
+        Assert.That(result, Is.EqualTo(AcceptTxResult.MoreThanOneTxPerDelegatedAccount));
     }
 
     private static object[] EipActiveCases =
     {
-        new object[]{ true, AcceptTxResult.OnlyOneTxPerDelegatedAccount },
+        new object[]{ true, AcceptTxResult.MoreThanOneTxPerDelegatedAccount },
         new object[]{ false, AcceptTxResult.Accepted},
     };
     [TestCaseSource(nameof(EipActiveCases))]

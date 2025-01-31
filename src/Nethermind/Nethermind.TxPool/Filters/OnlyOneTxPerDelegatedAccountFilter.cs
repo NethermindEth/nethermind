@@ -27,10 +27,11 @@ namespace Nethermind.TxPool.Filters
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
-            //Transactios from the same source can only be either blob transactions or some other type 
-            if (!standardPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce) || !blobPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce))
+            //Transactios from the same source can only be either blob transactions or other type 
+            if (tx.SupportsBlobs ? !blobPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce)
+                : !standardPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce))
             {
-                return AcceptTxResult.OnlyOneTxPerDelegatedAccount;
+                return AcceptTxResult.MoreThanOneTxPerDelegatedAccount;
             }
             return AcceptTxResult.Accepted;
         }
