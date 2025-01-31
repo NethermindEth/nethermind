@@ -281,7 +281,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // depending on whether the node gets resolved it gives different values here in debugging and run
             // needs some attention
-            fullTrieStore.MemoryUsedByDirtyCache.Should().BeLessOrEqualTo(
+            fullTrieStore.MemoryUsedByDirtyCache.Should().BeLessThanOrEqualTo(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }

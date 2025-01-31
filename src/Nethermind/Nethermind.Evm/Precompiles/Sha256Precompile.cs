@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Precompiles
 {
     public class Sha256Precompile : IPrecompile<Sha256Precompile>
     {
-        public static readonly Sha256Precompile Instance = new Sha256Precompile();
+        public static readonly Sha256Precompile Instance = new();
 
         private Sha256Precompile() { }
 
@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 12L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Sha256Precompile++;
 

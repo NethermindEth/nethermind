@@ -257,19 +257,25 @@ public class BlockchainBridgeTests
         Transaction tx = postEip4844
             ? Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
+                .WithMaxFeePerGas(effectiveGasPrice)
                 .WithType(TxType.Blob)
                 .WithMaxFeePerBlobGas(2)
                 .WithBlobVersionedHashes(2)
                 .TestObject
             : Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
+                .WithMaxFeePerGas(effectiveGasPrice)
                 .TestObject;
         Block block = postEip4844
             ? Build.A.Block
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
                 .WithTransactions(tx)
                 .WithExcessBlobGas(2)
                 .TestObject
             : Build.A.Block
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
                 .WithTransactions(tx)
                 .TestObject;
         TxReceipt receipt = Build.A.Receipt
@@ -292,5 +298,25 @@ public class BlockchainBridgeTests
         }
 
         _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
+    }
+
+    [Test]
+    public void Call_sets_maxFeePerBlobGas()
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(0)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new() { Type = TxType.Blob, MaxFeePerBlobGas = null, BlobVersionedHashes = [] };
+
+        _blockchainBridge.Call(header, tx);
+        _transactionProcessor.Received().CallAndRestore(
+            Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Any<ITxTracer>());
     }
 }

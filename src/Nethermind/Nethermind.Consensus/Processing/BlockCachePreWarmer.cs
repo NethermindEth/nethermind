@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
+using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -106,6 +107,9 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                             using IReadOnlyTxProcessingScope scope = env.Build(state.stateRoot);
                             scope.WorldState.WarmUp(state.block.Withdrawals[i].Address);
                         }
+                        catch (MissingTrieNodeException)
+                        {
+                        }
                         finally
                         {
                             state.envPool.Return(env);
@@ -167,7 +171,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = scope.TransactionProcessor.Warmup(tx, new BlockExecutionContext(state.BlockHeader), NullTxTracer.Instance);
+                    TransactionResult result = scope.TransactionProcessor.Warmup(tx, new BlockExecutionContext(state.BlockHeader, state.Spec), NullTxTracer.Instance);
                     if (state.PreWarmer._logger.IsTrace) state.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
@@ -276,14 +280,21 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     Transaction tx = state.Block.Transactions[i];
                     Address? sender = tx.SenderAddress;
 
-                    if (sender is not null)
+                    try
                     {
-                        state.Scope.WorldState.WarmUp(sender);
+                        if (sender is not null)
+                        {
+                            state.Scope.WorldState.WarmUp(sender);
+                        }
+
+                        Address to = tx.To;
+                        if (to is not null)
+                        {
+                            state.Scope.WorldState.WarmUp(to);
+                        }
                     }
-                    Address to = tx.To;
-                    if (to is not null)
+                    catch (MissingTrieNodeException)
                     {
-                        state.Scope.WorldState.WarmUp(to);
                     }
 
                     return state;

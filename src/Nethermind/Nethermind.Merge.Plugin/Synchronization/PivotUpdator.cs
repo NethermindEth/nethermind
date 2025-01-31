@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -45,7 +46,7 @@ public class PivotUpdator
         ISyncConfig syncConfig,
         IBlockCacheService blockCacheService,
         IBeaconSyncStrategy beaconSyncStrategy,
-        IDb metadataDb,
+        [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
