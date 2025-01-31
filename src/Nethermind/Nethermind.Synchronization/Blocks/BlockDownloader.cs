@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
         }
 
-        protected PeerInfo? _previousBestPeer = null;
+        private PeerInfo? _previousBestPeer = null;
 
         public virtual async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
         {
@@ -390,7 +390,7 @@ namespace Nethermind.Synchronization.Blocks
             return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         }
 
-        protected bool SuggestBlock(
+        private bool SuggestBlock(
             PeerInfo bestPeer,
             Block currentBlock,
             int blockIndex,
@@ -477,7 +477,7 @@ namespace Nethermind.Synchronization.Blocks
             return (shouldProcess, receipts);
         }
 
-        protected void PreValidate(PeerInfo bestPeer, BlockDownloadContext blockDownloadContext, int blockIndex)
+        private void PreValidate(PeerInfo bestPeer, BlockDownloadContext blockDownloadContext, int blockIndex)
         {
             Block currentBlock = blockDownloadContext.Blocks[blockIndex];
             if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
@@ -541,7 +541,7 @@ namespace Nethermind.Synchronization.Blocks
             return headers;
         }
 
-        protected async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
+        private async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
         {
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
@@ -575,7 +575,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        protected async Task RequestReceipts(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
+        private async Task RequestReceipts(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
         {
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
@@ -686,7 +686,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        protected bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
+        private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
         {
             void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
             {
@@ -735,12 +735,12 @@ namespace Nethermind.Synchronization.Blocks
 
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        protected void InvokeEvent(SyncEventArgs args)
+        private void InvokeEvent(SyncEventArgs args)
         {
             SyncEvent?.Invoke(this, args);
         }
 
-        protected void HandleSyncRequestResult(Task<long> task, PeerInfo? peerInfo)
+        private void HandleSyncRequestResult(Task<long> task, PeerInfo? peerInfo)
         {
             switch (task)
             {
@@ -804,7 +804,7 @@ namespace Nethermind.Synchronization.Blocks
         /// Adjust the sync batch size according to how much time it take to download the batch.
         /// </summary>
         /// <param name="downloadTime"></param>
-        protected void AdjustSyncBatchSize(TimeSpan downloadTime)
+        private void AdjustSyncBatchSize(TimeSpan downloadTime)
         {
             // We shrink the batch size to prevent timeout. Timeout are wasted bandwidth.
             if (downloadTime > SyncBatchDownloadTimeUpperBound)
@@ -907,30 +907,6 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
             }
-        }
-    }
-
-    public interface IPosTransitionHook
-    {
-        void TryUpdateTerminalBlock(BlockHeader currentHeader, bool shouldProcess);
-        bool ImprovementRequirementSatisfied(PeerInfo? peerInfo);
-        IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers);
-    }
-
-    public class NoPosTransition(IBlockTree blockTree) : IPosTransitionHook
-    {
-        public void TryUpdateTerminalBlock(BlockHeader currentHeader, bool shouldProcess)
-        {
-        }
-
-        public bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
-        {
-            return bestPeer!.TotalDifficulty > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
-        }
-
-        public IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers)
-        {
-            return headers;
         }
     }
 }
