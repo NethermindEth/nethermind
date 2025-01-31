@@ -26,13 +26,19 @@ using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
 public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, IBlocksConfig blocksConfig) : Module
 {
+    public MergeModule(IConfigProvider configProvider) : this(
+        configProvider.GetConfig<ITxPoolConfig>(),
+        configProvider.GetConfig<IMergeConfig>(),
+        configProvider.GetConfig<IBlocksConfig>()
+    ) {
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);

@@ -469,11 +469,7 @@ public partial class BlockDownloaderTests
         return CreateNode((builder) =>
         {
             builder
-                .AddModule(new MergeModule(
-                    configProvider.GetConfig<ITxPoolConfig>(),
-                    configProvider.GetConfig<IMergeConfig>(),
-                    configProvider.GetConfig<IBlocksConfig>()
-                ))
+                .AddModule(new MergeModule(configProvider))
                 .AddSingleton<PostMergeContext>();
             configurer?.Invoke(builder);
         }, configProvider);
