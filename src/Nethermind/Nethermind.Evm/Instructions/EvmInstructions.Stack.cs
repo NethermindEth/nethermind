@@ -86,7 +86,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
 
-        ReadOnlySpan<byte> code = vm.State.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
 
         int length = TOpCount.Count;
         int usedFromCode = Math.Min(code.Length - programCounter, length);
@@ -101,7 +101,7 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : struct, IOpCount
     {
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
 
         if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;

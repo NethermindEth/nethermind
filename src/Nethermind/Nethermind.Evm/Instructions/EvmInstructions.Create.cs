@@ -29,10 +29,10 @@ internal sealed partial class EvmInstructions
         Metrics.IncrementCreates();
 
         IReleaseSpec spec = vm.Spec;
-        if (vm.State.IsStatic) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic) return EvmExceptionType.StaticCallViolation;
 
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.State.Env;
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
         // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
@@ -66,7 +66,7 @@ internal sealed partial class EvmInstructions
 
         if (!UpdateGas(gasCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength)) return EvmExceptionType.OutOfGas;
 
         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -77,7 +77,7 @@ internal sealed partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        ReadOnlyMemory<byte> initCode = vm.State.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
+        ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -109,7 +109,7 @@ internal sealed partial class EvmInstructions
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-            vm.State.AccessTracker.WarmUp(contractAddress);
+            vm.EvmState.AccessTracker.WarmUp(contractAddress);
         }
 
         // Do not add the initCode to the cache as it is
@@ -165,11 +165,11 @@ internal sealed partial class EvmInstructions
             outputDestination: 0,
             outputLength: 0,
             TOpCreate.ExecutionType,
-            isStatic: vm.State.IsStatic,
+            isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
             in snapshot,
             env: in callEnv,
-            in vm.State.AccessTracker
+            in vm.EvmState.AccessTracker
         );
 
         return EvmExceptionType.None;

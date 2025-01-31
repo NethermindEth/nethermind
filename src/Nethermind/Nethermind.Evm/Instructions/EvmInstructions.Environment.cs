@@ -92,7 +92,7 @@ internal sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow;
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
         Span<byte> bytes = vmState.Memory.LoadSpan(in result);
         if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange(result, bytes);
@@ -110,7 +110,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
 
         Span<byte> bytes = stack.PopWord256();
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
         vmState.Memory.SaveWord(in result, bytes);
         if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange((long)result, bytes);
@@ -126,7 +126,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
 
         byte data = stack.PopByte();
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) return EvmExceptionType.OutOfGas;
         vmState.Memory.SaveByte(in result, data);
         if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange(result, data);
@@ -139,7 +139,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.SelfBalance;
 
-        UInt256 result = vm.WorldState.GetBalance(vm.State.Env.ExecutingAccount);
+        UInt256 result = vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
@@ -151,7 +151,7 @@ internal sealed partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         if (spec.UseHotAndColdStorage)
         {
-            EvmState vmState = vm.State;
+            EvmState vmState = vm.EvmState;
             if (vm.TxTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
                 vmState.AccessTracker.WarmUp(address);
@@ -188,7 +188,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= TOpEnv.GasCost;
 
-        TOpEnv.Operation(vm.State, out Span<byte> result);
+        TOpEnv.Operation(vm.EvmState, out Span<byte> result);
 
         stack.PushBytes(result);
 
@@ -203,7 +203,7 @@ internal sealed partial class EvmInstructions
         if (typeof(TOpEnv) == typeof(OpBlobBaseFee) && !vm.Spec.BlobBaseFeeEnabled) return EvmExceptionType.BadInstruction;
         gasAvailable -= TOpEnv.GasCost;
 
-        TOpEnv.Operation(vm.State, out UInt256 result);
+        TOpEnv.Operation(vm.EvmState, out UInt256 result);
 
         stack.PushUInt256(in result);
 

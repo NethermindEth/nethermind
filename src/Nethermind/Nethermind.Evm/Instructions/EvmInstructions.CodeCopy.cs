@@ -28,9 +28,9 @@ internal sealed partial class EvmInstructions
 
         if (!result.IsZero)
         {
-            if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
+            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
             ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
-            vm.State.Memory.Save(in a, in slice);
+            vm.EvmState.Memory.Save(in a, in slice);
             if (vm.TxTracer.IsTracingInstructions)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
@@ -43,13 +43,13 @@ internal sealed partial class EvmInstructions
     public struct OpCallDataCopy : IOpCodeCopy
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
-            => vm.State.Env.InputData.Span;
+            => vm.EvmState.Env.InputData.Span;
     }
 
     public struct OpCodeCopy : IOpCodeCopy
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
-            => vm.State.Env.CodeInfo.MachineCode.Span;
+            => vm.EvmState.Env.CodeInfo.MachineCode.Span;
     }
 
     [SkipLocalsInit]
@@ -68,7 +68,7 @@ internal sealed partial class EvmInstructions
 
         if (!result.IsZero)
         {
-            if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
+            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
 
             ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, spec).MachineCode.Span;
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
@@ -76,7 +76,7 @@ internal sealed partial class EvmInstructions
                 externalCode = EofValidator.MAGIC;
             }
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
-            vm.State.Memory.Save(in a, in slice);
+            vm.EvmState.Memory.Save(in a, in slice);
             if (vm.TxTracer.IsTracingInstructions)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
@@ -97,7 +97,7 @@ internal sealed partial class EvmInstructions
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> codeSection = vm.State.Env.CodeInfo.MachineCode.Span;
+        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
         if (!vm.TxTracer.IsTracingInstructions && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;

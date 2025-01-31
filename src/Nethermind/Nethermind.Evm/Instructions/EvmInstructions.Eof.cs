@@ -38,16 +38,16 @@ internal sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
-        if (vm.State.Env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out UInt256 result) || result > returnDataBuffer.Length))
+        if (vm.EvmState.Env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out UInt256 result) || result > returnDataBuffer.Length))
         {
             return EvmExceptionType.AccessViolation;
         }
 
         if (!c.IsZero)
         {
-            if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, c)) return EvmExceptionType.OutOfGas;
+            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, c)) return EvmExceptionType.OutOfGas;
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(b, (int)c);
-            vm.State.Memory.Save(in a, in slice);
+            vm.EvmState.Memory.Save(in a, in slice);
             if (vm.TxTracer.IsTracingInstructions)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
@@ -60,7 +60,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -76,7 +76,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDataLoadN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -94,7 +94,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDataSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -108,7 +108,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -121,10 +121,10 @@ internal sealed partial class EvmInstructions
 
         if (!size.IsZero)
         {
-            if (!UpdateMemoryCost(vm.State, ref gasAvailable, in memOffset, size))
+            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memOffset, size))
                 return EvmExceptionType.OutOfGas;
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
-            vm.State.Memory.Save(in memOffset, dataSectionSlice);
+            vm.EvmState.Memory.Save(in memOffset, dataSectionSlice);
             if (vm.TxTracer.IsTracingInstructions)
             {
                 vm.TxTracer.ReportMemoryChange(memOffset, dataSectionSlice);
@@ -139,7 +139,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionRelativeJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -154,7 +154,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionRelativeJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -174,7 +174,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionJumpTable(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -199,7 +199,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionCallFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -214,10 +214,10 @@ internal sealed partial class EvmInstructions
             return EvmExceptionType.StackOverflow;
         }
 
-        if (vm.State.ReturnStackHead == Eof1.RETURN_STACK_MAX_HEIGHT)
+        if (vm.EvmState.ReturnStackHead == Eof1.RETURN_STACK_MAX_HEIGHT)
             return EvmExceptionType.InvalidSubroutineEntry;
 
-        vm.State.ReturnStack[vm.State.ReturnStackHead++] = new EvmState.ReturnState
+        vm.EvmState.ReturnStack[vm.EvmState.ReturnStackHead++] = new EvmState.ReturnState
         {
             Index = vm.SectionIndex,
             Height = stack.Head - inputCount,
@@ -233,7 +233,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturnFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -241,7 +241,7 @@ internal sealed partial class EvmInstructions
 
         (_, int outputCount, _) = codeInfo.GetSectionMetadata(vm.SectionIndex);
 
-        EvmState.ReturnState stackFrame = vm.State.ReturnStack[--vm.State.ReturnStackHead];
+        EvmState.ReturnState stackFrame = vm.EvmState.ReturnStack[--vm.EvmState.ReturnStackHead];
         vm.SectionIndex = stackFrame.Index;
         programCounter = stackFrame.Offset;
 
@@ -251,7 +251,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionJumpFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -273,7 +273,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDupN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -290,7 +290,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSwapN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -307,7 +307,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionExchange(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -331,13 +331,13 @@ internal sealed partial class EvmInstructions
         vm.ReturnData = null;
 
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
-        if (vm.State.IsStatic) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic) return EvmExceptionType.StaticCallViolation;
 
-        ref readonly ExecutionEnvironment env = ref vm.State.Env;
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         EofCodeInfo container = env.CodeInfo as EofCodeInfo;
         ExecutionType currentContext = ExecutionType.EOFCREATE;
 
@@ -357,7 +357,7 @@ internal sealed partial class EvmInstructions
         stack.PopUInt256(out UInt256 dataSize);
 
         // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
-        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in dataOffset, dataSize)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataSize)) return EvmExceptionType.OutOfGas;
 
         // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
         // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
@@ -389,7 +389,7 @@ internal sealed partial class EvmInstructions
         }
 
         // 8 - caller’s memory slice [input_offset:input_size] is used as calldata
-        Span<byte> calldata = vm.State.Memory.LoadSpan(dataOffset, dataSize);
+        Span<byte> calldata = vm.EvmState.Memory.LoadSpan(dataOffset, dataSize);
 
         // 9 - execute the container and deduct gas for execution. The 63/64th rule from EIP-150 applies.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -411,7 +411,7 @@ internal sealed partial class EvmInstructions
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-            vm.State.AccessTracker.WarmUp(contractAddress);
+            vm.EvmState.AccessTracker.WarmUp(contractAddress);
         }
 
 
@@ -458,11 +458,11 @@ internal sealed partial class EvmInstructions
             outputDestination: 0,
             outputLength: 0,
             executionType: currentContext,
-            isStatic: vm.State.IsStatic,
+            isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
             in snapshot,
             env: in callEnv,
-            in vm.State.AccessTracker
+            in vm.EvmState.AccessTracker
         );
 
         return EvmExceptionType.None;
@@ -471,14 +471,14 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturnContract(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        if (!vm.State.ExecutionType.IsAnyCreateEof())
+        if (!vm.EvmState.ExecutionType.IsAnyCreateEof())
             return EvmExceptionType.BadInstruction;
 
 
         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
 
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
         ReadOnlyMemory<byte> deployCode = codeInfo.ContainerSection[(Range)codeInfo.ContainerSectionOffset(sectionIdx)];
@@ -488,7 +488,7 @@ internal sealed partial class EvmInstructions
         stack.PopUInt256(out UInt256 b);
         ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
 
-        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
 
         int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
         if (projectedNewSize < deploycodeInfo.EofContainer.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
@@ -496,7 +496,7 @@ internal sealed partial class EvmInstructions
             return EvmExceptionType.AccessViolation;
         }
 
-        vm.ReturnDataBuffer = vm.State.Memory.Load(a, b);
+        vm.ReturnDataBuffer = vm.EvmState.Memory.Load(a, b);
         vm.ReturnData = deploycodeInfo;
 
         return EvmExceptionType.None;
@@ -506,7 +506,7 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionReturnDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.State.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             return EvmExceptionType.BadInstruction;
 
@@ -552,7 +552,7 @@ internal sealed partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.State.Env;
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
         // Instruction is undefined in legacy code and only available in EOF
@@ -580,7 +580,7 @@ internal sealed partial class EvmInstructions
 
         // 3. If value is non-zero:
         //  a: Halt with exceptional failure if the current frame is in static-mode.
-        if (vm.State.IsStatic && !callValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic && !callValue.IsZero) return EvmExceptionType.StaticCallViolation;
         //  b. Charge CALL_VALUE_COST gas.
         if (!callValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
@@ -599,7 +599,7 @@ internal sealed partial class EvmInstructions
             : codeSource;
 
         // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
-        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
         // 1. Charge WARM_STORAGE_READ_COST (100) gas.
         // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
@@ -668,7 +668,7 @@ internal sealed partial class EvmInstructions
         // 10. Perform the call with the available gas and configuration.
         if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlyMemory<byte> callData = vm.State.Memory.Load(in dataOffset, dataLength);
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = state.TakeSnapshot();
         state.SubtractFromBalance(caller, callValue, spec);
@@ -691,11 +691,11 @@ internal sealed partial class EvmInstructions
             outputDestination: 0,
             outputLength: 0,
             TOpEofCall.ExecutionType,
-            isStatic: TOpEofCall.IsStatic || vm.State.IsStatic,
+            isStatic: TOpEofCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
             in snapshot,
             env: in callEnv,
-            in vm.State.AccessTracker
+            in vm.EvmState.AccessTracker
         );
 
         return EvmExceptionType.None;

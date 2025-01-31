@@ -29,7 +29,7 @@ internal sealed partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.State.Env;
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
@@ -58,7 +58,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 outputOffset)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 outputLength)) return EvmExceptionType.StackUnderflow;
 
-        if (vm.State.IsStatic && !transferValue.IsZero && typeof(TOpCall) == typeof(OpCallCode)) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) == typeof(OpCallCode)) return EvmExceptionType.StaticCallViolation;
 
         Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
         Address target = typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall)
@@ -87,8 +87,8 @@ internal sealed partial class EvmInstructions
         }
 
         if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-            !UpdateMemoryCost(vm.State, ref gasAvailable, in dataOffset, dataLength) ||
-            !UpdateMemoryCost(vm.State, ref gasAvailable, in outputOffset, outputLength) ||
+            !UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
+            !UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
@@ -144,7 +144,7 @@ internal sealed partial class EvmInstructions
             return FastCall(vm, spec, in transferValue, target);
         }
 
-        ReadOnlyMemory<byte> callData = vm.State.Memory.Load(in dataOffset, dataLength);
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
@@ -169,11 +169,11 @@ internal sealed partial class EvmInstructions
             outputOffset.ToLong(),
             outputLength.ToLong(),
             TOpCall.ExecutionType,
-            TOpCall.IsStatic || vm.State.IsStatic,
+            TOpCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
             snapshot: snapshot,
             env: callEnv,
-            stateForAccessLists: vm.State.AccessTracker);
+            stateForAccessLists: vm.EvmState.AccessTracker);
 
         return EvmExceptionType.None;
 
@@ -229,7 +229,7 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturn(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        if (vm.State.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+        if (vm.EvmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {
             return EvmExceptionType.BadInstruction;
         }
@@ -238,12 +238,12 @@ internal sealed partial class EvmInstructions
             !stack.PopUInt256(out UInt256 length))
             return EvmExceptionType.StackUnderflow;
 
-        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in position, in length))
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
         {
             return EvmExceptionType.OutOfGas;
         }
 
-        vm.ReturnData = vm.State.Memory.Load(in position, in length).ToArray();
+        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
 
         return EvmExceptionType.None;
 

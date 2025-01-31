@@ -32,7 +32,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.Mid;
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        if (!Jump(result, ref programCounter, in vm.State.Env)) return EvmExceptionType.InvalidJumpDestination;
+        if (!Jump(result, ref programCounter, in vm.EvmState.Env)) return EvmExceptionType.InvalidJumpDestination;
 
         return EvmExceptionType.None;
     }
@@ -47,7 +47,7 @@ internal sealed partial class EvmInstructions
         if (Unsafe.IsNullRef(in condition)) return EvmExceptionType.StackUnderflow;
         if (Unsafe.As<byte, Vector256<byte>>(ref condition) != default)
         {
-            if (!Jump(result, ref programCounter, in vm.State.Env)) return EvmExceptionType.InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, in vm.EvmState.Env)) return EvmExceptionType.InvalidJumpDestination;
         }
 
         return EvmExceptionType.None;

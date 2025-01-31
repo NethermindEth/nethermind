@@ -267,7 +267,7 @@ internal unsafe sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionStop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        if (vm.State.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+        if (vm.EvmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {
             return EvmExceptionType.BadInstruction;
         }
@@ -282,12 +282,12 @@ internal unsafe sealed partial class EvmInstructions
             !stack.PopUInt256(out UInt256 length))
             return EvmExceptionType.StackUnderflow;
 
-        if (!UpdateMemoryCost(vm.State, ref gasAvailable, in position, in length))
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
         {
             return EvmExceptionType.OutOfGas;
         }
 
-        vm.ReturnData = vm.State.Memory.Load(in position, in length).ToArray();
+        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
 
         return EvmExceptionType.Revert;
     }
@@ -297,7 +297,7 @@ internal unsafe sealed partial class EvmInstructions
     {
         Metrics.IncrementSelfDestructs();
 
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
@@ -350,7 +350,7 @@ internal unsafe sealed partial class EvmInstructions
     public static EvmExceptionType InstructionPrevRandao(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
-        BlockHeader header = vm.State.Env.TxExecutionContext.BlockExecutionContext.Header;
+        BlockHeader header = vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header;
         if (header.IsPostMerge)
         {
             stack.PushBytes(header.Random.Bytes);
@@ -474,7 +474,7 @@ internal unsafe sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
         gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b);
 
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
 
         Span<byte> bytes = vmState.Memory.LoadSpan(in a, b);
@@ -489,7 +489,7 @@ internal unsafe sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow;
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        stack.PushBytes(vm.State.Env.InputData.SliceWithZeroPadding(result, 32));
+        stack.PushBytes(vm.EvmState.Env.InputData.SliceWithZeroPadding(result, 32));
 
         return EvmExceptionType.None;
     }

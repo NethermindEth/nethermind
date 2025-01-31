@@ -4,14 +4,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -168,13 +164,13 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public ReadOnlySpan<byte> ChainId => _chainId;
     public ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
     public object ReturnData { get => _returnData; set => _returnData = value; }
-    object _returnData;
+    private object _returnData;
     public IBlockhashProvider BlockhashProvider => _blockhashProvider;
 
-    public EvmState State => _vmState;
-    EvmState _vmState;
+    public EvmState EvmState => _vmState;
+    private EvmState _vmState;
     public int SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
-    int _sectionIndex;
+    private int _sectionIndex;
 
     OpCode[] _opcodeMethods;
 
@@ -592,80 +588,10 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         return true;
     }
 
-    private static void UpdateGasUp(long refund, ref long gasAvailable)
-    {
-        gasAvailable += refund;
-    }
-
-    private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, bool chargeForDelegation, IReleaseSpec spec, bool chargeForWarm = true)
-    {
-        if (!spec.UseHotAndColdStorage)
-        {
-            return true;
-        }
-        bool notOutOfGas = ChargeAccountGas(ref gasAvailable, vmState, address, spec);
-        return notOutOfGas
-               && (!chargeForDelegation
-                   || !vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, spec, out Address delegated)
-                   || ChargeAccountGas(ref gasAvailable, vmState, delegated, spec));
-
-        bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
-        {
-            bool result = true;
-            if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
-            {
-                vmState.AccessTracker.WarmUp(address);
-            }
-
-            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
-            {
-                result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                vmState.AccessTracker.WarmUp(address);
-            }
-            else if (chargeForWarm)
-            {
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-            }
-            return result;
-        }
-    }
-
     private enum StorageAccessType
     {
         SLOAD,
         SSTORE
-    }
-
-    private bool ChargeStorageAccessGas(
-        ref long gasAvailable,
-        EvmState vmState,
-        in StorageCell storageCell,
-        StorageAccessType storageAccessType,
-        IReleaseSpec spec)
-    {
-        // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
-
-        bool result = true;
-        if (spec.UseHotAndColdStorage)
-        {
-            if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
-            {
-                vmState.AccessTracker.WarmUp(in storageCell);
-            }
-
-            if (vmState.AccessTracker.IsCold(in storageCell))
-            {
-                result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                vmState.AccessTracker.WarmUp(in storageCell);
-            }
-            else if (storageAccessType == StorageAccessType.SLOAD)
-            {
-                // we do not charge for WARM_STORAGE_READ_COST in SSTORE scenario
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-            }
-        }
-
-        return result;
     }
 
     private CallResult ExecutePrecompile(EvmState state)
@@ -794,6 +720,9 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
 
         EvmExceptionType exceptionType = EvmExceptionType.None;
+#if DEBUG
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
 
         var tracingInstructions = _txTracer.IsTracingInstructions;
         var isCancelable = _txTracer.IsCancelable;
@@ -806,6 +735,9 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         // opcodes can change the program counter (e.g. Push, Jump, etc)
         while ((uint)programCounter < (uint)codeSection.Length)
         {
+#if DEBUG
+            debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
             // Get the opcode at the current program counter
             Instruction instruction = codeSection[programCounter];
 
@@ -849,6 +781,9 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         return CallResult.Empty(codeInfo.Version);
 
     DataReturn:
+#if DEBUG
+        debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
         if (_returnData is EvmState state)
         {
             return new CallResult(state);
@@ -875,117 +810,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
-
     }
-
-    /*
-    [SkipLocalsInit]
-    private unsafe CallResult ExecuteCodeTraced(scoped ref EvmStack stack, long gasAvailable)
-    {
-        _returnData = null;
-        ICodeInfo codeInfo = _vmState.Env.CodeInfo;
-
-        int programCounter = _vmState.ProgramCounter;
-        _sectionIndex = _vmState.FunctionIndex;
-
-        ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
-
-        EvmExceptionType exceptionType = EvmExceptionType.None;
-        bool isRevert = false;
-#if DEBUG
-        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
-#endif
-        OpCode[] opcodes = _opcodes;
-        //bool isCancelable = _txTracer.IsCancelable;
-        uint codeLength = (uint)codeSection.Length;
-        while ((uint)programCounter < codeLength)
-        {
-#if DEBUG
-            debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
-#endif
-            Instruction instruction = (Instruction)codeSection[programCounter];
-
-            //if (isCancelable && _txTracer.IsCancelled)
-            //{
-            //    ThrowOperationCanceledException();
-            //}
-
-            //// Evaluated to constant at compile time and code elided if not tracing
-            //if (typeof(TTracingInstructions) == typeof(IsTracing))
-            //    StartInstructionTrace(instruction, _vmState, gasAvailable, programCounter, in stack);
-
-            programCounter++;
-
-            OpCode opcode = opcodes[(int)instruction];
-            exceptionType = opcode(this, ref stack, ref gasAvailable, ref programCounter);
-
-            if (exceptionType != EvmExceptionType.None) break;
-            if (gasAvailable < 0) goto OutOfGas;
-
-            if (_returnData is not null)
-            {
-                if (!ReferenceEquals(_returnData, CallResult.BoxedEmpty))
-                {
-                    goto DataReturnNoTrace;
-                }
-                // Non contract call continue rather than constructing a new frame
-                _returnData = null;
-            }
-
-            //if (typeof(TTracingInstructions) == typeof(IsTracing))
-            //{
-            //    EndInstructionTrace(gasAvailable, _vmState.Memory.Size);
-            //}
-        }
-
-        if (exceptionType == EvmExceptionType.Stop) goto EmptyReturn;
-        if (exceptionType == EvmExceptionType.Revert)
-        {
-            isRevert = true;
-            goto DataReturn;
-        }
-        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-        goto EmptyReturnNoTrace;
-
-    // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-    EmptyReturn:
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, _vmState.Memory.Size);
-    EmptyReturnNoTrace:
-        // Ensure gas is positive before updating state
-        if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
-#if DEBUG
-        debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
-#endif
-        return CallResult.Empty(codeInfo.Version);
-    DataReturn:
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, _vmState.Memory.Size);
-    DataReturnNoTrace:
-        // Ensure gas is positive before updating state
-        if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(_vmState, programCounter, gasAvailable, stack.Head, _sectionIndex);
-
-        if (_returnData is EvmState state)
-        {
-            return new CallResult(state);
-        }
-        else if (_returnData is EofCodeInfo eofCodeInfo)
-        {
-            return new CallResult(eofCodeInfo, _returnDataBuffer, null, codeInfo.Version);
-        }
-        return new CallResult(null, (byte[])_returnData, null, codeInfo.Version, shouldRevert: isRevert);
-
-    OutOfGas:
-        exceptionType = EvmExceptionType.OutOfGas;
-        goto ReturnFailure;
-    ReturnFailure:
-        return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
-
-        //[DoesNotReturn]
-        //static void ThrowOperationCanceledException() =>
-        //    throw new OperationCanceledException("Cancellation Requested");
-    }
-    */
 
     private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
     {
@@ -1024,27 +849,6 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         return memoryCost == 0L || UpdateGas(memoryCost, ref gasAvailable);
     }
 
-    private static bool Jump(CodeInfo codeinfo, in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env)
-    {
-        if (jumpDest > int.MaxValue)
-        {
-            // https://github.com/NethermindEth/nethermind/issues/140
-            // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
-            return false;
-        }
-
-        int jumpDestInt = (int)jumpDest;
-        if (!codeinfo.ValidateJump(jumpDestInt))
-        {
-            // https://github.com/NethermindEth/nethermind/issues/140
-            // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
-            return false;
-        }
-
-        programCounter = jumpDestInt;
-        return true;
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
     {
@@ -1079,17 +883,4 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
     }
-
-    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-        => instruction switch
-        {
-            Instruction.CALL => ExecutionType.CALL,
-            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
-            Instruction.STATICCALL => ExecutionType.STATICCALL,
-            Instruction.CALLCODE => ExecutionType.CALLCODE,
-            Instruction.EXTCALL => ExecutionType.EOFCALL,
-            Instruction.EXTDELEGATECALL => ExecutionType.EOFDELEGATECALL,
-            Instruction.EXTSTATICCALL => ExecutionType.EOFSTATICCALL,
-            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
-        };
 }

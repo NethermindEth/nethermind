@@ -28,7 +28,7 @@ internal sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.TLoad;
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        StorageCell storageCell = new(vm.State.Env.ExecutingAccount, result);
+        StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, result);
 
         ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell);
         stack.PushBytes(value);
@@ -46,7 +46,7 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionTStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.TstoreOpcode++;
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
 
@@ -76,7 +76,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 c)) return EvmExceptionType.StackUnderflow;
 
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c);
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) return EvmExceptionType.OutOfGas;
 
         Span<byte> bytes = vmState.Memory.LoadSpan(in b, c);
@@ -96,7 +96,7 @@ internal sealed partial class EvmInstructions
     internal static EvmExceptionType InstructionSStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.IncrementSStoreOpcode();
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         IReleaseSpec spec = vm.Spec;
         // fail fast before the first storage read if gas is not enough even for reset
@@ -244,7 +244,7 @@ internal sealed partial class EvmInstructions
         gasAvailable -= spec.GetSLoadCost();
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        StorageCell storageCell = new(vm.State.Env.ExecutingAccount, result);
+        StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, result);
         if (!ChargeStorageAccessGas(
             ref gasAvailable,
             vm,
@@ -269,7 +269,7 @@ internal sealed partial class EvmInstructions
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
     {
-        EvmState vmState = vm.State;
+        EvmState vmState = vm.EvmState;
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
