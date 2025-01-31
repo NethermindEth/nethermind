@@ -28,7 +28,9 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -130,5 +132,74 @@ public class BlockProcessorTests
         ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
         (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
         Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Respects_externally_provided_checkpoint(bool updateCheckpoint)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState state = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+
+        PrivateKey accountA = TestItem.PrivateKeyA;
+        UInt256 nonceA = 2;
+        state.CreateAccount(accountA.Address, new UInt256(1000_000_000), nonceA);
+        state.RecalculateStateRoot();
+
+        Hash256 afterA = state.StateRoot;
+
+        PrivateKey accountB = TestItem.PrivateKeyB;
+        state.CreateAccount(accountB.Address, new UInt256(10), 2);
+        state.RecalculateStateRoot();
+
+        Hash256 afterB = state.StateRoot;
+
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new(
+            HoleskySpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, state),
+            state,
+            NullReceiptStorage.Instance,
+            transactionProcessor,
+            new BeaconBlockRootHandler(transactionProcessor, state),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(accountA)
+            .To(accountB.Address)
+            .WithNonce(nonceA)
+            .WithValue(1000)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithTransactions(tx)
+            .TestObject;
+
+        // Checkpoint
+        Hash256 expected;
+        if (updateCheckpoint)
+        {
+            // Expect afterA
+            expected = afterA;
+            processor.UpdateCheckpoint(2, expected);
+        }
+        else
+        {
+            expected = afterB;
+        }
+
+        Block[] processedBlocks = processor.Process(afterA, [block],
+            ProcessingOptions.EthereumMerge,
+            NullBlockTracer.Instance);
+
+        processedBlocks.Length.Should().Be(1);
+
+        state.StateRoot.Should().Be(expected, "Because the state should be reverted back");
     }
 }
