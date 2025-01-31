@@ -39,6 +39,8 @@ namespace Nethermind.Init.Steps
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
             List<Task> allRequiredSteps = CreateAndExecuteSteps(cancellationToken);
+            if (allRequiredSteps.Count == 0)
+                return;
             Task current;
             do
             {
