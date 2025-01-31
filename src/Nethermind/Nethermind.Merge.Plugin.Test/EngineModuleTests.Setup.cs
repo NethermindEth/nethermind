@@ -323,6 +323,11 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
     }
 
+    public void UpdateCheckpoint(long blockNumber, Hash256 stateRootCheckpoint)
+    {
+        _blockProcessorImplementation.UpdateCheckpoint(blockNumber, stateRootCheckpoint);
+    }
+
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
     {
         add => _blockProcessorImplementation.BlocksProcessing += value;

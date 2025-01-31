@@ -20,6 +20,10 @@ namespace Nethermind.Consensus.Processing
             return suggestedBlocks.ToArray();
         }
 
+        public void UpdateCheckpoint(long blockNumber, Hash256 stateRootCheckpoint)
+        {
+        }
+
         public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing
         {
             add { }

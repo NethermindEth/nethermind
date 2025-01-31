@@ -168,7 +168,7 @@ public partial class BlockProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = CreateCheckpoint();
+                    previousBranchStateRoot = CreateCheckpoint(true);
                     Hash256? newStateRoot = suggestedBlock.StateRoot;
                     InitBranch(newStateRoot, false);
                 }
@@ -188,6 +188,11 @@ public partial class BlockProcessor(
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
             {
                 RestoreBranch(previousBranchStateRoot);
+            }
+            else
+            {
+                // The head is updated and no restoration happened. The root is preserved so _checkpoint can be cleared.
+                _checkpoint = null;
             }
 
             return processedBlocks;
@@ -237,6 +242,7 @@ public partial class BlockProcessor(
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     // TODO: move to branch processor
+
     private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
@@ -255,9 +261,23 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    private Hash256 CreateCheckpoint()
+    private Hash256 CreateCheckpoint(bool captureCurrentStateRoot = false)
     {
-        return _stateProvider.StateRoot;
+        if (captureCurrentStateRoot)
+        {
+            return _checkpoint = _stateProvider.StateRoot;
+        }
+
+        // Create the checkpoint based on the checkpoint or the root
+        return _checkpoint ?? _stateProvider.StateRoot;
+    }
+
+    private volatile Hash256? _checkpoint;
+
+    public void UpdateCheckpoint(long blockNumber, Hash256 stateRootCheckpoint)
+    {
+        if (_logger.IsInfo) _logger.Info($"Updating checkpoint to {stateRootCheckpoint} at block {blockNumber}");
+        _checkpoint = stateRootCheckpoint;
     }
 
     // TODO: move to block processing pipeline

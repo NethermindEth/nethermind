@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -25,6 +26,15 @@ namespace Nethermind.Consensus.Processing
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
+
+        /// <summary>
+        /// Updates the checkpoint to which the block processor should revert to.
+        /// </summary>
+        /// <remarks>
+        /// The root hash of the <see cref="IWorldStateManager.GlobalWorldState"/> could be changed manually.
+        /// This would break the contract though that the global world state should be used only by <see cref="IBlockProcessor"/>.
+        /// </remarks>
+        void UpdateCheckpoint(long blockNumber, Hash256 stateRootCheckpoint);
 
         /// <summary>
         /// Fired when a branch is being processed.
