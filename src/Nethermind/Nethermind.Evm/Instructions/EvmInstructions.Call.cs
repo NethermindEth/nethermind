@@ -22,7 +22,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TOpCall>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCall<TOpCall>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCall : struct, IOpCall
     {
         Metrics.IncrementCalls();
@@ -177,7 +177,7 @@ internal sealed partial class EvmInstructions
 
         return EvmExceptionType.None;
 
-        EvmExceptionType FastCall(IEvm vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
             if (!state.AccountExists(target))
@@ -227,7 +227,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturn(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturn(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (vm.State.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {

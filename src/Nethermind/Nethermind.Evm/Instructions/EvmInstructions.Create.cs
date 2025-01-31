@@ -22,7 +22,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TOpCreate>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCreate<TOpCreate>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCreate : struct, IOpCreate
     {
         Metrics.IncrementCreates();

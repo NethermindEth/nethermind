@@ -16,7 +16,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TOpShift>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionShift<TOpShift>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpShift : struct, IOpShift
     {
         gasAvailable -= TOpShift.GasCost;
@@ -24,7 +24,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (a >= 256)
         {
-            stack.PopLimbo();
+            if (!stack.PopLimbo()) return EvmExceptionType.StackUnderflow;
             stack.PushZero();
         }
         else
@@ -38,7 +38,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSar(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 

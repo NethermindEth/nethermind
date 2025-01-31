@@ -14,11 +14,11 @@ internal sealed partial class EvmInstructions
 {
     public interface IOpCodeCopy
     {
-        abstract static ReadOnlySpan<byte> GetCode(IEvm vm);
+        abstract static ReadOnlySpan<byte> GetCode(VirtualMachine vm);
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
     {
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
@@ -42,18 +42,18 @@ internal sealed partial class EvmInstructions
 
     public struct OpCallDataCopy : IOpCodeCopy
     {
-        public static ReadOnlySpan<byte> GetCode(IEvm vm)
+        public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
             => vm.State.Env.InputData.Span;
     }
 
     public struct OpCodeCopy : IOpCodeCopy
     {
-        public static ReadOnlySpan<byte> GetCode(IEvm vm)
+        public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
             => vm.State.Env.CodeInfo.MachineCode.Span;
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vm.Spec;
         Address address = stack.PopAddress();
@@ -87,7 +87,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vm.Spec;
         gasAvailable -= spec.GetExtCodeCost();

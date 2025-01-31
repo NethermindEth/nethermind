@@ -19,7 +19,7 @@ using static Nethermind.Evm.VirtualMachine;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataSize(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
 
@@ -30,7 +30,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataCopy(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
@@ -58,7 +58,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataLoad(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -74,7 +74,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataLoadN(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataLoadN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -92,7 +92,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataSize(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -106,7 +106,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataCopy(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -137,7 +137,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRelativeJump(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRelativeJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -152,7 +152,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRelativeJumpIf(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRelativeJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -172,7 +172,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpTable(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpTable(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -197,7 +197,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallFunction(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCallFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -231,7 +231,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnFunction(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -249,7 +249,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpFunction(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -271,7 +271,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDupN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -288,7 +288,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSwapN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -305,7 +305,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExchange(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var codeInfo = vm.State.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -325,7 +325,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCreate(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCreate(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.IncrementCreates();
         vm.ReturnData = null;
@@ -469,7 +469,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnContract(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnContract(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!vm.State.ExecutionType.IsAnyCreateEof())
             return EvmExceptionType.BadInstruction;
@@ -503,7 +503,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataLoad(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         var spec = vm.Spec;
         var codeInfo = vm.State.Env.CodeInfo;
@@ -543,7 +543,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCall<TOpEofCall>(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCall<TOpEofCall>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEofCall : struct, IOpEofCall
     {
         Metrics.IncrementCalls();

@@ -10,14 +10,14 @@ using Nethermind.Core.Specs;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
-using unsafe OpCode = delegate*<IEvm, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
 internal unsafe sealed partial class EvmInstructions
 {
     public static OpCode[] GenerateOpCodes(IReleaseSpec spec)
     {
-        var lookup = new delegate*<IEvm, ref EvmStack, ref long, ref int, EvmExceptionType>[256];
+        var lookup = new delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>[256];
 
         for (int i = 0; i < lookup.Length; i++)
         {
@@ -264,7 +264,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionStop(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionStop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (vm.State.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {
@@ -275,7 +275,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRevert(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRevert(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!stack.PopUInt256(out UInt256 position) ||
             !stack.PopUInt256(out UInt256 length))
@@ -292,7 +292,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.IncrementSelfDestructs();
 
@@ -346,7 +346,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPrevRandao(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPrevRandao(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
         BlockHeader header = vm.State.Env.TxExecutionContext.BlockExecutionContext.Header;
@@ -363,17 +363,17 @@ internal unsafe sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    public static EvmExceptionType InstructionInvalid(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionInvalid(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.High;
         return EvmExceptionType.BadInstruction;
     }
 
-    public static EvmExceptionType InstructionBadInstruction(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBadInstruction(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         => EvmExceptionType.BadInstruction;
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExp(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Exp;
 
@@ -409,7 +409,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionByte(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -437,7 +437,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend(IEvm _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSignExtend(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Low;
 
@@ -467,7 +467,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionKeccak256(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
@@ -483,7 +483,7 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCallDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 

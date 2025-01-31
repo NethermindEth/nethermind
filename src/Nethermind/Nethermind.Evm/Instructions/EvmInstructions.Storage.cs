@@ -22,7 +22,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTLoad(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.TloadOpcode++;
         gasAvailable -= GasCostOf.TLoad;
@@ -43,7 +43,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTStore(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.TstoreOpcode++;
         EvmState vmState = vm.State;
@@ -67,7 +67,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMCopy(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.MCopyOpcode++;
 
@@ -93,7 +93,7 @@ internal sealed partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType InstructionSStore(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         Metrics.IncrementSStoreOpcode();
         EvmState vmState = vm.State;
@@ -237,7 +237,7 @@ internal sealed partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType InstructionSLoad(IEvm vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vm.Spec;
         Metrics.IncrementSLoadOpcode();
@@ -264,7 +264,7 @@ internal sealed partial class EvmInstructions
 
     internal static bool ChargeStorageAccessGas(
         ref long gasAvailable,
-        IEvm vm,
+        VirtualMachine vm,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec)

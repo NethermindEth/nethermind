@@ -18,9 +18,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using static Nethermind.Evm.VirtualMachine;
-using static System.Runtime.CompilerServices.Unsafe;
-using static Nethermind.Evm.EvmInstructions;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 #if DEBUG
@@ -31,14 +28,14 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<IEvm, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using System.Runtime.InteropServices;
 
-public unsafe class VirtualMachine : IEvm, IVirtualMachine
+public sealed unsafe class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -169,10 +166,10 @@ public unsafe class VirtualMachine : IEvm, IVirtualMachine
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _state;
     public ReadOnlySpan<byte> ChainId => _chainId;
-    ReadOnlyMemory<byte> IEvm.ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
-    object IEvm.ReturnData { get => _returnData; set => _returnData = value; }
+    ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
+    object ReturnData { get => _returnData; set => _returnData = value; }
     object _returnData;
-    IBlockhashProvider IEvm.BlockhashProvider => _blockhashProvider;
+    IBlockhashProvider BlockhashProvider => _blockhashProvider;
 
     OpCode[] _opcodeMethods;
 
@@ -782,9 +779,9 @@ public unsafe class VirtualMachine : IEvm, IVirtualMachine
         return CallResult.OutOfGasException;
     }
 
-    EvmState IEvm.State => _vmState;
+    EvmState State => _vmState;
     EvmState _vmState;
-    int IEvm.SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
+    int SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
     int _sectionIndex;
 
     [SkipLocalsInit]
