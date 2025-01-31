@@ -123,7 +123,13 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
-        _api.WorldStateManager!.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager), new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        _api.WorldStateManager!.InitializeNetwork(
+            new PathNodeRecovery(
+                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
+                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
+                _api.LogManager
+            )
+        );
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
