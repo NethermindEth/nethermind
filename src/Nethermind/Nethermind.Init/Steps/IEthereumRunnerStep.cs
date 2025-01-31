@@ -10,7 +10,6 @@ namespace Nethermind.Init.Steps
     public interface IStep
     {
         Task StepCompleted { get; }
-        Task Execute(CancellationToken cancellationToken) => Execute([], cancellationToken);
         Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken);
         public bool MustInitialize => true;
     }

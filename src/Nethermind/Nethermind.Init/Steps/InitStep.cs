@@ -12,13 +12,9 @@ using System.Threading.Tasks;
 namespace Nethermind.Init.Steps;
 public abstract class InitStep
 {
-    public Task StepCompleted { private set; get; }
+    public Task StepCompleted => _taskCompletedSource.Task;
 
     private TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
-    public InitStep()
-    {
-        StepCompleted = _taskCompletedSource.Task;
-    }
 
     public async Task Execute(IEnumerable<Task> dependentSteps, CancellationToken cancellationToken)
     {
