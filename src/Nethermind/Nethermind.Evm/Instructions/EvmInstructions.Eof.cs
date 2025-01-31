@@ -600,7 +600,7 @@ internal sealed partial class EvmInstructions
         }
 
         Address caller = typeof(TOpEofCall) == typeof(OpEofDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address codeSource = new (targetBytes[12..].ToArray());
+        Address codeSource = new(targetBytes[12..].ToArray());
         Address target = typeof(TOpEofCall) == typeof(OpEofDelegateCall)
             ? env.ExecutingAccount
             : codeSource;
