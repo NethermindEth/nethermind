@@ -36,7 +36,8 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
         configProvider.GetConfig<ITxPoolConfig>(),
         configProvider.GetConfig<IMergeConfig>(),
         configProvider.GetConfig<IBlocksConfig>()
-    ) {
+    )
+    {
     }
 
     protected override void Load(ContainerBuilder builder)

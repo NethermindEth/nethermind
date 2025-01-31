@@ -196,7 +196,7 @@ public partial class BlockDownloaderTests
     {
         using IContainer node = CreateNode(builder =>
         {
-            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048+1));
+            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
         });
         Context ctx = node.Resolve<Context>();
         BlockDownloader downloader = ctx.BlockDownloader;
