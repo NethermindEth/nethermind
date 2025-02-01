@@ -428,7 +428,7 @@ internal sealed partial class EvmInstructions
 
         // 3 - pop value, salt, input_offset, input_size from the operand stack
         // no stack checks becaue EOF guarantees no stack undeflows
-        if (!stack.PopUInt256(out UInt256 value) || stack.PopWord256(out Span<byte> salt) || stack.PopUInt256(out UInt256 dataOffset) || stack.PopUInt256(out UInt256 dataSize))
+        if (!stack.PopUInt256(out UInt256 value) || !stack.PopWord256(out Span<byte> salt) || !stack.PopUInt256(out UInt256 dataOffset) || !stack.PopUInt256(out UInt256 dataSize))
             goto OutOfGas;
 
         // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
