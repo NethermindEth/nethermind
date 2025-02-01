@@ -58,7 +58,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 outputOffset)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 outputLength)) return EvmExceptionType.StackUnderflow;
 
-        if (vm.EvmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) == typeof(OpCallCode)) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode)) return EvmExceptionType.StaticCallViolation;
 
         Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
         Address target = typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall)
