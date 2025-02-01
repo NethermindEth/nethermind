@@ -57,20 +57,21 @@ internal sealed partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         Address address = stack.PopAddress();
-        if (address is null) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (address is null) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
-        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
+        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         if (!result.IsZero)
         {
-            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
+            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-            ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, spec).MachineCode.Span;
+            ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _).MachineCode.Span;
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
             {
                 externalCode = EofValidator.MAGIC;
@@ -84,6 +85,10 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -147,7 +152,7 @@ internal sealed partial class EvmInstructions
             }
         }
 
-        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, spec).MachineCode.Span;
+        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _).MachineCode.Span;
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {
             stack.PushUInt256(2);

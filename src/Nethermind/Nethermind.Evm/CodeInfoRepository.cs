@@ -66,7 +66,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
-        return GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
+        return GetCachedCodeInfo(worldState, codeSource, followDelegation: true, vmSpec, out delegationAddress);
     }
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)

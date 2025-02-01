@@ -312,7 +312,7 @@ internal unsafe sealed partial class EvmInstructions
 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, false)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);

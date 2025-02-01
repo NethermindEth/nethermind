@@ -180,14 +180,7 @@ internal sealed partial class EvmInstructions
         EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
-            if (!state.AccountExists(target))
-            {
-                state.CreateAccount(target, transferValue);
-            }
-            else
-            {
-                state.AddToBalance(target, transferValue, spec);
-            }
+            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
             vm.ReturnData = null;
