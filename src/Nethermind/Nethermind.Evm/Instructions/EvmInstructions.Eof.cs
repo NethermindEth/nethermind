@@ -650,7 +650,7 @@ internal sealed partial class EvmInstructions
             goto BadInstruction;
 
         // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
-        if (!stack.PopWord256(out Span<byte> targetBytes) || stack.PopUInt256(out UInt256 dataOffset) || stack.PopUInt256(out UInt256 dataLength))
+        if (!stack.PopWord256(out Span<byte> targetBytes) || !stack.PopUInt256(out UInt256 dataOffset) || !stack.PopUInt256(out UInt256 dataLength))
             goto StackUnderflow;
 
         UInt256 transferValue;
