@@ -135,7 +135,7 @@ internal sealed partial class EvmInstructions
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!stack.PopUInt256(out UInt256 memOffset) || stack.PopUInt256(out UInt256 offset) || stack.PopUInt256(out UInt256 size)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 memOffset) || !stack.PopUInt256(out UInt256 offset) || !stack.PopUInt256(out UInt256 size)) goto StackUnderflow;
 
         if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
             goto OutOfGas;
