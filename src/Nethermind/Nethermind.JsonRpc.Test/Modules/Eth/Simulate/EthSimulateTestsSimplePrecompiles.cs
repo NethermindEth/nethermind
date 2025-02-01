@@ -14,6 +14,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using NUnit.Framework;
+using namespace Nethermind.Facade
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
