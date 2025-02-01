@@ -9,12 +9,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
+using Nethermind.Evm.Tracing;
 using Nethermind.State;
+using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 using Int256;
-
-using static Nethermind.Evm.VirtualMachine;
 
 internal sealed partial class EvmInstructions
 {
@@ -635,15 +635,16 @@ internal sealed partial class EvmInstructions
             stack.PushOne();
 
             //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
-            //if (_txTracer.IsTracingInstructions)
-            //{
-            //    // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-            //    ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
-            //    _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
-            //    _txTracer.ReportOperationRemainingGas(gasAvailable);
-            //    _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
-            //    _txTracer.ReportGasUpdateForVmTrace(callGas, gasAvailable);
-            //}
+            ITxTracer txTracer = vm.TxTracer;
+            if (txTracer.IsTracingInstructions)
+            {
+                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                ReadOnlyMemory<byte> memoryTrace = vm.EvmState.Memory.Inspect(in dataOffset, 32);
+                txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+                txTracer.ReportOperationRemainingGas(gasAvailable);
+                txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                txTracer.ReportGasUpdateForVmTrace(callGas, gasAvailable);
+            }
 
             return EvmExceptionType.None;
         }
