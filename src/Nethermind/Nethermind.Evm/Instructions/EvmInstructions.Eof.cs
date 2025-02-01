@@ -152,8 +152,6 @@ internal sealed partial class EvmInstructions
             }
         }
 
-        stack.PushUInt32(codeInfo.DataSection.Length);
-
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor
     StackUnderflow:
