@@ -574,20 +574,16 @@ namespace Nethermind.Trie
             }
             catch (RlpException rlpException)
             {
-                ThrowDecodingError(node, in traverseContext, rlpException);
-            }
-            catch (TrieNodeException e)
-            {
-                ThrowMissingTrieNodeException(e, in traverseContext);
+                ThrowDecodingError(node, in path, rlpException);
             }
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static void ThrowDecodingError(TrieNode node, in TraverseContext traverseContext, RlpException rlpException)
+            static void ThrowDecodingError(TrieNode node, in TreePath path, RlpException rlpException)
             {
-                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", node.Keccak ?? Keccak.Zero, rlpException);
+                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path, node.Keccak ?? Keccak.Zero, rlpException);
                 exception = (TrieNodeException)ExceptionDispatchInfo.SetCurrentStackTrace(exception);
-                ThrowMissingTrieNodeException(exception, in traverseContext);
+                throw exception;
             }
         }
 
@@ -1438,13 +1434,6 @@ namespace Nethermind.Trie
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowMissingTrieNodeException(TrieNodeException e, in TraverseContext traverseContext)
-        {
-            throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
     }
 }
