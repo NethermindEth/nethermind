@@ -32,10 +32,11 @@ internal sealed partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturnDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 c)) return EvmExceptionType.StackUnderflow;
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c);
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c))
+            return EvmExceptionType.StackUnderflow;
+
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c, out bool outOfGas);
+        if (outOfGas) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
         if (vm.EvmState.Env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out UInt256 result) || result > returnDataBuffer.Length))
