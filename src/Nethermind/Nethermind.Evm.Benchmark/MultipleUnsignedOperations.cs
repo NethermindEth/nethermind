@@ -97,7 +97,7 @@ public class MultipleUnsignedOperations
     [Benchmark]
     public void ExecuteCode()
     {
-        _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+        _virtualMachine.Run(_evmState, _stateProvider, _txTracer);
         _stateProvider.Reset();
     }
 
