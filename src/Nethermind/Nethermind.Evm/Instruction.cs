@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FastEnumUtility;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Specs.Forks;
 using System;
 using System.Diagnostics.CodeAnalysis;
+using FastEnumUtility;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 

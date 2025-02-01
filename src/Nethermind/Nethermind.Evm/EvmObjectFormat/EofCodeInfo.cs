@@ -9,9 +9,9 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class EofCodeInfo : ICodeInfo
+public class EofCodeInfo(in EofContainer container) : ICodeInfo
 {
-    public EofContainer EofContainer { get; private set; }
+    public EofContainer EofContainer { get; private set; } = container;
     public ReadOnlyMemory<byte> MachineCode => EofContainer.Container;
     public IPrecompile? Precompile => null;
     public int Version => EofContainer.Header.Version;
@@ -37,9 +37,4 @@ public class EofCodeInfo : ICodeInfo
     }
 
     public bool ValidateJump(int destination) => true;
-
-    public EofCodeInfo(in EofContainer container)
-    {
-        EofContainer = container;
-    }
 }

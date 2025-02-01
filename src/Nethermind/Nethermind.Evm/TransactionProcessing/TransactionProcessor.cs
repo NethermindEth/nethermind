@@ -547,8 +547,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
-            Address? delegationAddress = null;
-            ICodeInfo? codeInfo = null;
+            ICodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
             if (tx.IsContractCreation)
             {
@@ -559,7 +558,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                codeInfo = codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
+                codeInfo = codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out Address? delegationAddress);
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)

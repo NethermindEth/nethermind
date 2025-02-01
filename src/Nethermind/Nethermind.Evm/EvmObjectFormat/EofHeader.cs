@@ -16,7 +16,7 @@ public readonly struct EofContainer
     {
         Container = container;
         Header = eofHeader;
-        Prefix = container.Slice(0, eofHeader.PrefixSize);
+        Prefix = container[..eofHeader.PrefixSize];
         TypeSection = container[(Range)eofHeader.TypeSection];
         CodeSection = container[(Range)eofHeader.CodeSections];
         ContainerSection = eofHeader.ContainerSections.HasValue ? container[(Range)eofHeader.ContainerSections.Value] : ReadOnlyMemory<byte>.Empty;
@@ -46,7 +46,7 @@ public readonly struct EofContainer
             ContainerSections = Array.Empty<ReadOnlyMemory<byte>>();
         }
 
-        DataSection = container.Slice(eofHeader.DataSection.Start);
+        DataSection = container[eofHeader.DataSection.Start..];
     }
 
     public readonly EofHeader Header;
@@ -106,7 +106,7 @@ public readonly struct CompoundSectionHeader(int start, int[] subSectionsSizes)
 
     private int[] SubSectionsSizesAcc { get; } = CreateSubSectionsSizes(subSectionsSizes);
 
-    public SectionHeader this[int i] => new SectionHeader(SubSectionsSizesAcc[i], (ushort)SubSectionsSizes[i]);
+    public SectionHeader this[int i] => new(SubSectionsSizesAcc[i], (ushort)SubSectionsSizes[i]);
 
     public static implicit operator Range(CompoundSectionHeader section) => new(section.Start, section.EndOffset);
 }

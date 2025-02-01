@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 

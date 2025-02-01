@@ -240,8 +240,6 @@ internal sealed partial class EvmInstructions
 
         if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        (_, int outputCount, _) = codeInfo.GetSectionMetadata(vm.SectionIndex);
-
         EvmState.ReturnState stackFrame = vm.EvmState.ReturnStack[--vm.EvmState.ReturnStackHead];
         vm.SectionIndex = stackFrame.Index;
         programCounter = stackFrame.Offset;
@@ -440,7 +438,7 @@ internal sealed partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
 
-        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExractHeader);
 
         ExecutionEnvironment callEnv = new
         (
@@ -483,22 +481,21 @@ internal sealed partial class EvmInstructions
 
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
         ReadOnlyMemory<byte> deployCode = codeInfo.ContainerSection[(Range)codeInfo.ContainerSectionOffset(sectionIdx)];
-        EofCodeInfo deploycodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, EvmObjectFormat.ValidationStrategy.ExractHeader);
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, ValidationStrategy.ExractHeader);
 
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
-        ReadOnlyMemory<byte> auxData = ReadOnlyMemory<byte>.Empty;
 
         if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
 
-        int projectedNewSize = (int)b + deploycodeInfo.DataSection.Length;
-        if (projectedNewSize < deploycodeInfo.EofContainer.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
+        int projectedNewSize = (int)b + deployCodeInfo.DataSection.Length;
+        if (projectedNewSize < deployCodeInfo.EofContainer.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
         {
             return EvmExceptionType.AccessViolation;
         }
 
         vm.ReturnDataBuffer = vm.EvmState.Memory.Load(a, b);
-        vm.ReturnData = deploycodeInfo;
+        vm.ReturnData = deployCodeInfo;
 
         return EvmExceptionType.None;
     }
@@ -529,18 +526,18 @@ internal sealed partial class EvmInstructions
 
     public struct OpEofCall : IOpEofCall
     {
-        public static ExecutionType ExecutionType => Evm.ExecutionType.EOFCALL;
+        public static ExecutionType ExecutionType => ExecutionType.EOFCALL;
     }
 
     public struct OpEofDelegateCall : IOpEofCall
     {
-        public static ExecutionType ExecutionType => Evm.ExecutionType.EOFDELEGATECALL;
+        public static ExecutionType ExecutionType => ExecutionType.EOFDELEGATECALL;
     }
 
     public struct OpEofStaticCall : IOpEofCall
     {
         public static bool IsStatic => true;
-        public static ExecutionType ExecutionType => Evm.ExecutionType.EOFSTATICCALL;
+        public static ExecutionType ExecutionType => ExecutionType.EOFSTATICCALL;
     }
 
     [SkipLocalsInit]

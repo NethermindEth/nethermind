@@ -16,12 +16,12 @@ namespace Nethermind.Evm.EvmObjectFormat;
 public static class EofValidator
 {
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
-    public static byte[] MAGIC = { 0xEF, 0x00 };
+    public static byte[] MAGIC = [0xEF, 0x00];
     public const byte ONE_BYTE_LENGTH = 1;
     public const byte TWO_BYTE_LENGTH = 2;
     public const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
 
-    private static readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
+    private static readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = [];
     internal static ILogger Logger { get; set; } = NullLogger.Instance;
 
     static EofValidator()

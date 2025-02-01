@@ -57,12 +57,12 @@ internal class Eof1 : IEofVersionHandler
             this.Min = Math.Min(this.Min, other.Min);
         }
 
-        public bool BoundsEqual() => Max == Min;
+        public readonly bool BoundsEqual() => Max == Min;
 
         public static bool operator ==(StackBounds left, StackBounds right) => left.Max == right.Max && right.Min == left.Min;
         public static bool operator !=(StackBounds left, StackBounds right) => !(left == right);
-        public override bool Equals(object obj) => obj is StackBounds && this == (StackBounds)obj;
-        public override int GetHashCode() => Max ^ Min;
+        public override readonly bool Equals(object obj) => obj is StackBounds bounds && this == bounds;
+        public override readonly int GetHashCode() => Max ^ Min;
     }
 
     private ref struct Sizes

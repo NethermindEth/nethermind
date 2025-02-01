@@ -17,7 +17,6 @@ using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm;
 
@@ -185,7 +184,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         return false;
     }
 
-    private ICodeInfo CreateCachedPrecompile(
+    private static ICodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, ICodeInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
         new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));

@@ -32,11 +32,11 @@ internal sealed partial class EvmInstructions
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
-        if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
         Address codeSource = stack.PopAddress();
-        if (codeSource is null) return EvmExceptionType.StackUnderflow;
+        if (codeSource is null) goto StackUnderflow;
 
-        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
 
         UInt256 callValue;
         if (typeof(TOpCall) == typeof(OpStaticCall))
@@ -49,14 +49,14 @@ internal sealed partial class EvmInstructions
         }
         else if (!stack.PopUInt256(out callValue))
         {
-            return EvmExceptionType.StackUnderflow;
+            goto StackUnderflow;
         }
 
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
-        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 outputOffset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 outputLength)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 dataOffset) ||
+            !stack.PopUInt256(out UInt256 dataLength) ||
+            !stack.PopUInt256(out UInt256 outputOffset) ||
+            !stack.PopUInt256(out UInt256 outputLength)) goto StackUnderflow;
 
         if (vm.EvmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode)) return EvmExceptionType.StaticCallViolation;
 
@@ -89,7 +89,7 @@ internal sealed partial class EvmInstructions
         if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
             !UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
             !UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            !UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
 
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
         codeInfo.AnalyseInBackgroundIfRequired();
@@ -99,10 +99,10 @@ internal sealed partial class EvmInstructions
             gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
         }
 
-        if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
+        if (gasLimit >= long.MaxValue) goto OutOfGas;
 
         long gasLimitUl = (long)gasLimit;
-        if (!UpdateGas(gasLimitUl, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
 
         if (!transferValue.IsZero)
         {
@@ -184,7 +184,7 @@ internal sealed partial class EvmInstructions
 
         return EvmExceptionType.None;
 
-        EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        static EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
             state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
@@ -194,15 +194,19 @@ internal sealed partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        //[MethodImpl(MethodImplOptions.NoInlining)]
-        //void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
-        //{
-        //    _logger.Trace($"caller {caller}");
-        //    _logger.Trace($"code source {codeSource}");
-        //    _logger.Trace($"target {target}");
-        //    _logger.Trace($"value {callValue}");
-        //    _logger.Trace($"transfer value {transferValue}");
-        //}
+    //[MethodImpl(MethodImplOptions.NoInlining)]
+    //void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
+    //{
+    //    _logger.Trace($"caller {caller}");
+    //    _logger.Trace($"code source {codeSource}");
+    //    _logger.Trace($"target {target}");
+    //    _logger.Trace($"value {callValue}");
+    //    _logger.Trace($"transfer value {transferValue}");
+    //}
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     }
 
     public struct OpCall : IOpCall
