@@ -415,7 +415,7 @@ internal sealed partial class EvmInstructions
         }
 
 
-        // if (vm.TxTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vm.State?.Memory.Size ?? 0);
+        if (vm.TxTracer.IsTracingInstructions) vm.EndInstructionTrace(gasAvailable);
         // todo: === below is a new call - refactor / move
 
         Snapshot snapshot = state.TakeSnapshot();

@@ -802,7 +802,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTrace(long gasAvailable)
+    internal void EndInstructionTrace(long gasAvailable)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
     }

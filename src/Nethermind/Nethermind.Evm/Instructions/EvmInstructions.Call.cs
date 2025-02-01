@@ -106,36 +106,43 @@ internal sealed partial class EvmInstructions
 
         if (!transferValue.IsZero)
         {
-            //if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+            if (vm.TxTracer.IsTracingRefunds) vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
 
+        bool tracingInstructions = vm.TxTracer.IsTracingInstructions;
         if (env.CallDepth >= MaxCallDepth ||
             !transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
 
-            //if (typeof(TTracingInstructions) == typeof(IsTracing))
-            //{
-            //    // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-            //    ReadOnlyMemory<byte>? memoryTrace = vm.State.Memory.Inspect(in dataOffset, 32);
-            //    _txTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
-            //}
+            if (vm.TxTracer.IsTracingRefunds)
+            {
+                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                ReadOnlyMemory<byte>? memoryTrace = vm.EvmState.Memory.Inspect(in dataOffset, 32);
+                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
+            }
 
             //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
-            //if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(gasAvailable);
-            //if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+            if (tracingInstructions)
+            {
+                vm.TxTracer.ReportOperationRemainingGas(gasAvailable);
+                vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+            }
 
             UpdateGasUp(gasLimitUl, ref gasAvailable);
-            //if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+            if (tracingInstructions)
+            {
+                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+            }
             return EvmExceptionType.None;
         }
 
         Snapshot snapshot = state.TakeSnapshot();
         state.SubtractFromBalance(caller, transferValue, spec);
 
-        if (codeInfo.IsEmpty /*&& typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions*/)
+        if (codeInfo.IsEmpty && !tracingInstructions && !vm.TxTracer.IsTracingActions)
         {
             // Non contract call, no need to construct call frame can just credit balance and return gas
             vm.ReturnDataBuffer = default;

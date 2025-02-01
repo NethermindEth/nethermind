@@ -96,7 +96,7 @@ internal sealed partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        //if (vm.TxTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
+        if (vm.TxTracer.IsTracingInstructions) vm.EndInstructionTrace(gasAvailable);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
