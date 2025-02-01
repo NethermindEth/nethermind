@@ -63,7 +63,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
@@ -181,7 +181,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.That(chain.State.AccountExists(contractAddress), Is.True);
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[] addressBytes = result.Data[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);

@@ -15,7 +15,7 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
     private readonly List<SimulateTxMutatorTracer> _txTracers = new();
 
     private Block _currentBlock = null!;
-    public List<SimulateBlockResult> Results { get; } = new();
+    public List<SimulateBlockResult<SimulateCallResult>> Results { get; } = new();
 
     public override void StartNewBlockTrace(Block block)
     {
@@ -40,7 +40,7 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
 
     public override void EndBlockTrace()
     {
-        SimulateBlockResult? result = new(_currentBlock, includeFullTxData, spec)
+        SimulateBlockResult<SimulateCallResult>? result = new(_currentBlock, includeFullTxData, spec)
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
         };

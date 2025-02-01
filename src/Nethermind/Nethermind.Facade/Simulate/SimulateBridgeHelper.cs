@@ -121,7 +121,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
     private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
     {
-        SimulateBlockResult current = simulateOutputTracer.Results.Last();
+        SimulateBlockResult<SimulateCallResult> current = simulateOutputTracer.Results.Last();
         current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
         current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
         current.TransactionsRoot = processedBlock.Header.TxRoot;
