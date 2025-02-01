@@ -19,22 +19,24 @@ internal sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.Base;
 
         // Ensure gas is positive before pushing to stack
-        if (gasAvailable < 0) return EvmExceptionType.OutOfGas;
+        if (gasAvailable < 0) goto OutOfGas;
 
         stack.PushUInt256((UInt256)gasAvailable);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlobHash(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vm.Spec;
-        if (!spec.IsEip4844Enabled) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= GasCostOf.BlobHash;
 
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         byte[][] versionedHashes = vm.EvmState.Env.TxExecutionContext.BlobVersionedHashes;
 
@@ -48,16 +50,17 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlockHash(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        Metrics.BlockhashOpcode++;
-
         gasAvailable -= GasCostOf.BlockHash;
 
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
         Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header, number);
@@ -70,5 +73,8 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 }

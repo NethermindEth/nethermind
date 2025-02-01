@@ -33,15 +33,15 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionReturnDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c))
-            return EvmExceptionType.StackUnderflow;
+            goto StackUnderflow;
 
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in c, out bool outOfGas);
-        if (outOfGas) return EvmExceptionType.OutOfGas;
+        if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
         if (vm.EvmState.Env.CodeInfo.Version == 0 && (UInt256.AddOverflow(c, b, out UInt256 result) || result > returnDataBuffer.Length))
         {
-            return EvmExceptionType.AccessViolation;
+            goto AccessViolation;
         }
 
         if (!c.IsZero)
@@ -56,6 +56,13 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    AccessViolation:
+        return EvmExceptionType.AccessViolation;
     }
 
     [SkipLocalsInit]
@@ -63,15 +70,20 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
 
         stack.PopUInt256(out UInt256 a);
         ZeroPaddedSpan zpbytes = codeInfo.DataSection.SliceWithZeroPadding(a, 32);
         stack.PushBytes(zpbytes);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -79,9 +91,9 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
 
         var offset = codeInfo.CodeSection.Span.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
         ZeroPaddedSpan zpbytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
@@ -90,6 +102,11 @@ internal sealed partial class EvmInstructions
         programCounter += EofValidator.TWO_BYTE_LENGTH;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -97,13 +114,18 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
 
         stack.PushUInt32(codeInfo.DataSection.Length);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -111,19 +133,17 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        stack.PopUInt256(out UInt256 memOffset);
-        stack.PopUInt256(out UInt256 offset);
-        stack.PopUInt256(out UInt256 size);
+        if (!stack.PopUInt256(out UInt256 memOffset) || stack.PopUInt256(out UInt256 offset) || stack.PopUInt256(out UInt256 size)) goto StackUnderflow;
 
         if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
-            return EvmExceptionType.OutOfGas;
+            goto OutOfGas;
 
         if (!size.IsZero)
         {
             if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memOffset, size))
-                return EvmExceptionType.OutOfGas;
+                goto OutOfGas;
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
             vm.EvmState.Memory.Save(in memOffset, dataSectionSlice);
             if (vm.TxTracer.IsTracingInstructions)
@@ -135,6 +155,13 @@ internal sealed partial class EvmInstructions
         stack.PushUInt32(codeInfo.DataSection.Length);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -142,14 +169,19 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
 
         short offset = codeInfo.CodeSection.Span.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthInt16();
         programCounter += EofValidator.TWO_BYTE_LENGTH + offset;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -157,9 +189,9 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
 
         Span<byte> condition = stack.PopWord256();
         short offset = codeInfo.CodeSection.Span.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthInt16();
@@ -170,6 +202,11 @@ internal sealed partial class EvmInstructions
         programCounter += EofValidator.TWO_BYTE_LENGTH;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -177,9 +214,9 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
 
         stack.PopUInt256(out UInt256 a);
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
@@ -195,6 +232,11 @@ internal sealed partial class EvmInstructions
         programCounter += immediates;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -202,9 +244,9 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
         var index = (int)codeSection.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
@@ -212,11 +254,11 @@ internal sealed partial class EvmInstructions
 
         if (Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
         {
-            return EvmExceptionType.StackOverflow;
+            goto StackOverflow;
         }
 
         if (vm.EvmState.ReturnStackHead == Eof1.RETURN_STACK_MAX_HEIGHT)
-            return EvmExceptionType.InvalidSubroutineEntry;
+            goto InvalidSubroutineEntry;
 
         vm.EvmState.ReturnStack[vm.EvmState.ReturnStackHead++] = new EvmState.ReturnState
         {
@@ -229,6 +271,15 @@ internal sealed partial class EvmInstructions
         programCounter = codeInfo.CodeSectionOffset(index).Start;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    InvalidSubroutineEntry:
+        return EvmExceptionType.InvalidSubroutineEntry;
+    StackOverflow:
+        return EvmExceptionType.StackOverflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -236,15 +287,20 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
 
         EvmState.ReturnState stackFrame = vm.EvmState.ReturnStack[--vm.EvmState.ReturnStackHead];
         vm.SectionIndex = stackFrame.Index;
         programCounter = stackFrame.Offset;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -252,21 +308,28 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) goto OutOfGas;
 
         int index = codeInfo.CodeSection.Span.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
         (int inputCount, _, int maxStackHeight) = codeInfo.GetSectionMetadata(index);
 
         if (Eof1.MAX_STACK_HEIGHT - maxStackHeight + inputCount < stack.Head)
         {
-            return EvmExceptionType.StackOverflow;
+            goto StackOverflow;
         }
         vm.SectionIndex = index;
         programCounter = codeInfo.CodeSectionOffset(index).Start;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackOverflow:
+        return EvmExceptionType.StackOverflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -274,9 +337,9 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable)) goto OutOfGas;
 
         int imm = codeInfo.CodeSection.Span[programCounter];
         stack.Dup(imm + 1);
@@ -284,6 +347,11 @@ internal sealed partial class EvmInstructions
         programCounter += 1;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -291,16 +359,23 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable)) goto OutOfGas;
 
         int n = 1 + (int)codeInfo.CodeSection.Span[programCounter];
-        if (!stack.Swap(n + 1)) return EvmExceptionType.StackUnderflow;
+        if (!stack.Swap(n + 1)) goto StackUnderflow;
 
         programCounter += 1;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -308,9 +383,9 @@ internal sealed partial class EvmInstructions
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable)) goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
         int n = 1 + (int)(codeSection[programCounter] >> 0x04);
@@ -321,6 +396,11 @@ internal sealed partial class EvmInstructions
         programCounter += 1;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -332,9 +412,9 @@ internal sealed partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-        if (vm.EvmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic) goto StaticCallViolation;
 
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         EofCodeInfo container = env.CodeInfo as EofCodeInfo;
@@ -342,7 +422,7 @@ internal sealed partial class EvmInstructions
 
         // 1 - deduct TX_CREATE_COST gas
         if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
-            return EvmExceptionType.OutOfGas;
+            goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
         // 2 - read immediate operand initcontainer_index, encoded as 8-bit unsigned value
@@ -350,13 +430,11 @@ internal sealed partial class EvmInstructions
 
         // 3 - pop value, salt, input_offset, input_size from the operand stack
         // no stack checks becaue EOF guarantees no stack undeflows
-        stack.PopUInt256(out UInt256 value);
-        stack.PopWord256(out Span<byte> salt);
-        stack.PopUInt256(out UInt256 dataOffset);
-        stack.PopUInt256(out UInt256 dataSize);
+        if (!stack.PopUInt256(out UInt256 value) || stack.PopWord256(out Span<byte> salt) || stack.PopUInt256(out UInt256 dataOffset) || stack.PopUInt256(out UInt256 dataSize))
+            goto OutOfGas;
 
         // 4 - perform (and charge for) memory expansion using [input_offset, input_size]
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataSize)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataSize)) goto OutOfGas;
 
         // 5 - load initcode EOF subcontainer at initcontainer_index in the container from which EOFCREATE is executed
         // let initcontainer be that EOF container, and initcontainer_size its length in bytes declared in its parent container header
@@ -366,14 +444,14 @@ internal sealed partial class EvmInstructions
         {
             //if (!UpdateGas(GasCostOf.InitCodeWord * numberOfWordInInitcode, ref gasAvailable))
             //    return (EvmExceptionType.OutOfGas, null);
-            if (initContainer.Length > spec.MaxInitCodeSize) return EvmExceptionType.OutOfGas;
+            if (initContainer.Length > spec.MaxInitCodeSize) goto OutOfGas;
         }
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
         long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length);
         long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
         if (!UpdateGas(hashCost, ref gasAvailable))
-            return EvmExceptionType.OutOfGas;
+            goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // 7 - check that current call depth is below STACK_DEPTH_LIMIT and that caller balance is enough to transfer value
@@ -392,7 +470,7 @@ internal sealed partial class EvmInstructions
 
         // 9 - execute the container and deduct gas for execution. The 63/64th rule from EIP-150 applies.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(callGas, ref gasAvailable)) goto OutOfGas;
 
         // 10 - increment sender account’s nonce
         UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
@@ -465,16 +543,22 @@ internal sealed partial class EvmInstructions
         );
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturnContract(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!vm.EvmState.ExecutionType.IsAnyCreateEof())
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
-
-        if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
         IReleaseSpec spec = vm.Spec;
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
@@ -486,7 +570,7 @@ internal sealed partial class EvmInstructions
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
 
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
         int projectedNewSize = (int)b + deployCodeInfo.DataSection.Length;
         if (projectedNewSize < deployCodeInfo.EofContainer.Header.DataSection.Size || projectedNewSize > UInt16.MaxValue)
@@ -498,6 +582,11 @@ internal sealed partial class EvmInstructions
         vm.ReturnData = deployCodeInfo;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     [SkipLocalsInit]
@@ -506,16 +595,21 @@ internal sealed partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
         gasAvailable -= GasCostOf.VeryLow;
 
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
 
         ZeroPaddedSpan slice = vm.ReturnDataBuffer.Span.SliceWithZeroPadding(a, 32);
         stack.PushBytes(slice);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     public interface IOpEofCall
@@ -555,12 +649,11 @@ internal sealed partial class EvmInstructions
 
         // Instruction is undefined in legacy code and only available in EOF
         if (env.CodeInfo.Version == 0)
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
 
         // 1. Pop required arguments from stack, halt with exceptional failure on stack underflow.
-        stack.PopWord256(out Span<byte> targetBytes);
-        stack.PopUInt256(out UInt256 dataOffset);
-        stack.PopUInt256(out UInt256 dataLength);
+        if (!stack.PopWord256(out Span<byte> targetBytes) || stack.PopUInt256(out UInt256 dataOffset) || stack.PopUInt256(out UInt256 dataLength))
+            goto StackUnderflow;
 
         UInt256 transferValue;
         UInt256 callValue;
@@ -580,21 +673,21 @@ internal sealed partial class EvmInstructions
         }
         else
         {
-            return EvmExceptionType.StackUnderflow;
+            goto StackUnderflow;
         }
 
         // 3. If value is non-zero:
         //  a: Halt with exceptional failure if the current frame is in static-mode.
-        if (vm.EvmState.IsStatic && !transferValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic && !transferValue.IsZero) goto StaticCallViolation;
         //  b. Charge CALL_VALUE_COST gas.
-        if (typeof(TOpEofCall) == typeof(OpEofCall) && !transferValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (typeof(TOpEofCall) == typeof(OpEofCall) && !transferValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) goto OutOfGas;
 
         // 4. If target_address has any of the high 12 bytes set to a non-zero value
         // (i.e. it does not contain a 20-byte address)
         if (!targetBytes[0..12].IsZero())
         {
             //  then halt with an exceptional failure.
-            return EvmExceptionType.AddressOutOfRange;
+            goto AddressOutOfRange;
         }
 
         Address caller = typeof(TOpEofCall) == typeof(OpEofDelegateCall) ? env.Caller : env.ExecutingAccount;
@@ -604,17 +697,17 @@ internal sealed partial class EvmInstructions
             : codeSource;
 
         // 5. Perform (and charge for) memory expansion using [input_offset, input_size].
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, in dataLength)) goto OutOfGas;
         // 1. Charge WARM_STORAGE_READ_COST (100) gas.
         // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
-        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
 
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))
         {
             // 7. If target_address is not in the state and the call configuration would result in account creation,
             //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) goto OutOfGas;
         }
 
         // 8. Calculate the gas available to callee as caller’s remaining gas reduced by max(floor(gas/64), MIN_RETAINED_GAS).
@@ -673,7 +766,7 @@ internal sealed partial class EvmInstructions
         }
 
         // 10. Perform the call with the available gas and configuration.
-        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(callGas, ref gasAvailable)) goto OutOfGas;
 
         ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
 
@@ -706,5 +799,16 @@ internal sealed partial class EvmInstructions
         );
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
+    AddressOutOfRange:
+        return EvmExceptionType.AddressOutOfRange;
     }
 }

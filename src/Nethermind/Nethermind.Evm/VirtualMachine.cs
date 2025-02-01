@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -90,6 +91,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     private int _sectionIndex;
 
     private OpCode[] _opcodeMethods;
+    private static long _txExecutedTracker;
 
     public VirtualMachine(
         IBlockhashProvider? blockHashProvider,
@@ -104,25 +106,18 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
     }
 
-    public VirtualMachine(
-        IBlockhashProvider? blockhashProvider,
-        ISpecProvider? specProvider,
-        ICodeInfoRepository codeInfoRepository,
-        ILogger? logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _blockHashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
-        _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-    }
-
     public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
     {
         _txTracer = txTracer;
         _state = worldState;
 
         _spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
+        if (_txExecutedTracker < 250_000 && Interlocked.Increment(ref _txExecutedTracker) % 10_000 == 0)
+        {
+            if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
+            // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
+            _spec.EvmInstructions = EvmInstructions.GenerateOpCodes(_spec);
+        }
         _opcodeMethods = (OpCode[])(_spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes(_spec));
         ref readonly TxExecutionContext txExecutionContext = ref state.Env.TxExecutionContext;
         ICodeInfoRepository codeInfoRepository = txExecutionContext.CodeInfoRepository;

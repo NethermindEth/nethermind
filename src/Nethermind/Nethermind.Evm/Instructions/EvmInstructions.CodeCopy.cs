@@ -21,14 +21,13 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
     {
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         if (!result.IsZero)
         {
-            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) return EvmExceptionType.OutOfGas;
+            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) goto OutOfGas;
             ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
             vm.EvmState.Memory.Save(in a, in slice);
             if (vm.TxTracer.IsTracingInstructions)
@@ -38,6 +37,11 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpCallDataCopy : IOpCodeCopy
@@ -57,10 +61,7 @@ internal sealed partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         Address address = stack.PopAddress();
-        if (address is null) goto StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        if (address is null || !stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
@@ -85,6 +86,7 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -98,9 +100,9 @@ internal sealed partial class EvmInstructions
         gasAvailable -= spec.GetExtCodeCost();
 
         Address address = stack.PopAddress();
-        if (address is null) return EvmExceptionType.StackUnderflow;
+        if (address is null) goto StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
         if (!vm.TxTracer.IsTracingInstructions && programCounter < codeSection.Length)
@@ -117,7 +119,7 @@ internal sealed partial class EvmInstructions
                     stack.PeekUInt256IsZero())
             {
                 optimizeAccess = true;
-                if (!stack.PopLimbo()) return EvmExceptionType.StackUnderflow;
+                if (!stack.PopLimbo()) goto StackUnderflow;
             }
 
             if (optimizeAccess)
@@ -163,5 +165,10 @@ internal sealed partial class EvmInstructions
             stack.PushUInt256(in result);
         }
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 }

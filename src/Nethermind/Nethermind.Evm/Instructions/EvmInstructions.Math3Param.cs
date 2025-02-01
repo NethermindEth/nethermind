@@ -20,9 +20,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= TOpMath.GasCost;
 
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 c)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
         if (c.IsZero)
         {
@@ -35,6 +33,9 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    StackUnderflow:
+        // Jump forward to be unpredicted by the branch predictor
+        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpAddMod : IOpMath3Param

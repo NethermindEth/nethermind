@@ -98,10 +98,18 @@ internal unsafe sealed partial class EvmInstructions
         {
             lookup[(int)Instruction.SELFBALANCE] = &InstructionSelfBalance;
         }
-
-        lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee>;
-        lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash;
-        lookup[(int)Instruction.BLOBBASEFEE] = &InstructionEnvUInt256<OpBlobBaseFee>;
+        if (spec.BaseFeeEnabled)
+        {
+            lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee>;
+        }
+        if (spec.IsEip4844Enabled)
+        {
+            lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash;
+        }
+        if (spec.BlobBaseFeeEnabled)
+        {
+            lookup[(int)Instruction.BLOBBASEFEE] = &InstructionEnvUInt256<OpBlobBaseFee>;
+        }
         // Gap: 0x4b to 0x4f
         lookup[(int)Instruction.POP] = &InstructionPop;
         lookup[(int)Instruction.MLOAD] = &InstructionMLoad;

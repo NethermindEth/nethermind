@@ -22,13 +22,16 @@ internal sealed partial class EvmInstructions
         gasAvailable -= TOpMath.GasCost;
 
         ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) return EvmExceptionType.StackUnderflow;
+        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
 
         Vector256<byte> result = TOpMath.Operation(ref bytesRef);
 
         WriteUnaligned(ref stack.PushBytesRef(), result);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpNot : IOpMath1Param

@@ -31,10 +31,15 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Mid;
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        if (!Jump(result, ref programCounter, in vm.EvmState.Env)) return EvmExceptionType.InvalidJumpDestination;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
+    // Reduce inline code returns, also jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
     }
 
     [SkipLocalsInit]
@@ -42,15 +47,20 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.High;
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         ref byte condition = ref stack.PopBytesByRef();
-        if (Unsafe.IsNullRef(in condition)) return EvmExceptionType.StackUnderflow;
+        if (Unsafe.IsNullRef(in condition)) goto StackUnderflow;
         if (Unsafe.As<byte, Vector256<byte>>(ref condition) != default)
         {
-            if (!Jump(result, ref programCounter, in vm.EvmState.Env)) return EvmExceptionType.InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
         }
 
         return EvmExceptionType.None;
+    // Reduce inline code returns, also jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
     }
 
     [SkipLocalsInit]

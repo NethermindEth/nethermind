@@ -55,9 +55,12 @@ internal sealed partial class EvmInstructions
         where TOpCount : IOpCount
     {
         gasAvailable -= GasCostOf.VeryLow;
-        if (!stack.Dup(TOpCount.Count)) return EvmExceptionType.StackUnderflow;
+        if (!stack.Dup(TOpCount.Count)) goto StackUnderflow;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -65,9 +68,12 @@ internal sealed partial class EvmInstructions
         where TOpCount : IOpCount
     {
         gasAvailable -= GasCostOf.VeryLow;
-        if (!stack.Swap(TOpCount.Count + 1)) return EvmExceptionType.StackUnderflow;
+        if (!stack.Swap(TOpCount.Count + 1)) goto StackUnderflow;
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -102,15 +108,14 @@ internal sealed partial class EvmInstructions
         where TOpCount : struct, IOpCount
     {
         EvmState vmState = vm.EvmState;
-        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+        if (vmState.IsStatic) goto StaticCallViolation;
 
-        if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 position) || !stack.PopUInt256(out UInt256 length)) goto StackUnderflow;
         long topicsCount = TOpCount.Count;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
         if (!UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
@@ -131,5 +136,12 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Reduce inline code returns, also jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     }
 }

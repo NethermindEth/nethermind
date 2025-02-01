@@ -41,14 +41,19 @@ internal sealed partial class EvmInstructions
         gasAvailable -= spec.GetBalanceCost();
 
         Address address = stack.PopAddress();
-        if (address is null) return EvmExceptionType.StackUnderflow;
+        if (address is null) goto StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         UInt256 result = vm.WorldState.GetBalance(address);
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -58,8 +63,8 @@ internal sealed partial class EvmInstructions
         gasAvailable -= spec.GetExtCodeHashCost();
 
         Address address = stack.PopAddress();
-        if (address is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+        if (address is null) goto StackUnderflow;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))
@@ -72,6 +77,11 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -81,8 +91,8 @@ internal sealed partial class EvmInstructions
         gasAvailable -= spec.GetExtCodeHashCost();
 
         Address address = stack.PopAddress();
-        if (address is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) return EvmExceptionType.OutOfGas;
+        if (address is null) goto StackUnderflow;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))
@@ -103,6 +113,11 @@ internal sealed partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -110,15 +125,20 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
 
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         EvmState vmState = vm.EvmState;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
         Span<byte> bytes = vmState.Memory.LoadSpan(in result);
         if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange(result, bytes);
 
         stack.PushBytes(bytes);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -126,15 +146,20 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
 
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         Span<byte> bytes = stack.PopWord256();
         EvmState vmState = vm.EvmState;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
         vmState.Memory.SaveWord(in result, bytes);
         if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -142,15 +167,20 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
 
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         byte data = stack.PopByte();
         EvmState vmState = vm.EvmState;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) goto OutOfGas;
         vmState.Memory.SaveByte(in result, data);
         if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange(result, data);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]
@@ -231,8 +261,6 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionEnvUInt256<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvUInt256
     {
-        if (typeof(TOpEnv) == typeof(OpBaseFee) && !vm.Spec.BaseFeeEnabled) return EvmExceptionType.BadInstruction;
-        if (typeof(TOpEnv) == typeof(OpBlobBaseFee) && !vm.Spec.BlobBaseFeeEnabled) return EvmExceptionType.BadInstruction;
         gasAvailable -= TOpEnv.GasCost;
 
         TOpEnv.Operation(vm.EvmState, out UInt256 result);

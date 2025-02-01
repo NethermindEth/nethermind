@@ -22,14 +22,16 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= TOpMath.GasCost;
 
-        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
 
         TOpMath.Operation(in a, in b, out UInt256 result);
 
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpAdd : IOpMath2Param

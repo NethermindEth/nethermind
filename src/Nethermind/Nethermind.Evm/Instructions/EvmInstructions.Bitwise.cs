@@ -22,16 +22,19 @@ internal sealed partial class EvmInstructions
         gasAvailable -= TOpBitwise.GasCost;
 
         ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) return EvmExceptionType.StackUnderflow;
+        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
         bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) return EvmExceptionType.StackUnderflow;
+        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
         WriteUnaligned(ref stack.PushBytesRef(), TOpBitwise.Operation(aVec, bVec));
 
         return EvmExceptionType.None;
+    // Reduce inline code returns, also jump forward to be unpredicted by the branch predictor
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpBitwiseAnd : IOpBitwise

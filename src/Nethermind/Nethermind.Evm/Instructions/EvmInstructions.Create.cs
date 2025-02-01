@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -29,7 +28,7 @@ internal sealed partial class EvmInstructions
         Metrics.IncrementCreates();
 
         IReleaseSpec spec = vm.Spec;
-        if (vm.EvmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+        if (vm.EvmState.IsStatic) goto StaticCallViolation;
 
         vm.ReturnData = null;
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
@@ -44,7 +43,7 @@ internal sealed partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 value) ||
             !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
             !stack.PopUInt256(out UInt256 initCodeLength))
-            return EvmExceptionType.StackUnderflow;
+            goto StackUnderflow;
 
         Span<byte> salt = default;
         if (typeof(TOpCreate) == typeof(OpCreate2))
@@ -55,7 +54,7 @@ internal sealed partial class EvmInstructions
         //EIP-3860
         if (spec.IsEip3860Enabled)
         {
-            if (initCodeLength > spec.MaxInitCodeSize) return EvmExceptionType.OutOfGas;
+            if (initCodeLength > spec.MaxInitCodeSize) goto OutOfGas;
         }
 
         long gasCost = GasCostOf.Create +
@@ -64,9 +63,9 @@ internal sealed partial class EvmInstructions
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength)
                            : 0);
 
-        if (!UpdateGas(gasCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength)) return EvmExceptionType.OutOfGas;
+        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength)) goto OutOfGas;
 
         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -74,7 +73,7 @@ internal sealed partial class EvmInstructions
             // TODO: need a test for this
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return EvmExceptionType.None;
+            goto None;
         }
 
         ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
@@ -84,7 +83,7 @@ internal sealed partial class EvmInstructions
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return EvmExceptionType.None;
+            goto None;
         }
 
         UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
@@ -93,14 +92,14 @@ internal sealed partial class EvmInstructions
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return EvmExceptionType.None;
+            goto None;
         }
 
         if (vm.TxTracer.IsTracingInstructions) vm.EndInstructionTrace(gasAvailable);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(callGas, ref gasAvailable)) goto OutOfGas;
 
         Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
             ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
@@ -120,7 +119,7 @@ internal sealed partial class EvmInstructions
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
             UpdateGasUp(callGas, ref gasAvailable);
-            return EvmExceptionType.None;
+            goto None;
         }
 
         state.IncrementNonce(env.ExecutingAccount);
@@ -138,7 +137,7 @@ internal sealed partial class EvmInstructions
             //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return EvmExceptionType.None;
+            goto None;
         }
 
         if (state.IsDeadAccount(contractAddress))
@@ -171,8 +170,15 @@ internal sealed partial class EvmInstructions
             env: in callEnv,
             in vm.EvmState.AccessTracker
         );
-
+    None:
         return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
     }
 
     public struct OpCreate : IOpCreate

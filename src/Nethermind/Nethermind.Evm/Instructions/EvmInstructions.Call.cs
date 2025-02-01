@@ -235,22 +235,27 @@ internal sealed partial class EvmInstructions
     {
         if (vm.EvmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {
-            return EvmExceptionType.BadInstruction;
+            goto BadInstruction;
         }
 
         if (!stack.PopUInt256(out UInt256 position) ||
             !stack.PopUInt256(out UInt256 length))
-            return EvmExceptionType.StackUnderflow;
+            goto StackUnderflow;
 
         if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
         {
-            return EvmExceptionType.OutOfGas;
+            goto OutOfGas;
         }
 
         vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
 
         return EvmExceptionType.None;
-
-
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 }
