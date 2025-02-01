@@ -227,7 +227,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                 {
                     if (_txTracer.IsTracingActions)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(_spec, callResult.Output.Bytes.Length);
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
                         if (callResult.IsException)
                         {
