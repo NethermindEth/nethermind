@@ -164,6 +164,19 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    {
+        IReleaseSpec spec = vm.Spec;
+        if (!spec.UseHotAndColdStorage)
+        {
+            return true;
+        }
+        bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm);
+        return notOutOfGas
+               && (!vm.EvmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(vm.WorldState, address, spec, out Address delegated)
+                   || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm));
+    }
+
     public static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         bool result = true;

@@ -609,7 +609,7 @@ internal sealed partial class EvmInstructions
         if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, in dataLength)) return EvmExceptionType.OutOfGas;
         // 1. Charge WARM_STORAGE_READ_COST (100) gas.
         // 6. If target_address is not in the warm_account_list, charge COLD_ACCOUNT_ACCESS - WARM_STORAGE_READ_COST (2500) gas.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
 
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))

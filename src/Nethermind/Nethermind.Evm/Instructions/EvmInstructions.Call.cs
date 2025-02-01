@@ -36,7 +36,7 @@ internal sealed partial class EvmInstructions
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) return EvmExceptionType.OutOfGas;
 
         UInt256 callValue;
         if (typeof(TOpCall) == typeof(OpStaticCall))
@@ -121,7 +121,7 @@ internal sealed partial class EvmInstructions
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                 ReadOnlyMemory<byte>? memoryTrace = vm.EvmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
+                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
             }
 
             //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
