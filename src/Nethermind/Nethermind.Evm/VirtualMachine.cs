@@ -115,17 +115,19 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         if (!TTracingInstructions.IsActive)
         {
-            if (_txCount < 250_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
+            if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
             {
                 if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
                 // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
+                // May be a few cycles to pick up pointers to the optimized methods depending on what's in the blocks,
+                // however the the refreshes don't take long.
                 _spec.EvmInstructions = EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec);
             }
             _opcodeMethods = (OpCode[])(_spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec));
         }
         else
         {
-            _opcodeMethods = EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec);
+            _opcodeMethods = (OpCode[])(_spec.EvmTracedInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec));
         }
         ref readonly TxExecutionContext txExecutionContext = ref state.Env.TxExecutionContext;
         ICodeInfoRepository codeInfoRepository = txExecutionContext.CodeInfoRepository;

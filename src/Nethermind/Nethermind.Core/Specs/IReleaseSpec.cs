@@ -439,5 +439,7 @@ namespace Nethermind.Core.Specs
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
         public object? EvmInstructions { get; set; }
+
+        public object? EvmTracedInstructions { get; set; }
     }
 }

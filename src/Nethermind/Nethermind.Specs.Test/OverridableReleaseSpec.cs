@@ -186,5 +186,6 @@ namespace Nethermind.Specs.Test
         public Address DepositContractAddress => _spec.DepositContractAddress;
 
         public object? EvmInstructions { get => _spec.EvmInstructions; set => _spec.EvmInstructions = value; }
+        public object? EvmTracedInstructions { get => _spec.EvmTracedInstructions; set => _spec.EvmTracedInstructions = value; }
     }
 }

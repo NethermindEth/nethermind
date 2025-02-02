@@ -141,5 +141,6 @@ namespace Nethermind.Specs
             set => _eip2935ContractAddress = value;
         }
         public object EvmInstructions { get; set; }
+        public object? EvmTracedInstructions { get; set; }
     }
 }
