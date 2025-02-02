@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
 {
-    public static readonly MapFpToG1Precompile Instance = new MapFpToG1Precompile();
+    public static readonly MapFpToG1Precompile Instance = new();
 
     private MapFpToG1Precompile()
     {
@@ -27,7 +27,7 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsMapFpToG1Precompile++;
 

@@ -17,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Era1;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -63,6 +64,7 @@ namespace Nethermind.Api
         IWorldStateManager? WorldStateManager { get; set; }
         INodeStorage? MainNodeStorage { get; set; }
         CompositePruningTrigger? PruningTrigger { get; set; }
+        IVerifyTrieStarter? VerifyTrieStarter { get; set; }
 
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITxSender? TxSender { get; set; }
@@ -96,6 +98,8 @@ namespace Nethermind.Api
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
+
+        IAdminEraService AdminEraService { get; set; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
         {
