@@ -43,33 +43,18 @@ namespace Nethermind.Network
                 return;
             }
 
-            HashSet<string> lines = new();
-            // Read lines asynchronously
+            var nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
+
             await foreach (string line in File.ReadLinesAsync(_trustedNodesPath))
             {
-                if (!string.IsNullOrWhiteSpace(line))
+                if (string.IsNullOrWhiteSpace(line))
                 {
-                    lines.Add(line);
+                    continue;
                 }
-            }
-
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Loaded {lines.Count} trusted nodes from: {Path.GetFullPath(_trustedNodesPath)}");
-            }
-
-            if (lines.Any() && _logger.IsDebug)
-            {
-                _logger.Debug("Trusted nodes:\n" + string.Join(Environment.NewLine, lines));
-            }
-
-            // Parse each line into a NetworkNode
-            List<NetworkNode> networkNodes = new();
-            foreach (string line in lines)
-            {
                 try
                 {
-                    networkNodes.Add(new NetworkNode(line));
+                    NetworkNode node = new NetworkNode(line);
+                    nodes.TryAdd(node.NodeId, node);
                 }
                 catch (Exception ex) when (ex is ArgumentException or SocketException)
                 {
@@ -80,9 +65,18 @@ namespace Nethermind.Network
                 }
             }
 
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(
-                networkNodes.ToDictionary(n => n.NodeId, n => n));
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Loaded {nodes.Count} trusted nodes from: {Path.GetFullPath(_trustedNodesPath)}");
+            }
+            if (nodes.Any() && _logger.IsDebug)
+            {
+                _logger.Debug("Trusted nodes:\n" + string.Join(Environment.NewLine, nodes.Values.Select(n => n.ToString())));
+            }
+
+            _nodes = nodes;
         }
+
 
         // ---- INodeSource requirement: IAsyncEnumerable<Node> ----
         // C# requires 'async' for IAsyncEnumerable yield. We'll add a small 'await Task.Yield()'
