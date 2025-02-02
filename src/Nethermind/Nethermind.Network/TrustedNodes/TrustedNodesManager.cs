@@ -161,12 +161,13 @@ namespace Nethermind.Network
         }
 
 
-        private Task SaveFileAsync()
+        private async Task SaveFileAsync()
         {
-            // Serialize the Enode strings from each stored node
             IEnumerable<string> enodes = _nodes.Values.Select(n => n.ToString());
-            return File.WriteAllTextAsync(_trustedNodesPath,
-                JsonSerializer.Serialize(enodes, new JsonSerializerOptions { WriteIndented = true }));
+            using (FileStream stream = File.Create(_trustedNodesPath))
+            {
+                await JsonSerializer.SerializeAsync(stream, enodes, new JsonSerializerOptions { WriteIndented = true });
+            }
         }
     }
 }
