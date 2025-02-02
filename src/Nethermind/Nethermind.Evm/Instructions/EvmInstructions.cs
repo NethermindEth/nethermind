@@ -510,6 +510,7 @@ internal unsafe sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
@@ -524,6 +525,7 @@ internal unsafe sealed partial class EvmInstructions
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
         if (gasAvailable < gasCost)
@@ -535,6 +537,7 @@ internal unsafe sealed partial class EvmInstructions
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UpdateGasUp(long refund, ref long gasAvailable)
     {
         gasAvailable += refund;

@@ -291,6 +291,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
     {
         if (length.IsLargerThanULong())

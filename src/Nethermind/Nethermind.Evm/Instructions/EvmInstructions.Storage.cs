@@ -107,7 +107,6 @@ internal sealed partial class EvmInstructions
 
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType InstructionSStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInstructions : struct, IFlag
     {
@@ -259,7 +258,6 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType InstructionSLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vm.Spec;
@@ -267,19 +265,23 @@ internal sealed partial class EvmInstructions
         gasAvailable -= spec.GetSLoadCost();
 
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, result);
+        Address executingAccount = vm.EvmState.Env.ExecutingAccount;
+        StorageCell storageCell = new(executingAccount, result);
         if (!ChargeStorageAccessGas(
             ref gasAvailable,
             vm,
             in storageCell,
             StorageAccessType.SLOAD,
-            spec)) goto OutOfGas;
+            spec))
+        {
+            goto OutOfGas;
+        }
 
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
         stack.PushBytes(value);
         if (vm.TxTracer.IsTracingStorage)
         {
-            vm.TxTracer.LoadOperationStorage(storageCell.Address, result, value);
+            vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
 
         return EvmExceptionType.None;
@@ -301,15 +303,16 @@ internal sealed partial class EvmInstructions
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
+            ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
             if (vm.TxTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
-                vmState.AccessTracker.WarmUp(in storageCell);
+                accessTracker.WarmUp(in storageCell);
             }
 
-            if (vmState.AccessTracker.IsCold(in storageCell))
+            if (accessTracker.IsCold(in storageCell))
             {
                 result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                vmState.AccessTracker.WarmUp(in storageCell);
+                accessTracker.WarmUp(in storageCell);
             }
             else if (storageAccessType == StorageAccessType.SLOAD)
             {

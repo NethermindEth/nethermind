@@ -411,13 +411,13 @@ internal sealed partial class EvmInstructions
         vm.ReturnData = null;
 
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ICodeInfo codeInfo = env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
         if (vm.EvmState.IsStatic) goto StaticCallViolation;
 
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         EofCodeInfo container = env.CodeInfo as EofCodeInfo;
         ExecutionType currentContext = ExecutionType.EOFCREATE;
 
