@@ -484,23 +484,32 @@ namespace Nethermind.Db
             if (indexInfo.DataValuesCount == 0)
                 throw ValidationException("Attempt to write index without data.");
 
+            var watch = new Stopwatch();
+
             // Allocate file page if needed
             if (indexInfo.File is not {} oldFileRef)
             {
                 // TODO: improve awaiting
+                watch.Restart();
                 long freePage = _tempPagesPool.TakePageAsync().WaitResult();
+                stats.WaitingPage.Include(watch.Elapsed);
+
                 indexInfo.File = oldFileRef = new(freePage);
             }
 
-            var bytes = indexInfo.Data;
-            RandomAccess.Write(TempFileHandle, bytes, oldFileRef.Position);
-            indexInfo.File = new FileRef(oldFileRef, bytes.Length);
+            var dataLength = indexInfo.Data.Length;
+
+            watch.Restart();
+            RandomAccess.Write(TempFileHandle, indexInfo.Data, oldFileRef.Position);
+            stats.WritingTemp.Include(watch.Elapsed);
+
+            indexInfo.File = new FileRef(oldFileRef, dataLength);
             indexInfo.ClearData();
 
-            stats.BytesWritten.Include(bytes.Length);
+            stats.BytesWritten.Include(dataLength);
         }
 
-        private void SaveIndex(IDb db, IndexInfo indexInfo)
+        private void SaveIndex(IDb db, IndexInfo indexInfo, SetReceiptsStats stats)
         {
             if (indexInfo.LastBlockNumber < indexInfo.TotalValuesCount - 1)
                 throw ValidationException("Index last block number is too small.");
@@ -512,7 +521,10 @@ namespace Nethermind.Db
                 ?? throw ValidationException("Attempt to save index without starting block.");
 
             CreateDbKey(indexInfo.Key, blockNumber, dbKey);
+
+            var watch = Stopwatch.StartNew();
             db.PutSpan(dbKey, indexInfo.Serialize(), WriteFlags.DisableWAL);
+            stats.StoringIndex.Include(watch.Elapsed);
         }
 
         private static IndexInfo CreateTempIndex(byte[] keyPrefix, SetReceiptsStats stats)
@@ -837,6 +849,8 @@ namespace Nethermind.Db
             }
 
             public byte[] Serialize() => Serialize(Type, File, LastBlockNumber, Data);
+
+            public static bool IsSerializedTemp(byte[] bytes) => bytes.Length == 0 || bytes[0] == (int)IndexType.Temp;
 
             public static IndexInfo Deserialize(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> bytes)
             {

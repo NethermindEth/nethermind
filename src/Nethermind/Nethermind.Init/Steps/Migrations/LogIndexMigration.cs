@@ -168,6 +168,9 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tSeekForPrev: {last.SeekForPrevHit} / {last.SeekForPrevMiss} ( {total.SeekForPrevHit} / {total.SeekForPrevMiss} on average )" +
                     $"\n\t\tBuilding dictionary: {last.BuildingDictionary} ( {total.BuildingDictionary} on average )" +
                     $"\n\t\tProcessing: {last.ProcessingData} ( {total.ProcessingData} on average )" +
+                    $"\n\t\tWaiting for page: {last.WaitingPage} ( {total.WaitingPage} on average )" +
+                    $"\n\t\tStoring index: {last.StoringIndex} ( {total.StoringIndex} on average )" +
+                    $"\n\t\tWriting to temp: {last.WritingTemp} ( {total.WritingTemp} on average )" +
                     $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average )" +
                     $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
                     $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average )" +
