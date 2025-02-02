@@ -79,7 +79,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         Metrics.MCopyOpcode++;
 
@@ -92,11 +93,9 @@ internal sealed partial class EvmInstructions
 
         Span<byte> bytes = vmState.Memory.LoadSpan(in b, c);
 
-        ITxTracer tracer = !vm.TxTracer.IsTracingInstructions ? null : vm.TxTracer;
-
-        tracer?.ReportMemoryChange(b, bytes);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(b, bytes);
         vmState.Memory.Save(in a, bytes);
-        tracer?.ReportMemoryChange(a, bytes);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(a, bytes);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor
@@ -109,7 +108,8 @@ internal sealed partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType InstructionSStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         Metrics.IncrementSStoreOpcode();
         EvmState vmState = vm.EvmState;
@@ -235,7 +235,7 @@ internal sealed partial class EvmInstructions
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
         }
 
-        if (vm.TxTracer.IsTracingInstructions)
+        if (TTracingInstructions.IsActive)
         {
             ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
             byte[] storageBytes = new byte[32]; // do not stackalloc here

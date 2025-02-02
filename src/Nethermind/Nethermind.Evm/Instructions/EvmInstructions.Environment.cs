@@ -121,7 +121,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMLoad<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -129,7 +130,7 @@ internal sealed partial class EvmInstructions
         EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
         Span<byte> bytes = vmState.Memory.LoadSpan(in result);
-        if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange(result, bytes);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(result, bytes);
 
         stack.PushBytes(bytes);
 
@@ -142,7 +143,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -152,7 +154,7 @@ internal sealed partial class EvmInstructions
         EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
         vmState.Memory.SaveWord(in result, bytes);
-        if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange((long)result, bytes);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor
@@ -163,7 +165,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMStore8<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -173,7 +176,7 @@ internal sealed partial class EvmInstructions
         EvmState vmState = vm.EvmState;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) goto OutOfGas;
         vmState.Memory.SaveByte(in result, data);
-        if (vm.TxTracer.IsTracingInstructions) vm.TxTracer.ReportMemoryChange(result, data);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(result, data);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor

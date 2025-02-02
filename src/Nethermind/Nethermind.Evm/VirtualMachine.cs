@@ -91,7 +91,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     private int _sectionIndex;
 
     private OpCode[] _opcodeMethods;
-    private static long _txExecutedTracker;
+    private static long _txCount;
 
     public VirtualMachine(
         IBlockhashProvider? blockHashProvider,
@@ -106,19 +106,27 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
     }
 
-    public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate Run<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+        where TTracingInstructions : struct, IFlag
     {
         _txTracer = txTracer;
         _state = worldState;
 
         _spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
-        if (_txExecutedTracker < 250_000 && Interlocked.Increment(ref _txExecutedTracker) % 10_000 == 0)
+        if (!TTracingInstructions.IsActive)
         {
-            if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
-            // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
-            _spec.EvmInstructions = EvmInstructions.GenerateOpCodes(_spec);
+            if (_txCount < 250_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
+                // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
+                _spec.EvmInstructions = EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec);
+            }
+            _opcodeMethods = (OpCode[])(_spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec));
         }
-        _opcodeMethods = (OpCode[])(_spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes(_spec));
+        else
+        {
+            _opcodeMethods = EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec);
+        }
         ref readonly TxExecutionContext txExecutionContext = ref state.Env.TxExecutionContext;
         ICodeInfoRepository codeInfoRepository = txExecutionContext.CodeInfoRepository;
         IReleaseSpec spec = _specProvider.GetSpec(txExecutionContext.BlockExecutionContext.Header.Number, txExecutionContext.BlockExecutionContext.Header.Timestamp);
@@ -184,7 +192,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
                     if (currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
+                        callResult = ExecuteCall<TTracingInstructions>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
                     }
                     else
                     {
@@ -416,7 +424,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                             if (previousState.IsPrecompile)
                             {
                                 // parity induced if else for vmtrace
-                                if (_txTracer.IsTracingInstructions)
+                                if (TTracingInstructions.IsActive)
                                 {
                                     _txTracer.ReportMemoryChange(previousCallOutputDestination, previousCallOutput);
                                 }
@@ -467,7 +475,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
                 RevertParityTouchBugAccount();
 
-                if (txTracer.IsTracingInstructions)
+                if (TTracingInstructions.IsActive)
                 {
                     txTracer.ReportOperationRemainingGas(0);
                     txTracer.ReportOperationError(failure is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
@@ -586,7 +594,8 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination)
+    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination)
+        where TTracingInstructions : struct, IFlag
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         if (!vmState.IsContinuation)
@@ -615,7 +624,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         if (previousCallResult is not null)
         {
             stack.PushBytes(previousCallResult.Value.Span);
-            if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+            if (TTracingInstructions.IsActive) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
         }
 
         if (previousCallOutput.Length > 0)
@@ -635,12 +644,10 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         // OnFlag or OffFlag. These checks that are evaluated to constant values at compile time.
         // This only works for structs, not for classes or interface types
         // which use shared generics.
-        return (tracing: _txTracer.IsTracingInstructions, cancelable: _txTracer.IsCancelable) switch
+        return _txTracer.IsCancelable switch
         {
-            (tracing: false, cancelable: false) => ExecuteCode<OffFlag, OffFlag>(ref stack, gasAvailable),
-            (tracing: false, cancelable: true) => ExecuteCode<OffFlag, OnFlag>(ref stack, gasAvailable),
-            (tracing: true, cancelable: false) => ExecuteCode<OnFlag, OffFlag>(ref stack, gasAvailable),
-            (tracing: true, cancelable: true) => ExecuteCode<OnFlag, OnFlag>(ref stack, gasAvailable)
+            false => ExecuteCode<TTracingInstructions, OffFlag>(ref stack, gasAvailable),
+            true => ExecuteCode<TTracingInstructions, OnFlag>(ref stack, gasAvailable),
         };
     Empty:
         return CallResult.Empty(vmState.Env.CodeInfo.Version);
@@ -820,20 +827,6 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _txTracer.ReportOperationError(evmExceptionType);
     }
 
-    interface IFlag
-    {
-        virtual static bool IsActive { get; }
-    }
-
-    struct OffFlag : IFlag
-    {
-        public static bool IsActive => false;
-    }
-    struct OnFlag : IFlag
-    {
-        public static bool IsActive => true;
-    }
-
     internal readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
@@ -896,4 +889,18 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         public bool IsException => ExceptionType != EvmExceptionType.None;
         public int FromVersion { get; }
     }
+}
+
+public interface IFlag
+{
+    virtual static bool IsActive { get; }
+}
+
+public struct OffFlag : IFlag
+{
+    public static bool IsActive => false;
+}
+public struct OnFlag : IFlag
+{
+    public static bool IsActive => true;
 }

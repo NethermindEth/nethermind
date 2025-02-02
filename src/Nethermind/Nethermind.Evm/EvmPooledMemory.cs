@@ -261,10 +261,17 @@ public struct EvmPooledMemory : IEvmMemory
         long result = CalculateMemoryCost(in location, in length, out bool outOfGas);
         if (outOfGas)
         {
-            throw new OutOfGasException();
+            ThrowOutOfGas();
         }
 
         return result;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowOutOfGas()
+        {
+            throw new OutOfGasException();
+        }
     }
 
     public TraceMemory GetTrace()

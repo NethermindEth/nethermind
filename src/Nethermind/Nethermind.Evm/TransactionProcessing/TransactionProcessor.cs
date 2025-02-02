@@ -167,7 +167,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
+            GasConsumed spentGas;
+            byte statusCode;
+            TransactionSubstate? substate;
+            if (!tracer.IsTracingInstructions)
+            {
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
+            }
+            else
+            {
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
+            }
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
             // Finalize
@@ -594,7 +604,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-        protected virtual void ExecuteEvmCall(
+        protected virtual void ExecuteEvmCall<TTracingInstructions>(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -608,6 +618,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out TransactionSubstate? substate,
             out GasConsumed gasConsumed,
             out byte statusCode)
+            where TTracingInstructions : struct, IFlag
         {
             _ = ShouldValidate(opts);
 
@@ -646,7 +657,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
                 {
-                    substate = VirtualMachine.Run(state, WorldState, tracer);
+                    substate = VirtualMachine.Run<TTracingInstructions>(state, WorldState, tracer);
 
                     unspentGas = state.GasAvailable;
 

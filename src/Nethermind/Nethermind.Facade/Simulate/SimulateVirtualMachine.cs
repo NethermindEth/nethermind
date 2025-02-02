@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-
-using Nethermind.Consensus.Tracing;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
@@ -12,14 +10,15 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMachine
 {
-    public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate Run<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+            where TTracingInstructions : struct, IFlag
     {
         if (txTracer.IsTracingActions && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
         {
             logsMutator.SetLogsToMutate(state.AccessTracker.Logs);
         }
 
-        return virtualMachine.Run(state, worldState, txTracer);
+        return virtualMachine.Run<TTracingInstructions>(state, worldState, txTracer);
     }
 
     private static bool TryGetLogsMutator(ITxTracer txTracer, [NotNullWhen(true)] out ITxLogsMutator? txLogsMutator)

@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark]
         public void ExecuteCode()
         {
-            _virtualMachine.Run(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.Run<OffFlag>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
     }

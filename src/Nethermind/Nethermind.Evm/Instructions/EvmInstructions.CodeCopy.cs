@@ -18,8 +18,9 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
+        where TTracingInstructions : struct, IFlag
     {
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
@@ -30,7 +31,7 @@ internal sealed partial class EvmInstructions
             if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result)) goto OutOfGas;
             ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
             vm.EvmState.Memory.Save(in a, in slice);
-            if (vm.TxTracer.IsTracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -57,7 +58,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         Address address = stack.PopAddress();
@@ -79,7 +81,7 @@ internal sealed partial class EvmInstructions
             }
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
             vm.EvmState.Memory.Save(in a, in slice);
-            if (vm.TxTracer.IsTracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -94,7 +96,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeSize<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         gasAvailable -= spec.GetExtCodeCost();
@@ -105,7 +108,7 @@ internal sealed partial class EvmInstructions
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
-        if (!vm.TxTracer.IsTracingInstructions && programCounter < codeSection.Length)
+        if (!TTracingInstructions.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
             Instruction nextInstruction = (Instruction)codeSection[programCounter];

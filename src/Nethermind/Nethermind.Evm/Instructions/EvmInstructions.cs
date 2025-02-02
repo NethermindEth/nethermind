@@ -16,7 +16,8 @@ using Int256;
 
 internal unsafe sealed partial class EvmInstructions
 {
-    public static OpCode[] GenerateOpCodes(IReleaseSpec spec)
+    public static OpCode[] GenerateOpCodes<TTracingInstructions>(IReleaseSpec spec)
+        where TTracingInstructions : struct, IFlag
     {
         var lookup = new delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>[256];
 
@@ -64,19 +65,19 @@ internal unsafe sealed partial class EvmInstructions
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad;
         lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt256<OpCallDataSize>;
-        lookup[(int)Instruction.CALLDATACOPY] = &InstructionCodeCopy<OpCallDataCopy>;
+        lookup[(int)Instruction.CALLDATACOPY] = &InstructionCodeCopy<OpCallDataCopy, TTracingInstructions>;
         lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt256<OpCodeSize>;
-        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCodeCopy>;
+        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCodeCopy, TTracingInstructions>;
         lookup[(int)Instruction.GASPRICE] = &InstructionEnvUInt256<OpGasPrice>;
 
-        lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize;
+        lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TTracingInstructions>;
 
-        lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy;
+        lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy<TTracingInstructions>;
 
         if (spec.ReturnDataOpcodesEnabled)
         {
             lookup[(int)Instruction.RETURNDATASIZE] = &InstructionReturnDataSize;
-            lookup[(int)Instruction.RETURNDATACOPY] = &InstructionReturnDataCopy;
+            lookup[(int)Instruction.RETURNDATACOPY] = &InstructionReturnDataCopy<TTracingInstructions>;
         }
         if (spec.ExtCodeHashOpcodeEnabled)
         {
@@ -112,11 +113,11 @@ internal unsafe sealed partial class EvmInstructions
         }
         // Gap: 0x4b to 0x4f
         lookup[(int)Instruction.POP] = &InstructionPop;
-        lookup[(int)Instruction.MLOAD] = &InstructionMLoad;
-        lookup[(int)Instruction.MSTORE] = &InstructionMStore;
-        lookup[(int)Instruction.MSTORE8] = &InstructionMStore8;
+        lookup[(int)Instruction.MLOAD] = &InstructionMLoad<TTracingInstructions>;
+        lookup[(int)Instruction.MSTORE] = &InstructionMStore<TTracingInstructions>;
+        lookup[(int)Instruction.MSTORE8] = &InstructionMStore8<TTracingInstructions>;
         lookup[(int)Instruction.SLOAD] = &InstructionSLoad;
-        lookup[(int)Instruction.SSTORE] = &InstructionSStore;
+        lookup[(int)Instruction.SSTORE] = &InstructionSStore<TTracingInstructions>;
         lookup[(int)Instruction.JUMP] = &InstructionJump;
         lookup[(int)Instruction.JUMPI] = &InstructionJumpIf;
         lookup[(int)Instruction.PC] = &InstructionProgramCounter;
@@ -131,7 +132,7 @@ internal unsafe sealed partial class EvmInstructions
         }
         if (spec.MCopyIncluded)
         {
-            lookup[(int)Instruction.MCOPY] = &InstructionMCopy;
+            lookup[(int)Instruction.MCOPY] = &InstructionMCopy<TTracingInstructions>;
         }
 
         if (spec.IncludePush0Instruction)
@@ -217,7 +218,7 @@ internal unsafe sealed partial class EvmInstructions
             lookup[(int)Instruction.DATALOAD] = &InstructionDataLoad;
             lookup[(int)Instruction.DATALOADN] = &InstructionDataLoadN;
             lookup[(int)Instruction.DATASIZE] = &InstructionDataSize;
-            lookup[(int)Instruction.DATACOPY] = &InstructionDataCopy;
+            lookup[(int)Instruction.DATACOPY] = &InstructionDataCopy<TTracingInstructions>;
             lookup[(int)Instruction.RJUMP] = &InstructionRelativeJump;
             lookup[(int)Instruction.RJUMPI] = &InstructionRelativeJumpIf;
             lookup[(int)Instruction.RJUMPV] = &InstructionJumpTable;
@@ -227,39 +228,39 @@ internal unsafe sealed partial class EvmInstructions
             lookup[(int)Instruction.DUPN] = &InstructionDupN;
             lookup[(int)Instruction.SWAPN] = &InstructionSwapN;
             lookup[(int)Instruction.EXCHANGE] = &InstructionExchange;
-            lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate;
+            lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate<TTracingInstructions>;
             lookup[(int)Instruction.RETURNCONTRACT] = &InstructionReturnContract;
         }
 
-        lookup[(int)Instruction.CREATE] = &InstructionCreate<OpCreate>;
-        lookup[(int)Instruction.CALL] = &InstructionCall<OpCall>;
-        lookup[(int)Instruction.CALLCODE] = &InstructionCall<OpCallCode>;
+        lookup[(int)Instruction.CREATE] = &InstructionCreate<OpCreate, TTracingInstructions>;
+        lookup[(int)Instruction.CALL] = &InstructionCall<OpCall, TTracingInstructions>;
+        lookup[(int)Instruction.CALLCODE] = &InstructionCall<OpCallCode, TTracingInstructions>;
         lookup[(int)Instruction.RETURN] = &InstructionReturn;
         if (spec.DelegateCallEnabled)
         {
-            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<OpDelegateCall>;
+            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<OpDelegateCall, TTracingInstructions>;
         }
         if (spec.Create2OpcodeEnabled)
         {
-            lookup[(int)Instruction.CREATE2] = &InstructionCreate<OpCreate2>;
+            lookup[(int)Instruction.CREATE2] = &InstructionCreate<OpCreate2, TTracingInstructions>;
         }
 
         lookup[(int)Instruction.RETURNDATALOAD] = &InstructionReturnDataLoad;
         if (spec.StaticCallEnabled)
         {
-            lookup[(int)Instruction.STATICCALL] = &InstructionCall<OpStaticCall>;
+            lookup[(int)Instruction.STATICCALL] = &InstructionCall<OpStaticCall, TTracingInstructions>;
         }
 
         if (spec.IsEofEnabled)
         {
-            lookup[(int)Instruction.EXTCALL] = &InstructionEofCall<OpEofCall>;
+            lookup[(int)Instruction.EXTCALL] = &InstructionEofCall<OpEofCall, TTracingInstructions>;
             if (spec.DelegateCallEnabled)
             {
-                lookup[(int)Instruction.EXTDELEGATECALL] = &InstructionEofCall<OpEofDelegateCall>;
+                lookup[(int)Instruction.EXTDELEGATECALL] = &InstructionEofCall<OpEofDelegateCall, TTracingInstructions>;
             }
             if (spec.StaticCallEnabled)
             {
-                lookup[(int)Instruction.EXTSTATICCALL] = &InstructionEofCall<OpEofStaticCall>;
+                lookup[(int)Instruction.EXTSTATICCALL] = &InstructionEofCall<OpEofStaticCall, TTracingInstructions>;
             }
         }
 

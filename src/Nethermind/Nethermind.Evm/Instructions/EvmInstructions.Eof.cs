@@ -30,7 +30,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c))
             goto StackUnderflow;
@@ -49,7 +50,7 @@ internal sealed partial class EvmInstructions
             if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, c)) return EvmExceptionType.OutOfGas;
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(b, (int)c);
             vm.EvmState.Memory.Save(in a, in slice);
-            if (vm.TxTracer.IsTracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -129,7 +130,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataCopy(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -146,7 +148,7 @@ internal sealed partial class EvmInstructions
                 goto OutOfGas;
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
             vm.EvmState.Memory.Save(in memOffset, dataSectionSlice);
-            if (vm.TxTracer.IsTracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(memOffset, dataSectionSlice);
             }
@@ -402,7 +404,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCreate(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCreate<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
     {
         Metrics.IncrementCreates();
         vm.ReturnData = null;
@@ -490,7 +493,7 @@ internal sealed partial class EvmInstructions
         }
 
 
-        if (vm.TxTracer.IsTracingInstructions) vm.EndInstructionTrace(gasAvailable);
+        if (TTracingInstructions.IsActive) vm.EndInstructionTrace(gasAvailable);
         // todo: === below is a new call - refactor / move
 
         Snapshot snapshot = state.TakeSnapshot();
@@ -633,8 +636,9 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCall<TOpEofCall>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCall<TOpEofCall, TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEofCall : struct, IOpEofCall
+        where TTracingInstructions : struct, IFlag
     {
         Metrics.IncrementCalls();
 
@@ -725,7 +729,7 @@ internal sealed partial class EvmInstructions
 
             //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
             ITxTracer txTracer = vm.TxTracer;
-            if (txTracer.IsTracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                 ReadOnlyMemory<byte> memoryTrace = vm.EvmState.Memory.Inspect(in dataOffset, 32);

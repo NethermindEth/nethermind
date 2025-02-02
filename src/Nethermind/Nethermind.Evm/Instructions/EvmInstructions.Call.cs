@@ -22,8 +22,9 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TOpCall>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCall<TOpCall, TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCall : struct, IOpCall
+        where TTracingInstructions : struct, IFlag
     {
         Metrics.IncrementCalls();
 
@@ -110,7 +111,6 @@ internal sealed partial class EvmInstructions
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        bool tracingInstructions = vm.TxTracer.IsTracingInstructions;
         if (env.CallDepth >= MaxCallDepth ||
             !transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue)
         {
@@ -125,14 +125,14 @@ internal sealed partial class EvmInstructions
             }
 
             //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
-            if (tracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportOperationRemainingGas(gasAvailable);
                 vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
             }
 
             UpdateGasUp(gasLimitUl, ref gasAvailable);
-            if (tracingInstructions)
+            if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
             }
@@ -142,7 +142,7 @@ internal sealed partial class EvmInstructions
         Snapshot snapshot = state.TakeSnapshot();
         state.SubtractFromBalance(caller, transferValue, spec);
 
-        if (codeInfo.IsEmpty && !tracingInstructions && !vm.TxTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && !TTracingInstructions.IsActive && !vm.TxTracer.IsTracingActions)
         {
             // Non contract call, no need to construct call frame can just credit balance and return gas
             vm.ReturnDataBuffer = default;

@@ -22,8 +22,9 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TOpCreate>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCreate : struct, IOpCreate
+        where TTracingInstructions : struct, IFlag
     {
         Metrics.IncrementCreates();
 
@@ -96,7 +97,7 @@ internal sealed partial class EvmInstructions
             goto None;
         }
 
-        if (vm.TxTracer.IsTracingInstructions) vm.EndInstructionTrace(gasAvailable);
+        if (TTracingInstructions.IsActive) vm.EndInstructionTrace(gasAvailable);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
