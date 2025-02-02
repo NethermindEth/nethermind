@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Db;
 
@@ -34,7 +36,6 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
     private const int MaxAllocateAtOnceSize = 10 * 1024 * 1024; // 10MB
 
     private static readonly byte[] StoreKey = "FreePages"u8.ToArray();
-    private readonly string _filePath;
     private readonly IKeyValueStore _store;
 
     private readonly CancellationTokenSource _cancellationSource = new();
@@ -42,8 +43,9 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
 
     private readonly Lazy<int> _lazyStart;
 
-    private SafeFileHandle? _fileHandle;
-    private FileStream? _fileStream;
+    private readonly SafeFileHandle _fileHandle;
+    private readonly FileStream _fileStream;
+    private readonly ILogger _logger;
     private Task? _allocatePagesTask;
 
     private Channel<long>? _allocatedPool;
@@ -53,6 +55,7 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
     private long _pagesTaken;
     private long _pagesReturned;
     private long _pagesReused;
+
 
     // Stats values are fetched in non-atomic way
     public PagesStats Stats => new()
@@ -79,11 +82,13 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
     /// </summary>
     public int ReturnedPagesPoolSize { get; init; } = 1024;
 
-    public AsyncFilePagesPool(string filePath, IKeyValueStore store, int pageSize)
+    public AsyncFilePagesPool(string filePath, IKeyValueStore store, int pageSize, ILogger logger)
     {
-        _filePath = filePath;
         _store = store;
+        _fileHandle = File.OpenHandle(filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+        _fileStream = new(_fileHandle, FileAccess.ReadWrite);
         _lazyStart = new(StartOnce);
+        _logger = logger;
 
         PageSize = pageSize;
     }
@@ -144,9 +149,6 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
 
     private int StartOnce()
     {
-        _fileHandle = File.OpenHandle(_filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
-        _fileStream = new(_fileHandle, FileAccess.ReadWrite);
-
         _allocatedPool = CreateChannel<long>(AllocatedPagesPoolSize);
         _returnedPool = CreateChannel<long>(ReturnedPagesPoolSize);
 
@@ -158,7 +160,7 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
     // TODO: handle exception
     private async Task KeepAllocatingPages()
     {
-        if (_allocatedPool == null || _returnedPool == null || _fileStream == null)
+        if (_allocatedPool == null || _returnedPool == null)
             ThrowNotStarted();
 
         byte[] freePages = _store.Get(StoreKey);
@@ -255,7 +257,7 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
         _allocatePagesTask?.Dispose();
         _cancellationSource.Dispose();
 
-        await (_fileStream?.DisposeAsync() ?? ValueTask.CompletedTask);
+        await _fileStream.DisposeAsync();
         _fileHandle?.Dispose();
     }
 }

@@ -42,9 +42,9 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IReceiptsRecovery _recovery;
         private readonly ILogIndexStorage _logIndexStorage;
         private readonly IInitConfig _initConfig;
-        private const int BatchSize = 250;
-        private const int QueueSize = 1_000;
-        private const int ReportSize = 20_000;
+        private const int BatchSize = 1000;
+        private const int QueueSize = BatchSize >= 1000 ? BatchSize * 4 : 1_000;
+        private const int ReportSize = 50_000;
         private readonly Channel<BlockReceipts[]> _blocksChannel;
 
         private long _totalBlocks;
@@ -160,7 +160,7 @@ namespace Nethermind.Init.Steps.Migrations
                 _lastStats = new();
 
                 _logger.Info($"LogIndexMigration" +
-                    $"\n\t\tBlocks: {total.BlocksAdded:N0} / {_totalBlocks:N0} ( {(decimal)total.BlocksAdded / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
+                    $"\n\t\tBlocks: {last.LastBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)last.LastBlockNumber / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded:N0} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
@@ -231,16 +231,20 @@ namespace Nethermind.Init.Steps.Migrations
         {
             try
             {
-                // const int startFrom = 0;
-                // const int startFrom = 750_000; // Just before slowdown
-                var startFrom = 750_000 + 18_000 + 33_000; // Where slowdown starts
-                // const int startFrom = 2_000_000; // Average blocks
-                // const int startFrom = 2_000_000 + 180_000; // Very log-dense blocks
-                _totalBlocks = _blockTree.BestKnownNumber - startFrom;
+                var startFrom = 0;
+                // const int startFrom = 750_000; // Holesky: Just before slowdown
+                // var startFrom = 750_000 + 18_000 + 33_000; // Holesky: Where slowdown starts
+                // const int startFrom = 2_000_000; // Holesky: Average blocks
+                // const int startFrom = 2_000_000 + 180_000; // Holesky: Very log-dense blocks
+                //var startFrom =  4_750_000; // Ethereum: Where slowdown starts
+
+                // TODO: move to chain configuration
+                startFrom = Math.Max(startFrom, 52_029); // Ethereum: fist block with logs
 
                 startFrom = Math.Max(startFrom, _logIndexStorage.GetLastKnownBlockNumber() + 1);
 
-                for (long i = startFrom; i < _blockTree.BestKnownNumber; i += BatchSize)
+                _totalBlocks = _blockTree.BestKnownNumber;
+                for (long i = startFrom; i < _totalBlocks; i += BatchSize)
                 {
                     BlockReceipts[] batch = GetBlocks(i, Math.Min(i + BatchSize, _blockTree.BestKnownNumber), token);
                     await writer.WriteAsync(batch, token);
@@ -279,7 +283,7 @@ namespace Nethermind.Init.Steps.Migrations
                     if (ReportSize > 0 && (migrated - prevMigrated) >= ReportSize)
                     {
                         TimeSpan elapsed = watch.Elapsed;
-                        _logger.Warn($"Migrated {migrated} blocks in {elapsed} ( +{migrated - prevMigrated} in {elapsed - prevElapsed} )");
+                        _logger.Info($"LogIndexMigration: Migrated {migrated} blocks in {elapsed} ( +{migrated - prevMigrated} in {elapsed - prevElapsed} )");
 
                         prevElapsed = elapsed;
                         prevMigrated = migrated;

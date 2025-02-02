@@ -91,8 +91,11 @@ namespace Nethermind.Db.Test
                 .Should().BeEquivalentTo([address1, address2]);
         }
 
-        [Test]
-        public async Task SetReceipts_MovesToFinalizedFile()
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(15)]
+        [TestCase(300)]
+        public async Task GetBlockNumbersFor_ReturnsCorrectBlocks(int batchSize)
         {
             // Arrange
             var address = new Address("0x0000000000000000000000000000000000001234");
@@ -105,47 +108,22 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            for (int i = 1; i <= 2000; i++)
-            {
-                await _logIndexStorage.SetReceiptsAsync(i, [receipt], isBackwardSync: false, CancellationToken.None);
-            }
-
-            await _logIndexStorage.TryDisposeAsync();
-
-            // Assert
-            File.Exists(_finalFilePath).Should().BeTrue("The finalized file should be created and contain the data.");
-
-            await using var finalFileStream = new FileStream(_finalFilePath, FileMode.Open, FileAccess.Read);
-            finalFileStream.Length.Should().BeGreaterThan(0, "The finalized file should not be empty.");
-        }
-
-        [Test]
-        public async Task GetBlockNumbersFor_ReturnsCorrectBlocks()
-        {
-            // Arrange
-            var address = new Address("0x0000000000000000000000000000000000001234");
-            var receipt = new TxReceipt
-            {
-                Logs = new List<LogEntry>
-                {
-                    new(address, [], [])
-                }.ToArray()
-            };
-            var expectedBlocks = Enumerable.Range(1, 2000).ToArray();
-
-            // Act
+            const int batchCount = 5;
             _logIndexStorage.GetLastKnownBlockNumber().Should().Be(-1);
 
-            foreach (IGrouping<int, int> blocks in expectedBlocks.GroupBy(i => (i - 1) / 100))
+            for (var batchNum = 0; batchNum < batchCount; batchNum++)
             {
-                BlockReceipts[] receipts = blocks.Select(b => new BlockReceipts(b, [receipt])).ToArray();
+                BlockReceipts[] receipts = Enumerable.Range(batchSize * batchNum, batchSize)
+                    .Select(i => new BlockReceipts(i + 1, [receipt]))
+                    .ToArray();
+
                 await _logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false, CancellationToken.None);
-                _logIndexStorage.GetLastKnownBlockNumber().Should().Be(blocks.Max());
+                _logIndexStorage.GetLastKnownBlockNumber().Should().Be(receipts[^1].BlockNumber);
             }
 
             // Assert
-            var resultBlocks = _logIndexStorage.GetBlockNumbersFor(address, 1, 2000).ToList();
-            resultBlocks.Should().BeEquivalentTo(expectedBlocks, "The blocks returned should match the blocks that were saved.");
+            var resultBlocks = _logIndexStorage.GetBlockNumbersFor(address, 1, batchSize * batchCount).ToList();
+            resultBlocks.Should().BeEquivalentTo(Enumerable.Range(1, batchSize * batchCount), "The blocks returned should match the blocks that were saved.");
         }
 
         [Test]
@@ -244,7 +222,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public async Task SetReceipts_LargeNumberOfReceiptsAcrossMultipleBlocks()
+        public async Task SetReceipts_MovesToFinalizedFile()
         {
             // Arrange
             var address1 = new Address("0x0000000000000000000000000000000000001234");
@@ -260,10 +238,15 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            var receiptBatch = Enumerable.Repeat(receipt, 10).ToArray();
-            for (int i = 1; i <= 2000; i++)
+            const int batchSize = 50;
+            TxReceipt[] receipts = Enumerable.Repeat(receipt, 10).ToArray();
+            for (int batchNum = 1; batchNum <= batchSize; batchNum++)
             {
-                await _logIndexStorage.SetReceiptsAsync(i, receiptBatch, isBackwardSync: false, CancellationToken.None);
+                BlockReceipts[] batch = Enumerable.Range(batchSize * batchNum, batchSize)
+                    .Select(blockNum => new BlockReceipts(blockNum, receipts))
+                    .ToArray();
+
+                await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, CancellationToken.None);
             }
 
             await _logIndexStorage.TryDisposeAsync();
@@ -275,7 +258,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SetReceipts_MixedAddressAndTopicEntriesInSameBlock()
+        public async Task SetReceipts_MixedAddressAndTopicEntriesInSameBlock()
         {
             // Arrange
             var address1 = new Address("0x0000000000000000000000000000000000001234");
@@ -289,7 +272,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
 
             // Assert
             var addressBlocks = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
@@ -300,7 +283,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SetReceipts_MultipleTopicsAndAddressesInSingleBlock()
+        public async Task SetReceipts_MultipleTopicsAndAddressesInSingleBlock()
         {
             // Arrange
             var address1 = new Address("0x0000000000000000000000000000000000001234");
@@ -317,7 +300,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
 
             // Assert
             var addressBlocks1 = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
@@ -332,15 +315,15 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SetReceipts_CheckValidityWithDiverseData()
+        public async Task SetReceipts_CheckValidityWithDiverseData()
         {
             // Arrange
             int numberOfBlocks = 100;
             List<Address> generatedAddresses = [];
             List<Hash256> generatedTopics = [];
-            Dictionary<Address, List<int>> addressBlockMap = new Dictionary<Address, List<int>>();
-            Dictionary<Hash256, List<int>> topicBlockMap = new Dictionary<Hash256, List<int>>();
-            Random random = new Random();
+            var addressBlockMap = new Dictionary<Address, HashSet<int>>();
+            var topicBlockMap = new Dictionary<Hash256, HashSet<int>>();
+            var random = new Random(42);
 
             // Generate unique addresses and topics
             for (int i = 0; i < 20; i++) // 20 unique addresses and topics
@@ -359,22 +342,16 @@ namespace Nethermind.Db.Test
                 var logs = new List<LogEntry>();
                 for (int i = 0; i < 5; i++) // 5 logs per block
                 {
-                    var address = generatedAddresses[random.Next(generatedAddresses.Count)];
-                    var topic = generatedTopics[random.Next(generatedTopics.Count)];
+                    Address address = generatedAddresses[random.Next(generatedAddresses.Count)];
+                    Hash256 topic = generatedTopics[random.Next(generatedTopics.Count)];
                     logs.Add(new(address, [], [topic]));
 
                     // Track which blocks these addresses and topics appear in
-                    if (!addressBlockMap[address].Contains(blockNumber))
-                    {
-                        addressBlockMap[address].Add(blockNumber);
-                    }
-                    if (!topicBlockMap[topic].Contains(blockNumber))
-                    {
-                        topicBlockMap[topic].Add(blockNumber);
-                    }
+                    addressBlockMap[address].Add(blockNumber);
+                    topicBlockMap[topic].Add(blockNumber);
                 }
                 var receipt = new TxReceipt { Logs = logs.ToArray() };
-                _logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false, CancellationToken.None);
+                await _logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false, CancellationToken.None);
             }
 
             // Assert: Check that each address and topic returns the correct block numbers

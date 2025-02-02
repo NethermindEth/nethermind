@@ -1,6 +1,8 @@
 ﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Db;
 
 public class SetReceiptsStats
@@ -9,6 +11,7 @@ public class SetReceiptsStats
     public long TxAdded { get; set; }
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
+    public long LastBlockNumber { get; set; }
 
     public ExecTimeStats SeekForPrevHit { get; } = new();
     public ExecTimeStats SeekForPrevMiss { get; } = new();
@@ -38,5 +41,6 @@ public class SetReceiptsStats
         BytesWritten.Combine(other.BytesWritten);
         NewTempIndexes += other.NewTempIndexes;
         NewFinalIndexes += other.NewFinalIndexes;
+        LastBlockNumber = Math.Max(LastBlockNumber, other.LastBlockNumber);
     }
 }

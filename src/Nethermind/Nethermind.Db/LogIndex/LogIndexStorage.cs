@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -41,7 +42,7 @@ namespace Nethermind.Db
         private readonly int _ioParallelism;
         private const int BlockNumSize = sizeof(int);
         private const int PageSize = 4096;
-        private const int IndexDataMaxCount = 8 - 1;
+        private const int IndexDataMaxCount = 16 - 1;
         private const int PageDataMaxCount = PageSize / BlockNumSize;
 
         private readonly IFilePagesPool _tempPagesPool;
@@ -73,7 +74,7 @@ namespace Nethermind.Db
             _topicsDb = columnsDb.GetColumnDb(LogIndexColumns.Topics);
 
             _defaultDb = columnsDb.GetColumnDb(LogIndexColumns.Default);
-            _tempPagesPool = new AsyncFilePagesPool(TempFilePath, _defaultDb, PageSize)
+            _tempPagesPool = new AsyncFilePagesPool(TempFilePath, _defaultDb, PageSize, logger)
             {
                 AllocatedPagesPoolSize = 2048,
                 ReturnedPagesPoolSize = -1
@@ -95,6 +96,8 @@ namespace Nethermind.Db
         {
             await _setReceiptsSemaphore.WaitAsync();
             await _tempPagesPool.StopAsync();
+
+            if (_logger.IsInfo) _logger.Info("Log index storage stopped");
         }
 
         async ValueTask IAsyncDisposable.DisposeAsync()
@@ -272,6 +275,9 @@ namespace Nethermind.Db
             return Task.CompletedTask;
         }
 
+        // Used for:
+        // - blocking concurrent executions
+        // - ensuring current migration task is completed before stopping
         private readonly SemaphoreSlim _setReceiptsSemaphore = new (1, 1);
 
         public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync,
@@ -288,39 +294,57 @@ namespace Nethermind.Db
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
 
-            await _tempPagesPool.StartAsync();
-
             var stats = new SetReceiptsStats();
-
-            if (BuildProcessingDictionary(batch, stats, cancellationToken) is not { } dictionary)
-                return stats;
-
-            var finalizeQueue = Channel.CreateUnbounded<IndexInfo>();
-            Task finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, stats, cancellationToken);
+            Dictionary<byte[], List<int>> dictionary = null;
+            (Task finalizingTask, Channel<IndexInfo> finalizeQueue) = (null, null);
 
             try
             {
-                var watch = Stopwatch.StartNew();
-                Parallel.ForEach(
-                    dictionary, new() { MaxDegreeOfParallelism = _ioParallelism },
-                    pair => SaveBlockNumbersByKey(pair.Key, pair.Value, stats, finalizeQueue.Writer)
-                );
-                stats.ProcessingData.Include(watch.Elapsed);
+                await _tempPagesPool.StartAsync();
 
-                WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
+                dictionary = BuildProcessingDictionary(batch, stats, cancellationToken);
+
+                if (dictionary is { Count: > 0 })
+                {
+                    finalizeQueue = Channel.CreateUnbounded<IndexInfo>();
+                    finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, stats, cancellationToken);
+
+                    var watch = Stopwatch.StartNew();
+                    Parallel.ForEach(
+                        dictionary, new() { MaxDegreeOfParallelism = _ioParallelism },
+                        pair => SaveBlockNumbersByKey(pair.Key, pair.Value, stats, finalizeQueue.Writer)
+                    );
+                    stats.ProcessingData.Include(watch.Elapsed);
+                }
+
+                if (_lastKnownBlock < batch[^1].BlockNumber)
+                    WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
+
+                stats.LastBlockNumber = _lastKnownBlock;
             }
             finally
             {
-                finalizeQueue.Writer.Complete();
+                var watch = new Stopwatch();
 
-                var watch = Stopwatch.StartNew();
-                await finalizingTask;
-                stats.WaitingForFinalization.Include(watch.Elapsed);
+                if (finalizeQueue != null)
+                {
+                    finalizeQueue.Writer.Complete();
+                }
 
-                watch = Stopwatch.StartNew();
-                _addressDb.Flush();
-                _topicsDb.Flush();
-                stats.FlushingDbs.Include(watch.Elapsed);
+                if (finalizingTask != null)
+                {
+                    watch.Restart();
+                    await finalizingTask;
+                    stats.WaitingForFinalization.Include(watch.Elapsed);
+                }
+
+                if (dictionary is { Count: > 0 })
+                {
+                    watch.Restart();
+                    _addressDb.Flush();
+                    _topicsDb.Flush();
+                    stats.FlushingDbs.Include(watch.Elapsed);
+                }
 
                 _setReceiptsSemaphore.Release();
             }
@@ -350,7 +374,7 @@ namespace Nethermind.Db
                     indexInfo = null;
 
                 int writeCount = 0;
-                writeBuffer = ArrayPool<byte>.Shared.Rent(IndexDataMaxCount * BlockNumSize);
+                writeBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
 
                 foreach (var blockNum in blockNums)
                 {
@@ -370,18 +394,17 @@ namespace Nethermind.Db
                         finalizeQueue.TryWrite(indexInfo);
                         indexInfo = null;
                     }
-
-                    else if (indexInfo.DataValuesCount + writeCount > IndexDataMaxCount)
-                    {
-                        indexInfo.AddData(writeBuffer.AsSpan(..(writeCount * BlockNumSize)));
-                        writeCount = 0;
-
-                        StoreIndexData(indexInfo, stats);
-                    }
                 }
 
                 if (writeBuffer is { Length: > 0 } && indexInfo != null)
+                {
+                    // Dump write buffer to index
                     indexInfo.AddData(writeBuffer.AsSpan(..(writeCount * BlockNumSize)));
+
+                    // Persist to temp file if size is too large for DB
+                    if (indexInfo.DataValuesCount > IndexDataMaxCount)
+                        WriteIndexData(indexInfo, stats);
+                }
 
                 if (indexInfo != null)
                     SaveIndex(db, indexInfo);
@@ -456,7 +479,7 @@ namespace Nethermind.Db
             }
         }
 
-        private void StoreIndexData(IndexInfo indexInfo, SetReceiptsStats stats)
+        private void WriteIndexData(IndexInfo indexInfo, SetReceiptsStats stats)
         {
             if (indexInfo.Type == IndexType.Final)
                 throw ValidationException("Attempt to add data to finalized index.");
