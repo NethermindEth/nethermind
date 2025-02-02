@@ -82,7 +82,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -117,7 +117,7 @@ namespace Nethermind.Db.Test
                     .Select(i => new BlockReceipts(i + 1, [receipt]))
                     .ToArray();
 
-                await _logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false, CancellationToken.None);
+                await _logIndexStorage.SetReceiptsAsync(receipts, isBackwardSync: false);
                 _logIndexStorage.GetLastKnownBlockNumber().Should().Be(receipts[^1].BlockNumber);
             }
 
@@ -146,7 +146,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb topicDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
@@ -174,7 +174,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -207,7 +207,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(blockNumber, receipts, isBackwardSync: false);
 
             // Assert
             IDb addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
@@ -246,7 +246,7 @@ namespace Nethermind.Db.Test
                     .Select(blockNum => new BlockReceipts(blockNum, receipts))
                     .ToArray();
 
-                await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, CancellationToken.None);
+                await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
             }
 
             await _logIndexStorage.TryDisposeAsync();
@@ -272,7 +272,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
 
             // Assert
             var addressBlocks = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
@@ -300,7 +300,7 @@ namespace Nethermind.Db.Test
             };
 
             // Act
-            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false, CancellationToken.None);
+            await _logIndexStorage.SetReceiptsAsync(1, [receipt], isBackwardSync: false);
 
             // Assert
             var addressBlocks1 = _logIndexStorage.GetBlockNumbersFor(address1, 1, 1).ToList();
@@ -351,7 +351,7 @@ namespace Nethermind.Db.Test
                     topicBlockMap[topic].Add(blockNumber);
                 }
                 var receipt = new TxReceipt { Logs = logs.ToArray() };
-                await _logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false, CancellationToken.None);
+                await _logIndexStorage.SetReceiptsAsync(blockNumber, [receipt], isBackwardSync: false);
             }
 
             // Assert: Check that each address and topic returns the correct block numbers
