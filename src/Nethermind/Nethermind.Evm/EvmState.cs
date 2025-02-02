@@ -160,7 +160,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     };
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-    internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+    internal bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ref readonly ExecutionEnvironment Env => ref _env;

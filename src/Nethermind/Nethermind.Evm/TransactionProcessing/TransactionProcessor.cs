@@ -167,7 +167,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
-
             ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
@@ -564,8 +563,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (delegationAddress is not null)
                     accessTracker.WarmUp(delegationAddress);
             }
-            codeInfo ??= CodeInfo.Empty;
-            codeInfo.AnalyseInBackgroundIfRequired();
+            codeInfo?.AnalyseInBackgroundIfRequired();
+
             if (spec.UseHotAndColdStorage)
             {
                 if (spec.UseTxAccessLists)
@@ -634,6 +633,13 @@ namespace Nethermind.Evm.TransactionProcessing
                             goto Fail;
                         }
                     }
+                }
+                else
+                {
+                    // If EOF header parsing or full container validation fails, transaction is considered valid and failing.
+                    // Gas for initcode execution is not consumed, only intrinsic creation transaction costs are charged.
+                    gasConsumed = floorGas;
+                    goto Fail;
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
@@ -772,8 +778,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
                 UInt256 fees = (UInt256)spentGas * premiumPerGas;
-                UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
-                UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
+                UInt256 collectedFees = spec.IsEip1559Enabled && !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
 
                 if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
                 {
@@ -786,7 +791,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
 
                 if (tracer.IsTracingFees)
-                    tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
+                    tracer.ReportFees(fees, collectedFees);
             }
         }
 

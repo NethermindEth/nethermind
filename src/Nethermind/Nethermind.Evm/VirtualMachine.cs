@@ -179,10 +179,17 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                                 : currentState.Env.InputData,
                             currentState.ExecutionType);
 
-                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
+                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.MachineCode ?? default);
                     }
 
-                    callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
+                    if (currentState.Env.CodeInfo is not null)
+                    {
+                        callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
+                    }
+                    else
+                    {
+                        callResult = CallResult.InvalidCodeException;
+                    }
 
                     if (!callResult.IsReturn)
                     {
