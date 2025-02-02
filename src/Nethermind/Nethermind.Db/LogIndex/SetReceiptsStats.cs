@@ -17,6 +17,9 @@ public class SetReceiptsStats
     public ExecTimeStats SeekForPrevMiss { get; } = new();
     public ExecTimeStats BuildingDictionary { get; } = new();
     public ExecTimeStats ProcessingData { get; } = new();
+    public ExecTimeStats WaitingPage { get; } = new();
+    public ExecTimeStats StoringIndex { get; } = new();
+    public ExecTimeStats WritingTemp { get; } = new();
     public ExecTimeStats WaitingForFinalization { get; } = new();
     public ExecTimeStats FlushingDbs { get; } = new();
     public AverageStats KeysCount { get; } = new();
@@ -35,6 +38,9 @@ public class SetReceiptsStats
         SeekForPrevMiss.Combine(other.SeekForPrevMiss);
         BuildingDictionary.Combine(other.BuildingDictionary);
         ProcessingData.Combine(other.ProcessingData);
+        WaitingPage.Combine(other.WaitingPage);
+        StoringIndex.Combine(other.StoringIndex);
+        WritingTemp.Combine(other.WritingTemp);
         WaitingForFinalization.Combine(other.WaitingForFinalization);
         FlushingDbs.Combine(other.FlushingDbs);
         KeysCount.Combine(other.KeysCount);

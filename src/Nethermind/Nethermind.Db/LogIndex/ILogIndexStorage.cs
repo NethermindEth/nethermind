@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,8 +18,8 @@ public interface ILogIndexStorage : IAsyncDisposable
 
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     Task CheckMigratedData();
-    Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync, CancellationToken cancellationToken);
-    Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken);
+    Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
+    Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
     Task StopAsync();
 
     PagesStats PagesStats { get; }

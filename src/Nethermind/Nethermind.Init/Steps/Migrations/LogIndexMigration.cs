@@ -277,7 +277,7 @@ namespace Nethermind.Init.Steps.Migrations
                     if (token.IsCancellationRequested)
                         return;
 
-                    SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false, token);
+                    SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
                     migrated += batch.Length;
 
                     if (ReportSize > 0 && (migrated - prevMigrated) >= ReportSize)

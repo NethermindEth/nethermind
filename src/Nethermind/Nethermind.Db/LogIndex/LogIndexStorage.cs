@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -199,7 +198,7 @@ namespace Nethermind.Db
 
         // TODO: try to minimize number of allocations
         private Dictionary<byte[], List<int>>? BuildProcessingDictionary(
-            BlockReceipts[] batch, SetReceiptsStats stats, CancellationToken cancellationToken
+            BlockReceipts[] batch, SetReceiptsStats stats
         )
         {
             if (batch[^1].BlockNumber <= _lastKnownBlock)
@@ -226,8 +225,6 @@ namespace Nethermind.Db
                     {
                         stats.LogsAdded++;
 
-                        cancellationToken.ThrowIfCancellationRequested();
-
                         List<int> addressNums = blockNumsByKey.GetOrAdd(log.Address.Bytes, _ => new(1));
 
                         if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
@@ -236,8 +233,6 @@ namespace Nethermind.Db
                         foreach (Hash256 topic in log.Topics)
                         {
                             stats.TopicsAdded++;
-
-                            cancellationToken.ThrowIfCancellationRequested();
 
                             List<int> topicNums = blockNumsByKey.GetOrAdd(topic.Bytes.ToArray(), _ => new(1));
 
@@ -280,15 +275,14 @@ namespace Nethermind.Db
         // - ensuring current migration task is completed before stopping
         private readonly SemaphoreSlim _setReceiptsSemaphore = new (1, 1);
 
-        public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync,
-            CancellationToken cancellationToken)
+        public Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync)
         {
-            return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync, cancellationToken);
+            return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync);
         }
 
         // batch is expected to be sorted
         public async Task<SetReceiptsStats> SetReceiptsAsync(
-            BlockReceipts[] batch, bool isBackwardSync, CancellationToken cancellationToken
+            BlockReceipts[] batch, bool isBackwardSync
         )
         {
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
@@ -302,12 +296,12 @@ namespace Nethermind.Db
             {
                 await _tempPagesPool.StartAsync();
 
-                dictionary = BuildProcessingDictionary(batch, stats, cancellationToken);
+                dictionary = BuildProcessingDictionary(batch, stats);
 
                 if (dictionary is { Count: > 0 })
                 {
                     finalizeQueue = Channel.CreateUnbounded<IndexInfo>();
-                    finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, stats, cancellationToken);
+                    finalizingTask = KeepFinalizingIndexes(finalizeQueue.Reader, stats);
 
                     var watch = Stopwatch.StartNew();
                     Parallel.ForEach(
@@ -407,7 +401,7 @@ namespace Nethermind.Db
                 }
 
                 if (indexInfo != null)
-                    SaveIndex(db, indexInfo);
+                    SaveIndex(db, indexInfo, stats);
             }
             finally
             {
@@ -419,7 +413,7 @@ namespace Nethermind.Db
 
         private SafeFileHandle TempFileHandle => _tempPagesPool.FileHandle;
 
-        private async Task KeepFinalizingIndexes(ChannelReader<IndexInfo> reader, SetReceiptsStats stats, CancellationToken cancellationToken)
+        private async Task KeepFinalizingIndexes(ChannelReader<IndexInfo> reader, SetReceiptsStats stats)
         {
             byte[] blockNumberBytes = ArrayPool<byte>.Shared.Rent(sizeof(int));
             byte[] dataBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
@@ -430,7 +424,7 @@ namespace Nethermind.Db
                 var addressKey = new byte[Address.Size + sizeof(int)];
                 var topicKey = new byte[Hash256.Size + sizeof(int)];
 
-                await foreach (IndexInfo indexInfo in reader.ReadAllAsync(cancellationToken))
+                await foreach (IndexInfo indexInfo in reader.ReadAllAsync())
                 {
                     if (indexInfo.Type != IndexType.Temp)
                         throw ValidationException("Non-temp index should not be finalized.");
@@ -469,7 +463,7 @@ namespace Nethermind.Db
                     }
                 }
 
-                await _finalFileStream.FlushAsync(cancellationToken);
+                await _finalFileStream.FlushAsync();
             }
             finally
             {
