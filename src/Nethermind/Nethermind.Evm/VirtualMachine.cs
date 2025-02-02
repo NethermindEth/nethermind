@@ -631,11 +631,17 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
         _vmState = vmState;
         // Struct generic parameter is used to burn out all the if statements
-        // and inner code by typeof(TTracing) == typeof(NotTracing)
-        // checks that are evaluated to constant values at compile time.
+        // and inner code by using static property on generic IFlag using
+        // OnFlag or OffFlag. These checks that are evaluated to constant values at compile time.
         // This only works for structs, not for classes or interface types
         // which use shared generics.
-        return ExecuteCode(ref stack, gasAvailable);
+        return (tracing: _txTracer.IsTracingInstructions, cancelable: _txTracer.IsCancelable) switch
+        {
+            (tracing: false, cancelable: false) => ExecuteCode<OffFlag, OffFlag>(ref stack, gasAvailable),
+            (tracing: false, cancelable: true) => ExecuteCode<OffFlag, OnFlag>(ref stack, gasAvailable),
+            (tracing: true, cancelable: false) => ExecuteCode<OnFlag, OffFlag>(ref stack, gasAvailable),
+            (tracing: true, cancelable: true) => ExecuteCode<OnFlag, OnFlag>(ref stack, gasAvailable)
+        };
     Empty:
         return CallResult.Empty(vmState.Env.CodeInfo.Version);
     OutOfGas:
@@ -643,7 +649,9 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    private unsafe CallResult ExecuteCode(scoped ref EvmStack stack, long gasAvailable)
+    private unsafe CallResult ExecuteCode<TTracingInstructions, TCancelable>(scoped ref EvmStack stack, long gasAvailable)
+        where TTracingInstructions : struct, IFlag
+        where TCancelable : struct, IFlag
     {
         _returnData = null;
         _sectionIndex = _vmState.FunctionIndex;
@@ -655,9 +663,6 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-
-        var tracingInstructions = _txTracer.IsTracingInstructions;
-        var isCancelable = _txTracer.IsCancelable;
 
         OpCode[] opcodeMethods = _opcodeMethods;
         // Initialize program counter to the current state's value.
@@ -673,9 +678,8 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             // Get the opcode at the current program counter
             Instruction instruction = codeSection[programCounter];
 
-            if (isCancelable && _txTracer.IsCancelled) ThrowOperationCanceledException();
-
-            if (tracingInstructions)
+            if (TCancelable.IsActive && _txTracer.IsCancelled) ThrowOperationCanceledException();
+            if (TTracingInstructions.IsActive)
                 StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
 
             // Advance the program counter one instruction
@@ -694,7 +698,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             // Exit loop if returning data
             if (_returnData is not null) break;
 
-            if (tracingInstructions)
+            if (TTracingInstructions.IsActive)
                 EndInstructionTrace(gasAvailable);
         }
 
@@ -814,6 +818,20 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
+    }
+
+    interface IFlag
+    {
+        virtual static bool IsActive { get; }
+    }
+
+    struct OffFlag : IFlag
+    {
+        public static bool IsActive => false;
+    }
+    struct OnFlag : IFlag
+    {
+        public static bool IsActive => true;
     }
 
     internal readonly ref struct CallResult

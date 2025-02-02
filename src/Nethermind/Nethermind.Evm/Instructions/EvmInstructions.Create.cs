@@ -57,13 +57,14 @@ internal sealed partial class EvmInstructions
             if (initCodeLength > spec.MaxInitCodeSize) goto OutOfGas;
         }
 
+        bool outOfGas = false;
         long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(in initCodeLength) : 0) +
+                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
-                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength)
+                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas)
                            : 0);
 
-        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+        if (outOfGas || !UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
         if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength)) goto OutOfGas;
 

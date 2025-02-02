@@ -137,7 +137,7 @@ internal sealed partial class EvmInstructions
 
         if (!stack.PopUInt256(out UInt256 memOffset) || !stack.PopUInt256(out UInt256 offset) || !stack.PopUInt256(out UInt256 size)) goto StackUnderflow;
 
-        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size), ref gasAvailable))
+        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas), ref gasAvailable) || outOfGas)
             goto OutOfGas;
 
         if (!size.IsZero)
@@ -446,9 +446,9 @@ internal sealed partial class EvmInstructions
         }
 
         // 6 - deduct GAS_KECCAK256_WORD * ((initcontainer_size + 31) // 32) gas (hashing charge)
-        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length);
+        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
         long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
-        if (!UpdateGas(hashCost, ref gasAvailable))
+        if (outOfGas || !UpdateGas(hashCost, ref gasAvailable))
             goto OutOfGas;
 
         IWorldState state = vm.WorldState;
