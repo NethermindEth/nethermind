@@ -694,11 +694,19 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             // Advance the program counter one instruction
             programCounter++;
 
-            // Get the opcode delegate* from the opcode array
-            OpCode opcodeMethod = opcodeMethods[(int)instruction];
-            // Execute opcode delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-            // Stack, gas, and program counter may be modified by call (also instance variables on the vm)
-            exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
+            if (Instruction.POP == instruction)
+            {
+                // Very commonly called opcode and minimal implementation, so we inline here
+                exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
+            }
+            else
+            {
+                // Get the opcode delegate* from the opcode array
+                OpCode opcodeMethod = (OpCode)Unsafe.Add(ref Unsafe.As<byte, nuint>(ref MemoryMarshal.GetArrayDataReference(opcodeMethods)), (int)instruction);
+                // Execute opcode delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+                // Stack, gas, and program counter may be modified by call (also instance variables on the vm)
+                exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
+            }
 
             // Exit loop if run out of gas
             if (gasAvailable < 0) goto OutOfGas;

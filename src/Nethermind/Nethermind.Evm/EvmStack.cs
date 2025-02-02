@@ -201,6 +201,7 @@ public ref struct EvmStack
         PushUInt256(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopLimbo()
     {
         if (Head-- == 0)

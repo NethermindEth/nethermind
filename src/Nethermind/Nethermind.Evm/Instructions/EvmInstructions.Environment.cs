@@ -19,6 +19,7 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionPop(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
