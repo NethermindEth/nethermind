@@ -4,36 +4,34 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.Threading.Tasks;
+using Autofac;
+using NUnit.Framework;
+using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using NUnit.Framework;
-using System.Threading.Tasks;
-using Autofac;
-using Nethermind.Config;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 
 namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
+        private static ILogger _logger = new(new NUnitLogger(LogLevel.Trace));
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
@@ -49,7 +47,6 @@ namespace Ethereum.Test.Base
         protected static void Setup(ILogManager logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
@@ -59,9 +56,10 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
-            TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            TestContext.Out.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
+            EofValidator.Logger = _logger;
             ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
                 ? GnosisSpecProvider.Instance
                 : new CustomSpecProvider(
