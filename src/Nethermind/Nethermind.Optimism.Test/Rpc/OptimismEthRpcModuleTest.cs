@@ -103,7 +103,7 @@ public class OptimismEthRpcModuleTest
                          {
                             "jsonrpc":"2.0",
                             "result": {
-                                "type": "0x7e",
+                                 "type": "0x7e",
                                  "sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000",
                                  "from": "{{TestItem.AddressA.Bytes.ToHexString(withZeroX: true)}}",
                                  "to": "0x0000000000000000000000000000000000000000",
@@ -116,8 +116,8 @@ public class OptimismEthRpcModuleTest
                                  "depositReceiptVersion": "0x20",
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
-                                 "transactionIndex": null,
-                                 "blockNumber": null
+                                 "blockNumber": null,
+                                 "transactionIndex": null
                              },
                             "id":67
                          }
