@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -22,7 +21,7 @@ public class InclusionListValidatorTests
 {
     private ITransactionProcessor _transactionProcessor;
     private ISpecProvider _specProvider;
-    private BlockValidator _blockValidator;
+    private InclusionListValidator _inclusionListValidator;
     private Transaction _validTx;
     private byte[] _validTxBytes;
 
@@ -31,13 +30,9 @@ public class InclusionListValidatorTests
     {
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Osaka.Instance));
-        _blockValidator = new BlockValidator(
-            Always.Valid,
-            Always.Valid,
-            Always.Valid,
+        _inclusionListValidator = new InclusionListValidator(
             _specProvider,
-            _transactionProcessor,
-            LimboLogs.Instance);
+            _transactionProcessor);
 
         _validTx = Build.A.Transaction
             .WithGasLimit(100_000)
@@ -60,7 +55,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTxBytes])
             .TestObject;
 
-        bool isValid = _blockValidator.ValidateInclusionList(block, out string? error);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
         Assert.That(isValid, Is.True);
         Assert.That(error, Is.Null);
     }
@@ -75,7 +70,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTxBytes])
             .TestObject;
 
-        bool isValid = _blockValidator.ValidateInclusionList(block, out string? error);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
         Assert.Multiple(() =>
         {
             Assert.That(isValid, Is.True);
@@ -95,7 +90,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTxBytes])
             .TestObject;
 
-        bool isValid = _blockValidator.ValidateInclusionList(block, out string? error);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
         Assert.Multiple(() =>
         {
             Assert.That(isValid, Is.False);
@@ -111,7 +106,7 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        bool isValid = _blockValidator.ValidateInclusionList(block, out string? error);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
         Assert.Multiple(() =>
         {
             Assert.That(isValid, Is.False);

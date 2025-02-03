@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
@@ -13,11 +11,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 
@@ -170,12 +166,6 @@ public class BlockValidator(
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
-        processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-        if (!ValidateInclusionList(processedBlock, out error))
-        {
-            return false;
-        }
-
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
             error = null;
@@ -403,54 +393,4 @@ public class BlockValidator(
 
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
-
-    public bool ValidateInclusionList(Block block, out string? error) =>
-        ValidateInclusionList(block, _specProvider.GetSpec(block.Header), out error);
-
-    public bool ValidateInclusionList(Block block, IReleaseSpec spec, out string? error)
-    {
-        error = null;
-
-        if (!spec.InclusionListsEnabled)
-        {
-            return true;
-        }
-
-        if (block.InclusionListTransactions is null)
-        {
-            error = "Block did not have inclusion list";
-            return false;
-        }
-
-        if (block.GasUsed >= block.GasLimit)
-        {
-            return true;
-        }
-
-        var blockTxHashes = new HashSet<Hash256>(block.Transactions.Select(tx => tx.Hash));
-
-        foreach (byte[] txBytes in block.InclusionListTransactions)
-        {
-            Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-            if (blockTxHashes.Contains(tx.Hash))
-            {
-                continue;
-            }
-
-            if (block.GasUsed + tx.GasLimit > block.GasLimit)
-            {
-                continue;
-            }
-
-            bool couldIncludeTx = _transactionProcessor.BuildUp(tx, new(block.Header, spec), NullTxTracer.Instance);
-            if (couldIncludeTx)
-            {
-                error = "Block excludes valid inclusion list transaction";
-                return false;
-            }
-        }
-
-        return true;
-    }
 }

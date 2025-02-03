@@ -63,6 +63,7 @@ public partial class BlockProcessor(
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -297,7 +298,12 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+
+        if (
+            !options.ContainsFlag(ProcessingOptions.NoValidation) &&
+            (!_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error) ||
+            !_inclusionListValidator.ValidateInclusionList(block, out error)))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);

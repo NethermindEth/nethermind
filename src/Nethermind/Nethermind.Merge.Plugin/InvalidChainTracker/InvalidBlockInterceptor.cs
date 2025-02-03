@@ -54,9 +54,6 @@ public class InvalidBlockInterceptor(
     public bool ValidateWithdrawals(Block block, out string? error)
         => HandleValidationResult(headerValidator.ValidateWithdrawals(block, out error), block);
 
-    public bool ValidateInclusionList(Block block, out string? error)
-        => HandleValidationResult(headerValidator.ValidateInclusionList(block, out error), block);
-
     private bool HandleValidationResult(bool result, Block block)
     {
         if (!result)
