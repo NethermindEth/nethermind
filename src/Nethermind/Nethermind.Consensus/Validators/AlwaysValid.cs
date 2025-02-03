@@ -109,4 +109,5 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         error = null;
         return _result;
     }
+
 }

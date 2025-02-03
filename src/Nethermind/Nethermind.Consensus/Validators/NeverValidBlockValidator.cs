@@ -67,4 +67,5 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
     }
+
 }

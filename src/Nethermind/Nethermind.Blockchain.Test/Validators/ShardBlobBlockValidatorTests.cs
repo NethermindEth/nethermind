@@ -7,7 +7,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -18,10 +17,8 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class ShardBlobBlockValidatorTests
 {
-    private readonly ITransactionProcessor _transactionProcessor = Substitute.For<ITransactionProcessor>();
-
     [TestCaseSource(nameof(BlobGasFieldsPerForkTestCases))]
-    public bool Blob_gas_fields_should_be_set(IReleaseSpec spec, ulong? blobGasUsed, ulong? excessBlobGas)
+    public static bool Blob_gas_fields_should_be_set(IReleaseSpec spec, ulong? blobGasUsed, ulong? excessBlobGas)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
