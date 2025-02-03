@@ -51,7 +51,29 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
             {
                 error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
-                return ValidationResult.Invalid;
+                return ValidationResult.Fail;
+            }
+
+            // verification of the requests
+            for (int i = 0; i < ExecutionRequests.Length; i++)
+            {
+                if (ExecutionRequests[i] == null || ExecutionRequests[i].Length <= 1)
+                {
+                    error = "Execution request data must be longer than 1 byte";
+                    return ValidationResult.Fail;
+                }
+
+                if (i > 0 && ExecutionRequests[i][0] <= ExecutionRequests[i - 1][0])
+                {
+                    error = "Execution requests must be ordered by request_type in ascending order";
+                    return ValidationResult.Fail;
+                }
+
+                if (ExecutionRequests.Skip(i + 1).Any(req => req != null && req[0] == ExecutionRequests[i][0]))
+                {
+                    error = "Execution requests must not contain duplicate request_type";
+                    return ValidationResult.Fail;
+                }
             }
 
         }
