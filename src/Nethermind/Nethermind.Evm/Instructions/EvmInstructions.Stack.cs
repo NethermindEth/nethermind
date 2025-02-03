@@ -3,8 +3,10 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -14,6 +16,11 @@ internal sealed partial class EvmInstructions
     public interface IOpCount
     {
         abstract static int Count { get; }
+        virtual static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+        }
     }
 
     public struct Op0 : IOpCount { public static int Count => 0; }
@@ -36,7 +43,25 @@ internal sealed partial class EvmInstructions
     public struct Op17 : IOpCount { public static int Count => 17; }
     public struct Op18 : IOpCount { public static int Count => 18; }
     public struct Op19 : IOpCount { public static int Count => 19; }
-    public struct Op20 : IOpCount { public static int Count => 20; }
+    public struct Op20 : IOpCount
+    {
+        const int Size = 20;
+        public static int Count => Size;
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                // Address
+                ref byte bytes = ref MemoryMarshal.GetReference(code);
+                stack.Push20Bytes(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter));
+            }
+            else
+            {
+                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            }
+        }
+    }
     public struct Op21 : IOpCount { public static int Count => 21; }
     public struct Op22 : IOpCount { public static int Count => 22; }
     public struct Op23 : IOpCount { public static int Count => 23; }
@@ -48,7 +73,23 @@ internal sealed partial class EvmInstructions
     public struct Op29 : IOpCount { public static int Count => 29; }
     public struct Op30 : IOpCount { public static int Count => 30; }
     public struct Op31 : IOpCount { public static int Count => 31; }
-    public struct Op32 : IOpCount { public static int Count => 32; }
+    public struct Op32 : IOpCount
+    {
+        const int Size = 32;
+        public static int Count => Size;
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                stack.PushWord(in Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter)));
+            }
+            else
+            {
+                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            }
+        }
+    }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDup<TOpCount>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
@@ -94,11 +135,9 @@ internal sealed partial class EvmInstructions
 
         ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
 
-        int length = TOpCount.Count;
-        int usedFromCode = Math.Min(code.Length - programCounter, length);
-        stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+        TOpCount.Push(TOpCount.Count, ref stack, programCounter, code);
 
-        programCounter += length;
+        programCounter += TOpCount.Count;
 
         return EvmExceptionType.None;
     }

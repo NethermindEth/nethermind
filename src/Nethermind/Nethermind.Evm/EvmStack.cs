@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Evm;
 
 using Word = Vector256<byte>;
+using HalfWord = Vector128<byte>;
 
 [StructLayout(LayoutKind.Auto)]
 public ref struct EvmStack
@@ -86,6 +87,35 @@ public ref struct EvmStack
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushWord(in Word value)
+    {
+        if (_tracer is not null) TraceWord(in value);
+
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push20Bytes(ref byte value)
+    {
+        if (_tracer is not null) Trace20Bytes(in value);
+
+        ref byte bytes = ref PushBytesRef();
+
+        // First 4+8 bytes are zero
+        Unsafe.As<byte, ulong>(ref bytes) = 0;
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(ulong))) = 0;
+
+        // 20 bytes which is uint+Vector128
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
+            = Unsafe.As<byte, uint>(ref value);
+
+        Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
+            = Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref value, sizeof(uint)));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
     {
         _tracer?.ReportStackPush(value);
@@ -103,6 +133,7 @@ public ref struct EvmStack
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushByte(byte value)
     {
         _tracer?.ReportStackPush(value);
@@ -427,6 +458,8 @@ public ref struct EvmStack
         }
     }
 
+    private readonly void TraceWord(in Word value) => _tracer?.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
+    private readonly void Trace20Bytes(in byte value) => _tracer?.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(in value, 20));
 
     [StackTraceHidden]
     [DoesNotReturn]
