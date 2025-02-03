@@ -183,7 +183,7 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
-    public async Task GetTransactionByBlockHashAndIndex_IncludesDepositReceiptVersion()
+    public async Task GetTransactionByBlockAndIndex_IncludesDepositReceiptVersion()
     {
         Transaction tx = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -199,12 +199,14 @@ public class OptimismEthRpcModuleTest
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
                 .WithHash(TestItem.KeccakC)
+                .WithNumber(123)
                 .TestObject)
             .WithTransactions(tx)
             .TestObject;
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns([receipt]);
@@ -221,8 +223,6 @@ public class OptimismEthRpcModuleTest
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
-
-        string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
         var expected = $$"""
                          {
                             "jsonrpc":"2.0",
@@ -246,7 +246,16 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        {
+            // By block hash
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
+            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        }
+        {
+            // By block number
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
+            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        }
     }
 }
 
