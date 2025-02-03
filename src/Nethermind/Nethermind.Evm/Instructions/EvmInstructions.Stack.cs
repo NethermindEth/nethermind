@@ -24,7 +24,25 @@ internal sealed partial class EvmInstructions
     }
 
     public struct Op0 : IOpCount { public static int Count => 0; }
-    public struct Op1 : IOpCount { public static int Count => 1; }
+    public struct Op1 : IOpCount 
+    {
+        const int Size = 1;
+        public static int Count => Size;
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                // Single byte
+                ref byte bytes = ref MemoryMarshal.GetReference(code);
+                stack.PushByte(Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter));
+            }
+            else
+            {
+                stack.PushZero();
+            }
+        }
+    }
     public struct Op2 : IOpCount { public static int Count => 2; }
     public struct Op3 : IOpCount { public static int Count => 3; }
     public struct Op4 : IOpCount { public static int Count => 4; }
