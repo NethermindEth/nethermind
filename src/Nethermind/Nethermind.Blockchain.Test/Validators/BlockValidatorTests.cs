@@ -30,7 +30,7 @@ public class BlockValidatorTests
         releaseSpec.MaximumUncleCount = 0;
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
         Assert.That(noiseRemoved, Is.True);
 
@@ -99,7 +99,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
 
@@ -114,7 +114,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
         string? error;
@@ -132,7 +132,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
 
@@ -147,7 +147,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
         string? error;
@@ -192,7 +192,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, _transactionProcessor, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         string? error;
 
         sut.ValidateSuggestedBlock(

@@ -283,7 +283,6 @@ public partial class EngineModuleTests
                 HeaderValidator,
                 Always.Valid,
                 SpecProvider,
-                TxProcessor,
                 LogManager);
         }
 

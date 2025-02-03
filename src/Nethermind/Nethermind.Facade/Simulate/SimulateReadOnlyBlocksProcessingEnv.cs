@@ -99,7 +99,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             headerValidator,
             Always.Valid,
             SpecProvider,
-            _transactionProcessor,
             _logManager);
 
         return new SimulateBlockValidatorProxy(blockValidator);

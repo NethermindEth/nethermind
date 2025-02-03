@@ -207,7 +207,6 @@ public class TestBlockchain : IDisposable
             HeaderValidator,
             Always.Valid,
             SpecProvider,
-            TxProcessor,
             LogManager);
 
         PoSSwitcher = NoPoS.Instance;

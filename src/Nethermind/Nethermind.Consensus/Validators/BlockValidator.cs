@@ -9,9 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
@@ -24,7 +22,6 @@ public class BlockValidator(
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
-    ITransactionProcessor? transactionProcessor,
     ILogManager? logManager)
     : IBlockValidator
 {
@@ -32,9 +29,7 @@ public class BlockValidator(
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle) =>
         _headerValidator.Validate(header, parent, isUncle, out _);
