@@ -69,6 +69,62 @@ public class OptimismEthRpcModuleTest
         serialized.Should().BeEquivalentTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}""");
     }
 
+
+    [Test]
+    public async Task GetTransactionByHash_ReturnsCorrectTransactionType()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.Legacy)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+        TxReceipt receipt = new()
+        {
+            BlockHash = TestItem.KeccakB,
+        };
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns((receipt, tx, (UInt256?)0));
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockchainBridge(bridge)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByHash", TestItem.KeccakA);
+        var expected = $$"""
+                         {
+                            "jsonrpc":"2.0",
+                            "result": {
+                                 "type": "0x0",
+                                 "from": "{{TestItem.AddressA.Bytes.ToHexString(withZeroX: true)}}",
+                                 "to": "0x0000000000000000000000000000000000000000",
+                                 "value": "0x1",
+                                 "gas": "0x5208",
+                                 "gasPrice": "0x1",
+                                 "input": "0x",
+                                 "nonce": "0x0",
+                                 "v": "0x0",
+                                 "r": "0x0",
+                                 "s": "0x0",
+                                 "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
+                                 "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
+                                 "blockNumber": null,
+                                 "transactionIndex": null
+                             },
+                            "id":67
+                         }
+                         """;
+        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+    }
+
     [Test]
     public async Task GetTransactionByHash_IncludesDepositReceiptVersion()
     {
