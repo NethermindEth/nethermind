@@ -232,7 +232,7 @@ public class ForkchoiceUpdatedHandler(
         if (shouldUpdateHead)
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
-            globalWorldState.StateRoot = newHeadBlock.StateRoot!;
+            UpdateGlobalStateRoot(newHeadBlock.StateRoot!);
         }
 
         if (IsInconsistent(finalizedBlockHash))
@@ -262,6 +262,24 @@ public class ForkchoiceUpdatedHandler(
         }
 
         return null;
+    }
+
+    private void UpdateGlobalStateRoot(Hash256 stateRoot)
+    {
+        if (processingQueue.IsEmpty)
+        {
+            globalWorldState.StateRoot = stateRoot;
+        }
+        else
+        {
+            EventHandler handler = null!;
+            handler = (_, _) =>
+            {
+                globalWorldState.StateRoot = stateRoot;
+                processingQueue.ProcessingQueueEmpty -= handler;
+            };
+            processingQueue.ProcessingQueueEmpty += handler;
+        }
     }
 
     protected virtual bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
