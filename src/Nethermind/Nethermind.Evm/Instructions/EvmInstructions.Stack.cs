@@ -47,13 +47,70 @@ internal sealed partial class EvmInstructions
             }
         }
     }
-    public struct Op2 : IOpCount { public static int Count => 2; }
+    public struct Op2 : IOpCount
+    {
+        const int Size = 2;
+        public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(code);
+                stack.Push2Bytes(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter));
+            }
+            else
+            {
+                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            }
+        }
+    }
     public struct Op3 : IOpCount { public static int Count => 3; }
-    public struct Op4 : IOpCount { public static int Count => 4; }
+    public struct Op4 : IOpCount
+    {
+        const int Size = 4;
+        public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(code);
+                stack.Push4Bytes(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter));
+            }
+            else
+            {
+                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            }
+        }
+    }
     public struct Op5 : IOpCount { public static int Count => 5; }
     public struct Op6 : IOpCount { public static int Count => 6; }
     public struct Op7 : IOpCount { public static int Count => 7; }
-    public struct Op8 : IOpCount { public static int Count => 8; }
+    public struct Op8 : IOpCount
+    {
+        const int Size = 8;
+        public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(code);
+                stack.Push8Bytes(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter));
+            }
+            else
+            {
+                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            }
+        }
+    }
     public struct Op9 : IOpCount { public static int Count => 9; }
     public struct Op10 : IOpCount { public static int Count => 10; }
     public struct Op11 : IOpCount { public static int Count => 11; }
@@ -61,7 +118,26 @@ internal sealed partial class EvmInstructions
     public struct Op13 : IOpCount { public static int Count => 13; }
     public struct Op14 : IOpCount { public static int Count => 14; }
     public struct Op15 : IOpCount { public static int Count => 15; }
-    public struct Op16 : IOpCount { public static int Count => 16; }
+    public struct Op16 : IOpCount
+    {
+        const int Size = 16;
+        public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        {
+            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            if (usedFromCode == Size)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(code);
+                stack.Push16Bytes(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter));
+            }
+            else
+            {
+                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            }
+        }
+    }
     public struct Op17 : IOpCount { public static int Count => 17; }
     public struct Op18 : IOpCount { public static int Count => 18; }
     public struct Op19 : IOpCount { public static int Count => 19; }
@@ -108,7 +184,7 @@ internal sealed partial class EvmInstructions
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
             {
-                stack.PushWord(in Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter)));
+                stack.Push32Bytes(in Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter)));
             }
             else
             {

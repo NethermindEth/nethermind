@@ -88,18 +88,88 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushWord(in Word value)
+    public void PushByte(byte value)
     {
-        if (_tracer is not null) TraceWord(in value);
+        _tracer?.ReportStackPush(value);
 
         ref byte bytes = ref PushBytesRef();
-        Unsafe.As<byte, Word>(ref bytes) = value;
+        // Not full entry, clear first
+        Unsafe.As<byte, Word>(ref bytes) = default;
+        Unsafe.Add(ref bytes, WordSize - sizeof(byte)) = value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void Push2Bytes(ref byte value)
+    {
+        // ushort size
+        if (_tracer is not null) TraceBytes(in value, 2);
+
+        ref byte bytes = ref PushBytesRef();
+
+        // Clear 32 bytes
+        Unsafe.As<byte, Word>(ref bytes) = default;
+
+        // Copy 2 bytes
+        Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint) + sizeof(ushort)))
+            = Unsafe.As<byte, ushort>(ref value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void Push4Bytes(ref byte value)
+    {
+        // uint size
+        if (_tracer is not null) TraceBytes(in value, 4);
+
+        ref byte bytes = ref PushBytesRef();
+
+        // First 16+8+4 bytes are zero
+        Unsafe.As<byte, HalfWord>(ref bytes) = default;
+        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord))) = default;
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong))) = default;
+
+        // Copy 4 bytes
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint)))
+            = Unsafe.As<byte, uint>(ref value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void Push8Bytes(ref byte value)
+    {
+        // ulong size
+        if (_tracer is not null) TraceBytes(in value, 8);
+
+        ref byte bytes = ref PushBytesRef();
+
+        // First 16+8 bytes are zero
+        Unsafe.As<byte, HalfWord>(ref bytes) = default;
+        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord))) = default;
+
+        // Copy 8 bytes
+        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong)))
+            = Unsafe.As<byte, ulong>(ref value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void Push16Bytes(ref byte value)
+    {
+        // UInt16 size
+        if (_tracer is not null) TraceBytes(in value, 16);
+
+        ref byte bytes = ref PushBytesRef();
+
+        // First 16 bytes are zero
+        Unsafe.As<byte, HalfWord>(ref bytes) = default;
+
+        // Copy 16 bytes
+        Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(HalfWord)))
+            = Unsafe.As<byte, HalfWord>(ref value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push20Bytes(ref byte value)
     {
-        if (_tracer is not null) Trace20Bytes(in value);
+        // Address size
+        if (_tracer is not null) TraceBytes(in value, 20);
 
         ref byte bytes = ref PushBytesRef();
 
@@ -113,6 +183,15 @@ public ref struct EvmStack
 
         Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
             = Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref value, sizeof(uint)));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push32Bytes(in Word value)
+    {
+        if (_tracer is not null) TraceWord(in value);
+
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -131,17 +210,6 @@ public ref struct EvmStack
         {
             Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushByte(byte value)
-    {
-        _tracer?.ReportStackPush(value);
-
-        ref byte bytes = ref PushBytesRef();
-        // Not full entry, clear first
-        Unsafe.As<byte, Word>(ref bytes) = default;
-        Unsafe.Add(ref bytes, WordSize - sizeof(byte)) = value;
     }
 
     public void PushOne()
@@ -459,7 +527,7 @@ public ref struct EvmStack
     }
 
     private readonly void TraceWord(in Word value) => _tracer?.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
-    private readonly void Trace20Bytes(in byte value) => _tracer?.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(in value, 20));
+    private readonly void TraceBytes(in byte value, int length) => _tracer?.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(in value, length));
 
     [StackTraceHidden]
     [DoesNotReturn]
