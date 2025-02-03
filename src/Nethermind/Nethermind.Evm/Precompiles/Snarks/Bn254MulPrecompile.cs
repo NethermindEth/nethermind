@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Precompiles.Snarks;
 /// </summary>
 public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 {
-    public static Bn254MulPrecompile Instance = new Bn254MulPrecompile();
+    public static readonly Bn254MulPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
 
@@ -21,7 +21,7 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
         Span<byte> inputDataSpan = stackalloc byte[96];

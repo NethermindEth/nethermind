@@ -313,7 +313,8 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder RegisterNamedComponentInItsOwnLifetime<T>(this ContainerBuilder builder, string name, Action<ContainerBuilder> configurator) where T : notnull
     {
         builder.Register<ILifetimeScope, T>(ctx => ctx.BeginLifetimeScope(configurator).Resolve<T>())
-            .Named<T>(name);
+            .Named<T>(name)
+            .SingleInstance();
 
         return builder;
     }
