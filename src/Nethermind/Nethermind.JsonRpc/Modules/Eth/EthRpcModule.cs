@@ -188,7 +188,7 @@ public partial class EthRpcModule(
         }
         catch (MissingTrieNodeException e)
         {
-            var hash = e.TrieNodeException.NodeHash;
+            var hash = e.Hash;
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
         }
     }
