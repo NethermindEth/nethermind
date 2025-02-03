@@ -15,6 +15,8 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
@@ -29,6 +31,7 @@ using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Facade.Tracing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade
@@ -165,15 +168,32 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput<T> Simulate<T>(
+            BlockHeader header,
+            SimulatePayload<TransactionWithSourceDetails> payload,
+            CancellationToken cancellationToken,
+            ITracerFactory<T> tracerFactory)
+            where T : class
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(simulateOutputTracer);
-            SimulateOutput result = new();
+            var tracer = tracerFactory.CreateTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.SetOtherTracer(tracer);
+
+            SimulateOutput<T> result = new();
+
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                if (tracer is not SimulateBlockTracer validatedTracer)
+                {
+                    throw new InvalidOperationException($"Unsupported tracer type: {typeof(T).Name}");
+                }
+
+                if (!_simulateBridgeHelper.TrySimulate(
+                        header,
+                        payload,
+                        validatedTracer,
+                        new CancellationBlockTracer(receiptsTracer, cancellationToken),
+                        out string error))
                 {
                     result.Error = error;
                 }
@@ -187,9 +207,18 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.Items = simulateOutputTracer.Results;
+            if (tracer is SimulateBlockTracer simulateTracer)
+            {
+                result.Items = simulateTracer.Results as IReadOnlyList<SimulateBlockResult<T>>;
+            }
+            else
+            {
+                throw new InvalidOperationException($"Tracer type {typeof(T).Name} does not support 'Results'");
+            }
+
             return result;
         }
+
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
@@ -432,5 +461,44 @@ namespace Nethermind.Facade
         {
             return _logFinder.FindLogs(filter, cancellationToken);
         }
+
+        public class SimulateBlockTracerFactory : ITracerFactory<SimulateCallResult>
+        {
+            public IBlockTracer<SimulateCallResult> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            {
+                return (IBlockTracer<SimulateCallResult>)new SimulateBlockTracer(traceTransfers, returnFullTransactionObjects, specProvider);
+            }
+        }
+
+        public class GethLikeBlockMemoryTracerFactory : ITracerFactory<GethLikeTxTrace>
+        {
+            private readonly GethTraceOptions _options;
+
+            public GethLikeBlockMemoryTracerFactory(GethTraceOptions options)
+            {
+                _options = options;
+            }
+
+            public IBlockTracer<GethLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            {
+                return new GethLikeBlockMemoryTracer(_options);
+            }
+        }
+
+        public class ParityLikeBlockTracerFactory : ITracerFactory<ParityLikeTxTrace>
+        {
+            private readonly ParityTraceTypes _types;
+
+            public ParityLikeBlockTracerFactory(ParityTraceTypes types)
+            {
+                _types = types;
+            }
+
+            public IBlockTracer<ParityLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            {
+                return new ParityLikeBlockTracer(_types);
+            }
+        }
+
     }
 }
