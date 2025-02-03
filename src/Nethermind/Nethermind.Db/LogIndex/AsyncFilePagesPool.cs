@@ -85,7 +85,11 @@ public sealed class AsyncFilePagesPool : IFilePagesPool
     public AsyncFilePagesPool(string filePath, IKeyValueStore store, int pageSize, ILogger logger)
     {
         _store = store;
-        _fileHandle = File.OpenHandle(filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+        _fileHandle = File.OpenHandle(
+            filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
+            FileShare.Read, FileOptions.RandomAccess
+            // TODO: cover potential data loss/corruption, since WriteThrough is not specified
+        );
         _fileStream = new(_fileHandle, FileAccess.ReadWrite);
         _lazyStart = new(StartOnce);
         _logger = logger;

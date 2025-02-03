@@ -11,7 +11,7 @@ public class SetReceiptsStats
     public long TxAdded { get; set; }
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
-    public long LastBlockNumber { get; set; }
+    public long LastBlockNumber { get; set; } = -1;
 
     public ExecTimeStats SeekForPrevHit { get; } = new();
     public ExecTimeStats SeekForPrevMiss { get; } = new();
@@ -22,6 +22,7 @@ public class SetReceiptsStats
     public ExecTimeStats WritingTemp { get; } = new();
     public ExecTimeStats WaitingForFinalization { get; } = new();
     public ExecTimeStats FlushingDbs { get; } = new();
+    public ExecTimeStats FlushingTemp { get; } = new();
     public AverageStats KeysCount { get; } = new();
     public AverageStats BytesWritten { get; } = new();
     public long NewTempIndexes;
@@ -43,6 +44,7 @@ public class SetReceiptsStats
         WritingTemp.Combine(other.WritingTemp);
         WaitingForFinalization.Combine(other.WaitingForFinalization);
         FlushingDbs.Combine(other.FlushingDbs);
+        FlushingTemp.Combine(other.FlushingTemp);
         KeysCount.Combine(other.KeysCount);
         BytesWritten.Combine(other.BytesWritten);
         NewTempIndexes += other.NewTempIndexes;

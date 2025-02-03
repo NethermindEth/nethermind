@@ -42,8 +42,8 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IReceiptsRecovery _recovery;
         private readonly ILogIndexStorage _logIndexStorage;
         private readonly IInitConfig _initConfig;
-        private const int BatchSize = 1000;
-        private const int QueueSize = BatchSize >= 1000 ? BatchSize * 4 : 1_000;
+        private const int BatchSize = 250;
+        private const int QueueSize = 2_000;
         private const int ReportSize = 50_000;
         private readonly Channel<BlockReceipts[]> _blocksChannel;
 
@@ -159,8 +159,11 @@ namespace Nethermind.Init.Steps.Migrations
                 (SetReceiptsStats last, SetReceiptsStats total, PagesStats pagesStats) = (_lastStats, _totalStats, _logIndexStorage.PagesStats);
                 _lastStats = new();
 
+                if (total.LastBlockNumber < 0)
+                    total.LastBlockNumber = _logIndexStorage.GetLastKnownBlockNumber();
+
                 _logger.Info($"LogIndexMigration" +
-                    $"\n\t\tBlocks: {last.LastBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)last.LastBlockNumber / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
+                    $"\n\t\tBlocks: {total.LastBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)total.LastBlockNumber / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded:N0} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
@@ -170,10 +173,11 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tProcessing: {last.ProcessingData} ( {total.ProcessingData} on average )" +
                     $"\n\t\tWaiting for page: {last.WaitingPage} ( {total.WaitingPage} on average )" +
                     $"\n\t\tStoring index: {last.StoringIndex} ( {total.StoringIndex} on average )" +
+                    $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average )" +
                     $"\n\t\tWriting to temp: {last.WritingTemp} ( {total.WritingTemp} on average )" +
                     $"\n\t\tFinalization: {last.WaitingForFinalization} ( {total.WaitingForFinalization} on average )" +
                     $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
-                    $"\n\t\tBytes per write: {last.BytesWritten} ( {total.BytesWritten} on average )" +
+                    $"\n\t\tFlushing Temp: {last.FlushingTemp} ( {total.FlushingTemp} on average )" +
                     $"\n\t\tNew indexes: {last.NewTempIndexes:N0} Temp ( {total.NewTempIndexes:N0} in total ), {last.NewFinalIndexes:N0} Final ( {total.NewFinalIndexes:N0} in total )" +
                     $"\n\t\tPages total: {pagesStats.PagesAllocated:N0} allocated, {pagesStats.PagesTaken:N0} taken, {pagesStats.PagesReturned:N0} returned, {pagesStats.AllocatedPagesPending} + {pagesStats.ReturnedPagesPending} pending" +
                     $"\n\t\tFiles sizes: {GetFileSize(_tempFileInfo)} Temp, {GetFileSize(_finalFileInfo)} Final"

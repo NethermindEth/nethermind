@@ -310,11 +310,6 @@ namespace Nethermind.Db
                     );
                     stats.ProcessingData.Include(watch.Elapsed);
                 }
-
-                if (_lastKnownBlock < batch[^1].BlockNumber)
-                    WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
-
-                stats.LastBlockNumber = _lastKnownBlock;
             }
             finally
             {
@@ -339,6 +334,18 @@ namespace Nethermind.Db
                     _topicsDb.Flush();
                     stats.FlushingDbs.Include(watch.Elapsed);
                 }
+
+                // if (dictionary is { Count: > 0 })
+                // {
+                //     watch.Restart();
+                //     RandomAccess.FlushToDisk(_tempPagesPool.FileHandle);
+                //     stats.FlushingTemp.Include(watch.Elapsed);
+                // }
+
+                if (_lastKnownBlock < batch[^1].BlockNumber)
+                    WriteLastKnownBlockNumber(_lastKnownBlock = batch[^1].BlockNumber);
+
+                stats.LastBlockNumber = _lastKnownBlock;
 
                 _setReceiptsSemaphore.Release();
             }
