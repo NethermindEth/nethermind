@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Precompiles
     /// </summary>
     public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
-        public static readonly ModExpPrecompile Instance = new ModExpPrecompile();
+        public static readonly ModExpPrecompile Instance = new();
 
         private ModExpPrecompile()
         {
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Precompiles
         }
 
         [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
-        public static (ReadOnlyMemory<byte>, bool) OldRun(byte[] inputData)
+        public static (byte[], bool) OldRun(byte[] inputData)
         {
             Metrics.ModExpPrecompile++;
 

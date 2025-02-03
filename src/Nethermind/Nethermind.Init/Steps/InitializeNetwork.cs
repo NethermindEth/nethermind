@@ -123,7 +123,13 @@ public class InitializeNetwork : InitStep, IStep
             _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
-        _api.WorldStateManager!.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager), new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        _api.WorldStateManager!.InitializeNetwork(
+            new PathNodeRecovery(
+                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
+                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
+                _api.LogManager
+            )
+        );
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
@@ -360,14 +366,6 @@ public class InitializeNetwork : InitStep, IStep
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
-        ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            // TODO: Add a proper config for the state persistence depth.
-            snapServer = new LastNRootSnapServer(_api.WorldStateManager!.SnapServer!, new LastNStateRootTracker(_api.BlockTree, 128));
-
-        }
-
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -383,7 +381,7 @@ public class InitializeNetwork : InitStep, IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
-            snapServer,
+            _api.WorldStateManager!,
             _api.LogManager,
             _api.TxGossipPolicy);
 

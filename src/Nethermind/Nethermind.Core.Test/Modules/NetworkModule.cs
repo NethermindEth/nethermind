@@ -77,8 +77,12 @@ public class NetworkModule(IInitConfig initConfig) : Module
             {
                 ILogManager logManager = ctx.Resolve<ILogManager>();
                 ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                    new GetNodeDataTrieNodeRecovery(peerPool, logManager),
-                    new SnapTrieNodeRecovery(peerPool, logManager));
+                    new PathNodeRecovery(
+                        new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
+                        new SnapRangeRecovery(peerPool!, logManager),
+                        logManager
+                    )
+                );
             })
 
             // TODO: LastNStateRootTracker

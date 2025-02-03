@@ -11,7 +11,7 @@ namespace Nethermind.State.Healing;
 public class HealingWorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches = null, bool populatePreBlockCache = true)
     : WorldState(trieStore, codeDb, logManager, new HealingStateTree(trieStore, logManager), new HealingStorageTreeFactory(), preBlockCaches, populatePreBlockCache)
 {
-    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
+    public void InitializeNetwork(IPathRecovery recovery)
     {
         StateProviderTree.InitializeNetwork(recovery);
         StorageTreeFactory.InitializeNetwork(recovery);
