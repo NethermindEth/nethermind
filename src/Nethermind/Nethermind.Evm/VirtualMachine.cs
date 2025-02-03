@@ -676,6 +676,8 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         // Initialize program counter to the current state's value.
         // Entry point is not always 0 as we may be returning to code after a call.
         int programCounter = _vmState.ProgramCounter;
+        // Use fixed pointer or we loose the type when trying skip bounds check,
+        // and have to cast for each call (delegate*<...> can't be used as a generic arg)
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
             // We use a while loop rather than a for loop as some
