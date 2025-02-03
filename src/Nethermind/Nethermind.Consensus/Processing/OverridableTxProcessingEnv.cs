@@ -14,12 +14,15 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverridableTxProcessorSource
+public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
 {
-    private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
+    public IStateReader StateReader { get; }
+    public IBlockTree BlockTree { get; }
+    protected ISpecProvider SpecProvider { get; }
+    protected ILogManager LogManager { get; }
 
-    protected new OverridableWorldState StateProvider { get; }
-    protected OverridableWorldStateManager WorldStateManager { get; }
+    private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
+    protected OverridableWorldState StateProvider { get; }
     protected OverridableCodeInfoRepository CodeInfoRepository { get; }
     protected IVirtualMachine Machine { get; }
     protected ITransactionProcessor TransactionProcessor => _transactionProcessorLazy.Value;
@@ -28,14 +31,19 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverrida
         OverridableWorldStateManager worldStateManager,
         IReadOnlyBlockTree readOnlyBlockTree,
         ISpecProvider specProvider,
-        ILogManager? logManager,
-        IWorldState? worldStateToWarmUp = null
-    ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+        ILogManager? logManager
+    )
     {
-        WorldStateManager = worldStateManager;
-        StateProvider = (OverridableWorldState)base.StateProvider;
-        CodeInfoRepository = new(new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache));
-        Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+        SpecProvider = specProvider;
+        StateReader = worldStateManager.GlobalStateReader;
+        BlockTree = readOnlyBlockTree;
+        IBlockhashProvider blockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+        LogManager = logManager;
+
+        StateProvider = (OverridableWorldState)worldStateManager.CreateResettableWorldState();
+
+        CodeInfoRepository = new(new CodeInfoRepository());
+        Machine = new VirtualMachine(blockhashProvider, specProvider, CodeInfoRepository, logManager);
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }
 

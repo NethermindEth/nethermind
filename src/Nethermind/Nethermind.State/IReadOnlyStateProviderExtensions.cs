@@ -27,11 +27,11 @@ namespace Nethermind.State
             this IAccountStateProviderWithCode stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<bool>? isDelegatedCode = null) =>
+            Func<Address, bool>? isDelegatedCode = null) =>
             spec.IsEip3607Enabled
             && stateProvider.HasCode(sender)
             && (!spec.IsEip7702Enabled
-                || (!isDelegatedCode?.Invoke() ?? !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
+                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
     }
 
 }

@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -12,19 +13,38 @@ namespace Nethermind.Consensus.Processing;
 public class ReadOnlyTxProcessingEnvFactory(
     IWorldStateManager worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
-    ISpecProvider? specProvider,
-    ILogManager? logManager,
+    ISpecProvider specProvider,
+    ILogManager logManager,
     IWorldState? worldStateToWarmUp = null) : IReadOnlyTxProcessingEnvFactory
 {
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
-        ISpecProvider? specProvider,
-        ILogManager? logManager,
+        ISpecProvider specProvider,
+        ILogManager logManager,
         IWorldState? worldStateToWarmUp = null)
         : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
     {
     }
 
-    public IReadOnlyTxProcessorSource Create() => new ReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp);
+    public IReadOnlyTxProcessorSource Create()
+    {
+        if (worldStateToWarmUp is null)
+        {
+            return new ReadOnlyTxProcessingEnv(
+                worldStateManager,
+                readOnlyBlockTree,
+                specProvider,
+                logManager);
+        }
+        else
+        {
+            return new ReadOnlyTxProcessingEnv(
+                worldStateManager,
+                readOnlyBlockTree,
+                specProvider,
+                logManager,
+                worldStateToWarmUp);
+        }
+    }
 }
