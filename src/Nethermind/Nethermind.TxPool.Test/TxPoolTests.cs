@@ -1809,7 +1809,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(true)]
-        [TestCase(true)]
+        [TestCase(false)]
         public void Tx_with_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
@@ -1855,7 +1855,7 @@ namespace Nethermind.TxPool.Test
             {
                 result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-                result.Should().Be(AcceptTxResult.AlreadyKnown);
+                result.Should().Be(AcceptTxResult.PendingDelegation);
             }
         }
 
