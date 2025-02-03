@@ -14,7 +14,7 @@ using Nethermind.Logging;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeNetwork))]
-    public class StartGrpc : InitStep, IStep
+    public class StartGrpc : IStep
     {
         private readonly IApiWithNetwork _api;
 
@@ -23,7 +23,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api = api;
         }
 
-        protected override async Task Setup(CancellationToken cancellationToken)
+        public async Task Execute(CancellationToken cancellationToken)
         {
             IGrpcConfig grpcConfig = _api.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)

@@ -12,7 +12,7 @@ using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Init.Steps
 {
-    public class MigrateConfigs : InitStep, IStep
+    public class MigrateConfigs : IStep
     {
         private readonly INethermindApi _api;
 
@@ -21,7 +21,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override Task Setup(CancellationToken _)
+        public Task Execute(CancellationToken cancellationToken)
         {
             IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             IReceiptConfig receiptConfig = _api.Config<IReceiptConfig>();

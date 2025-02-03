@@ -31,7 +31,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Init;
 
 [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
-public class InitializeStateDb : InitStep, IStep
+public class InitializeStateDb : IStep
 {
     private readonly INethermindApi _api;
     private ILogger _logger;
@@ -41,7 +41,7 @@ public class InitializeStateDb : InitStep, IStep
         _api = api;
     }
 
-    protected override Task Setup(CancellationToken _)
+    public Task Execute(CancellationToken cancellationToken)
     {
         InitBlockTraceDumper();
 

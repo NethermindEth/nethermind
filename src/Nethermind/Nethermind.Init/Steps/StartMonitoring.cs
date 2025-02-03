@@ -17,7 +17,7 @@ using Type = System.Type;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork))]
-public class StartMonitoring : InitStep, IStep
+public class StartMonitoring : IStep
 {
     private readonly IApiWithNetwork _api;
     private readonly ILogger _logger;
@@ -30,7 +30,7 @@ public class StartMonitoring : InitStep, IStep
         _metricsConfig = _api.Config<IMetricsConfig>();
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
         // hacky
         if (!string.IsNullOrEmpty(_metricsConfig.NodeName))

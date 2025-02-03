@@ -11,7 +11,7 @@ using Nethermind.Init.Steps.Migrations;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
-    public sealed class DatabaseMigrations : InitStep, IStep
+    public sealed class DatabaseMigrations : IStep
     {
         private readonly IApiWithNetwork _api;
 
@@ -20,7 +20,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override async Task Setup(CancellationToken cancellationToken)
+        public async Task Execute(CancellationToken cancellationToken)
         {
             foreach (IDatabaseMigration migration in CreateMigrations())
             {

@@ -33,7 +33,7 @@ using Nethermind.Network.Config;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins))]
-public class RegisterRpcModules : InitStep, IStep
+public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
     protected readonly IJsonRpcConfig _jsonRpcConfig;
@@ -44,7 +44,7 @@ public class RegisterRpcModules : InitStep, IStep
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)
+    public virtual async Task Execute(CancellationToken cancellationToken)
     {
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptFinder);

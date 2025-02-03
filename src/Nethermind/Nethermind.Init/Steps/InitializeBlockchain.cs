@@ -37,7 +37,7 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain : InitStep, IStep
+    public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
 
@@ -47,7 +47,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override async Task Setup(CancellationToken _)
+        public async Task Execute(CancellationToken _)
         {
             await InitBlockchain();
         }

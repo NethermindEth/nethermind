@@ -21,11 +21,11 @@ using Nethermind.KeyStore.Config;
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
-public class StartRpc(INethermindApi api) : InitStep, IStep
+public class StartRpc(INethermindApi api) : IStep
 {
     private readonly INethermindApi _api = api;
 
-    protected override async Task Setup(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
         IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();

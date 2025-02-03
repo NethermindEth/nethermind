@@ -9,7 +9,7 @@ using Nethermind.Serialization.Json.PubSub;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartLogProducer : InitStep, IStep
+    public class StartLogProducer : IStep
     {
         private readonly INethermindApi _api;
 
@@ -18,7 +18,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override Task Setup(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken cancellationToken)
         {
             // TODO: this should be configure in init maybe?
             LogPublisher logPublisher = new LogPublisher(_api.EthereumJsonSerializer!, _api.LogManager);

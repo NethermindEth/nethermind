@@ -28,7 +28,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
 
             RegisterRpcModules registerRpcModules = new(context);
-            await registerRpcModules.Execute([], CancellationToken.None);
+            await registerRpcModules.Execute(CancellationToken.None);
 
             context.RpcModuleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)).Should().Be(ModuleResolution.Enabled);
         }
@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.RpcModuleProvider.Enabled.Returns(Array.Empty<string>());
 
             RegisterRpcModules registerRpcModules = new(context);
-            await registerRpcModules.Execute([], CancellationToken.None);
+            await registerRpcModules.Execute(CancellationToken.None);
 
             context.RpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofRpcModule>(null);
         }

@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps;
 
-public class InitializePrecompiles : InitStep, IStep
+public class InitializePrecompiles : IStep
 {
     private readonly INethermindApi _api;
 
@@ -20,7 +20,7 @@ public class InitializePrecompiles : InitStep, IStep
         _api = api;
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
         if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
         {

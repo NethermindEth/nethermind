@@ -11,7 +11,7 @@ using Nethermind.Logging;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), (typeof(InitializeNetwork)))]
-    public class ReviewBlockTree : InitStep, IStep
+    public class ReviewBlockTree : IStep
     {
         private readonly IApiWithBlockchain _api;
         private readonly ILogger _logger;
@@ -22,7 +22,7 @@ namespace Nethermind.Init.Steps
             _logger = _api.LogManager.GetClassLogger();
         }
 
-        protected override Task Setup(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken cancellationToken)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.DbProvider));
 

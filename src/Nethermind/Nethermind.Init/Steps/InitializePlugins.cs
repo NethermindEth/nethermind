@@ -12,7 +12,7 @@ using Nethermind.Logging;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockTree))]
-    public class InitializePlugins : InitStep, IStep
+    public class InitializePlugins : IStep
     {
         private readonly INethermindApi _api;
 
@@ -21,7 +21,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override async Task Setup(CancellationToken cancellationToken)
+        public async Task Execute(CancellationToken cancellationToken)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");

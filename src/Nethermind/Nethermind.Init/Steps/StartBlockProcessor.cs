@@ -8,7 +8,7 @@ using Nethermind.Api;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockchain))]
-    public class StartBlockProcessor : InitStep, IStep
+    public class StartBlockProcessor : IStep
     {
         private readonly IApiWithBlockchain _api;
 
@@ -17,7 +17,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override Task Setup(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken _)
         {
             if (_api.BlockchainProcessor is null)
             {

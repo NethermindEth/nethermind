@@ -15,7 +15,7 @@ using Nethermind.Consensus.Transactions;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
-    public class InitializeBlockProducer : InitStep, IStep
+    public class InitializeBlockProducer : IStep
     {
         private readonly IApiWithBlockchain _api;
 
@@ -24,7 +24,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override Task Setup(CancellationToken _)
+        public Task Execute(CancellationToken _)
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {

@@ -11,7 +11,7 @@ using Nethermind.JsonRpc.Modules.Evm;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(InitializeBlockProducer), typeof(RegisterRpcModules))]
-public class RegisterPluginRpcModules : InitStep, IStep
+public class RegisterPluginRpcModules : IStep
 {
     private readonly INethermindApi _api;
 
@@ -20,7 +20,7 @@ public class RegisterPluginRpcModules : InitStep, IStep
         _api = api;
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)
+    public virtual async Task Execute(CancellationToken cancellationToken)
     {
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
 

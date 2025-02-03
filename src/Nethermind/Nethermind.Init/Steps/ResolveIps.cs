@@ -11,7 +11,7 @@ using Nethermind.Network.Config;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies]
-    public class ResolveIps : InitStep, IStep
+    public class ResolveIps : IStep
     {
         private readonly IApiWithNetwork _api;
 
@@ -21,7 +21,7 @@ namespace Nethermind.Init.Steps
         }
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        protected override async Task Setup(CancellationToken cancellationToken)
+        public virtual async Task Execute(CancellationToken _)
         {
             // this should be outside of Ethereum Runner I guess
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();

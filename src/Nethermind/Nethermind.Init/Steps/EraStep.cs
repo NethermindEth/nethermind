@@ -12,7 +12,7 @@ using Nethermind.Era1;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
-public class EraStep : InitStep, IStep
+public class EraStep : IStep
 {
     protected readonly INethermindApi _api;
 
@@ -21,7 +21,7 @@ public class EraStep : InitStep, IStep
         _api = api;
     }
 
-    protected override async Task Setup(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
         IContainer container = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
             .AddModule(new EraModule())

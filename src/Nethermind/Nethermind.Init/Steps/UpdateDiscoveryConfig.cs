@@ -10,7 +10,7 @@ using Nethermind.Network.Discovery;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(FilterBootnodes))]
-    public class UpdateDiscoveryConfig : InitStep, IStep
+    public class UpdateDiscoveryConfig : IStep
     {
         private readonly INethermindApi _api;
 
@@ -19,7 +19,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        protected override Task Setup(CancellationToken _)
+        public Task Execute(CancellationToken _)
         {
             Update();
             return Task.CompletedTask;
