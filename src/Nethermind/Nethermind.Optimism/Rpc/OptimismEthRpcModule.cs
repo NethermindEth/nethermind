@@ -32,7 +32,6 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 {
     private readonly IJsonRpcClient? _sequencerRpcClient;
-    private readonly IAccountStateProvider _accountStateProvider;
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
     private readonly IOptimismSpecHelper _opSpecHelper;
@@ -54,7 +53,6 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
-        IAccountStateProvider accountStateProvider,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
         IOptimismSpecHelper opSpecHelper) : base(
@@ -74,7 +72,6 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;
-        _accountStateProvider = accountStateProvider;
         _ecdsa = ecdsa;
         _sealer = sealer;
         _opSpecHelper = opSpecHelper;

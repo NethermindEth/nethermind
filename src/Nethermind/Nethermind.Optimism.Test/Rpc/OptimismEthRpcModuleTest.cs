@@ -287,7 +287,7 @@ internal static class TestRpcBlockchainExt
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
             new BlocksConfig().SecondsPerSlot,
 
-            sequencerRpcClient, accountStateProvider, ecdsa, sealer, opSpecHelper
+            sequencerRpcClient, ecdsa, sealer, opSpecHelper
         ));
     }
 }
