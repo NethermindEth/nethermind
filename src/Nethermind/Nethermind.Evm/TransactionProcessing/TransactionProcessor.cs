@@ -19,9 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Tracing;
-using static Nethermind.Core.Extensions.MemoryExtensions;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
-using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -172,11 +170,11 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionSubstate? substate;
             if (!tracer.IsTracingInstructions)
             {
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
             }
             else
             {
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas.FloorGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
             }
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
@@ -611,7 +609,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            long floorGas,
+            IntrinsicGas gas,
             in StackAccessTracker accessedItems,
             in long gasAvailable,
             in ExecutionEnvironment env,
@@ -649,8 +647,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     // If EOF header parsing or full container validation fails, transaction is considered valid and failing.
                     // Gas for initcode execution is not consumed, only intrinsic creation transaction costs are charged.
-                    gasConsumed = floorGas;
-                    goto Fail;
+                    gasConsumed = gas.MinimalGas;
+                    // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
+                    if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                        WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - gas.MinimalGas) * env.TxExecutionContext.GasPrice, spec);
+                    goto Complete;
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
@@ -762,7 +763,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
-                    env.TxExecutionContext.GasPrice, delegationRefunds, floorGas);
+                    env.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
                 goto Complete;
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
