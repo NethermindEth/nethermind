@@ -74,16 +74,11 @@ public class TestBlockValidator : IBlockValidator
     public bool ValidateWithdrawals(Block block, out string? error)
     {
         error = null;
+
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
-    {
-        error = null;
-        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-
-    public bool ValidateInclusionList(Block block, out string? error)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();

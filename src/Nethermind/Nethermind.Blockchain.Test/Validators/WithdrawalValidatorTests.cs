@@ -6,20 +6,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
 public class WithdrawalValidatorTests
 {
-    private readonly ITransactionProcessor _transactionProcessor = Substitute.For<ITransactionProcessor>();
-
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Not_null_withdrawals_are_invalid_pre_shanghai()
     {
