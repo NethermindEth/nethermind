@@ -73,6 +73,47 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public async Task Can_handle_forks_with_persisted_headers()
+    {
+        IBlockTree remoteBlockTree = CachedBlockTreeBuilder.OfLength(1000);
+        IBlockTree forkedBlockTree = Build.A.BlockTree().WithStateRoot(Keccak.Compute("1245")).OfChainLength(1000).TestObject;
+        BlockHeader pivotBlock = remoteBlockTree.FindHeader(999)!;
+
+        IBlockTree blockTree = Build.A.BlockTree().TestObject;
+        for (int i = 500; i < 1000; i++)
+        {
+            blockTree.Insert(forkedBlockTree.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+        }
+
+        ISyncReport syncReport = Substitute.For<ISyncReport>();
+        syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
+        syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+        HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: Substitute.For<ISyncPeerPool>(),
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = pivotBlock.Number.ToString(),
+                PivotHash = pivotBlock.Hash!.ToString(),
+                PivotTotalDifficulty = pivotBlock.TotalDifficulty.ToString()!,
+            },
+            syncReport: syncReport,
+            logManager: LimboLogs.Instance);
+
+        feed.InitializeFeed();
+        while (true)
+        {
+            var batch = await feed.PrepareRequest();
+            if (batch is null) break;
+            batch.Response = remoteBlockTree.FindHeaders(
+                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash!, batch.RequestSize, 0,
+                false)!;
+            feed.HandleResponse(batch);
+        }
+    }
+
+    [Test]
     public async Task When_next_header_hash_update_is_delayed_do_not_drop_peer()
     {
         BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;

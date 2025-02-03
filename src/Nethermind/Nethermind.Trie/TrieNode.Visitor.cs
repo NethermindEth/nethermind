@@ -21,8 +21,6 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int BranchesCount = 16;
-
         /// <summary>
         /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
         /// `nextToVisit`. Also, it assume the node is already resolved.
