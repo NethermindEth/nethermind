@@ -673,7 +673,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
 
-        OpCode[] opcodeMethods = _opcodeMethods;
+        ref nuint opcodeMethods = ref Unsafe.As<byte, nuint>(ref MemoryMarshal.GetArrayDataReference(_opcodeMethods));
         // Initialize program counter to the current state's value.
         // Entry point is not always 0 as we may be returning to code after a call.
         int programCounter = _vmState.ProgramCounter;
@@ -702,7 +702,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             else
             {
                 // Get the opcode delegate* from the opcode array
-                OpCode opcodeMethod = (OpCode)Unsafe.Add(ref Unsafe.As<byte, nuint>(ref MemoryMarshal.GetArrayDataReference(opcodeMethods)), (int)instruction);
+                OpCode opcodeMethod = (OpCode)Unsafe.Add(ref opcodeMethods, (int)instruction);
                 // Execute opcode delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                 // Stack, gas, and program counter may be modified by call (also instance variables on the vm)
                 exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
