@@ -29,7 +29,6 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.JsonRpc.Modules.Rpc;
 
 namespace Nethermind.Init.Steps;
 
