@@ -95,7 +95,7 @@ namespace Nethermind.Network
 
         public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
         {
-            NetworkNode networkNode = new(enode.ToString());
+            NetworkNode networkNode = new(enode);
             if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
             {
                 if (_logger.IsInfo)
@@ -138,20 +138,35 @@ namespace Nethermind.Network
             {
                 await SaveFileAsync();
             }
+
+            OnNodeRemoved(networkNode);
+
             return true;
         }
 
         public bool IsTrusted(Enode enode)
         {
-            NetworkNode node = new(enode.ToString());
-            return _nodes.ContainsKey(node.NodeId);
+            if (enode.PublicKey is null)
+            {
+                return false;
+            }
+            if (_nodes.TryGetValue(enode.PublicKey, out NetworkNode storedNode))
+            {
+                // Compare not only the public key, but also the host and port.
+                return storedNode.Host == enode.HostIp?.ToString() && storedNode.Port == enode.Port;
+            }
+            return false;
         }
 
+
+
         // ---- INodeSource requirement: event EventHandler<NodeEventArgs> ----
-        public event EventHandler<NodeEventArgs>? NodeRemoved
+        public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+        private void OnNodeRemoved(NetworkNode node)
         {
-            add { /* no-op */ }
-            remove { /* no-op*/ }
+            Node nodeForEvent = new Node(node);
+            NodeRemoved?.Invoke(this, new NodeEventArgs(nodeForEvent));
         }
 
 

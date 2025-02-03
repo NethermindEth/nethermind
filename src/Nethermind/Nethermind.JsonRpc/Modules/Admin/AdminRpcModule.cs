@@ -138,18 +138,26 @@ public class AdminRpcModule : IAdminRpcModule
     public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode)
     {
         Enode enodeObj = new(enode);
-        bool added = await _trustedNodesManager.AddAsync(enodeObj);
+
+        bool added = await _trustedNodesManager.AddAsync(enodeObj, updateFile: true);
+
+
+        if (!added && _trustedNodesManager.IsTrusted(enodeObj))
+        {
+                // The node is already trusted—this is acceptable.
+                added = true;
+            }
 
         if (added)
-        {
-            _peerPool.GetOrAdd(new NetworkNode(enodeObj.ToString()));
-
-            return ResultWrapper<bool>.Success(true);
-        }
+            {
+                // Add it to the peer pool so that the node is connectable.
+                _peerPool.GetOrAdd(new NetworkNode(enodeObj.ToString()));
+                return ResultWrapper<bool>.Success(true);
+            }
         else
-        {
-            return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
-        }
+            {
+                return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
+            }
     }
 
 
