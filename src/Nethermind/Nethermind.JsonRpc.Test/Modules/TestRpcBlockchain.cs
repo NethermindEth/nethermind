@@ -121,7 +121,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 (T)(await _blockchain.Build(specProvider, initialValues, true));
         }
 
-        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = @this => new EthRpcModule(
+        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
             @this.RpcConfig,
             @this.Bridge,
             @this.BlockFinder,

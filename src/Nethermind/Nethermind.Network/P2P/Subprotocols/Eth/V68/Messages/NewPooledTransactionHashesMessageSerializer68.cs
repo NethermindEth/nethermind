@@ -16,8 +16,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             NettyRlpStream rlpStream = new(byteBuffer);
             rlpStream.ReadSequenceLength();
             ArrayPoolList<byte> types = rlpStream.DecodeByteArrayPoolList();
-            ArrayPoolList<int> sizes = rlpStream.DecodeArrayPoolList(item => item.DecodeInt());
-            ArrayPoolList<Hash256> hashes = rlpStream.DecodeArrayPoolList(item => item.DecodeKeccak());
+            ArrayPoolList<int> sizes = rlpStream.DecodeArrayPoolList(static item => item.DecodeInt());
+            ArrayPoolList<Hash256> hashes = rlpStream.DecodeArrayPoolList(static item => item.DecodeKeccak());
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 

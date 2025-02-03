@@ -17,11 +17,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SyncLimits;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -74,6 +76,7 @@ public class FastHeadersSyncTests
 
     [Test]
     public async Task Can_handle_forks_with_persisted_headers()
+
     {
         IBlockTree remoteBlockTree = CachedBlockTreeBuilder.OfLength(1000);
         IBlockTree forkedBlockTree = Build.A.BlockTree().WithStateRoot(Keccak.Compute("1245")).OfChainLength(1000).TestObject;
@@ -461,7 +464,7 @@ public class FastHeadersSyncTests
         report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
         feed.InitializeFeed();
         using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
         using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
@@ -522,7 +525,7 @@ public class FastHeadersSyncTests
         ISyncReport report = Substitute.For<ISyncReport>();
         report.HeadersInQueue.Returns(new MeasuredProgress());
         report.FastBlocksHeaders.Returns(new MeasuredProgress());
-        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, new TestLogManager(LogLevel.Trace));
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
         feed.InitializeFeed();
 
         void FillBatch(HeadersSyncBatch batch)
@@ -555,6 +558,78 @@ public class FastHeadersSyncTests
         (await feed.PrepareRequest()).Should().Be(null);
 
         localBlockTree.LowestInsertedHeader?.Number.Should().Be(0);
+    }
+
+    [Test]
+    public async Task Limits_persisted_headers_dependency()
+    {
+        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        var pivotHeader = peerChain.FindHeader(700)!;
+        var syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = pivotHeader.Number.ToString(),
+            PivotHash = pivotHeader.Hash!.ToString(),
+            PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!,
+            FastHeadersMemoryBudget = (ulong)100.KB(),
+        };
+
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
+
+        // Insert some chain
+        for (int i = 300; i < 600; i++)
+        {
+            localBlockTree.Insert(peerChain.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+        }
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        ISyncReport report = Substitute.For<ISyncReport>();
+        report.HeadersInQueue.Returns(new MeasuredProgress());
+        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
+        feed.InitializeFeed();
+
+        (await feed.PrepareRequest()).Should().NotBe(null);
+        (await feed.PrepareRequest()).Should().Be(null);
+    }
+
+    [Test]
+    public async Task Can_use_persisted_header_without_total_difficulty()
+    {
+        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        var pivotHeader = peerChain.FindHeader(700)!;
+        var syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = pivotHeader.Number.ToString(),
+            PivotHash = pivotHeader.Hash!.ToString(),
+            PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!
+        };
+
+        IChainLevelInfoRepository levelInfoRepository = new ChainLevelInfoRepository(new TestMemDb());
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null)
+            .WithChainLevelInfoRepository(levelInfoRepository)
+            .WithSyncConfig(syncConfig).TestObject;
+
+        long firstCheckedHeader = pivotHeader.Number - GethSyncLimits.MaxHeaderFetch;
+        for (long i = firstCheckedHeader - 1; i <= firstCheckedHeader; i++)
+        {
+            BlockHeader header = peerChain.FindHeader(i)!;
+            header.TotalDifficulty = null;
+            localBlockTree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded).Should().Be(AddBlockResult.Added);
+        }
+        levelInfoRepository.Delete(firstCheckedHeader - 1);
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        ISyncReport report = Substitute.For<ISyncReport>();
+        report.HeadersInQueue.Returns(new MeasuredProgress());
+        report.FastBlocksHeaders.Returns(new MeasuredProgress());
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, LimboLogs.Instance);
+        feed.InitializeFeed();
+
+        (await feed.PrepareRequest()).Should().NotBe(null);
+        (await feed.PrepareRequest()).Should().NotBe(null);
+        (await feed.PrepareRequest()).Should().NotBe(null);
     }
 
     [Test]

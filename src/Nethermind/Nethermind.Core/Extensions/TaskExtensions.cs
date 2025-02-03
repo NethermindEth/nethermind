@@ -17,7 +17,7 @@ public static class TaskExtensions
 
         // TaskCanceledException is a derived type of OperationCanceledException
         return exception.InnerException is not OperationCanceledException
-            && exception.InnerExceptions.All(ex => ex is not OperationCanceledException);
+            && exception.InnerExceptions.All(static ex => ex is not OperationCanceledException);
     }
 
     public static bool HasCanceledException(this Task? task)
@@ -28,7 +28,7 @@ public static class TaskExtensions
 
         // TaskCanceledException is a derived type of OperationCanceledException
         return exception.InnerException is OperationCanceledException
-            || exception.InnerExceptions.Any(ex => ex is OperationCanceledException);
+            || exception.InnerExceptions.Any(static ex => ex is OperationCanceledException);
     }
 
     public static bool HasTimeoutException(this Task? task)
@@ -38,6 +38,6 @@ public static class TaskExtensions
         AggregateException exception = task.Exception.Flatten();
 
         return exception.InnerException is TimeoutException
-            || exception.InnerExceptions.Any(ex => ex is TimeoutException);
+            || exception.InnerExceptions.Any(static ex => ex is TimeoutException);
     }
 }
