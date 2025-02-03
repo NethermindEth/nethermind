@@ -16,6 +16,7 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x65ba8e4c;
     //TODO correct this timestamp!
     public const ulong PragueTimestamp = ulong.MaxValue - 2;
+    public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
 
     private ChiadoSpecProvider() { }
 
@@ -25,7 +26,7 @@ public class ChiadoSpecProvider : ISpecProvider
         {
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => Shanghai.Instance,
-            < PragueTimestamp => Cancun.Instance,
+            < PragueTimestamp => CancunGnosis.Instance,
             _ => PragueGnosis.Instance
         }
     };

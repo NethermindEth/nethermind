@@ -7,6 +7,6 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptsMigration
     {
-        Task<bool> Run(long blockNumber);
+        Task<bool> Run(long from, long to);
     }
 }

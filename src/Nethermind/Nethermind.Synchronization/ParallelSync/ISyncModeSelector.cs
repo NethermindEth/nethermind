@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core.Events;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -17,5 +20,16 @@ namespace Nethermind.Synchronization.ParallelSync
 
         void Stop();
         void Update();
+
+        async Task WaitUntilMode(Func<SyncMode, bool> predicate, CancellationToken cancellationToken)
+        {
+            if (predicate(Current)) return;
+
+            await Wait.ForEventCondition<SyncModeChangedEventArgs>(
+                cancellationToken,
+                (e) => Changed += e,
+                (e) => Changed -= e,
+                (arg) => predicate(arg.Current));
+        }
     }
 }

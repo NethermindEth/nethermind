@@ -4,16 +4,15 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
 public class HealingStorageTreeFactory : IStorageTreeFactory
 {
-    private ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
+    private IPathRecovery? _recovery;
 
-    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
+    public void InitializeNetwork(IPathRecovery recovery)
     {
         _recovery = recovery;
     }

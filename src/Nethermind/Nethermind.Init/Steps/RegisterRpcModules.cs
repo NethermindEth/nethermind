@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
@@ -131,8 +132,10 @@ public class RegisterRpcModules : IStep
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
-            _api.WorldStateManager,
+            _api.VerifyTrieStarter!,
+            _api.WorldStateManager.GlobalStateReader,
             _api.Enode,
+            _api.AdminEraService,
             initConfig.BaseDbPath,
             pruningTrigger,
             getFromApi.ChainSpec.Parameters);
@@ -170,15 +173,10 @@ public class RegisterRpcModules : IStep
 
         _api.JsonRpcLocalStats = jsonRpcLocalStats;
 
-        SubscriptionFactory subscriptionFactory = new(
-            _api.LogManager,
-            _api.BlockTree,
-            _api.TxPool,
-            _api.ReceiptMonitor,
-            _api.FilterStore,
-            _api.EthSyncingInfo!,
-            _api.SpecProvider,
-            rpcModuleProvider.Serializer);
+        SubscriptionFactory subscriptionFactory = new();
+
+        // Register the standard subscription types in the dictionary
+        subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo);
 
         _api.SubscriptionFactory = subscriptionFactory;
 
