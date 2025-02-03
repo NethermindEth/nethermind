@@ -673,50 +673,52 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
 
-        ref nuint opcodeMethods = ref Unsafe.As<byte, nuint>(ref MemoryMarshal.GetArrayDataReference(_opcodeMethods));
         // Initialize program counter to the current state's value.
         // Entry point is not always 0 as we may be returning to code after a call.
         int programCounter = _vmState.ProgramCounter;
-        // We use a while loop rather than a for loop as some
-        // opcodes can change the program counter (e.g. Push, Jump, etc)
-        while ((uint)programCounter < (uint)codeSection.Length)
+        fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            // We use a while loop rather than a for loop as some
+            // opcodes can change the program counter (e.g. Push, Jump, etc)
+            while ((uint)programCounter < (uint)codeSection.Length)
+            {
 #if DEBUG
-            debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+                debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            // Get the opcode at the current program counter
-            Instruction instruction = codeSection[programCounter];
+                // Get the opcode at the current program counter
+                Instruction instruction = codeSection[programCounter];
 
-            if (TCancelable.IsActive && _txTracer.IsCancelled) ThrowOperationCanceledException();
-            if (TTracingInstructions.IsActive)
-                StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
+                if (TCancelable.IsActive && _txTracer.IsCancelled) ThrowOperationCanceledException();
+                if (TTracingInstructions.IsActive)
+                    StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
 
-            // Advance the program counter one instruction
-            programCounter++;
+                // Advance the program counter one instruction
+                programCounter++;
 
-            if (Instruction.POP == instruction)
-            {
-                // Very commonly called opcode and minimal implementation, so we inline here
-                exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
+                if (Instruction.POP == instruction)
+                {
+                    // Very commonly called opcode and minimal implementation, so we inline here
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
+                }
+                else
+                {
+                    // Get the opcode delegate* from the opcode array
+                    OpCode opcodeMethod = opcodeMethods[(int)instruction];
+                    // Execute opcode delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+                    // Stack, gas, and program counter may be modified by call (also instance variables on the vm)
+                    exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
+                }
+
+                // Exit loop if run out of gas
+                if (gasAvailable < 0) goto OutOfGas;
+                // Exit loop if exception occurred
+                if (exceptionType != EvmExceptionType.None) break;
+                // Exit loop if returning data
+                if (_returnData is not null) break;
+
+                if (TTracingInstructions.IsActive)
+                    EndInstructionTrace(gasAvailable);
             }
-            else
-            {
-                // Get the opcode delegate* from the opcode array
-                OpCode opcodeMethod = (OpCode)Unsafe.Add(ref opcodeMethods, (int)instruction);
-                // Execute opcode delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                // Stack, gas, and program counter may be modified by call (also instance variables on the vm)
-                exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
-            }
-
-            // Exit loop if run out of gas
-            if (gasAvailable < 0) goto OutOfGas;
-            // Exit loop if exception occurred
-            if (exceptionType != EvmExceptionType.None) break;
-            // Exit loop if returning data
-            if (_returnData is not null) break;
-
-            if (TTracingInstructions.IsActive)
-                EndInstructionTrace(gasAvailable);
         }
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
