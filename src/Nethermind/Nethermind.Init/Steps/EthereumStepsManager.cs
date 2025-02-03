@@ -92,7 +92,13 @@ namespace Nethermind.Init.Steps
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                IEnumerable<StepWrapper> dependencies = stepInfo.Dependencies.Select(t => steps[t]);
+                IEnumerable<StepWrapper> dependencies = [];
+                foreach (Type type in stepInfo.Dependencies)
+                {
+                    if (!steps.ContainsKey(type))
+                        throw new StepDependencyException($"The dependent step {type.Name} for {stepInfo.StepType.Name} was not created.");
+                    dependencies = stepInfo.Dependencies.Select(t => steps[t]);
+                }
                 await stepWrapper.StartExecute(dependencies, cancellationToken);
 
                 if (_logger.IsDebug)
