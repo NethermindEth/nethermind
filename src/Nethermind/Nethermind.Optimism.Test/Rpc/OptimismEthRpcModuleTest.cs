@@ -183,6 +183,81 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
+    public async Task GetTransactionByBlockAndIndex_ReturnsCorrectTransactionType()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.Legacy)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+        OptimismTxReceipt receipt = new()
+        {
+            TxHash = tx.Hash!,
+            BlockHash = TestItem.KeccakB,
+        };
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithHash(TestItem.KeccakC)
+                .WithNumber(123)
+                .TestObject)
+            .WithTransactions(tx)
+            .TestObject;
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(block).Returns([receipt]);
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockFinder(blockFinder)
+            .WithReceiptFinder(receiptFinder)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        var expected = $$"""
+                         {
+                            "jsonrpc":"2.0",
+                            "result": {
+                                "type": "0x0",
+                                "from": "{{tx.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                "to": "0x0000000000000000000000000000000000000000",
+                                "value": "0x1",
+                                "gas": "0x5208",
+                                "gasPrice": "0x1",
+                                "input": "0x",
+                                "nonce": "0x0",
+                                "v": "0x0",
+                                "r": "0x0",
+                                "s": "0x0",
+                                "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
+                                "blockNumber": null,
+                                "transactionIndex": null
+                            },
+                            "id":67
+                         }
+                         """;
+        {
+            // By block hash
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
+            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        }
+        {
+            // By block number
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
+            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        }
+    }
+
+    [Test]
     public async Task GetTransactionByBlockAndIndex_IncludesDepositReceiptVersion()
     {
         Transaction tx = Build.A.Transaction
