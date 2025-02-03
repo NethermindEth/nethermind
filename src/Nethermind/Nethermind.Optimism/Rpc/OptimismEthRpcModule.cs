@@ -189,14 +189,16 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
         }
 
-        OptimismTxReceipt[] receipts = _receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray();
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
         var transactionModel = TransactionForRpc.FromTransaction(transaction, blockHash: block.Hash);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
-            OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash == transaction.Hash);
+            OptimismTxReceipt? receipt = _receiptFinder
+                .Get(block)
+                .Cast<OptimismTxReceipt>()
+                .FirstOrDefault(r => r.TxHash == transaction.Hash);
             depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
         }
 
@@ -218,15 +220,16 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
         }
 
-        OptimismTxReceipt[] receipts = _receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray();
-
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
         var transactionModel = TransactionForRpc.FromTransaction(transaction, blockHash: block.Hash);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
-            OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash == transaction.Hash);
+            OptimismTxReceipt? receipt = _receiptFinder
+                .Get(block)
+                .Cast<OptimismTxReceipt>()
+                .FirstOrDefault(r => r.TxHash == transaction.Hash);
             depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
         }
 
@@ -253,8 +256,6 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
         BlockForRpc result = new BlockForRpc(block, false, _specProvider);
 
-        OptimismTxReceipt[] receipts = _receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray();
-
         if (returnFullTransactionObjects)
         {
             _blockchainBridge.RecoverTxSenders(block);
@@ -267,7 +268,10 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                     txIndex: index);
                 if (transactionModel is DepositTransactionForRpc depositTx)
                 {
-                    var receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
+                    var receipt = _receiptFinder
+                        .Get(block)
+                        .Cast<OptimismTxReceipt>()
+                        .FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
                     depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
                 }
 
