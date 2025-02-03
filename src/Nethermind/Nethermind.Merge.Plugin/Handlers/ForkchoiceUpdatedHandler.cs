@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -34,57 +35,29 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <remarks>
 /// May initiate a new payload creation.
 /// </remarks>
-public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
+public class ForkchoiceUpdatedHandler(
+    IBlockTree blockTree,
+    IManualBlockFinalizationManager manualBlockFinalizationManager,
+    IPoSSwitcher poSSwitcher,
+    IPayloadPreparationService payloadPreparationService,
+    IBlockProcessingQueue processingQueue,
+    IBlockCacheService blockCacheService,
+    IInvalidChainTracker invalidChainTracker,
+    IMergeSyncController mergeSyncController,
+    IBeaconPivot beaconPivot,
+    IPeerRefresher peerRefresher,
+    ISpecProvider specProvider,
+    ISyncPeerPool syncPeerPool,
+    IWorldState globalWorldState,
+    ILogManager logManager,
+    ulong secondsPerSlot,
+    bool simulateBlockProduction = false)
+    : IForkchoiceUpdatedHandler
 {
-    protected readonly IBlockTree _blockTree;
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IPayloadPreparationService _payloadPreparationService;
-    private readonly IBlockProcessingQueue _processingQueue;
-    private readonly IBlockCacheService _blockCacheService;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly IMergeSyncController _mergeSyncController;
-    private readonly IBeaconPivot _beaconPivot;
-    private readonly ILogger _logger;
-    private readonly IPeerRefresher _peerRefresher;
-    private readonly ISpecProvider _specProvider;
-    private readonly bool _simulateBlockProduction;
-    private readonly ulong _secondsPerSlot;
-    private readonly ISyncPeerPool _syncPeerPool;
-
-    public ForkchoiceUpdatedHandler(
-        IBlockTree blockTree,
-        IManualBlockFinalizationManager manualBlockFinalizationManager,
-        IPoSSwitcher poSSwitcher,
-        IPayloadPreparationService payloadPreparationService,
-        IBlockProcessingQueue processingQueue,
-        IBlockCacheService blockCacheService,
-        IInvalidChainTracker invalidChainTracker,
-        IMergeSyncController mergeSyncController,
-        IBeaconPivot beaconPivot,
-        IPeerRefresher peerRefresher,
-        ISpecProvider specProvider,
-        ISyncPeerPool syncPeerPool,
-        ILogManager logManager,
-        ulong secondsPerSlot,
-        bool simulateBlockProduction = false)
-    {
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
-        _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        _payloadPreparationService = payloadPreparationService;
-        _processingQueue = processingQueue;
-        _blockCacheService = blockCacheService;
-        _invalidChainTracker = invalidChainTracker;
-        _mergeSyncController = mergeSyncController;
-        _beaconPivot = beaconPivot;
-        _peerRefresher = peerRefresher;
-        _specProvider = specProvider;
-        _syncPeerPool = syncPeerPool;
-        _simulateBlockProduction = simulateBlockProduction;
-        _secondsPerSlot = secondsPerSlot;
-        _logger = logManager.GetClassLogger();
-    }
+    protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -116,7 +89,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             default : // Don't boost priority if we are definitely syncing
             Thread.CurrentThread.BoostPriority();
 
-        if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
+        if (invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
             if (_logger.IsWarn) _logger.Warn($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
@@ -129,7 +102,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             BlockHeader? headBlockHeader = null;
 
-            if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
+            if (blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
             {
                 headBlockHeader = block.Header;
             }
@@ -137,7 +110,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             if (headBlockHeader is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
-                headBlockHeader = await _syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
+                headBlockHeader = await syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
             }
 
             if (headBlockHeader is not null)
@@ -185,7 +158,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (_beaconPivot.ShouldForceStartNewSync)
+            if (beaconPivot.ShouldForceStartNewSync)
             {
                 if (_logger.IsInfo) _logger.Info("Force starting new sync.");
 
@@ -199,23 +172,23 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 ReorgBeaconChainDuringSync(newHeadBlock!, blockInfo);
             }
 
-            int processingQueueCount = _processingQueue.Count;
+            int processingQueueCount = processingQueue.Count;
             if (processingQueueCount == 0)
             {
-                _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, finalizedBlockHash);
-                _blockCacheService.FinalizedHash = finalizedBlockHash;
-                _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
-                _mergeSyncController.StopBeaconModeControl();
+                peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, finalizedBlockHash);
+                blockCacheService.FinalizedHash = finalizedBlockHash;
+                blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+                mergeSyncController.StopBeaconModeControl();
 
                 // Debug as already output in Received ForkChoice
                 if (_logger.IsDebug) _logger.Debug($"Syncing beacon headers, Request: {requestStr}");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Processing {_processingQueue.Count} blocks, Request: {requestStr}");
+                if (_logger.IsInfo) _logger.Info($"Processing {processingQueue.Count} blocks, Request: {requestStr}");
             }
 
-            _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
+            beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
@@ -259,6 +232,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
+            globalWorldState.StateRoot = newHeadBlock.StateRoot!;
         }
 
         if (IsInconsistent(finalizedBlockHash))
@@ -308,11 +282,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         string? payloadId = null;
 
-        if (_simulateBlockProduction)
+        if (simulateBlockProduction)
         {
             payloadAttributes ??= new PayloadAttributes()
             {
-                Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
+                Timestamp = newHeadBlock.Timestamp + secondsPerSlot,
                 ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
                 PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
                 Withdrawals = [],
@@ -328,7 +302,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return errorResult;
             }
 
-            payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
+            payloadId = payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
@@ -338,7 +312,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private ResultWrapper<ForkchoiceUpdatedV1Result>? ValidateAttributes(PayloadAttributes? payloadAttributes, int version)
     {
         string? error = null;
-        return payloadAttributes?.Validate(_specProvider, version, out error) switch
+        return payloadAttributes?.Validate(specProvider, version, out error) switch
         {
             PayloadAttributesValidationResult.InvalidParams =>
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams),
@@ -352,11 +326,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, BlockHeader blockHeader, string requestStr)
     {
-        bool isSyncInitialized = _mergeSyncController.TryInitBeaconHeaderSync(blockHeader);
-        _beaconPivot.ProcessDestination = blockHeader;
-        _peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
-        _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-        _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+        bool isSyncInitialized = mergeSyncController.TryInitBeaconHeaderSync(blockHeader);
+        beaconPivot.ProcessDestination = blockHeader;
+        peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
+        blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+        blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
 
         if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
@@ -434,8 +408,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync or cache rebuilt");
         BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
-        _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_beaconPivot.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
-        _beaconPivot.ProcessDestination = newHeadBlock.Header;
+        _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(beaconPivot.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
+        beaconPivot.ProcessDestination = newHeadBlock.Header;
     }
 
     private BlockInfo[] GetBeaconChainBranch(Block newHeadBlock, BlockInfo newHeadBlockInfo)
