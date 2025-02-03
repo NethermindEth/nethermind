@@ -66,6 +66,6 @@ namespace Nethermind.Consensus.Validators
             error = null;
             return false;
         }
-    }
 
+    }
 }
