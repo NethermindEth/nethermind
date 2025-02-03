@@ -34,4 +34,25 @@ namespace Nethermind.Consensus.Processing
 
         public bool IsEmpty => Count == 0;
     }
+
+    public static class BlockProcessingQueueExtensions
+    {
+        public static void RunOnEmpty(this IBlockProcessingQueue queue, Action action)
+        {
+            if (queue.IsEmpty)
+            {
+                action();
+            }
+            else
+            {
+                EventHandler handler = null!;
+                handler = (_, _) =>
+                {
+                    action();
+                    queue.ProcessingQueueEmpty -= handler!;
+                };
+                queue.ProcessingQueueEmpty += handler;
+            }
+        }
+    }
 }
