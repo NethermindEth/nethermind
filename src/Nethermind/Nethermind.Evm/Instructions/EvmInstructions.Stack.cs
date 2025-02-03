@@ -16,6 +16,8 @@ internal sealed partial class EvmInstructions
     public interface IOpCount
     {
         abstract static int Count { get; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         virtual static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
@@ -24,10 +26,12 @@ internal sealed partial class EvmInstructions
     }
 
     public struct Op0 : IOpCount { public static int Count => 0; }
-    public struct Op1 : IOpCount 
+    public struct Op1 : IOpCount
     {
         const int Size = 1;
         public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
@@ -65,6 +69,8 @@ internal sealed partial class EvmInstructions
     {
         const int Size = 20;
         public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
@@ -95,6 +101,8 @@ internal sealed partial class EvmInstructions
     {
         const int Size = 32;
         public static int Count => Size;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
