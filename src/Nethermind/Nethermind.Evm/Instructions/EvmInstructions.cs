@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
+using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -489,7 +491,8 @@ internal unsafe sealed partial class EvmInstructions
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) return EvmExceptionType.OutOfGas;
 
         Span<byte> bytes = vmState.Memory.LoadSpan(in a, b);
-        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+        KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
+        stack.Push32Bytes(in Unsafe.As<ValueHash256, Vector256<byte>>(ref keccak));
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor
