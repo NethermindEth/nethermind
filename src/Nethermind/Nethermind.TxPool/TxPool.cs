@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -51,6 +52,8 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly DelegationCache _pendingDelegations = new();
+
 
         private readonly ILogger _logger;
 
@@ -120,7 +123,8 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            if (_blobTransactions.Count > 0)
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;
 
@@ -146,7 +150,8 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
-                new RecoverAuthorityFilter(ecdsa)
+                new RecoverAuthorityFilter(ecdsa),
+                new OnlyOneTxPerDelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -339,11 +344,6 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                if (blockTx.Type == TxType.SetCode)
-                {
-                    eip7702Txs++;
-                }
-
                 if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
@@ -444,6 +444,7 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
+                    AddPendingDelegations(tx);
                     // Clear proper snapshot
                     if (tx.SupportsBlobs)
                         _blobTransactionSnapshot = null;
@@ -453,6 +454,18 @@ namespace Nethermind.TxPool
             }
 
             return accepted;
+        }
+
+        private void AddPendingDelegations(Transaction tx)
+        {
+            if (tx.HasAuthorizationList)
+            {
+                foreach (var auth in tx.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
+                }
+            }
         }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
@@ -524,6 +537,7 @@ namespace Nethermind.TxPool
 
             if (removed is not null)
             {
+                RemovePendingDelegations(removed);
                 EvictedPending?.Invoke(this, new TxEventArgs(removed));
                 // transaction which was on last position in sorted TxPool and was deleted to give
                 // a place for a newly added tx (with higher priority) is now removed from hashCache
@@ -539,6 +553,18 @@ namespace Nethermind.TxPool
             Metrics.TransactionCount = _transactions.Count;
             Metrics.BlobTransactionCount = _blobTransactions.Count;
             return AcceptTxResult.Accepted;
+        }
+
+        private void RemovePendingDelegations(Transaction transaction)
+        {
+            if (transaction.HasAuthorizationList)
+            {
+                foreach (var auth in transaction.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.DecrementDelegationCount(auth.Authority!, auth.Nonce);
+                }
+            }
         }
 
         private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
@@ -679,6 +705,8 @@ namespace Nethermind.TxPool
             if (hasBeenRemoved)
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+
+                RemovePendingDelegations(transaction);
             }
 
             _broadcaster.StopBroadcast(hash);
@@ -798,6 +826,7 @@ namespace Nethermind.TxPool
             arrayPoolList.Add(address);
             _accountCache.RemoveAccounts(arrayPoolList);
         }
+
 
         private sealed class AccountCache : IAccountStateProvider
         {
@@ -936,3 +965,4 @@ Db usage:
         }
     }
 }
+
