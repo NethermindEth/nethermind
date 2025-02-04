@@ -82,6 +82,8 @@ public class OptimismEthRpcModuleTest
         TxReceipt receipt = new()
         {
             BlockHash = TestItem.KeccakB,
+            BlockNumber = 0x10,
+            Index = 0x20
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -117,8 +119,8 @@ public class OptimismEthRpcModuleTest
                                  "s": "0x0",
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
-                                 "blockNumber": null,
-                                 "transactionIndex": null
+                                 "blockNumber": "0x10",
+                                 "transactionIndex": "0x20"
                              },
                             "id":67
                          }
@@ -137,7 +139,9 @@ public class OptimismEthRpcModuleTest
         OptimismTxReceipt receipt = new()
         {
             BlockHash = TestItem.KeccakB,
-            DepositReceiptVersion = 0x20,
+            BlockNumber = 0x10,
+            Index = 0x20,
+            DepositReceiptVersion = 0x30,
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -170,11 +174,11 @@ public class OptimismEthRpcModuleTest
                                  "isSystemTx": false,
                                  "input": "0x",
                                  "nonce": "0x0",
-                                 "depositReceiptVersion": "0x20",
+                                 "depositReceiptVersion": "0x30",
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
-                                 "blockNumber": null,
-                                 "transactionIndex": null
+                                 "blockNumber": "0x10",
+                                 "transactionIndex": "0x20"
                              },
                             "id":67
                          }
@@ -265,19 +269,20 @@ public class OptimismEthRpcModuleTest
             .WithHash(TestItem.KeccakA)
             .WithSenderAddress(TestItem.AddressA)
             .TestObject;
-        OptimismTxReceipt receipt = new()
-        {
-            TxHash = tx.Hash!,
-            BlockHash = TestItem.KeccakB,
-            DepositReceiptVersion = 0x20,
-        };
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
-                .WithHash(TestItem.KeccakC)
                 .WithNumber(123)
                 .TestObject)
             .WithTransactions(tx)
             .TestObject;
+        OptimismTxReceipt receipt = new()
+        {
+            TxHash = tx.Hash!,
+            BlockHash = block.Hash!,
+            BlockNumber = 0x10,
+            Index = 0x20,
+            DepositReceiptVersion = 0x30,
+        };
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
@@ -312,11 +317,11 @@ public class OptimismEthRpcModuleTest
                                  "isSystemTx": false,
                                  "input": "0x",
                                  "nonce": "0x0",
-                                 "depositReceiptVersion": "0x20",
+                                 "depositReceiptVersion": "0x30",
                                  "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
-                                 "blockNumber": null,
-                                 "transactionIndex": null
+                                 "blockNumber": "0x10",
+                                 "transactionIndex": "0x20"
                              },
                             "id":67
                          }

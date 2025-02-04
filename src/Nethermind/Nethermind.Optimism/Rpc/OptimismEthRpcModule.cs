@@ -159,14 +159,14 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, _) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        var transactionModel = TransactionForRpc.FromTransaction(transaction, blockHash: receipt?.BlockHash);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: baseFee, chainId: _specProvider.ChainId);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
@@ -192,14 +192,14 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        var transactionModel = TransactionForRpc.FromTransaction(transaction, blockHash: block.Hash);
+        var receipt = _receiptFinder
+            .Get(block)
+            .FirstOrDefault(r => r.TxHash == transaction.Hash);
+
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: block.BaseFeePerGas, chainId: _specProvider.ChainId);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
-            OptimismTxReceipt? receipt = _receiptFinder
-                .Get(block)
-                .Cast<OptimismTxReceipt>()
-                .FirstOrDefault(r => r.TxHash == transaction.Hash);
-            depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+            depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
         }
 
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
