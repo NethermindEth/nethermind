@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
+using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 using Word = Vector256<byte>;
@@ -84,5 +87,89 @@ internal sealed partial class EvmInstructions
     public struct OpIsZero : IOpMath1Param
     {
         public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
+    }
+
+
+    /// <summary>
+    /// Implements the BYTE opcode.
+    /// Extracts a byte from a 256-bit word at the position specified by the stack.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionByte(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        // Pop the byte position and the 256-bit word.
+        if (!stack.PopUInt256(out UInt256 a))
+            goto StackUnderflow;
+        Span<byte> bytes = stack.PopWord256();
+
+        // If the position is out-of-range, push zero.
+        if (a >= BigInt32)
+        {
+            stack.PushZero();
+        }
+        else
+        {
+            int adjustedPosition = bytes.Length - 32 + (int)a;
+            if (adjustedPosition < 0)
+            {
+                stack.PushZero();
+            }
+            else
+            {
+                // Push the extracted byte.
+                stack.PushByte(bytes[adjustedPosition]);
+            }
+        }
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Implements the SIGNEXTEND opcode.
+    /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSignExtend(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.Low;
+
+        // Pop the index to determine which byte to use for sign extension.
+        if (!stack.PopUInt256(out UInt256 a))
+            goto StackUnderflow;
+        if (a >= BigInt32)
+        {
+            // If the index is out-of-range, no extension is needed.
+            if (!stack.EnsureDepth(1))
+                goto StackUnderflow;
+            return EvmExceptionType.None;
+        }
+
+        int position = 31 - (int)a;
+
+        // Peek at the 256-bit word without removing it.
+        Span<byte> bytes = stack.PeekWord256();
+        sbyte sign = (sbyte)bytes[position];
+
+        // Extend the sign by replacing higher-order bytes.
+        if (sign >= 0)
+        {
+            // Fill with zero bytes.
+            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+        }
+        else
+        {
+            // Fill with 0xFF bytes.
+            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+        }
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 }

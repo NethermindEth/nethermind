@@ -569,51 +569,24 @@ internal sealed partial class EvmInstructions
     }
 
     /// <summary>
-    /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
-    /// <para>
-    /// For cold storage accesses (or if not previously warmed up), a higher gas cost is applied. For warm accesses during SLOAD,
-    /// a lower cost is deducted.
-    /// </para>
+    /// Implements the CALLDATALOAD opcode.
+    /// Loads 32 bytes of call data starting from a position specified on the stack,
+    /// zero-padding if necessary.
     /// </summary>
-    /// <param name="gasAvailable">The remaining gas, passed by reference and reduced by the access cost.</param>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="storageCell">The target storage cell being accessed.</param>
-    /// <param name="storageAccessType">Indicates whether the access is for a load (SLOAD) or store (SSTORE) operation.</param>
-    /// <param name="spec">The release specification which governs gas metering and storage access rules.</param>
-    /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
-    internal static bool ChargeStorageAccessGas(
-        ref long gasAvailable,
-        VirtualMachine vm,
-        in StorageCell storageCell,
-        StorageAccessType storageAccessType,
-        IReleaseSpec spec)
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCallDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        EvmState vmState = vm.EvmState;
-        bool result = true;
+        gasAvailable -= GasCostOf.VeryLow;
 
-        // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
-        if (spec.UseHotAndColdStorage)
-        {
-            // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
-            ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
-            if (vm.TxTracer.IsTracingAccess)
-            {
-                accessTracker.WarmUp(in storageCell);
-            }
+        // Pop the offset from which to load call data.
+        if (!stack.PopUInt256(out UInt256 result))
+            goto StackUnderflow;
+        // Load 32 bytes from input data, applying zero padding as needed.
+        stack.PushBytes(vm.EvmState.Env.InputData.SliceWithZeroPadding(result, 32));
 
-            // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-            if (accessTracker.IsCold(in storageCell))
-            {
-                result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                accessTracker.WarmUp(in storageCell);
-            }
-            // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
-            else if (storageAccessType == StorageAccessType.SLOAD)
-            {
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-            }
-        }
-
-        return result;
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 }

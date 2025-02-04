@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -240,5 +242,64 @@ internal sealed partial class EvmInstructions
                 UInt256.One :
                 default;
         }
+    }
+
+    /// <summary>
+    /// Implements the EXP opcode to perform exponentiation.
+    /// The operation deducts gas based on the size of the exponent and computes the result.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack where the program counter is pushed.</param>
+    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the gas cost.</param>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
+    /// </returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExp(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        // Charge the fixed gas cost for exponentiation.
+        gasAvailable -= GasCostOf.Exp;
+
+        // Pop the base value from the stack.
+        if (!stack.PopUInt256(out UInt256 a))
+            goto StackUnderflow;
+
+        // Pop the exponent as a 256-bit word.
+        Span<byte> bytes = stack.PopWord256();
+
+        // Determine the effective byte-length of the exponent.
+        int leadingZeros = bytes.LeadingZerosCount();
+        if (leadingZeros == 32)
+        {
+            // Exponent is zero, so the result is 1.
+            stack.PushOne();
+        }
+        else
+        {
+            int expSize = 32 - leadingZeros;
+            // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
+            gasAvailable -= vm.Spec.GetExpByteCost() * expSize;
+
+            if (a.IsZero)
+            {
+                stack.PushZero();
+            }
+            else if (a.IsOne)
+            {
+                stack.PushOne();
+            }
+            else
+            {
+                // Perform exponentiation and push the 256-bit result onto the stack.
+                UInt256.Exp(a, new UInt256(bytes, true), out UInt256 result);
+                stack.PushUInt256(in result);
+            }
+        }
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 }

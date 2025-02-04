@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.State;
-using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
+using Nethermind.Evm.Precompiles;
 
 internal unsafe sealed partial class EvmInstructions
 {
@@ -311,197 +306,114 @@ internal unsafe sealed partial class EvmInstructions
     }
 
     /// <summary>
-    /// Implements the EXP opcode to perform exponentiation.
-    /// The operation deducts gas based on the size of the exponent and computes the result.
+    /// Charges gas for accessing an account, including potential delegation lookups.
+    /// This method ensures that both the requested account and its delegated account (if any) are properly charged.
     /// </summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    /// <param name="gasAvailable">Reference to the available gas which will be updated.</param>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="address">The target account address.</param>
+    /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
+    /// <returns>True if gas was successfully charged; otherwise false.</returns>
+    private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
-        // Charge the fixed gas cost for exponentiation.
-        gasAvailable -= GasCostOf.Exp;
-
-        // Pop the base value from the stack.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
-
-        // Pop the exponent as a 256-bit word.
-        Span<byte> bytes = stack.PopWord256();
-
-        // Determine the effective byte-length of the exponent.
-        int leadingZeros = bytes.LeadingZerosCount();
-        if (leadingZeros == 32)
+        IReleaseSpec spec = vm.Spec;
+        if (!spec.UseHotAndColdStorage)
         {
-            // Exponent is zero, so the result is 1.
-            stack.PushOne();
+            // No extra cost if hot/cold storage is not used.
+            return true;
         }
-        else
-        {
-            int expSize = 32 - leadingZeros;
-            // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            gasAvailable -= vm.Spec.GetExpByteCost() * expSize;
-
-            if (a.IsZero)
-            {
-                stack.PushZero();
-            }
-            else if (a.IsOne)
-            {
-                stack.PushOne();
-            }
-            else
-            {
-                // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(a, new UInt256(bytes, true), out UInt256 result);
-                stack.PushUInt256(in result);
-            }
-        }
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm);
+        return notOutOfGas
+               && (!vm.EvmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(vm.WorldState, address, spec, out Address delegated)
+                   // Charge additional gas for the delegated account if it exists.
+                   || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm));
     }
 
     /// <summary>
-    /// Implements the BYTE opcode.
-    /// Extracts a byte from a 256-bit word at the position specified by the stack.
+    /// Charges gas for accessing an account based on its storage state (cold vs. warm).
+    /// Precompiles are treated as exceptions to the cold/warm gas charge.
     /// </summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    /// <param name="gasAvailable">Reference to the available gas which will be updated.</param>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="address">The target account address.</param>
+    /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
+    /// <returns>True if the gas charge was successful; otherwise false.</returns>
+    public static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
-
-        // If the position is out-of-range, push zero.
-        if (a >= BigInt32)
+        bool result = true;
+        IReleaseSpec spec = vm.Spec;
+        if (spec.UseHotAndColdStorage)
         {
-            stack.PushZero();
-        }
-        else
-        {
-            int adjustedPosition = bytes.Length - 32 + (int)a;
-            if (adjustedPosition < 0)
+            EvmState vmState = vm.EvmState;
+            if (vm.TxTracer.IsTracingAccess)
             {
-                stack.PushZero();
+                // Ensure that tracing simulates access-list behavior.
+                vmState.AccessTracker.WarmUp(address);
             }
-            else
+
+            // If the account is cold (and not a precompile), charge the cold access cost.
+            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
             {
-                // Push the extracted byte.
-                stack.PushByte(bytes[adjustedPosition]);
+                result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                vmState.AccessTracker.WarmUp(address);
+            }
+            else if (chargeForWarm)
+            {
+                // Otherwise, if warm access should be charged, apply the warm read cost.
+                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
             }
         }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return result;
     }
 
     /// <summary>
-    /// Implements the SIGNEXTEND opcode.
-    /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
+    /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
+    /// <para>
+    /// For cold storage accesses (or if not previously warmed up), a higher gas cost is applied. For warm accesses during SLOAD,
+    /// a lower cost is deducted.
+    /// </para>
     /// </summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    /// <param name="gasAvailable">The remaining gas, passed by reference and reduced by the access cost.</param>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="storageCell">The target storage cell being accessed.</param>
+    /// <param name="storageAccessType">Indicates whether the access is for a load (SLOAD) or store (SSTORE) operation.</param>
+    /// <param name="spec">The release specification which governs gas metering and storage access rules.</param>
+    /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
+    internal static bool ChargeStorageAccessGas(
+        ref long gasAvailable,
+        VirtualMachine vm,
+        in StorageCell storageCell,
+        StorageAccessType storageAccessType,
+        IReleaseSpec spec)
     {
-        gasAvailable -= GasCostOf.Low;
-
-        // Pop the index to determine which byte to use for sign extension.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
-        if (a >= BigInt32)
-        {
-            // If the index is out-of-range, no extension is needed.
-            if (!stack.EnsureDepth(1))
-                goto StackUnderflow;
-            return EvmExceptionType.None;
-        }
-
-        int position = 31 - (int)a;
-
-        // Peek at the 256-bit word without removing it.
-        Span<byte> bytes = stack.PeekWord256();
-        sbyte sign = (sbyte)bytes[position];
-
-        // Extend the sign by replacing higher-order bytes.
-        if (sign >= 0)
-        {
-            // Fill with zero bytes.
-            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
-        }
-        else
-        {
-            // Fill with 0xFF bytes.
-            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
-        }
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    }
-
-    /// <summary>
-    /// Computes the Keccak-256 hash of a specified memory region.
-    /// Pops a memory offset and length from the stack, charges gas based on the data size,
-    /// and pushes the resulting 256-bit hash onto the stack.
-    /// </summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-    {
-        // Ensure two 256-bit words are available (memory offset and length).
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b))
-            goto StackUnderflow;
-
-        // Deduct gas: base cost plus additional cost per 32-byte word.
-        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b, out bool outOfGas);
-        if (outOfGas)
-            goto OutOfGas;
-
         EvmState vmState = vm.EvmState;
-        // Charge gas for any required memory expansion.
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b))
-            goto OutOfGas;
+        bool result = true;
 
-        // Load the target memory region.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in a, b);
-        // Compute the Keccak-256 hash.
-        KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
-        // Push the 256-bit hash result onto the stack.
-        stack.Push32Bytes(in Unsafe.As<ValueHash256, Vector256<byte>>(ref keccak));
+        // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
+        if (spec.UseHotAndColdStorage)
+        {
+            // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
+            ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
+            if (vm.TxTracer.IsTracingAccess)
+            {
+                accessTracker.WarmUp(in storageCell);
+            }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    }
+            // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
+            if (accessTracker.IsCold(in storageCell))
+            {
+                result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
+                accessTracker.WarmUp(in storageCell);
+            }
+            // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
+            else if (storageAccessType == StorageAccessType.SLOAD)
+            {
+                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+            }
+        }
 
-    /// <summary>
-    /// Implements the CALLDATALOAD opcode.
-    /// Loads 32 bytes of call data starting from a position specified on the stack,
-    /// zero-padding if necessary.
-    /// </summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        // Pop the offset from which to load call data.
-        if (!stack.PopUInt256(out UInt256 result))
-            goto StackUnderflow;
-        // Load 32 bytes from input data, applying zero padding as needed.
-        stack.PushBytes(vm.EvmState.Env.InputData.SliceWithZeroPadding(result, 32));
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return result;
     }
 
     /// <summary>
