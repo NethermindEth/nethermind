@@ -439,6 +439,31 @@ internal sealed partial class EvmInstructions
     }
 
     /// <summary>
+    /// Implements the PREVRANDAO opcode.
+    /// Pushes the previous random value (post-merge) or block difficulty (pre-merge) onto the stack.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionPrevRandao(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        // Charge the base gas cost for this opcode.
+        gasAvailable -= GasCostOf.Base;
+        BlockHeader header = vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header;
+
+        // Use the random value if post-merge; otherwise, use block difficulty.
+        if (header.IsPostMerge)
+        {
+            stack.PushBytes(header.Random.Bytes);
+        }
+        else
+        {
+            UInt256 result = header.Difficulty;
+            stack.PushUInt256(in result);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
     /// Charges gas for accessing an account, including potential delegation lookups.
     /// This method ensures that both the requested account and its delegated account (if any) are properly charged.
     /// </summary>
