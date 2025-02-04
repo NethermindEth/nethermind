@@ -22,6 +22,11 @@ namespace Nethermind.TxPool.Filters
             if (!spec.IsEip7702Enabled)
                 return AcceptTxResult.Accepted;
 
+            if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
+            {
+                return AcceptTxResult.PendingDelegation;
+            }
+
             if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
                 return AcceptTxResult.PendingDelegation;
 
@@ -34,6 +39,17 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.MoreThanOneTxPerDelegatedAccount;
             }
             return AcceptTxResult.Accepted;
+        }
+        private bool AuthorityHasPendingTx(AuthorizationTuple[] authorizations)
+        {
+            foreach (AuthorizationTuple authorization in authorizations)
+            {
+                if (!standardPool.BucketEmptyExcept(authorization.Authority!, (t) => t.Nonce == authorization.Nonce)
+                    || !blobPool.BucketEmptyExcept(authorization.Authority!, (t) => t.Nonce == authorization.Nonce))
+                {
+
+                }
+            }
         }
     }
 }
