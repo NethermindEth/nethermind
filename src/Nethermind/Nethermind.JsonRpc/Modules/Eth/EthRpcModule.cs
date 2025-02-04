@@ -394,7 +394,7 @@ public partial class EthRpcModule(
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee, specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee, _specProvider.ChainId);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
@@ -421,7 +421,7 @@ public partial class EthRpcModule(
         {
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, chainId: specProvider.ChainId);
+            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, chainId: _specProvider.ChainId);
             transactionsModels[i].BlockHash = Keccak.Zero;
         }
 
@@ -470,7 +470,7 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas, specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas, _specProvider.ChainId);
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
     }
 
