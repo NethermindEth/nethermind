@@ -25,7 +25,7 @@ namespace Nethermind.TxPool.Filters
             if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
                 return AcceptTxResult.PendingDelegation;
 
-            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
+            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, spec, out _))
                 return AcceptTxResult.Accepted;
             //Transactios from the same source can only be either blob transactions or other type 
             if (tx.SupportsBlobs ? !blobPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce)
