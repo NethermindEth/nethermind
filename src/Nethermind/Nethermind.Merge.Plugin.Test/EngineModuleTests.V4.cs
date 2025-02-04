@@ -216,7 +216,7 @@ public partial class EngineModuleTests
         var response = await rpc.engine_newPayloadV4(
                 executionPayload,
                 [],
-                TestBlock.ParentBeaconBlockRoot, 
+                TestBlock.ParentBeaconBlockRoot,
                 executionRequests: [Bytes.FromHexString("0x0001"), Bytes.FromHexString("0x0101"), Bytes.FromHexString("0x0101")]
         );
 
@@ -226,7 +226,7 @@ public partial class EngineModuleTests
         response = await rpc.engine_newPayloadV4(
                 executionPayload,
                 [],
-                TestBlock.ParentBeaconBlockRoot, 
+                TestBlock.ParentBeaconBlockRoot,
                 executionRequests: [Bytes.FromHexString("0x0001"), Bytes.FromHexString("0x01"), Bytes.FromHexString("0x0101")]
         );
 
