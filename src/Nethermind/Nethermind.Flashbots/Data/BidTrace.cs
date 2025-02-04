@@ -7,23 +7,50 @@ using Nethermind.Int256;
 
 namespace Nethermind.Flashbots.Data;
 
-public class BidTrace(
-    ulong slot,
-    Hash256 blockHash,
-    PublicKey builderPublicKey,
-    PublicKey proposerPublicKey,
-    Address proposerFeeRecipient,
-    long gasLimit,
-    long gasUsed,
-    UInt256 value)
+public class BidTrace
 {
-    public ulong Slot { get; } = slot;
-    public required Hash256 ParentHash { get; set; }
-    public Hash256 BlockHash { get; } = blockHash;
-    public PublicKey BuilderPublicKey { get; } = builderPublicKey;
-    public PublicKey ProposerPublicKey { get; } = proposerPublicKey;
-    public Address ProposerFeeRecipient { get; } = proposerFeeRecipient;
-    public long GasLimit { get; } = gasLimit;
-    public long GasUsed { get; } = gasUsed;
-    public UInt256 Value { get; } = value;
+    public ulong Slot { get; }
+    public Hash256 ParentHash { get; }
+    public Hash256 BlockHash { get; }
+    public PublicKey BuilderPublicKey { get; }
+    public PublicKey ProposerPublicKey { get; }
+    public Address ProposerFeeRecipient { get; }
+    public long GasLimit { get; }
+    public long GasUsed { get; }
+    public UInt256 Value { get; }
+
+    public BidTrace(
+        ulong slot,
+        Hash256 parentHash,
+        Hash256 blockHash,
+        PublicKey builderPublicKey,
+        PublicKey proposerPublicKey,
+        Address proposerFeeRecipient,
+        long gasLimit,
+        long gasUsed,
+        UInt256 value)
+    {
+        Slot = slot;
+        ParentHash = parentHash;
+        BlockHash = blockHash;
+        BuilderPublicKey = builderPublicKey;
+        ProposerPublicKey = proposerPublicKey;
+        ProposerFeeRecipient = proposerFeeRecipient;
+        GasLimit = gasLimit;
+        GasUsed = gasUsed;
+        Value = value;
+    }
+
+    // public BidTrace(Message message) : this(
+    //     message.Slot,
+    //     message.ParentHash,
+    //     message.BlockHash,
+    //     message.BuilderPublicKey,
+    //     message.ProposerPublicKey,
+    //     message.ProposerFeeRecipient,
+    //     message.GasLimit,
+    //     message.GasUsed,
+    //     message.Value)
+    // {
+    // }
 }
