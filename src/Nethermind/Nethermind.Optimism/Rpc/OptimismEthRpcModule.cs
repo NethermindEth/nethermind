@@ -175,9 +175,9 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
-    public override ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
+    protected override ResultWrapper<TransactionForRpc> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError || searchResult.Object is null)
         {
             return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
@@ -202,40 +202,6 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
         }
 
-        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
-    }
-
-    public override ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
-    {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-
-        if (searchResult.IsError)
-        {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
-        }
-
-        Block? block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
-        {
-            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
-        }
-
-        Transaction transaction = block.Transactions[(int)positionIndex];
-        RecoverTxSenderIfNeeded(transaction);
-
-        var transactionModel = TransactionForRpc.FromTransaction(transaction, blockHash: block.Hash);
-        if (transactionModel is DepositTransactionForRpc depositTx)
-        {
-            OptimismTxReceipt? receipt = _receiptFinder
-                .Get(block)
-                .Cast<OptimismTxReceipt>()
-                .FirstOrDefault(r => r.TxHash == transaction.Hash);
-            depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
-        }
-
-        if (_logger.IsDebug)
-            _logger.Debug(
-                $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
     }
 
