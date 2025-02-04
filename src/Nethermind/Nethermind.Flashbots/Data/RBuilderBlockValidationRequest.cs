@@ -13,6 +13,7 @@ public class RBuilderBlockValidationRequest
         Message message,
         RExecutionPayloadV3 execution_payload,
         BlobsBundleV1 blobs_bundle,
+        byte[] signature,
         long registered_gas_limit,
         Hash256 withdrawals_root,
         Hash256 parent_beacon_block_root)
@@ -20,6 +21,7 @@ public class RBuilderBlockValidationRequest
         this.message = message;
         this.execution_payload = execution_payload;
         this.blobs_bundle = blobs_bundle;
+        this.signature = signature;
         this.registered_gas_limit = registered_gas_limit;
         this.withdrawals_root = withdrawals_root;
         this.parent_beacon_block_root = parent_beacon_block_root;
@@ -33,6 +35,9 @@ public class RBuilderBlockValidationRequest
 
     [JsonRequired]
     public BlobsBundleV1 blobs_bundle { get; set; }
+
+    [JsonRequired]
+    public byte[] signature { get; set; }
 
     [JsonRequired]
     public long registered_gas_limit { get; set; }

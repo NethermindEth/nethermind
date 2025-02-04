@@ -30,7 +30,8 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
             new SubmitBlockRequest(
                 executionPayload,
                 @params.blobs_bundle,
-                @params.message.ToBidTrace()
+                @params.message.ToBidTrace(),
+                @params.signature
             )
         );
         return _validateSubmissionHandler.ValidateSubmission(builderBlockValidationRequest);
