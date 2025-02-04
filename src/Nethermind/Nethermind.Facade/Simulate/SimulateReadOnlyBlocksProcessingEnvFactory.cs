@@ -52,7 +52,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             editableDbProvider.BlockInfosDb,
             editableDbProvider.MetadataDb,
             badBlockStore,
-            new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
+            new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb, logManager),
             specProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),

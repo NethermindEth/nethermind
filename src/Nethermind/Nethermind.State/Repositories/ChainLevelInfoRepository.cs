@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Linq;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Repositories
@@ -16,11 +20,12 @@ namespace Nethermind.State.Repositories
 
         private readonly object _writeLock = new();
         private readonly ClockCache<long, ChainLevelInfo> _blockInfoCache = new(CacheSize);
-
+        private readonly ILogger? _logger;
         private readonly IDb _blockInfoDb;
 
-        public ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb)
+        public ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb, ILogManager? logManager = null)
         {
+            _logger = logManager?.GetClassLogger();
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
         }
 
@@ -48,6 +53,17 @@ namespace Nethermind.State.Repositories
 
         public void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null)
         {
+            _logger?.Info($"STORE {number} {new EthereumJsonSerializer().Serialize(new
+            {
+                BeaconMainChainBlock = level.BeaconMainChainBlock?.ToString(),
+                level.HasBeaconBlocks,
+                level.HasNonBeaconBlocks,
+                level.HasBlockOnMainChain,
+                MainChainBlock = level.MainChainBlock?.ToString(),
+                BlockInfos = level.BlockInfos.Select(x => x.ToString()),
+                StackTrace = new StackTrace().ToString(),
+            })}");
+
             void LocalPersistLevel()
             {
                 _blockInfoCache.Set(number, level);

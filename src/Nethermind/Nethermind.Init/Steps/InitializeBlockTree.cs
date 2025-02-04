@@ -48,7 +48,7 @@ namespace Nethermind.Init.Steps
             _get.DisposeStack.Push(bloomStorage);
 
             IChainLevelInfoRepository chainLevelInfoRepository =
-                _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
+                _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb, _get.LogManager);
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
