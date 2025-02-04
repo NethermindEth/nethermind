@@ -151,6 +151,31 @@ public class TreePathTests
         if (expectedResult == 1) path1.CompareToTruncated(path2, truncateLength).Should().BeGreaterThan(0);
     }
 
+    [TestCase("0000", "0000", true)]
+    [TestCase("0001", "0000", false)]
+    [TestCase("0001", "00", true)]
+    [TestCase("0001", "", true)]
+    [TestCase("0101", "1", true)]
+    [TestCase("0101", "0", false)]
+    public void TestStartsWith(string nibbleHex1, string nibbleHex2, bool startsWith)
+    {
+        byte[] nib1 = Bytes.FromHexString(nibbleHex1);
+        TreePath path1 = TreePath.FromNibble(nib1);
+        TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex2));
+        path1.StartsWith(path2).Should().Be(startsWith);
+    }
+
+    [TestCase("0000", 1, 0, "0000")]
+    [TestCase("0000", 1, 1, "000001")]
+    [TestCase("0000", 1, 6, "0000010101010101")]
+    public void TestAppend(string nibbleHex1, int nib, int count, string expectedHex)
+    {
+        TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
+        TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(expectedHex));
+
+        path1.Append(nib, count).Should().Be(path2);
+    }
+
     [TestCase]
     public void TestScopedAppend()
     {

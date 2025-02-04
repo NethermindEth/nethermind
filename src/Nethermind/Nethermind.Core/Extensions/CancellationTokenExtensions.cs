@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Utils;
 
 namespace Nethermind.Core.Extensions
 {
@@ -53,6 +54,14 @@ namespace Nethermind.Core.Extensions
         {
             cts.CancelAfter(delay);
             return cts;
+        }
+
+        public static AutoCancelTokenSource CreateChildTokenSource(this CancellationToken parentToken, TimeSpan delay = default)
+        {
+            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
+            if (delay != TimeSpan.Zero) cts.CancelAfter(delay);
+
+            return new AutoCancelTokenSource(cts);
         }
     }
 }
