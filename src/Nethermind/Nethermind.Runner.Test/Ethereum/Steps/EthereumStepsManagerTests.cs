@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-
+            source.Cancel();
             try
             {
                 await stepsManager.InitializeAll(source.Token);
@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    [RunnerStepDependencies(typeof(StepC))]
+    [RunnerStepDependencies(typeof(StepCStandard))]
     public class StepB : IStep
     {
         public Task Execute(CancellationToken cancellationToken)

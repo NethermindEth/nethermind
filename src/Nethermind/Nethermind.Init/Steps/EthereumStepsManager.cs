@@ -163,11 +163,11 @@ namespace Nethermind.Init.Steps
                 try
                 {
                     await step.Execute(cancellationToken);
-                    _taskCompletedSource.SetResult();
+                    _taskCompletedSource.TrySetResult();
                 }
                 catch
                 {
-                    _taskCompletedSource.SetCanceled();
+                    _taskCompletedSource.TrySetCanceled();
                     throw;
                 }
             }
