@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -97,12 +99,20 @@ namespace Nethermind.Init.Steps
                     // Keccak calculation is cpu bound so only use physical cores rather than logical cores
                     var physicalCores = Math.Max(1, RuntimeInformation.GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount);
                     PaprikaStateFactory paprika = new(statePath, paprikaConfig, physicalCores, _api.LogManager);
+
                     _api.RegisterForBlockFinalized((_, e) =>
                     {
-                        foreach (BlockHeader finalized in e.FinalizedBlocks)
-                        {
-                            paprika.Finalize(finalized.StateRoot!, finalized.Number!);
-                        }
+                        IReadOnlyList<BlockHeader> finalized = e.FinalizedBlocks;
+
+                        if (finalized.Count == 0)
+                            return;
+
+                        // select the one with the highest number
+                        BlockHeader? selected = finalized.Count == 1 ? finalized[0] : finalized.MaxBy(block => block.Number);
+
+                        paprika.Finalize(selected!.StateRoot!, selected.Number);
+
+
                     });
 
                     _api.DisposeStack.Push(paprika);
