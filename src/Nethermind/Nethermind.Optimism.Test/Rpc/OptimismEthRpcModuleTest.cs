@@ -194,18 +194,20 @@ public class OptimismEthRpcModuleTest
             .WithHash(TestItem.KeccakA)
             .WithSenderAddress(TestItem.AddressA)
             .TestObject;
-        OptimismTxReceipt receipt = new()
-        {
-            TxHash = tx.Hash!,
-            BlockHash = TestItem.KeccakB,
-        };
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
-                .WithHash(TestItem.KeccakC)
-                .WithNumber(123)
+                .WithNumber(0x10)
                 .TestObject)
             .WithTransactions(tx)
             .TestObject;
+        OptimismTxReceipt receipt = new()
+        {
+            TxHash = tx.Hash!,
+            BlockHash = block.Hash!,
+            BlockNumber = block.Number,
+            Index = 0x20,
+            DepositReceiptVersion = 0x30,
+        };
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
@@ -243,8 +245,8 @@ public class OptimismEthRpcModuleTest
                                 "s": "0x0",
                                 "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                 "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
-                                "blockNumber": null,
-                                "transactionIndex": null
+                                "blockNumber": "0x10",
+                                "transactionIndex": "0x20"
                             },
                             "id":67
                          }
@@ -271,7 +273,7 @@ public class OptimismEthRpcModuleTest
             .TestObject;
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
-                .WithNumber(123)
+                .WithNumber(0x10)
                 .TestObject)
             .WithTransactions(tx)
             .TestObject;
@@ -279,7 +281,7 @@ public class OptimismEthRpcModuleTest
         {
             TxHash = tx.Hash!,
             BlockHash = block.Hash!,
-            BlockNumber = 0x10,
+            BlockNumber = block.Number,
             Index = 0x20,
             DepositReceiptVersion = 0x30,
         };
