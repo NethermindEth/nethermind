@@ -105,7 +105,7 @@ internal static class FullAOT
             contractBuilder,
             "MoveNext",
             MethodAttributes.Public | MethodAttributes.Virtual,
-            doVerify: false);
+            doVerify: true);
 
         var locals = new Locals<MoveNextDelegate>(method);
         var opEmitter = new FullAotOpcodeEmitter<MoveNextDelegate>();

@@ -1892,6 +1892,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
 
                             using Local accessTrackerLocal = method.DeclareLocal<StackAccessTracker>();
                             method.Call(typeof(EvmState).GetProperty(nameof(EvmState.AccessTracker), BindingFlags.Instance | BindingFlags.Public).GetGetMethod());
+                            method.LoadObject<StackAccessTracker>();
                             method.StoreLocal(accessTrackerLocal);
 
                             method.LoadLocalAddress(accessTrackerLocal);
