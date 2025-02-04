@@ -259,6 +259,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         if (returnFullTransactionObjects)
         {
             _blockchainBridge.RecoverTxSenders(block);
+            OptimismTxReceipt[] receipts = _receiptFinder.Get(block).Cast<OptimismTxReceipt>().ToArray();
             result.Transactions = result.Transactions.Select((hash, index) =>
             {
                 var transactionModel = TransactionForRpc.FromTransaction(
@@ -268,10 +269,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                     txIndex: index);
                 if (transactionModel is DepositTransactionForRpc depositTx)
                 {
-                    var receipt = _receiptFinder
-                        .Get(block)
-                        .Cast<OptimismTxReceipt>()
-                        .FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
+                    OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false);
                     depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
                 }
 
