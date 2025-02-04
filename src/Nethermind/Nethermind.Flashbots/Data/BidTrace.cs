@@ -40,17 +40,4 @@ public class BidTrace
         GasUsed = gasUsed;
         Value = value;
     }
-
-    // public BidTrace(Message message) : this(
-    //     message.Slot,
-    //     message.ParentHash,
-    //     message.BlockHash,
-    //     message.BuilderPublicKey,
-    //     message.ProposerPublicKey,
-    //     message.ProposerFeeRecipient,
-    //     message.GasLimit,
-    //     message.GasUsed,
-    //     message.Value)
-    // {
-    // }
 }
