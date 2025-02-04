@@ -65,13 +65,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
                 if (i > 0 && ExecutionRequests[i][0] <= ExecutionRequests[i - 1][0])
                 {
-                    error = "Execution requests must be ordered by request_type in ascending order";
-                    return ValidationResult.Fail;
-                }
-
-                if (ExecutionRequests.Skip(i + 1).Any(req => req != null && req[0] == ExecutionRequests[i][0]))
-                {
-                    error = "Execution requests must not contain duplicate request_type";
+                    error = "Execution requests must not contain duplicates and be ordered by request_type in ascending order";
                     return ValidationResult.Fail;
                 }
             }

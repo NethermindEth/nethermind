@@ -200,6 +200,39 @@ public partial class EngineModuleTests
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
 
+    [Test]
+    public async Task NewPayloadV4_reject_payload_with_bad_execution_requests()
+    {
+        ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
+            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+
+        Block TestBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1).TestObject;
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
+
+        // must reject if execution requests types are not in ascending order
+        var response = await rpc.engine_newPayloadV4(
+                executionPayload,
+                [],
+                TestBlock.ParentBeaconBlockRoot, 
+                executionRequests: [Bytes.FromHexString("0x0001"), Bytes.FromHexString("0x0101"), Bytes.FromHexString("0x0101")]
+        );
+
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+
+        //must reject if one of the execution requests size is <= 1 byte
+        response = await rpc.engine_newPayloadV4(
+                executionPayload,
+                [],
+                TestBlock.ParentBeaconBlockRoot, 
+                executionRequests: [Bytes.FromHexString("0x0001"), Bytes.FromHexString("0x01"), Bytes.FromHexString("0x0101")]
+        );
+
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
     [TestCase(30)]
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
