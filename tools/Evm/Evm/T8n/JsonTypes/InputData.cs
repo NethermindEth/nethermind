@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
@@ -19,8 +21,11 @@ public class InputData
     public TransactionMetaData[]? TransactionMetaDataList { get; set; }
     public string? TxRlp { get; set; }
 
-    public Transaction[] GetTransactions(TxDecoder decoder, ulong chainId)
+    public Transaction[] GetTransactions(TxDecoder decoder, ulong chainId, IReleaseSpec spec)
     {
+        var txValidator = new TxValidator(chainId);
+        EthereumEcdsa ecdsa = new(chainId);
+
         List<Transaction> transactions = [];
         if (TxRlp is not null)
         {
@@ -34,43 +39,35 @@ public class InputData
             {
                 var transaction = Txs[i].ToTransaction();
                 transaction.SenderAddress = Txs[i] is LegacyTransactionForRpc ? ((LegacyTransactionForRpc)Txs[i]).From : null;
-                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
+                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i], txValidator, spec, ecdsa);
 
                 transactions.Add(transaction);
             }
         }
 
-        RecoverAddress(transactions, chainId);
-
         return transactions.ToArray();
     }
 
-    private static void RecoverAddress(List<Transaction> transactions, ulong chainId)
+    private static void SignTransaction(Transaction transaction, TransactionMetaData transactionMetaData,
+        LegacyTransactionForRpc txLegacy, TxValidator txValidator, IReleaseSpec spec, EthereumEcdsa ecdsa)
     {
-        var ecdsa = new EthereumEcdsa(chainId);
+        transaction.ChainId = ecdsa.ChainId;
 
-        foreach (Transaction transaction in transactions)
-        {
-            transaction.ChainId ??= chainId;
-            transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
-            transaction.Hash = transaction.CalculateHash();
-        }
-    }
-
-    private static void SignTransaction(Transaction transaction, TransactionMetaData transactionMetaData, LegacyTransactionForRpc txLegacy)
-    {
         if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue && txLegacy.V.Value >= 27)
         {
             transaction.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
+            transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
         }
-        else if (transactionMetaData.SecretKey is not null)
+
+        if (!txValidator.IsWellFormed(transaction, spec) && transactionMetaData.SecretKey is not null)
         {
             var privateKey = new PrivateKey(transactionMetaData.SecretKey);
             transaction.SenderAddress = privateKey.Address;
 
-            EthereumEcdsa ecdsa = new(transaction.ChainId ?? TestBlockchainIds.ChainId);
 
             ecdsa.Sign(privateKey, transaction, transactionMetaData.Protected ?? true);
         }
+
+        transaction.Hash = transaction.CalculateHash();
     }
 }

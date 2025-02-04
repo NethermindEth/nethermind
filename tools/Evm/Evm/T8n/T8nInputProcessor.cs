@@ -40,7 +40,7 @@ public static class T8nInputProcessor
         T8nTest test = new(spec, overridableReleaseSpec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
-            Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId),
+            Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId, spec),
             CurrentGasLimit = inputData.Env.CurrentGasLimit,
             CurrentTimestamp = inputData.Env.CurrentTimestamp,
             CurrentNumber = inputData.Env.CurrentNumber,
