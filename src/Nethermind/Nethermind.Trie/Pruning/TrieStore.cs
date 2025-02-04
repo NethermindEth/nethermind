@@ -387,16 +387,16 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
         if (rlp is null)
         {
-            ThrowMissingNode(keccak);
+            ThrowMissingNode(address, path, keccak);
         }
 
         return rlp;
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowMissingNode(Hash256 keccak)
+        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak)
         {
-            throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+            throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
         }
     }
 
