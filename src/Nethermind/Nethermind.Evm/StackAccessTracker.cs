@@ -58,7 +58,7 @@ public struct StackAccessTracker : IDisposable
                 _trackingState.AccessedAddresses.Add(address);
                 foreach (UInt256 storage in storages)
                 {
-                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, storage));
+                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, in storage));
                 }
             }
         }

@@ -66,11 +66,6 @@ internal sealed partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
-        //if (typeof(TLogger) == typeof(IsTracing))
-        //{
-        //    TraceCallDetails(codeSource, ref callValue, ref transferValue, caller, target);
-        //}
-
         long gasExtra = 0L;
 
         if (!transferValue.IsZero)
@@ -124,7 +119,6 @@ internal sealed partial class EvmInstructions
                 vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
             }
 
-            //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
             if (TTracingInstructions.IsActive)
             {
                 vm.TxTracer.ReportOperationRemainingGas(gasAvailable);
@@ -164,7 +158,7 @@ internal sealed partial class EvmInstructions
             inputData: callData,
             codeInfo: codeInfo
         );
-        //if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
+
         if (outputLength == 0)
         {
             // TODO: when output length is 0 outputOffset can have any value really
@@ -194,15 +188,6 @@ internal sealed partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-    //[MethodImpl(MethodImplOptions.NoInlining)]
-    //void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
-    //{
-    //    _logger.Trace($"caller {caller}");
-    //    _logger.Trace($"code source {codeSource}");
-    //    _logger.Trace($"target {target}");
-    //    _logger.Trace($"value {callValue}");
-    //    _logger.Trace($"transfer value {transferValue}");
-    //}
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:

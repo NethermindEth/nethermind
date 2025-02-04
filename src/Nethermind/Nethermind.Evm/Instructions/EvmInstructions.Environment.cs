@@ -18,6 +18,175 @@ using Int256;
 
 internal sealed partial class EvmInstructions
 {
+    public interface IOpEnvBytes
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        abstract static void Operation(EvmState vmState, out Span<byte> result);
+    }
+
+    public interface IOpEnvUInt256
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        abstract static void Operation(EvmState vmState, out UInt256 result);
+    }
+
+    public interface IOpEnvUInt32
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        abstract static uint Operation(EvmState vmState);
+    }
+
+    public interface IOpEnvUInt64
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        abstract static ulong Operation(EvmState vmState);
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnvBytes<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvBytes
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        TOpEnv.Operation(vm.EvmState, out Span<byte> result);
+
+        stack.PushBytes(result);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnvUInt256<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvUInt256
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        TOpEnv.Operation(vm.EvmState, out UInt256 result);
+
+        stack.PushUInt256(in result);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnvUInt32<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvUInt32
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        uint result = TOpEnv.Operation(vm.EvmState);
+
+        stack.PushUInt32(result);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnvUInt64<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvUInt64
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        ulong result = TOpEnv.Operation(vm.EvmState);
+
+        stack.PushUInt64(result);
+
+        return EvmExceptionType.None;
+    }
+
+    public struct OpCallDataSize : IOpEnvUInt32
+    {
+        public static uint Operation(EvmState vmState)
+            => (uint)vmState.Env.InputData.Length;
+    }
+
+    public struct OpCodeSize : IOpEnvUInt32
+    {
+        public static uint Operation(EvmState vmState)
+            => (uint)vmState.Env.CodeInfo.MachineCode.Length;
+    }
+
+    public struct OpTimestamp : IOpEnvUInt64
+    {
+        public static ulong Operation(EvmState vmState)
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp;
+    }
+
+    public struct OpNumber : IOpEnvUInt64
+    {
+        public static ulong Operation(EvmState vmState)
+            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
+    }
+
+    public struct OpGasLimit : IOpEnvUInt64
+    {
+        public static ulong Operation(EvmState vmState)
+            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
+    }
+
+    public struct OpMSize : IOpEnvUInt64
+    {
+        public static ulong Operation(EvmState vmState)
+            => vmState.Memory.Size;
+    }
+
+    public struct OpBaseFee : IOpEnvUInt256
+    {
+        public static void Operation(EvmState vmState, out UInt256 result)
+            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
+    }
+
+    public struct OpBlobBaseFee : IOpEnvUInt256
+    {
+        public static void Operation(EvmState vmState, out UInt256 result)
+        {
+            UInt256? blobBaseFee = vmState.Env.TxExecutionContext.BlockExecutionContext.BlobBaseFee;
+            if (!blobBaseFee.HasValue) ThrowBadInstruction();
+
+            result = blobBaseFee.Value;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowBadInstruction() => throw new BadInstructionException();
+        }
+    }
+
+    public struct OpGasPrice : IOpEnvUInt256
+    {
+        public static void Operation(EvmState vmState, out UInt256 result)
+            => result = vmState.Env.TxExecutionContext.GasPrice;
+    }
+
+    public struct OpCallValue : IOpEnvUInt256
+    {
+        public static void Operation(EvmState vmState, out UInt256 result)
+            => result = vmState.Env.Value;
+    }
+
+    public struct OpAddress : IOpEnvBytes
+    {
+        public static void Operation(EvmState vmState, out Span<byte> result)
+            => result = vmState.Env.ExecutingAccount.Bytes;
+    }
+
+    public struct OpCaller : IOpEnvBytes
+    {
+        public static void Operation(EvmState vmState, out Span<byte> result)
+            => result = vmState.Env.Caller.Bytes;
+    }
+
+    public struct OpOrigin : IOpEnvBytes
+    {
+        public static void Operation(EvmState vmState, out Span<byte> result)
+            => result = vmState.Env.TxExecutionContext.Origin.Bytes;
+    }
+
+    public struct OpCoinbase : IOpEnvBytes
+    {
+        public static void Operation(EvmState vmState, out Span<byte> result)
+            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary.Bytes;
+    }
+
     [SkipLocalsInit]
     public static EvmExceptionType InstructionChainId(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
@@ -47,6 +216,17 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSelfBalance(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.SelfBalance;
+
+        UInt256 result = vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
+        stack.PushUInt256(in result);
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
@@ -113,17 +293,6 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfBalance(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-    {
-        gasAvailable -= GasCostOf.SelfBalance;
-
-        UInt256 result = vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
-        stack.PushUInt256(in result);
-
-        return EvmExceptionType.None;
-    }
-
     private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         IReleaseSpec spec = vm.Spec;
@@ -161,171 +330,5 @@ internal sealed partial class EvmInstructions
         }
 
         return result;
-    }
-
-    public interface IOpEnvBytes
-    {
-        virtual static long GasCost => GasCostOf.Base;
-        abstract static void Operation(EvmState vmState, out Span<byte> result);
-    }
-    public interface IOpEnvUInt256
-    {
-        virtual static long GasCost => GasCostOf.Base;
-        abstract static void Operation(EvmState vmState, out UInt256 result);
-    }
-    public interface IOpEnvUInt32
-    {
-        virtual static long GasCost => GasCostOf.Base;
-        abstract static uint Operation(EvmState vmState);
-    }
-    public interface IOpEnvUInt64
-    {
-        virtual static long GasCost => GasCostOf.Base;
-        abstract static ulong Operation(EvmState vmState);
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvBytes<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnvBytes
-    {
-        gasAvailable -= TOpEnv.GasCost;
-
-        TOpEnv.Operation(vm.EvmState, out Span<byte> result);
-
-        stack.PushBytes(result);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt256<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnvUInt256
-    {
-        gasAvailable -= TOpEnv.GasCost;
-
-        TOpEnv.Operation(vm.EvmState, out UInt256 result);
-
-        stack.PushUInt256(in result);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt32<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnvUInt32
-    {
-        gasAvailable -= TOpEnv.GasCost;
-
-        uint result = TOpEnv.Operation(vm.EvmState);
-
-        stack.PushUInt32(result);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt64<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnvUInt64
-    {
-        gasAvailable -= TOpEnv.GasCost;
-
-        ulong result = TOpEnv.Operation(vm.EvmState);
-
-        stack.PushUInt64(result);
-
-        return EvmExceptionType.None;
-    }
-
-    public struct OpAddress : IOpEnvBytes
-    {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.ExecutingAccount.Bytes;
-    }
-
-    public struct OpCaller : IOpEnvBytes
-    {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.Caller.Bytes;
-    }
-
-    public struct OpCallValue : IOpEnvUInt256
-    {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.Value;
-    }
-
-    public struct OpOrigin : IOpEnvBytes
-    {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.TxExecutionContext.Origin.Bytes;
-    }
-
-    public struct OpCallDataSize : IOpEnvUInt32
-    {
-        public static uint Operation(EvmState vmState)
-            => (uint)vmState.Env.InputData.Length;
-    }
-
-    public struct OpCodeSize : IOpEnvUInt32
-    {
-        public static uint Operation(EvmState vmState)
-            => (uint)vmState.Env.CodeInfo.MachineCode.Length;
-    }
-
-    public struct OpGasPrice : IOpEnvUInt256
-    {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.GasPrice;
-    }
-
-    public struct OpCoinbase : IOpEnvBytes
-    {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary.Bytes;
-    }
-
-    public struct OpTimestamp : IOpEnvUInt64
-    {
-        public static ulong Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp;
-    }
-
-    public struct OpNumber : IOpEnvUInt64
-    {
-        public static ulong Operation(EvmState vmState)
-            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
-    }
-
-    public struct OpGasLimit : IOpEnvUInt64
-    {
-        public static ulong Operation(EvmState vmState)
-            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
-    }
-
-    public struct OpBaseFee : IOpEnvUInt256
-    {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
-    }
-
-    public struct OpBlobBaseFee : IOpEnvUInt256
-    {
-        public static void Operation(EvmState vmState, out UInt256 result)
-        {
-            UInt256? blobBaseFee = vmState.Env.TxExecutionContext.BlockExecutionContext.BlobBaseFee;
-            if (!blobBaseFee.HasValue) ThrowBadInstruction();
-
-            result = blobBaseFee.Value;
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowBadInstruction() => throw new BadInstructionException();
-        }
-    }
-
-    public struct OpMSize : IOpEnvUInt64
-    {
-        public static ulong Operation(EvmState vmState)
-            => vmState.Memory.Size;
     }
 }

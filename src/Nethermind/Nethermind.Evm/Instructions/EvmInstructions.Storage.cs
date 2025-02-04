@@ -26,7 +26,7 @@ internal sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.TLoad;
 
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, result);
+        StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, in result);
 
         ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell);
         stack.PushBytes(value);
@@ -56,7 +56,7 @@ internal sealed partial class EvmInstructions
         gasAvailable -= GasCostOf.TStore;
 
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+        StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
         Span<byte> bytes = stack.PopWord256();
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
         if (vm.TxTracer.IsTracingStorage)
@@ -193,7 +193,7 @@ internal sealed partial class EvmInstructions
         bool newIsZero = bytes.IsZero();
         bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
-        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+        StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         if (!ChargeStorageAccessGas(
                 ref gasAvailable,
@@ -330,7 +330,7 @@ internal sealed partial class EvmInstructions
 
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         Address executingAccount = vm.EvmState.Env.ExecutingAccount;
-        StorageCell storageCell = new(executingAccount, result);
+        StorageCell storageCell = new(executingAccount, in result);
         if (!ChargeStorageAccessGas(
             ref gasAvailable,
             vm,

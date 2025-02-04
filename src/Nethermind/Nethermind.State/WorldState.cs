@@ -119,7 +119,7 @@ namespace Nethermind.State
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }
             }
