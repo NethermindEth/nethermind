@@ -41,10 +41,9 @@ namespace Nethermind.Init.Steps
             List<Task> allRequiredSteps = CreateAndExecuteSteps(cancellationToken);
             if (allRequiredSteps.Count == 0)
                 return;
-            Task current;
             do
             {
-                current = await Task.WhenAny(allRequiredSteps);
+                Task current = await Task.WhenAny(allRequiredSteps);
                 ReviewFailedAndThrow(current);
                 allRequiredSteps.Remove(current);
             } while (allRequiredSteps.Any(s => !s.IsCompleted));
