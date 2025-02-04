@@ -17,6 +17,8 @@ namespace Nethermind.Core
             BlockInfos = blockInfos;
         }
 
+        private const int NotFound = -1;
+
         public bool HasNonBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
         public bool HasBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
         public bool HasBlockOnMainChain { get; set; }
@@ -82,7 +84,7 @@ namespace Nethermind.Core
                 }
             }
 
-            return -1;
+            return NotFound;
         }
 
         public BlockInfo? FindBlockInfo(Hash256 blockHash)
