@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -69,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // if we didn't reach the end of the stream, assume we have basefee to decode
-            if (decoderContext.Position != headerCheck)
+            if (decoderContext.Position != headerCheck && decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size)
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }

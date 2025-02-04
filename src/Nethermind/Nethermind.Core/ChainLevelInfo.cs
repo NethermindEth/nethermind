@@ -72,6 +72,19 @@ namespace Nethermind.Core
             return null;
         }
 
+        public int FindBeaconMainChainIndex()
+        {
+            for (int i = 0; i < BlockInfos.Length; i++)
+            {
+                if (BlockInfos[i].IsBeaconMainChain)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
         public BlockInfo? FindBlockInfo(Hash256 blockHash)
         {
             int? index = FindIndex(blockHash);
@@ -102,6 +115,16 @@ namespace Nethermind.Core
             {
                 blockInfos[index] = blockInfos[0];
                 blockInfos[0] = blockInfo;
+            }
+            // prioritise new beacon info from beacon sync over old fcu
+            else if (blockInfo.IsBeaconMainChain)
+            {
+                int beaconMainChainIndex = FindBeaconMainChainIndex();
+                if (beaconMainChainIndex != -1)
+                {
+                    blockInfos[index] = blockInfos[beaconMainChainIndex];
+                    blockInfos[beaconMainChainIndex] = blockInfo;
+                }
             }
             else
             {
