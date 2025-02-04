@@ -20,7 +20,7 @@
     "UseGethLimitsInFastBlocks": true,
     "PivotNumber": 7619000,
     "PivotHash": "0x43c0b3b136993dfe294fe48e8a5e0ad23425d27f64f5284ec097246fb43e3b56",
-    "PivotTotalDifficulty": "0",
+    "PivotTotalDifficulty": "17000018015853232",
     "FastSyncCatchUpHeightDelta": 10000000000
   },
   "Blocks": {
