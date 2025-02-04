@@ -254,6 +254,13 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
+    {
+        builder.Register(factory)
+            .As<T>();
+
+        return builder;
+    }
 
     public static ContainerBuilder Add<T, TImpl>(this ContainerBuilder builder) where T : class where TImpl : notnull
     {
@@ -306,7 +313,8 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder RegisterNamedComponentInItsOwnLifetime<T>(this ContainerBuilder builder, string name, Action<ContainerBuilder> configurator) where T : notnull
     {
         builder.Register<ILifetimeScope, T>(ctx => ctx.BeginLifetimeScope(configurator).Resolve<T>())
-            .Named<T>(name);
+            .Named<T>(name)
+            .SingleInstance();
 
         return builder;
     }

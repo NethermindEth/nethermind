@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Utils;
+namespace Nethermind.State;
 
 public interface ILastNStateRootTracker
 {
