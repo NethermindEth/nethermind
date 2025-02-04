@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,7 +14,7 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionProgramCounter(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
-        stack.PushUInt32(programCounter - 1);
+        stack.PushUInt32((uint)(programCounter - 1));
 
         return EvmExceptionType.None;
     }

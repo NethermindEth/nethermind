@@ -21,7 +21,7 @@ internal sealed partial class EvmInstructions
         // Ensure gas is positive before pushing to stack
         if (gasAvailable < 0) goto OutOfGas;
 
-        stack.PushUInt256((UInt256)gasAvailable);
+        stack.PushUInt64((ulong)gasAvailable);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor

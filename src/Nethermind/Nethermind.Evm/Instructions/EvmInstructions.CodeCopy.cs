@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -160,12 +160,11 @@ internal sealed partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository.GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _).MachineCode.Span;
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {
-            stack.PushUInt256(2);
+            stack.PushUInt32(2);
         }
         else
         {
-            UInt256 result = (UInt256)accountCode.Length;
-            stack.PushUInt256(in result);
+            stack.PushUInt32((uint)accountCode.Length);
         }
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor

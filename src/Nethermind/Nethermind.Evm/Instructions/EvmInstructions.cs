@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -66,9 +66,9 @@ internal unsafe sealed partial class EvmInstructions
         lookup[(int)Instruction.CALLER] = &InstructionEnvBytes<OpCaller>;
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad;
-        lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt256<OpCallDataSize>;
+        lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt32<OpCallDataSize>;
         lookup[(int)Instruction.CALLDATACOPY] = &InstructionCodeCopy<OpCallDataCopy, TTracingInstructions>;
-        lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt256<OpCodeSize>;
+        lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt32<OpCodeSize>;
         lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCodeCopy, TTracingInstructions>;
         lookup[(int)Instruction.GASPRICE] = &InstructionEnvUInt256<OpGasPrice>;
 
@@ -89,10 +89,10 @@ internal unsafe sealed partial class EvmInstructions
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash;
 
         lookup[(int)Instruction.COINBASE] = &InstructionEnvBytes<OpCoinbase>;
-        lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt256<OpTimestamp>;
-        lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt256<OpNumber>;
+        lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt64<OpTimestamp>;
+        lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt64<OpNumber>;
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;
-        lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt256<OpGasLimit>;
+        lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt64<OpGasLimit>;
         if (spec.ChainIdOpcodeEnabled)
         {
             lookup[(int)Instruction.CHAINID] = &InstructionChainId;
@@ -123,7 +123,7 @@ internal unsafe sealed partial class EvmInstructions
         lookup[(int)Instruction.JUMP] = &InstructionJump;
         lookup[(int)Instruction.JUMPI] = &InstructionJumpIf;
         lookup[(int)Instruction.PC] = &InstructionProgramCounter;
-        lookup[(int)Instruction.MSIZE] = &InstructionEnvUInt256<OpMSize>;
+        lookup[(int)Instruction.MSIZE] = &InstructionEnvUInt64<OpMSize>;
         lookup[(int)Instruction.GAS] = &InstructionGas;
         lookup[(int)Instruction.JUMPDEST] = &InstructionJumpDest;
 

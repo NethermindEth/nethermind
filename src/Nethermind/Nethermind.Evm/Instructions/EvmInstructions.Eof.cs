@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,8 +23,7 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.Base;
 
-        UInt256 result = (UInt256)vm.ReturnDataBuffer.Length;
-        stack.PushUInt256(in result);
+        stack.PushUInt32((uint)vm.ReturnDataBuffer.Length);
 
         return EvmExceptionType.None;
     }
@@ -119,7 +118,7 @@ internal sealed partial class EvmInstructions
 
         if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
 
-        stack.PushUInt32(codeInfo.DataSection.Length);
+        stack.PushUInt32((uint)codeInfo.DataSection.Length);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor

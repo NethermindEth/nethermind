@@ -19,14 +19,6 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPop(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-    {
-        gasAvailable -= GasCostOf.Base;
-        return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
-    }
-
-    [SkipLocalsInit]
     public static EvmExceptionType InstructionChainId(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
@@ -122,72 +114,6 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        EvmState vmState = vm.EvmState;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-        Span<byte> bytes = vmState.Memory.LoadSpan(in result);
-        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(result, bytes);
-
-        stack.PushBytes(bytes);
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-
-        Span<byte> bytes = stack.PopWord256();
-        EvmState vmState = vm.EvmState;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-        vmState.Memory.SaveWord(in result, bytes);
-        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange((long)result, bytes);
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-
-        byte data = stack.PopByte();
-        EvmState vmState = vm.EvmState;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) goto OutOfGas;
-        vmState.Memory.SaveByte(in result, data);
-        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(result, data);
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    }
-
-    [SkipLocalsInit]
     public static EvmExceptionType InstructionSelfBalance(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.SelfBalance;
@@ -247,6 +173,16 @@ internal sealed partial class EvmInstructions
         virtual static long GasCost => GasCostOf.Base;
         abstract static void Operation(EvmState vmState, out UInt256 result);
     }
+    public interface IOpEnvUInt32
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        abstract static uint Operation(EvmState vmState);
+    }
+    public interface IOpEnvUInt64
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        abstract static ulong Operation(EvmState vmState);
+    }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEnvBytes<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
@@ -270,6 +206,32 @@ internal sealed partial class EvmInstructions
         TOpEnv.Operation(vm.EvmState, out UInt256 result);
 
         stack.PushUInt256(in result);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnvUInt32<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvUInt32
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        uint result = TOpEnv.Operation(vm.EvmState);
+
+        stack.PushUInt32(result);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnvUInt64<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvUInt64
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        ulong result = TOpEnv.Operation(vm.EvmState);
+
+        stack.PushUInt64(result);
 
         return EvmExceptionType.None;
     }
@@ -298,16 +260,16 @@ internal sealed partial class EvmInstructions
             => result = vmState.Env.TxExecutionContext.Origin.Bytes;
     }
 
-    public struct OpCallDataSize : IOpEnvUInt256
+    public struct OpCallDataSize : IOpEnvUInt32
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = (UInt256)vmState.Env.InputData.Length;
+        public static uint Operation(EvmState vmState)
+            => (uint)vmState.Env.InputData.Length;
     }
 
-    public struct OpCodeSize : IOpEnvUInt256
+    public struct OpCodeSize : IOpEnvUInt32
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = (UInt256)vmState.Env.CodeInfo.MachineCode.Length;
+        public static uint Operation(EvmState vmState)
+            => (uint)vmState.Env.CodeInfo.MachineCode.Length;
     }
 
     public struct OpGasPrice : IOpEnvUInt256
@@ -322,22 +284,22 @@ internal sealed partial class EvmInstructions
             => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary.Bytes;
     }
 
-    public struct OpTimestamp : IOpEnvUInt256
+    public struct OpTimestamp : IOpEnvUInt64
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp;
+        public static ulong Operation(EvmState vmState)
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp;
     }
 
-    public struct OpNumber : IOpEnvUInt256
+    public struct OpNumber : IOpEnvUInt64
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = (UInt256)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
+        public static ulong Operation(EvmState vmState)
+            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
     }
 
-    public struct OpGasLimit : IOpEnvUInt256
+    public struct OpGasLimit : IOpEnvUInt64
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = (UInt256)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
+        public static ulong Operation(EvmState vmState)
+            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
     }
 
     public struct OpBaseFee : IOpEnvUInt256
@@ -361,9 +323,9 @@ internal sealed partial class EvmInstructions
         }
     }
 
-    public struct OpMSize : IOpEnvUInt256
+    public struct OpMSize : IOpEnvUInt64
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Memory.Size;
+        public static ulong Operation(EvmState vmState)
+            => vmState.Memory.Size;
     }
 }

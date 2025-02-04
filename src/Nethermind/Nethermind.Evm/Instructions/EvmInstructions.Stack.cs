@@ -1,18 +1,27 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm;
 using Int256;
+using Word = Vector256<byte>;
 
 internal sealed partial class EvmInstructions
 {
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionPop(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.Base;
+        return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+    }
+
     public interface IOpCount
     {
         abstract static int Count { get; }

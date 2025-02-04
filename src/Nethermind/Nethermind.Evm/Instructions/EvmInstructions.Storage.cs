@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,12 +6,10 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 using Int256;
-
 
 internal sealed partial class EvmInstructions
 {
@@ -76,6 +74,72 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionMStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+
+        Span<byte> bytes = stack.PopWord256();
+        EvmState vmState = vm.EvmState;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
+        vmState.Memory.SaveWord(in result, bytes);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange((long)result, bytes);
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionMStore8<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+
+        byte data = stack.PopByte();
+        EvmState vmState = vm.EvmState;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) goto OutOfGas;
+        vmState.Memory.SaveByte(in result, data);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(result, data);
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionMLoad<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInstructions : struct, IFlag
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        EvmState vmState = vm.EvmState;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
+        Span<byte> bytes = vmState.Memory.LoadSpan(in result);
+        if (TTracingInstructions.IsActive) vm.TxTracer.ReportMemoryChange(result, bytes);
+
+        stack.PushBytes(bytes);
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     [SkipLocalsInit]

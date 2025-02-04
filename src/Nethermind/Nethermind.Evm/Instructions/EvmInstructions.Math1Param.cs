@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
@@ -7,12 +7,14 @@ using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
 
+using Word = Vector256<byte>;
+
 internal sealed partial class EvmInstructions
 {
     public interface IOpMath1Param
     {
         virtual static long GasCost => GasCostOf.VeryLow;
-        abstract static Vector256<byte> Operation(ref byte bytesRef);
+        abstract static Word Operation(Word value);
     }
 
     [SkipLocalsInit]
@@ -21,12 +23,14 @@ internal sealed partial class EvmInstructions
     {
         gasAvailable -= TOpMath.GasCost;
 
-        ref byte bytesRef = ref stack.PopBytesByRef();
+        // Peek the top ref to avoid pushing and popping
+        ref byte bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
 
-        Vector256<byte> result = TOpMath.Operation(ref bytesRef);
+        Word result = TOpMath.Operation(ReadUnaligned<Word>(ref bytesRef));
 
-        WriteUnaligned(ref stack.PushBytesRef(), result);
+        // Do not need to push as we peeked the last ref, so we can write directly to it
+        WriteUnaligned(ref bytesRef, result);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor
@@ -36,11 +40,11 @@ internal sealed partial class EvmInstructions
 
     public struct OpNot : IOpMath1Param
     {
-        public static Vector256<byte> Operation(ref byte bytesRef) => Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref bytesRef));
+        public static Word Operation(Word value) => Vector256.OnesComplement(value);
     }
 
     public struct OpIsZero : IOpMath1Param
     {
-        public static Vector256<byte> Operation(ref byte bytesRef) => As<byte, Vector256<byte>>(ref bytesRef) == default ? OpBitwiseEq.One : default;
+        public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
     }
 }
