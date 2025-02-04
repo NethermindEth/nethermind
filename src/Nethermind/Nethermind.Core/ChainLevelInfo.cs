@@ -110,6 +110,7 @@ namespace Nethermind.Core
             }
 
             int index = foundIndex ?? blockInfos.Length - 1;
+            int beaconMainChainIndex;
 
             if (setAsMain)
             {
@@ -117,14 +118,10 @@ namespace Nethermind.Core
                 blockInfos[0] = blockInfo;
             }
             // prioritise new beacon info from beacon sync over old fcu
-            else if (blockInfo.IsBeaconMainChain)
+            else if (blockInfo.IsBeaconMainChain && (beaconMainChainIndex = FindBeaconMainChainIndex()) != -1)
             {
-                int beaconMainChainIndex = FindBeaconMainChainIndex();
-                if (beaconMainChainIndex != -1)
-                {
-                    blockInfos[index] = blockInfos[beaconMainChainIndex];
-                    blockInfos[beaconMainChainIndex] = blockInfo;
-                }
+                blockInfos[index] = blockInfos[beaconMainChainIndex];
+                blockInfos[beaconMainChainIndex] = blockInfo;
             }
             else
             {
