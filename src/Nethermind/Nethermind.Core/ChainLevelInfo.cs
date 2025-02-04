@@ -17,6 +17,8 @@ namespace Nethermind.Core
             BlockInfos = blockInfos;
         }
 
+        private const int NotFound = -1;
+
         public bool HasNonBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
         public bool HasBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
         public bool HasBlockOnMainChain { get; set; }
@@ -72,17 +74,19 @@ namespace Nethermind.Core
             return null;
         }
 
-        private int? FindBeaconMainChainIndex()
+        private bool TryFindBeaconMainChainIndex(out int index)
         {
             for (int i = 0; i < BlockInfos.Length; i++)
             {
                 if (BlockInfos[i].IsBeaconMainChain)
                 {
-                    return i;
+                    index = i;
+                    return true;
                 }
             }
 
-            return null;
+            index = NotFound;
+            return false;
         }
 
         public BlockInfo? FindBlockInfo(Hash256 blockHash)
@@ -110,7 +114,6 @@ namespace Nethermind.Core
             }
 
             int index = foundIndex ?? blockInfos.Length - 1;
-            int? beaconMainChainIndex;
 
             if (setAsMain)
             {
@@ -118,10 +121,10 @@ namespace Nethermind.Core
                 blockInfos[0] = blockInfo;
             }
             // prioritise new beacon info from beacon sync over old fcu
-            else if (blockInfo.IsBeaconMainChain && (beaconMainChainIndex = FindBeaconMainChainIndex()) is not null)
+            else if (blockInfo.IsBeaconMainChain && TryFindBeaconMainChainIndex(out int beaconMainChainIndex))
             {
-                blockInfos[index] = blockInfos[beaconMainChainIndex.Value];
-                blockInfos[beaconMainChainIndex.Value] = blockInfo;
+                blockInfos[index] = blockInfos[beaconMainChainIndex];
+                blockInfos[beaconMainChainIndex] = blockInfo;
             }
             else
             {

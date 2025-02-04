@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // if we didn't reach the end of the stream, assume we have basefee to decode
-            if (decoderContext.Position != headerCheck && decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size)
+            if (decoderContext.Position != headerCheck)
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
