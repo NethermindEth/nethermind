@@ -170,9 +170,6 @@ namespace Nethermind.State
                 }
 
                 _codeInsertFilter.Set(codeHash);
-            }
-            else
-            {
                 inserted = true;
             }
 
