@@ -457,7 +457,15 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
-    NativeLibrary.Load("runtimes/linux-x64/native/libjemalloc.so");
+    try
+    {
+        NativeLibrary.Load("libjemalloc.so");
+    }
+    catch (Exception)
+    {
+        NativeLibrary.Load("runtimes/linux-x64/native/libjemalloc.so"); 
+    }
+
 
     return configProvider;
 }
