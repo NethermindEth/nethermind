@@ -134,3 +134,8 @@ If you believe you have found a security vulnerability in our code, please repor
 ## License
 
 Nethermind is an open-source software licensed under the [LGPL-3.0](./LICENSE-LGPL).
+
+
+## Additional Terms
+
+By using this project, you agree to abide by the Terms of the LGPL 3.0 license and the Additional Terms stated [here](https://nethermindeth.github.io/NethermindEthereumClientTermsandConditions/). 
