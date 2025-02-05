@@ -127,8 +127,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
-        // If the code is already in the cache, we don't need to create and add it again
-        if (state.InsertCode(codeOwner, in codeHash, code, spec) ||
+        // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
+        if (state.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
             ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExractHeader);
