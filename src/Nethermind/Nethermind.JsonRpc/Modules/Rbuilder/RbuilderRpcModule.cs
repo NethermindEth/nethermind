@@ -120,6 +120,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
         catch (Exception e)
         {
+            var _e = e;
 //            Console.WriteLine(e);
         }
         finally
@@ -152,6 +153,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
         catch (Exception e)
         {
+            var _e = e;
             //Console.WriteLine(e);
         }
 
