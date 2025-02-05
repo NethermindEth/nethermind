@@ -58,7 +58,11 @@ namespace Nethermind.Config
         public string Host => _enode.HostIp.ToString();
         public int Port => _enode.Port;
         public long Reputation { get; set; }
+        public NetworkNode(Enode enode)
+        {
+          _enode = enode;
+        }
 
-        public NetworkNode(Enode enode) : this(enode.ToString()){}
+        public Enode Enode => _enode;
     }
 }

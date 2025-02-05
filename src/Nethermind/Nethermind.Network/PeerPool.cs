@@ -105,17 +105,7 @@ namespace Nethermind.Network
 
         private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
-            Node node = new(arg.Node);
-
-            string enodeString = node.ToString(Node.Format.ENode);
-
-            Enode enode = new Enode(enodeString);
-
-            // Check if this node is trusted
-            if (_trustedNodesManager.IsTrusted(enode))
-            {
-                node.IsTrusted = true;
-            }
+            Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
 
             Peer peer = new(node, _stats.GetOrAdd(node));
 
