@@ -89,7 +89,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public IWorldState WorldState => _worldState;
     public ReadOnlySpan<byte> ChainId => _chainId;
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
-    public object ReturnData { get; private set; }
+    public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
 
     public EvmState EvmState { get; private set; }
