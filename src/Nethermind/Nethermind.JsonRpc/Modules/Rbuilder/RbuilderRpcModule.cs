@@ -112,11 +112,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 }
             }
 
-            worldState.Commit(releaseSpec);
-            //worldState.CommitTree(blockHeader.Number + 1);
+            //worldState.Commit(releaseSpec);
+            worldState.CommitTree(blockHeader.Number + 1);
             worldState.RecalculateStateRoot();
             stopwatch.Stop();
-            Console.WriteLine($"Rbuilder calculation took {stopwatch.ElapsedMicroseconds()}");
+           // Console.WriteLine($"Rbuilder calculation took {stopwatch.ElapsedMicroseconds()}");
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         catch (Exception e)
@@ -128,21 +128,21 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             _overridableWorldScopePool.Return(worldScope);
         }
 
-        Console.WriteLine($"Rbuilder calculation FAIL took {stopwatch.ElapsedMicroseconds()}");
+        //Console.WriteLine($"Rbuilder calculation FAIL took {stopwatch.ElapsedMicroseconds()}");
         return ResultWrapper<Hash256>.Fail("");
     }
 
     public ResultWrapper<AccountState> rbuilder_getAccount(Address address, BlockParameter block)
     {
 
-        Console.WriteLine($"Getting account {address}");
-        var stopwatch = Stopwatch.StartNew();
+        //Console.WriteLine($"Getting account {address}");
+        //var stopwatch = Stopwatch.StartNew();
 
         BlockHeader? blockHeader = blockFinder.FindHeader(block);
         if (blockHeader is null)
         {
-            stopwatch.Stop();
-            Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Getting account {address}: block not found");
+            //stopwatch.Stop();
+            //Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Getting account {address}: block not found");
             return ResultWrapper<AccountState>.Fail("Block not found");
         }
 
@@ -152,8 +152,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
                     out AccountStruct account))
             {
-                stopwatch.Stop();
-                Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Got account: {address}");
+            //    stopwatch.Stop();
+            //    Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Got account: {address}");
                 return ResultWrapper<AccountState>.Success(new AccountState(account.Nonce, account.Balance,
                     account.CodeHash));
             }
@@ -161,11 +161,12 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            var _e = e;
+            //Console.WriteLine(e);
         }
 
-        stopwatch.Stop();
-        Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Account not found: {address}");
+       // stopwatch.Stop();
+        //Console.WriteLine($"[{stopwatch.ElapsedMicroseconds()}]Account not found: {address}");
         return ResultWrapper<AccountState>.Success(new AccountState());
     }
 
