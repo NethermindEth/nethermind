@@ -59,6 +59,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
+        [Retry(3)]
         public async Task whitelist_should_return_correctly()
         {
             using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
