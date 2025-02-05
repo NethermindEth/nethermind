@@ -38,11 +38,12 @@ public static class StateOverridesExtensions
                 state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
                 state.UpdateState(accountOverride, address);
             }
-
-            state.Commit(spec);
-            state.CommitTree(blockNumber);
-            state.RecalculateStateRoot();
         }
+
+        state.Commit(spec);
+        state.CommitTree(blockNumber);
+        state.RecalculateStateRoot();
+
     }
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
