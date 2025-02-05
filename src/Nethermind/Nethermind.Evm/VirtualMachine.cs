@@ -32,7 +32,10 @@ namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe class VirtualMachine : IVirtualMachine
+public sealed unsafe class VirtualMachine(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager) : IVirtualMachine
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -62,11 +65,11 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
-    private readonly byte[] _chainId;
+    private readonly byte[] _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
 
-    private readonly IBlockhashProvider _blockHashProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
+    private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly Stack<EvmState> _stateStack = new();
 
     private IWorldState _worldState = null!;
@@ -96,34 +99,51 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public EvmState EvmState { get => _vmState; private set => _vmState = value; }
     public int SectionIndex { get; set; }
 
-    public VirtualMachine(
-        IBlockhashProvider? blockHashProvider,
-        ISpecProvider? specProvider,
-        ILogManager? logManager)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-    }
-
-    public TransactionSubstate ExecuteTransaction<TTracingInstructions>(EvmState evmState, IWorldState worldState, ITxTracer txTracer)
+    /// <summary>
+    /// Executes a transaction by iteratively processing call frames until a top-level call returns
+    /// or a failure condition is reached. This method handles both precompiled contracts and regular
+    /// EVM calls, along with proper state management, tracing, and error handling.
+    /// </summary>
+    /// <typeparam name="TTracingInstructions">
+    /// The type of tracing instructions flag used to conditionally trace execution actions.
+    /// </typeparam>
+    /// <param name="evmState">The initial EVM state to begin transaction execution.</param>
+    /// <param name="worldState">The current world state that may be modified during execution.</param>
+    /// <param name="txTracer">An object used to record execution details and trace transaction actions.</param>
+    /// <returns>
+    /// A <see cref="TransactionSubstate"/> representing the final state of the transaction execution.
+    /// </returns>
+    /// <exception cref="EvmException">
+    /// Thrown when an EVM-specific error occurs during execution.
+    /// </exception>
+    public TransactionSubstate ExecuteTransaction<TTracingInstructions>(
+        EvmState evmState,
+        IWorldState worldState,
+        ITxTracer txTracer)
         where TTracingInstructions : struct, IFlag
     {
+        // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _worldState = worldState;
 
+        // Extract the transaction execution context from the EVM environment.
         ref readonly TxExecutionContext txExecutionContext = ref evmState.Env.TxExecutionContext;
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInstructions>(txExecutionContext.BlockExecutionContext.Header);
 
+        // Prepare the specification and opcode mapping based on the current block header.
+        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInstructions>(
+            txExecutionContext.BlockExecutionContext.Header);
+
+        // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = txExecutionContext.CodeInfoRepository;
         _currentState = evmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
 
+        // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
         {
+            // For non-continuation frames, clear any previously stored return data.
             if (!_currentState.IsContinuation)
             {
                 ReturnDataBuffer = Array.Empty<byte>();
@@ -133,36 +153,47 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             try
             {
                 CallResult callResult;
+
+                // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
                     callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure);
                     if (failure is not null)
                     {
+                        // Jump to the failure handler if a precompile error occurred.
                         goto Failure;
                     }
                 }
                 else
                 {
+                    // Start transaction tracing for non-continuation frames if tracing is enabled.
                     if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
                     {
                         TraceTransactionActionStart(_currentState);
                     }
 
+                    // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInstructions>(_currentState, _previousCallResult, previousCallOutput, _previousCallOutputDestination);
+                        callResult = ExecuteCall<TTracingInstructions>(
+                            _currentState,
+                            _previousCallResult,
+                            previousCallOutput,
+                            _previousCallOutputDestination);
                     }
                     else
                     {
                         callResult = CallResult.InvalidCodeException;
                     }
 
+                    // If the call did not finish with a return, set up the next call frame and continue.
                     if (!callResult.IsReturn)
                     {
                         PrepareNextCallFrame(in callResult, ref previousCallOutput);
                         continue;
                     }
 
+                    // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
                         TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
@@ -170,47 +201,65 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                         {
                             return substate;
                         }
+                        // Continue execution if the exception did not immediately finalize the transaction.
                         continue;
                     }
                 }
 
+                // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
                     if (_txTracer.IsTracingActions)
                     {
                         TraceTransactionActionEnd(_currentState, spec, callResult);
                     }
-
                     return PrepareTopLevelSubstate(in callResult);
                 }
 
+                // For nested call frames, merge the results and restore the previous execution state.
                 using (EvmState previousState = _currentState)
                 {
+                    // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
+                    // Refund the remaining gas from the completed call frame.
                     _currentState.GasAvailable += previousState.GasAvailable;
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
                     {
                         long gasAvailableForCodeDeposit = previousState.GasAvailable;
+
+                        // Process contract creation calls differently from regular calls.
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
                             PrepareCreateData(previousState, ref previousCallOutput);
                             if (previousState.ExecutionType.IsAnyCreateLegacy())
                             {
-                                HandleLegacyCreate(in callResult, previousState, gasAvailableForCodeDeposit, spec, ref previousStateSucceeded);
+                                HandleLegacyCreate(
+                                    in callResult,
+                                    previousState,
+                                    gasAvailableForCodeDeposit,
+                                    spec,
+                                    ref previousStateSucceeded);
                             }
                             else if (previousState.ExecutionType.IsAnyCreateEof())
                             {
-                                HandleEofCreate(in callResult, previousState, gasAvailableForCodeDeposit, spec, ref previousStateSucceeded);
+                                HandleEofCreate(
+                                    in callResult,
+                                    previousState,
+                                    gasAvailableForCodeDeposit,
+                                    spec,
+                                    ref previousStateSucceeded);
                             }
                         }
                         else
                         {
+                            // Process a standard call return.
                             previousCallOutput = HandleRegularReturn<TTracingInstructions>(in callResult, previousState);
                         }
 
+                        // Commit the changes from the completed call frame if execution was successful.
                         if (previousStateSucceeded)
                         {
                             previousState.CommitToParent(_currentState);
@@ -218,18 +267,22 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                     }
                     else
                     {
+                        // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert(previousState, callResult, ref previousCallOutput);
                     }
                 }
             }
+            // Handle specific EVM or overflow exceptions by routing to the failure handling block.
             catch (Exception ex) when (ex is EvmException or OverflowException)
             {
                 failure = ex;
                 goto Failure;
             }
 
+            // Continue with the next iteration of the execution loop.
             continue;
 
+        // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
             TransactionSubstate? failSubstate = HandleFailure<TTracingInstructions>(failure, ref previousCallOutput);
             if (failSubstate is not null)
@@ -345,40 +398,92 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         }
     }
 
-    private void HandleLegacyCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
+    /// <summary>
+    /// Handles the code deposit for a legacy contract creation operation.
+    /// This method calculates the gas cost for depositing the contract code using legacy rules,
+    /// validates the code, and either deposits the code or reverts the world state if the deposit fails.
+    /// </summary>
+    /// <param name="callResult">
+    /// The result of the contract creation call, which includes the output code intended for deposit.
+    /// </param>
+    /// <param name="previousState">
+    /// The EVM state prior to the current call frame. It provides access to the snapshot, the executing account,
+    /// and flags indicating if the account pre-existed.
+    /// </param>
+    /// <param name="gasAvailableForCodeDeposit">
+    /// The amount of gas available for covering the cost of code deposit.
+    /// </param>
+    /// <param name="spec">
+    /// The release specification containing the rules and parameters that affect code deposit behavior.
+    /// </param>
+    /// <param name="previousStateSucceeded">
+    /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
+    /// </param>
+    private void HandleLegacyCreate(
+        in CallResult callResult,
+        EvmState previousState,
+        long gasAvailableForCodeDeposit,
+        IReleaseSpec spec,
+        ref bool previousStateSucceeded)
     {
+        // Cache whether transaction tracing is enabled to avoid multiple property lookups.
+        bool isTracing = _txTracer.IsTracingActions;
+
+        // Get the address of the account that initiated the contract creation.
         Address callCodeOwner = previousState.Env.ExecutingAccount;
+
+        // Calculate the gas cost required to deposit the contract code using legacy cost rules.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+
+        // Validate the code against legacy rules; mark it invalid if it fails these checks.
         bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+
+        // Check if there is sufficient gas and the code is valid.
         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
         {
+            // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
             _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
+
+            // Deduct the gas cost for the code deposit from the current state's available gas.
             _currentState.GasAvailable -= codeDepositGasCost;
 
-            if (_txTracer.IsTracingActions)
+            // If tracing is enabled, report the successful code deposit operation.
+            if (isTracing)
             {
                 _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
             }
         }
+        // If the code deposit should fail due to out-of-gas or invalid code conditions...
         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
         {
+            // Consume all remaining gas allocated for the code deposit.
             _currentState.GasAvailable -= gasAvailableForCodeDeposit;
+
+            // Roll back the world state to its snapshot from before the creation attempt.
             _worldState.Restore(previousState.Snapshot);
+
+            // If the contract creation did not target a pre-existing account, delete the account.
             if (!previousState.IsCreateOnPreExistingAccount)
             {
                 _worldState.DeleteAccount(callCodeOwner);
             }
 
+            // Reset the previous call result to indicate that no valid code was deployed.
             _previousCallResult = BytesZero;
+
+            // Mark the previous state execution as failed.
             previousStateSucceeded = false;
 
-            if (_txTracer.IsTracingActions)
+            // Report an error via the tracer, indicating whether the failure was due to invalid code or gas exhaustion.
+            if (isTracing)
             {
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
-        else if (_txTracer.IsTracingActions)
+        // In scenarios where the code deposit does not strictly mandate a failure,
+        // report the end of the action if tracing is enabled.
+        else if (isTracing)
         {
             _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
         }
@@ -396,125 +501,284 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             _logger);
     }
 
+    /// <summary>
+    /// Reverts the state changes made during the execution of a call frame.
+    /// This method restores the world state to a previous snapshot, sets appropriate
+    /// failure indicators and output data, and reports the revert action via the tracer.
+    /// </summary>
+    /// <param name="previousState">
+    /// The EVM state prior to the current call, which contains the snapshot for restoration,
+    /// output length, output destination, and execution type.
+    /// </param>
+    /// <param name="callResult">
+    /// The result of the call that triggered the revert, containing output data and flags
+    /// indicating precompile success.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A reference to the output data buffer that will be updated with the reverted call's output,
+    /// padded to match the expected length.
+    /// </param>
     private void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
+        // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
-        ReturnDataBuffer = callResult.Output.Bytes;
+
+        // Cache the output bytes from the call result to avoid multiple property accesses.
+        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+
+        // Set the return data buffer to the output bytes from the failed call.
+        ReturnDataBuffer = outputBytes;
+
+        // Determine the appropriate failure status code.
+        // For calls with EOF semantics, differentiate between precompile failure and regular revert.
+        // Otherwise, use the standard failure status code.
         _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
-            ? (callResult.PrecompileSuccess is not null ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
+            ? (callResult.PrecompileSuccess is not null
+                ? EofStatusCode.FailureBytes
+                : EofStatusCode.RevertBytes)
             : StatusCode.FailureBytes;
-        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+
+        // Slice the output bytes, zero-padding if necessary, to match the expected output length.
+        // This ensures that the returned data conforms to the caller's output length expectations.
+        previousCallOutput = outputBytes.Span.SliceWithZeroPadding(0, Math.Min(outputBytes.Length, (int)previousState.OutputLength));
+
+        // Record the output destination address for subsequent operations.
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
+        // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
         if (_txTracer.IsTracingActions)
         {
-            _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output.Bytes);
+            _txTracer.ReportActionRevert(previousState.GasAvailable, outputBytes);
         }
     }
 
+    /// <summary>
+    /// Handles a failure during transaction execution by restoring the world state,
+    /// reporting error details via the tracer, and either finalizing the top-level transaction
+    /// or preparing to revert to the parent call frame.
+    /// </summary>
+    /// <typeparam name="TTracingInstructions">
+    /// A type parameter representing tracing instructions. It must be a struct implementing <see cref="IFlag"/>.
+    /// </typeparam>
+    /// <param name="failure">The exception that caused the failure during execution.</param>
+    /// <param name="previousCallOutput">
+    /// A reference to the zero-padded span that holds the previous call's output; it will be reset upon failure.
+    /// </param>
+    /// <returns>
+    /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
+    /// to indicate that execution should continue with the parent call frame.
+    /// </returns>
     private TransactionSubstate? HandleFailure<TTracingInstructions>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
         where TTracingInstructions : struct, IFlag
     {
-        if (_logger.IsTrace) _logger.Trace($"exception ({failure.GetType().Name}) in {_currentState.ExecutionType} at depth {_currentState.Env.CallDepth} - restoring snapshot");
+        // Log the exception if trace logging is enabled.
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"exception ({failure.GetType().Name}) in {_currentState.ExecutionType} at depth {_currentState.Env.CallDepth} - restoring snapshot");
+        }
 
+        // Revert the world state to the snapshot taken at the start of the current state's execution.
         _worldState.Restore(_currentState.Snapshot);
 
+        // Revert any modifications specific to the Parity touch bug, if applicable.
         RevertParityTouchBugAccount();
 
+        // Cache the transaction tracer for local use.
         ITxTracer txTracer = _txTracer;
+
+        // Attempt to cast the exception to EvmException to extract a specific error type.
+        EvmException? evmException = failure as EvmException;
+        EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
+
+        // If the tracing instructions flag is active, report zero remaining gas and log the error.
         if (TTracingInstructions.IsActive)
         {
             txTracer.ReportOperationRemainingGas(0);
-            txTracer.ReportOperationError(failure is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
+            txTracer.ReportOperationError(errorType);
         }
 
+        // If action-level tracing is enabled, report the error associated with the action.
         if (txTracer.IsTracingActions)
         {
-            EvmException evmException = failure as EvmException;
-            txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
+            txTracer.ReportActionError(errorType);
         }
 
+        // For a top-level call, immediately return a final transaction substate.
         if (_currentState.IsTopLevel)
         {
-            return new TransactionSubstate(failure is OverflowException ? EvmExceptionType.Other : (failure as EvmException).ExceptionType, txTracer.IsTracing);
+            // For an OverflowException, force the error type to a generic Other error.
+            EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
         }
 
-        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
+        // For nested call frames, prepare to revert to the parent frame.
+        // Set the previous call result to a failure code depending on the call type.
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
+        // Dispose of the current failing state and restore the previous call frame from the stack.
         _currentState.Dispose();
         _currentState = _stateStack.Pop();
         _currentState.IsContinuation = true;
+
         return null;
     }
 
+    /// <summary>
+    /// Prepares the execution environment for the next call frame by updating the current state
+    /// and resetting relevant output fields.
+    /// </summary>
+    /// <param name="callResult">
+    /// The result object from the current call, which contains the state to be executed next.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A reference to the buffer holding the previous call's output, which is cleared in preparation for the new call.
+    /// </param>
     private void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
+        // Push the current execution state onto the state stack so it can be restored later.
         _stateStack.Push(_currentState);
+
+        // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
+
+        // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
+
+        // Reset the return data buffer to ensure no residual data persists across call frames.
         ReturnDataBuffer = Array.Empty<byte>();
+
+        // Clear the previous call output, preparing for new output data in the next call frame.
         previousCallOutput = ZeroPaddedSpan.Empty;
     }
 
+    /// <summary>
+    /// Handles exceptions that occur during the execution of a call frame by restoring the world state,
+    /// reverting known side effects, and either finalizing the transaction (for top-level calls) or
+    /// preparing to resume execution in a parent call frame (for nested calls).
+    /// </summary>
+    /// <param name="callResult">
+    /// The result object that contains the exception type and any output data from the failed call.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A reference to the zero-padded span that holds the previous call's output, which is reset on exception.
+    /// </param>
+    /// <returns>
+    /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
+    /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
+    /// </returns>
     private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
-        if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
-        _worldState.Restore(_currentState.Snapshot);
+        // Cache the tracer to minimize repeated field accesses.
+        ITxTracer txTracer = _txTracer;
 
-        RevertParityTouchBugAccount();
-
-        if (_currentState.IsTopLevel)
+        // Report the error for action-level tracing if enabled.
+        if (txTracer.IsTracingActions)
         {
-            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
+            txTracer.ReportActionError(callResult.ExceptionType);
         }
 
-        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
+        // Restore the world state to its snapshot before the current call execution.
+        _worldState.Restore(_currentState.Snapshot);
+
+        // Revert any modifications that might have been applied due to the Parity touch bug.
+        RevertParityTouchBugAccount();
+
+        // If this is the top-level call, return a final transaction substate encapsulating the error.
+        if (_currentState.IsTopLevel)
+        {
+            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
+        }
+
+        // For nested calls, mark the previous call result as a failure code based on the call's EOF semantics.
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
+        // Clean up the current failing state and pop the parent call frame from the state stack.
         _currentState.Dispose();
         _currentState = _stateStack.Pop();
         _currentState.IsContinuation = true;
+
+        // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         return null;
     }
 
+    /// <summary>
+    /// Executes a precompiled contract operation based on the current execution state. 
+    /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
+    /// checks for failure conditions, and adjusts the execution state accordingly.
+    /// </summary>
+    /// <param name="currentState">The current EVM state containing execution parameters for the precompile.</param>
+    /// <param name="isTracingActions">
+    /// A boolean indicating whether detailed tracing actions should be reported during execution.
+    /// </param>
+    /// <param name="failure">
+    /// An output parameter that is set to the encountered exception if the precompile fails; otherwise, <c>null</c>.
+    /// </param>
+    /// <returns>
+    /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
+    /// returns the default value of <see cref="CallResult"/>.
+    /// </returns>
     private CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
     {
-        CallResult callResult;
+        // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
-            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+            _txTracer.ReportAction(
+                currentState.GasAvailable,
+                currentState.Env.Value,
+                currentState.From,
+                currentState.To,
+                currentState.Env.InputData,
+                currentState.ExecutionType,
+                true);
         }
 
-        callResult = RunPrecompile(currentState);
+        // Execute the precompile operation with the current state.
+        CallResult callResult = RunPrecompile(currentState);
 
+        // If the precompile did not succeed, handle the failure conditions.
         if (!callResult.PrecompileSuccess.Value)
         {
+            // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
             if (callResult.IsException)
             {
                 failure = VirtualMachine.PrecompileOutOfGasException;
                 goto Failure;
             }
+
+            // If running a precompile on a top-level call frame and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
                 failure = VirtualMachine.PrecompileExecutionFailureException;
-                // TODO: when direct / calls are treated same we should not need such differentiation
                 goto Failure;
             }
 
-            // TODO: testing it as it seems the way to pass zkSNARKs tests
+            // Otherwise, if no exception but precompile did not succeed, exhaust the remaining gas.
             currentState.GasAvailable = 0;
         }
 
+        // If execution reaches here, the precompile operation is considered successful.
         failure = null;
         return callResult;
+
     Failure:
+        // Return the default CallResult to signal failure, with the failure exception set via the out parameter.
         return default;
     }
+
 
     private void TraceTransactionActionStart(EvmState currentState)
     {
@@ -530,67 +794,119 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.MachineCode ?? default);
     }
 
-    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInstructions>(BlockHeader header) where TTracingInstructions : struct, IFlag
+    /// <summary>
+    /// Prepares the release specification and opcode methods to be used during EVM execution,
+    /// based on the provided block header and the tracing instructions flag.
+    /// </summary>
+    /// <typeparam name="TTracingInstructions">
+    /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
+    /// should be used.
+    /// </typeparam>
+    /// <param name="header">
+    /// The block header containing the block number and timestamp, which are used to select the appropriate release specification.
+    /// </param>
+    /// <returns>
+    /// The prepared <see cref="IReleaseSpec"/> instance, with its associated opcode methods cached for execution.
+    /// </returns>
+    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInstructions>(BlockHeader header)
+        where TTracingInstructions : struct, IFlag
     {
+        // Retrieve the release specification based on the block's number and timestamp.
         IReleaseSpec spec = _specProvider.GetSpec(header.Number, header.Timestamp);
+
+        // Check if tracing instructions are inactive.
         if (!TTracingInstructions.IsActive)
         {
+            // Occasionally refresh the opcode cache for non-tracing opcodes.
+            // The cache is flushed every 10,000 transactions until a threshold of 500,000 transactions.
+            // This is to have the function pointers directly point at any PGO optimized methods rather than via pre-stubs
+            // May be a few cycles to pick up pointers to the re-Jitted optimized methods depending on what's in the blocks,
+            // however the the refreshes don't take long. (re-Jitting doesn't update prior captured function pointers)
             if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
             {
-                if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
-                // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
-                // May be a few cycles to pick up pointers to the optimized methods depending on what's in the blocks,
-                // however the the refreshes don't take long.
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug("Resetting EVM instruction cache");
+                }
+                // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
                 spec.EvmInstructions = EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec);
             }
+            // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
             _opcodeMethods = (OpCode[])(spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
         }
         else
         {
+            // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
             _opcodeMethods = (OpCode[])(spec.EvmTracedInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
         }
 
+        // Store the spec in field for future access and return it.
         return (_spec = spec);
     }
 
+    /// <summary>
+    /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
+    /// various conditions such as exceptions, reverts, and contract creation flows. For contract creation,
+    /// the method adjusts the available gas by the code deposit cost and validates the deployed code.
+    /// </summary>
+    /// <param name="currentState">
+    /// The current EVM state, which contains the available gas, execution type, and target address.
+    /// </param>
+    /// <param name="spec">
+    /// The release specification that provides rules and parameters such as code deposit cost and code validation.
+    /// </param>
+    /// <param name="callResult">
+    /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
+    /// </param>
     private void TraceTransactionActionEnd(EvmState currentState, IReleaseSpec spec, in CallResult callResult)
     {
+        // Calculate the gas cost required for depositing the contract code based on the length of the output.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
+        // Cache the output bytes for reuse in the tracing reports.
+        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+
+        // If an exception occurred during execution, report the error immediately.
         if (callResult.IsException)
         {
             _txTracer.ReportActionError(callResult.ExceptionType);
         }
+        // If the call is set to revert, report a revert action, adjusting the reported gas for creation operations.
         else if (callResult.ShouldRevert)
         {
-            _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
-                    ? currentState.GasAvailable - codeDepositGasCost
-                    : currentState.GasAvailable,
-                callResult.Output.Bytes);
+            // For creation operations, subtract the code deposit cost from the available gas; otherwise, use full gas.
+            long reportedGas = currentState.ExecutionType.IsAnyCreate() ? currentState.GasAvailable - codeDepositGasCost : currentState.GasAvailable;
+            _txTracer.ReportActionRevert(reportedGas, outputBytes);
         }
+        // Process contract creation flows.
         else if (currentState.ExecutionType.IsAnyCreate())
         {
+            // If available gas is insufficient to cover the code deposit cost...
             if (currentState.GasAvailable < codeDepositGasCost)
             {
+                // When the spec mandates charging for top-level creation, report an out-of-gas error.
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
+                // Otherwise, report a successful action end with the remaining gas.
                 else
                 {
-                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output.Bytes);
+                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, outputBytes);
                 }
             }
-            // Reject code starting with 0xEF if EIP-3541 is enabled.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, callResult.Output.Bytes, callResult.FromVersion))
+            // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
+            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes, callResult.FromVersion))
             {
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
+            // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
             {
-                _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
+                _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, outputBytes);
             }
         }
+        // For non-creation calls, report the action end using the current available gas and the standard return data.
         else
         {
             _txTracer.ReportActionEnd(currentState.GasAvailable, ReturnDataBuffer);
@@ -681,28 +997,64 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         }
     }
 
+    /// <summary>
+    /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
+    /// stack initialization, and memory updates. It then dispatches the bytecode execution using a
+    /// specialized interpreter that is optimized at compile time based on the tracing instructions flag.
+    /// </summary>
+    /// <typeparam name="TTracingInstructions">
+    /// A struct implementing <see cref="IFlag"/> that indicates, via a compile-time constant,
+    /// whether tracing-specific opcodes and behavior should be used.
+    /// </typeparam>
+    /// <param name="vmState">
+    /// The current EVM state containing the execution environment, gas, memory, and stack information.
+    /// </param>
+    /// <param name="previousCallResult">
+    /// An optional read-only memory buffer containing the output of a previous call; if provided, its bytes
+    /// will be pushed onto the stack for further processing.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A zero-padded span containing output from the previous call used for updating the memory state.
+    /// </param>
+    /// <param name="previousCallOutputDestination">
+    /// The memory destination address where the previous call's output should be stored.
+    /// </param>
+    /// <returns>
+    /// A <see cref="CallResult"/> that encapsulates the result of executing the EVM call, including success,
+    /// failure, or out-of-gas conditions.
+    /// </returns>
     /// <remarks>
-    /// Struct generic parameter is used to burn out all the if statements and inner code
-    /// by typeof(TTracingInstructions) == typeof(NotTracing) checks that are evaluated to constant
-    /// values at compile time.
+    /// The generic struct parameter is used to eliminate runtime if-statements via compile-time evaluation
+    /// of <c>TTracingInstructions.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination)
+    private CallResult ExecuteCall<TTracingInstructions>(
+        EvmState vmState,
+        ReadOnlyMemory<byte>? previousCallResult,
+        ZeroPaddedSpan previousCallOutput,
+        scoped in UInt256 previousCallOutputDestination)
         where TTracingInstructions : struct, IFlag
     {
+        // Obtain a reference to the execution environment for convenience.
         ref readonly ExecutionEnvironment env = ref vmState.Env;
+
+        // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
+            // Ensure the executing account has sufficient balance and exists in the world state.
             _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, _spec);
 
+            // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && _spec.ClearEmptyAccountWhenTouched)
             {
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }
         }
 
+        // If no machine code is present, treat the call as empty.
         if (env.CodeInfo.MachineCode.Length == 0)
         {
+            // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
             {
                 Metrics.IncrementEmptyCalls();
@@ -710,41 +1062,63 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             goto Empty;
         }
 
+        // Initialize the internal stacks for the current call frame.
         vmState.InitializeStacks();
+
+        // Create an EVM stack using the current stack head, tracer, and data stack slice.
         EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
+
+        // Cache the available gas from the state for local use.
         long gasAvailable = vmState.GasAvailable;
 
+        // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
         {
             stack.PushBytes(previousCallResult.Value.Span);
-            if (TTracingInstructions.IsActive) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+
+            // Report the remaining gas if tracing instructions are enabled.
+            if (TTracingInstructions.IsActive)
+            {
+                _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+            }
         }
 
+        // If there is previous call output, update the memory cost and save the output.
         if (previousCallOutput.Length > 0)
         {
+            // Use a local variable for the destination to simplify passing it by reference.
             UInt256 localPreviousDest = previousCallOutputDestination;
+
+            // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
             if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
                 goto OutOfGas;
             }
 
+            // Save the previous call's output into the VM state's memory.
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
+        // Update the global EVM state with the current state.
         EvmState = vmState;
-        // Struct generic parameter is used to burn out all the if statements
-        // and inner code by using static property on generic IFlag using
-        // OnFlag or OffFlag. These checks that are evaluated to constant values at compile time.
-        // This only works for structs, not for classes or interface types
-        // which use shared generics.
+
+        // Dispatch the bytecode interpreter.
+        // The second generic parameter is selected based on whether the transaction tracer is cancelable:
+        // - OffFlag is used when cancelation is not needed.
+        // - OnFlag is used when cancelation is enabled.
+        // This leverages the compile-time evaluation of TTracingInstructions to optimize away runtime checks.
         return _txTracer.IsCancelable switch
         {
             false => RunByteCode<TTracingInstructions, OffFlag>(ref stack, gasAvailable),
             true => RunByteCode<TTracingInstructions, OnFlag>(ref stack, gasAvailable),
         };
+
     Empty:
+        // Return an empty CallResult if there is no machine code to execute.
         return CallResult.Empty(vmState.Env.CodeInfo.Version);
+
     OutOfGas:
+        // Return an out-of-gas CallResult if updating the memory cost fails.
         return CallResult.OutOfGasException;
     }
 
