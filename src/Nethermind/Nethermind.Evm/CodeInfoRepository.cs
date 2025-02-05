@@ -106,7 +106,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, Nethermind.Evm.EvmObjectFormat.ValidationStrategy.ExractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExractHeader);
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -127,7 +127,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExractHeader);
-        codeInfo.AnalyseInBackgroundIfRequired();
+        codeInfo.AnalyzeInBackgroundIfRequired();
 
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);

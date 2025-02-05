@@ -19,7 +19,7 @@ public static class CodeInfoFactory
                 return new EofCodeInfo(container.Value);
             }
         }
-        codeInfo.AnalyseInBackgroundIfRequired();
+        codeInfo.AnalyzeInBackgroundIfRequired();
         return codeInfo;
     }
 
@@ -39,7 +39,7 @@ public static class CodeInfoFactory
             return false;
         }
         codeInfo = new CodeInfo(data);
-        codeInfo.AnalyseInBackgroundIfRequired();
+        codeInfo.AnalyzeInBackgroundIfRequired();
         return true;
     }
 }

@@ -200,7 +200,7 @@ internal sealed partial class EvmInstructions
 
         // Analyze and compile the initialization code.
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
-        codeinfo.AnalyseInBackgroundIfRequired();
+        codeinfo.AnalyzeInBackgroundIfRequired();
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();

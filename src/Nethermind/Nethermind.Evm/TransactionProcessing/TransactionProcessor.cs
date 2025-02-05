@@ -571,7 +571,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (delegationAddress is not null)
                     accessTracker.WarmUp(delegationAddress);
             }
-            codeInfo?.AnalyseInBackgroundIfRequired();
+            codeInfo?.AnalyzeInBackgroundIfRequired();
 
             if (spec.UseHotAndColdStorage)
             {

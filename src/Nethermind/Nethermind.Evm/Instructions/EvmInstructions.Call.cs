@@ -178,7 +178,7 @@ internal sealed partial class EvmInstructions
 
         // Retrieve code information for the call and schedule background analysis if needed.
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
-        codeInfo.AnalyseInBackgroundIfRequired();
+        codeInfo.AnalyzeInBackgroundIfRequired();
 
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)

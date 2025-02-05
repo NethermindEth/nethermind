@@ -49,7 +49,7 @@ public class CodeInfo : ICodeInfo, IThreadPoolWorkItem
         _analyzer.Execute();
     }
 
-    public void AnalyseInBackgroundIfRequired()
+    public void AnalyzeInBackgroundIfRequired()
     {
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
         {

@@ -943,7 +943,7 @@ internal sealed partial class EvmInstructions
 
         // 11. Retrieve and prepare the target code for execution.
         ICodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
-        targetCodeInfo.AnalyseInBackgroundIfRequired();
+        targetCodeInfo.AnalyzeInBackgroundIfRequired();
 
         // For delegate calls, calling a non-EOF (legacy) target is disallowed.
         if (typeof(TOpEofCall) == typeof(OpEofDelegateCall)
