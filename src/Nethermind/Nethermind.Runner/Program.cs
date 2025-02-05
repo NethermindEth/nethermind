@@ -12,6 +12,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -455,6 +456,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
+
+    NativeLibrary.Load("runtimes/linux-x64/native/libjemalloc.so");
 
     return configProvider;
 }

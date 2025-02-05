@@ -55,6 +55,7 @@
     <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.34" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.34" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.2.0" />
+    <PackageVersion Include="Nethermind.RocksDB.Runtimes" Version="9.7.0-preview.1" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NLog" Version="5.3.4" />
     <PackageVersion Include="NLog.Targets.Seq" Version="4.0.1" />
@@ -70,7 +71,6 @@
     <PackageVersion Include="Pyroscope" Version="0.9.0" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="9.4.0.50294" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
     <PackageVersion Include="Snappier" Version="1.1.6" />
