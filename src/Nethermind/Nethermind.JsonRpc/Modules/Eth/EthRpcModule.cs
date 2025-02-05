@@ -640,6 +640,7 @@ public partial class EthRpcModule(
         try
         {
             LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
+            logFilter.UseIndex = filter.UseIndex;
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 

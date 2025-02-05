@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,7 +12,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public class AnyTopicsFilter : TopicsFilter
     {
-
         private readonly TopicExpression[] _expressions;
 
         public AnyTopicsFilter(params TopicExpression[] expressions)
@@ -93,6 +94,24 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             return result;
+        }
+
+        public override bool AcceptsAnyBlock => _expressions.Length == 0 || _expressions.Any(e => e.AcceptsAnyBlock);
+
+        public override IEnumerable<Hash256> Topics => _expressions.SelectMany(e => e.Topics);
+
+        public override HashSet<int> FilterBlockNumbers(IReadOnlyDictionary<Hash256, List<int>> byTopic)
+        {
+            HashSet<int> result = null;
+            foreach (TopicExpression expression in _expressions)
+            {
+                if (result == null)
+                    result = expression.FilterBlockNumbers(byTopic);
+                else
+                    result.UnionWith(expression.FilterBlockNumbers(byTopic));
+            }
+
+            return result ?? [];
         }
     }
 }

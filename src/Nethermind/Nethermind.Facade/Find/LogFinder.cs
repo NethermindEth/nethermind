@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -93,7 +94,7 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (CanUseLogIndexStorage(fromBlock, toBlock))
+            if (filter.UseIndex && CanUseLogIndex(filter, fromBlock, toBlock))
                 return FilterLogsUsingIndex(filter, fromBlock, toBlock, cancellationToken);
 
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
@@ -172,9 +173,9 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
-        private bool CanUseLogIndexStorage(BlockHeader fromBlock, BlockHeader toBlock)
+        private bool CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            return toBlock.Number <= _logIndexStorage.GetLastKnownBlockNumber();
+            return !filter.AcceptsAnyBlock && toBlock.Number <= _logIndexStorage.GetLastKnownBlockNumber();
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
@@ -202,101 +203,74 @@ namespace Nethermind.Facade.Find
             return true;
         }
 
-        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            // TODO: calculate real-time without list
-            List<HashSet<int>> andBlockNumSets = [];
-
-            if (filter.AddressFilter.Address is { } address)
+            ConcurrentDictionary<Address, List<int>> byAddress = null;
+            if (filter.AddressFilter.Address is {} address)
             {
-                andBlockNumSets.Add([.._logIndexStorage.GetBlockNumbersFor(address, (int)fromBlock.Number, (int)toBlock.Number)]);
+                byAddress = new() { [address] = null };
             }
             else if (filter.AddressFilter.Addresses is { } addresses)
             {
-                HashSet<int>? orAddressesFilter = null;
-                foreach (AddressAsKey addressAsKey in addresses)
-                {
-                    orAddressesFilter ??= [];
-                    orAddressesFilter.AddRange(_logIndexStorage.GetBlockNumbersFor(addressAsKey.Value, (int)fromBlock.Number, (int)toBlock.Number));
-                }
-
-                if (orAddressesFilter != null)
-                {
-                    andBlockNumSets.Add(orAddressesFilter);
-                }
+                byAddress = new();
+                byAddress.AddRange(addresses.Select(a => KeyValuePair.Create(a.Value, (List<int>)null)));
             }
 
-            // TODO: move logic to TopicsFilter and implementations
-            //    OR switch to tree visitor
-            if (filter.TopicsFilter is SequenceTopicsFilter sequenceFilter)
+            ConcurrentDictionary<Hash256, List<int>> byTopic = null;
+            foreach (Hash256 topic in filter.TopicsFilter.Topics)
             {
-                // TODO: confirm topic order doesn't matter
-                foreach (TopicExpression topicExpression in sequenceFilter.Expressions)
-                {
-                    if (topicExpression is SpecificTopic specificTopic)
-                    {
-                        andBlockNumSets.AddRange([.._logIndexStorage.GetBlockNumbersFor(specificTopic.Topic, (int)fromBlock.Number, (int)toBlock.Number)]);
-                    }
-                    if (topicExpression is OrExpression orExpression)
-                    {
-                        HashSet<int>? orTopicsFilter = null;
-                        foreach (TopicExpression subexpression in orExpression.Subexpressions)
-                        {
-                            if (subexpression is SpecificTopic specificSubTopic)
-                            {
-                                orTopicsFilter ??= new();
-                                orTopicsFilter.AddRange([.._logIndexStorage.GetBlockNumbersFor(specificSubTopic.Topic, (int)fromBlock.Number, (int)toBlock.Number)]);
-                            }
-                        }
-
-                        if (orTopicsFilter != null)
-                        {
-                            andBlockNumSets.Add(orTopicsFilter);
-                        }
-                    }
-                }
+                byTopic ??= new();
+                byTopic[topic] = null;
             }
 
-            HashSet<int> blockNums = null;
-            foreach (HashSet<int> numSet in andBlockNumSets)
+            Enumerable.Empty<object>()
+                .Union(byAddress?.Keys ?? Enumerable.Empty<Address>())
+                .Union(byTopic?.Keys ?? Enumerable.Empty<Hash256>())
+                .AsParallel() // TODO utilize canRunParallel similar to FilterLogsWithBloomsIndex
+                .ForAll(x =>
+                {
+                    if (x is Address addr)
+                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock.Number, (int)toBlock.Number).ToList();
+                    if (x is Hash256 tpc)
+                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock.Number, (int)toBlock.Number).ToList();
+                });
+
+            HashSet<int> blockNumbers = null;
+            if (byAddress is not null)
             {
-                if (blockNums == null) blockNums = numSet;
-                else blockNums.IntersectWith(numSet);
+                blockNumbers = [..byAddress.Values.SelectMany(x => x)];
             }
 
-            if (blockNums == null)
+            if (byTopic is not null)
             {
-                int count = 0;
-                while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
-                {
-                    foreach (FilterLog filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
-                    {
-                        yield return filterLog;
-                    }
+                HashSet<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
 
-                    fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
-                    if (fromBlock is null) break;
-
-                    count++;
-                }
+                if (blockNumbers is null)
+                    blockNumbers = [..topicNumbers];
+                else
+                    blockNumbers.IntersectWith(topicNumbers);
             }
-            else
+
+            // TODO: merge sorted lists (or enumerables) instead of sorting HashSet?
+            return blockNumbers?.Order() ?? Enumerable.Empty<int>();
+        }
+
+        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        {
+            IEnumerable<int> blockNums = GetBlockNumbersFor(filter, fromBlock, toBlock, cancellationToken);
+
+            int count = 0;
+            foreach (var blockNum in blockNums)
             {
-                int count = 0;
-                foreach (var blockNum in blockNums)
-                {
-                    BlockHeader blockHeader = _blockFinder.FindHeader(blockNum);
-                    if (blockHeader is null)
-                        break;
+                BlockHeader blockHeader = _blockFinder.FindHeader(blockNum);
+                if (blockHeader is null)
+                    break;
 
-                    foreach (FilterLog filterLog in FindLogsInBlock(filter, blockHeader!, cancellationToken))
-                    {
-                        yield return filterLog;
-                    }
+                foreach (FilterLog filterLog in FindLogsInBlock(filter, blockHeader!, cancellationToken))
+                    yield return filterLog;
 
-                    if (++count >= _maxBlockDepth)
-                        break;
-                }
+                if (++count >= _maxBlockDepth)
+                    break;
             }
         }
 
