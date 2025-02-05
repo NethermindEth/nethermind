@@ -92,7 +92,8 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
 
-    public EvmState EvmState { get; private set; }
+    private EvmState _vmState;
+    public EvmState EvmState { get => _vmState; private set => _vmState = value; }
     public int SectionIndex { get; set; }
 
     public VirtualMachine(
