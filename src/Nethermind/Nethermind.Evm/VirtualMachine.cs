@@ -1122,90 +1122,140 @@ public sealed unsafe class VirtualMachine(
         return CallResult.OutOfGasException;
     }
 
+    /// <summary>
+    /// Executes the EVM bytecode by iterating over the instruction set and invoking corresponding opcode methods
+    /// via function pointers. The method leverages compile-time evaluation of tracing and cancellation flags to optimize
+    /// conditional branches. It also updates the VM state as instructions are executed, handles exceptions,
+    /// and returns an appropriate <see cref="CallResult"/>.
+    /// </summary>
+    /// <typeparam name="TTracingInstructions">
+    /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether tracing-specific logic should be enabled.
+    /// </typeparam>
+    /// <typeparam name="TCancelable">
+    /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether cancellation support is enabled.
+    /// </typeparam>
+    /// <param name="stack">
+    /// A reference to the current EVM stack used for execution.
+    /// </param>
+    /// <param name="gasAvailable">
+    /// The amount of gas available for executing the bytecode.
+    /// </param>
+    /// <returns>
+    /// A <see cref="CallResult"/> that encapsulates the outcome of the execution, which can be a successful result,
+    /// an empty result, a revert, or a failure due to an exception (such as out-of-gas).
+    /// </returns>
+    /// <remarks>
+    /// The method uses an unsafe context and function pointers to invoke opcode implementations directly,
+    /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
+    /// </remarks>
     [SkipLocalsInit]
-    private unsafe CallResult RunByteCode<TTracingInstructions, TCancelable>(scoped ref EvmStack stack, long gasAvailable)
+    private unsafe CallResult RunByteCode<TTracingInstructions, TCancelable>(
+        scoped ref EvmStack stack,
+        long gasAvailable)
         where TTracingInstructions : struct, IFlag
         where TCancelable : struct, IFlag
     {
+        // Reset return data and set the current section index from the VM state.
         ReturnData = null;
         SectionIndex = EvmState.FunctionIndex;
 
+        // Retrieve the code information and create a read-only span of instructions.
         ICodeInfo codeInfo = EvmState.Env.CodeInfo;
         ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
 
+        // Initialize the exception type to "None".
         EvmExceptionType exceptionType = EvmExceptionType.None;
 #if DEBUG
+        // In debug mode, retrieve a tracer for interactive debugging.
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
 
-        // Initialize program counter to the current state's value.
-        // Entry point is not always 0 as we may be returning to code after a call.
+        // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = EvmState.ProgramCounter;
-        // Use fixed pointer or we loose the type when trying skip bounds check,
-        // and have to cast for each call (delegate*<...> can't be used as a generic arg)
+
+        // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks and casts.
+        // If we don't use a pointer we have to cast for each call (delegate*<...> can't be used as a generic arg)
+        // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
-            // We use a while loop rather than a for loop as some
-            // opcodes can change the program counter (e.g. Push, Jump, etc)
+            // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
 #if DEBUG
+                // Allow the debugger to inspect and possibly pause execution for debugging purposes.
                 debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-                // Get the opcode at the current program counter
+                // Fetch the current instruction from the code section.
                 Instruction instruction = codeSection[programCounter];
 
-                if (TCancelable.IsActive && _txTracer.IsCancelled) ThrowOperationCanceledException();
+                // If cancellation is enabled and cancellation has been requested, throw an exception.
+                if (TCancelable.IsActive && _txTracer.IsCancelled)
+                    ThrowOperationCanceledException();
+
+                // If tracing is enabled, start an instruction trace.
                 if (TTracingInstructions.IsActive)
                     StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
 
-                // Advance the program counter one instruction
+                // Advance the program counter to point to the next instruction.
                 programCounter++;
 
+                // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
                 {
-                    // Very commonly called opcode and minimal implementation, so we inline here
                     exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
                 }
                 else
                 {
-                    // Get the opcode delegate* from the opcode array
+                    // Retrieve the opcode function pointer corresponding to the current instruction.
                     OpCode opcodeMethod = opcodeMethods[(int)instruction];
-                    // Execute opcode delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    // Stack, gas, and program counter may be modified by call (also instance variables on the vm)
+                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
+                    // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
                 }
 
-                // Exit loop if run out of gas
-                if (gasAvailable < 0) goto OutOfGas;
-                // Exit loop if exception occurred
-                if (exceptionType != EvmExceptionType.None) break;
-                // Exit loop if returning data
-                if (ReturnData is not null) break;
+                // If gas is exhausted, jump to the out-of-gas handler.
+                if (gasAvailable < 0)
+                    goto OutOfGas;
+                // If an exception occurred, exit the loop.
+                if (exceptionType != EvmExceptionType.None)
+                    break;
+                // If return data has been set, exit the loop to process the returned value.
+                if (ReturnData is not null)
+                    break;
 
+                // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInstructions.IsActive)
                     EndInstructionTrace(gasAvailable);
             }
         }
 
+        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
             UpdateCurrentState(programCounter, gasAvailable, stack.Head);
         }
         else
         {
+            // For any other exception, jump to the failure handling routine.
             goto ReturnFailure;
         }
 
-        if (exceptionType == EvmExceptionType.Revert) goto Revert;
-        if (ReturnData is not null) goto DataReturn;
+        // If the exception indicates a revert, handle it specifically.
+        if (exceptionType == EvmExceptionType.Revert)
+            goto Revert;
+        // If return data was produced, jump to the return data processing block.
+        if (ReturnData is not null)
+            goto DataReturn;
 
+        // If no return data is produced, return an empty call result.
         return CallResult.Empty(codeInfo.Version);
 
     DataReturn:
 #if DEBUG
+        // Allow debugging before processing the return data.
         debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
+        // Process the return data based on its runtime type.
         if (ReturnData is EvmState state)
         {
             return new CallResult(state);
@@ -1214,14 +1264,22 @@ public sealed unsafe class VirtualMachine(
         {
             return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
         }
+        // Fall back to returning a CallResult with a byte array as the return data.
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
+
     Revert:
+        // Return a CallResult indicating a revert.
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
+
     OutOfGas:
+        // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
+        // Return a failure CallResult based on the remaining gas and the exception type.
         return GetFailureReturn(gasAvailable, exceptionType);
 
+        // Converts the code section bytes into a read-only span of instructions.
+        // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
         static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
         {
             ReadOnlySpan<byte> codeBytes = codeInfo.CodeSection.Span;
@@ -1315,11 +1373,11 @@ public sealed unsafe class VirtualMachine(
         public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
         public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);
         public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow);
+        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow);
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
-        public static CallResult Empty(int fromVersion) => new(null, default, null, fromVersion);
+        public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
 
         public CallResult(EvmState stateToExecute)
         {
@@ -1363,7 +1421,7 @@ public sealed unsafe class VirtualMachine(
         public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
+        public bool? PrecompileSuccess { get; }
         public bool IsReturn => StateToExecute is null;
         public bool IsException => ExceptionType != EvmExceptionType.None;
         public int FromVersion { get; }
