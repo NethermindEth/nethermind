@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Api.Extensions;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
@@ -12,6 +15,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -105,5 +109,51 @@ public class PluginLoaderTests
             typeof(HivePlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
+    }
+
+    [Test]
+    public async Task Can_PassInConfig_And_OnlyLoadEnabledPlugins()
+    {
+        PluginLoader loader = new PluginLoader(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger(),
+            typeof(TestPlugin1), typeof(TestPlugin2));
+        loader.Load();
+
+        IConfigProvider configProvider = new ConfigProvider();
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        initConfig.DiscoveryEnabled = true;
+        initConfig.PeerManagerEnabled = false;
+        ChainSpec chainSpec = new ChainSpec();
+        chainSpec.ChainId = 999;
+
+        IList<INethermindPlugin> loadedPlugins = await loader.LoadPlugins(configProvider, chainSpec);
+        loadedPlugins.Should().BeEquivalentTo([new TestPlugin1(chainSpec, initConfig)]);
+    }
+
+    private class TestPlugin1(ChainSpec chainSpec, IInitConfig initConfig) : INethermindPlugin
+    {
+        public string Name => "TestPlugin1";
+        public string Description => "TestPlugin1";
+        public string Author => "TestPlugin1";
+
+        // Just some arbitrary combination
+        public bool Enabled => chainSpec.ChainId == 999 && initConfig.DiscoveryEnabled && !initConfig.PeerManagerEnabled;
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private class TestPlugin2() : INethermindPlugin
+    {
+        public string Name => "TestPlugin2";
+        public string Description => "TestPlugin2";
+        public string Author => "TestPlugin2";
+        public bool Enabled => false;
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 }
