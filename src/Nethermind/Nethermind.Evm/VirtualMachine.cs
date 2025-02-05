@@ -71,25 +71,10 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
     private IWorldState _worldState = null!;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
     private IReleaseSpec _spec;
 
     private ICodeInfoRepository _codeInfoRepository;
-    public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
-    public IReleaseSpec Spec => _spec;
-    public ITxTracer TxTracer => _txTracer;
-    public IWorldState WorldState => _worldState;
-    public ReadOnlySpan<byte> ChainId => _chainId;
-    public ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
-    public object ReturnData { get => _returnData; set => _returnData = value; }
-    private object _returnData;
-    public IBlockhashProvider BlockHashProvider => _blockHashProvider;
-
-    public EvmState EvmState => _vmState;
-    private EvmState _vmState;
-    public int SectionIndex { get => _sectionIndex; set => _sectionIndex = value; }
-    private int _sectionIndex;
 
     private OpCode[] _opcodeMethods;
     private static long _txCount;
@@ -97,6 +82,18 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     private EvmState _currentState;
     private ReadOnlyMemory<byte>? _previousCallResult;
     private UInt256 _previousCallOutputDestination;
+
+    public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
+    public IReleaseSpec Spec => _spec;
+    public ITxTracer TxTracer => _txTracer;
+    public IWorldState WorldState => _worldState;
+    public ReadOnlySpan<byte> ChainId => _chainId;
+    public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
+    public object ReturnData { get; private set; }
+    public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+
+    public EvmState EvmState { get; private set; }
+    public int SectionIndex { get; set; }
 
     public VirtualMachine(
         IBlockhashProvider? blockHashProvider,
@@ -128,7 +125,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         {
             if (!_currentState.IsContinuation)
             {
-                _returnDataBuffer = Array.Empty<byte>();
+                ReturnDataBuffer = Array.Empty<byte>();
             }
 
             Exception? failure;
@@ -245,7 +242,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
         _previousCallOutputDestination = UInt256.Zero;
-        _returnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
     }
 
@@ -253,7 +250,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         where TTracingInstructions : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput;
-        _returnDataBuffer = callResult.Output.Bytes;
+        ReturnDataBuffer = callResult.Output.Bytes;
         _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
             callResult.PrecompileSuccess.HasValue
             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
@@ -271,7 +268,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
         if (_txTracer.IsTracingActions)
         {
-            _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
+            _txTracer.ReportActionEnd(previousState.GasAvailable, ReturnDataBuffer);
         }
 
         return previousCallOutput;
@@ -401,7 +398,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     private void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         _worldState.Restore(previousState.Snapshot);
-        _returnDataBuffer = callResult.Output.Bytes;
+        ReturnDataBuffer = callResult.Output.Bytes;
         _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
             ? (callResult.PrecompileSuccess is not null ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
             : StatusCode.FailureBytes;
@@ -443,7 +440,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
         _previousCallResult = _currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
         _previousCallOutputDestination = UInt256.Zero;
-        _returnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         _currentState.Dispose();
@@ -457,7 +454,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _stateStack.Push(_currentState);
         _currentState = callResult.StateToExecute;
         _previousCallResult = null;
-        _returnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
     }
 
@@ -475,7 +472,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
         _previousCallResult = _currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
         _previousCallOutputDestination = UInt256.Zero;
-        _returnDataBuffer = Array.Empty<byte>();
+        ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         _currentState.Dispose();
@@ -595,7 +592,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         }
         else
         {
-            _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
+            _txTracer.ReportActionEnd(currentState.GasAvailable, ReturnDataBuffer);
         }
     }
 
@@ -733,7 +730,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        _vmState = vmState;
+        EvmState = vmState;
         // Struct generic parameter is used to burn out all the if statements
         // and inner code by using static property on generic IFlag using
         // OnFlag or OffFlag. These checks that are evaluated to constant values at compile time.
@@ -755,10 +752,10 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         where TTracingInstructions : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        _returnData = null;
-        _sectionIndex = _vmState.FunctionIndex;
+        ReturnData = null;
+        SectionIndex = EvmState.FunctionIndex;
 
-        ICodeInfo codeInfo = _vmState.Env.CodeInfo;
+        ICodeInfo codeInfo = EvmState.Env.CodeInfo;
         ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
 
         EvmExceptionType exceptionType = EvmExceptionType.None;
@@ -768,7 +765,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
         // Initialize program counter to the current state's value.
         // Entry point is not always 0 as we may be returning to code after a call.
-        int programCounter = _vmState.ProgramCounter;
+        int programCounter = EvmState.ProgramCounter;
         // Use fixed pointer or we loose the type when trying skip bounds check,
         // and have to cast for each call (delegate*<...> can't be used as a generic arg)
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
@@ -809,7 +806,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                 // Exit loop if exception occurred
                 if (exceptionType != EvmExceptionType.None) break;
                 // Exit loop if returning data
-                if (_returnData is not null) break;
+                if (ReturnData is not null) break;
 
                 if (TTracingInstructions.IsActive)
                     EndInstructionTrace(gasAvailable);
@@ -826,7 +823,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         }
 
         if (exceptionType == EvmExceptionType.Revert) goto Revert;
-        if (_returnData is not null) goto DataReturn;
+        if (ReturnData is not null) goto DataReturn;
 
         return CallResult.Empty(codeInfo.Version);
 
@@ -834,17 +831,17 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 #if DEBUG
         debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-        if (_returnData is EvmState state)
+        if (ReturnData is EvmState state)
         {
             return new CallResult(state);
         }
-        else if (_returnData is EofCodeInfo eofCodeInfo)
+        else if (ReturnData is EofCodeInfo eofCodeInfo)
         {
-            return new CallResult(eofCodeInfo, _returnDataBuffer, null, codeInfo.Version);
+            return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
         }
-        return new CallResult(null, (byte[])_returnData, null, codeInfo.Version);
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
     Revert:
-        return new CallResult(null, (byte[])_returnData, null, codeInfo.Version, shouldRevert: true);
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
     OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
@@ -884,12 +881,12 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
     private void UpdateCurrentState(int pc, long gas, int stackHead)
     {
-        EvmState state = _vmState;
+        EvmState state = EvmState;
 
         state.ProgramCounter = pc;
         state.GasAvailable = gas;
         state.DataStackHead = stackHead;
-        state.FunctionIndex = _sectionIndex;
+        state.FunctionIndex = SectionIndex;
     }
 
     private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
@@ -902,8 +899,8 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
     {
-        EvmState vmState = _vmState;
-        int sectionIndex = _sectionIndex;
+        EvmState vmState = EvmState;
+        int sectionIndex = SectionIndex;
 
         bool isEofFrame = vmState.Env.CodeInfo.Version > 0;
         _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env,

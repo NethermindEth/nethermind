@@ -45,7 +45,6 @@ public static class T8nExecutor
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            codeInfoRepository,
             _logManager);
         TransactionProcessor transactionProcessor = new(
             test.SpecProvider,
