@@ -144,9 +144,10 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
+            bool inserted = false;
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -170,6 +171,10 @@ namespace Nethermind.State
 
                 _codeInsertFilter.Set(codeHash);
             }
+            else
+            {
+                inserted = true;
+            }
 
             Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when updating code hash");
             if (account.CodeHash.ValueHash256 != codeHash)
@@ -186,6 +191,8 @@ namespace Nethermind.State
                     PushTouch(address, account, spec, account.Balance.IsZero);
                 }
             }
+
+            return inserted;
         }
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)

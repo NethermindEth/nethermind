@@ -126,12 +126,14 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExractHeader);
-        codeInfo.AnalyzeInBackgroundIfRequired();
-
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
-        state.InsertCode(codeOwner, codeHash, code, spec);
-        _codeCache.Set(codeHash, codeInfo);
+        // If the code is already in the cache, we don't need to create and add it again
+        if (state.InsertCode(codeOwner, in codeHash, code, spec) ||
+            _codeCache.Get(in codeHash) is null)
+        {
+            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExractHeader);
+            _codeCache.Set(in codeHash, codeInfo);
+        }
     }
 
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
