@@ -112,31 +112,16 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _txTracer = txTracer;
         _state = worldState;
 
-        _spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
-        if (!TTracingInstructions.IsActive)
-        {
-            if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
-            {
-                if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
-                // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
-                // May be a few cycles to pick up pointers to the optimized methods depending on what's in the blocks,
-                // however the the refreshes don't take long.
-                _spec.EvmInstructions = EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec);
-            }
-            _opcodeMethods = (OpCode[])(_spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec));
-        }
-        else
-        {
-            _opcodeMethods = (OpCode[])(_spec.EvmTracedInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(_spec));
-        }
         ref readonly TxExecutionContext txExecutionContext = ref state.Env.TxExecutionContext;
+        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInstructions>(txExecutionContext.BlockExecutionContext.Header);
+
         ICodeInfoRepository codeInfoRepository = txExecutionContext.CodeInfoRepository;
-        IReleaseSpec spec = _specProvider.GetSpec(txExecutionContext.BlockExecutionContext.Header.Number, txExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
         ReadOnlyMemory<byte>? previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
         UInt256 previousCallOutputDestination = UInt256.Zero;
         bool isTracing = _txTracer.IsTracing;
+        bool isTracingActions = _txTracer.IsTracingActions;
 
         while (true)
         {
@@ -151,45 +136,17 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                 CallResult callResult;
                 if (currentState.IsPrecompile)
                 {
-                    if (_txTracer.IsTracingActions)
+                    callResult = ExecutePrecompile(currentState, isTracingActions, out failure);
+                    if (failure is not null)
                     {
-                        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
-                    }
-
-                    callResult = ExecutePrecompile(currentState);
-
-                    if (!callResult.PrecompileSuccess.Value)
-                    {
-                        if (callResult.IsException)
-                        {
-                            failure = VirtualMachine.PrecompileOutOfGasException;
-                            goto Failure;
-                        }
-                        if (currentState.IsPrecompile && currentState.IsTopLevel)
-                        {
-                            failure = VirtualMachine.PrecompileExecutionFailureException;
-                            // TODO: when direct / calls are treated same we should not need such differentiation
-                            goto Failure;
-                        }
-
-                        // TODO: testing it as it seems the way to pass zkSNARKs tests
-                        currentState.GasAvailable = 0;
+                        goto Failure;
                     }
                 }
                 else
                 {
-                    if (_txTracer.IsTracingActions && !currentState.IsContinuation)
+                    if (isTracingActions && !currentState.IsContinuation)
                     {
-                        _txTracer.ReportAction(currentState.GasAvailable,
-                            currentState.Env.Value,
-                            currentState.From,
-                            currentState.To,
-                            currentState.ExecutionType.IsAnyCreate()
-                                ? currentState.Env.CodeInfo.MachineCode
-                                : currentState.Env.InputData,
-                            currentState.ExecutionType);
-
-                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.MachineCode ?? default);
+                        TraceTransactionActionStart(currentState);
                     }
 
                     if (currentState.Env.CodeInfo is not null)
@@ -213,7 +170,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
                     if (callResult.IsException)
                     {
-                        if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
+                        if (isTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
                         _state.Restore(currentState.Snapshot);
 
                         RevertParityTouchBugAccount();
@@ -237,48 +194,9 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    if (_txTracer.IsTracingActions)
+                    if (isTracingActions)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
-
-                        if (callResult.IsException)
-                        {
-                            _txTracer.ReportActionError(callResult.ExceptionType);
-                        }
-                        else if (callResult.ShouldRevert)
-                        {
-                            _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
-                                    ? currentState.GasAvailable - codeDepositGasCost
-                                    : currentState.GasAvailable,
-                                callResult.Output.Bytes);
-                        }
-                        else if (currentState.ExecutionType.IsAnyCreate())
-                        {
-                            if (currentState.GasAvailable < codeDepositGasCost)
-                            {
-                                if (spec.ChargeForTopLevelCreate)
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
-                                }
-                                else
-                                {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output.Bytes);
-                                }
-                            }
-                            // Reject code starting with 0xEF if EIP-3541 is enabled.
-                            else if (CodeDepositHandler.CodeIsInvalid(spec, callResult.Output.Bytes, callResult.FromVersion))
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
-                            }
-                            else
-                            {
-                                _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
-                            }
-                        }
-                        else
-                        {
-                            _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
-                        }
+                        TraceTransactionActionEnd(currentState, spec, callResult);
                     }
 
                     return new TransactionSubstate(
@@ -318,7 +236,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                                     codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
                                     currentState.GasAvailable -= codeDepositGasCost;
 
-                                    if (_txTracer.IsTracingActions)
+                                    if (isTracingActions)
                                     {
                                         _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
                                     }
@@ -335,12 +253,12 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                                     previousCallResult = BytesZero;
                                     previousStateSucceeded = false;
 
-                                    if (_txTracer.IsTracingActions)
+                                    if (isTracingActions)
                                     {
                                         _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
                                     }
                                 }
-                                else if (_txTracer.IsTracingActions)
+                                else if (isTracingActions)
                                 {
                                     _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
                                 }
@@ -386,7 +304,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                                     codeInfoRepository.InsertCode(_state, bytecodeResultArray, callCodeOwner, spec);
                                     currentState.GasAvailable -= codeDepositGasCost;
 
-                                    if (_txTracer.IsTracingActions)
+                                    if (isTracingActions)
                                     {
                                         _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
                                     }
@@ -403,12 +321,12 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                                     previousCallResult = BytesZero;
                                     previousStateSucceeded = false;
 
-                                    if (_txTracer.IsTracingActions)
+                                    if (isTracingActions)
                                     {
                                         _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
                                     }
                                 }
-                                else if (_txTracer.IsTracingActions)
+                                else if (isTracingActions)
                                 {
                                     _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
                                 }
@@ -432,7 +350,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                                 }
                             }
 
-                            if (_txTracer.IsTracingActions)
+                            if (isTracingActions)
                             {
                                 _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
                             }
@@ -454,7 +372,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
-                        if (_txTracer.IsTracingActions)
+                        if (isTracingActions)
                         {
                             _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output.Bytes);
                         }
@@ -483,7 +401,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                     txTracer.ReportOperationError(failure is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                 }
 
-                if (_txTracer.IsTracingActions)
+                if (isTracingActions)
                 {
                     EvmException evmException = failure as EvmException;
                     _txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
@@ -503,6 +421,121 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                 currentState = _stateStack.Pop();
                 currentState.IsContinuation = true;
             }
+        }
+    }
+
+    private CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
+    {
+        CallResult callResult;
+        if (isTracingActions)
+        {
+            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+        }
+
+        callResult = ExecutePrecompile(currentState);
+
+        if (!callResult.PrecompileSuccess.Value)
+        {
+            if (callResult.IsException)
+            {
+                failure = VirtualMachine.PrecompileOutOfGasException;
+                goto Failure;
+            }
+            if (currentState.IsPrecompile && currentState.IsTopLevel)
+            {
+                failure = VirtualMachine.PrecompileExecutionFailureException;
+                // TODO: when direct / calls are treated same we should not need such differentiation
+                goto Failure;
+            }
+
+            // TODO: testing it as it seems the way to pass zkSNARKs tests
+            currentState.GasAvailable = 0;
+        }
+
+        failure = null;
+        return callResult;
+    Failure:
+        return default;
+    }
+
+    private void TraceTransactionActionStart(EvmState currentState)
+    {
+        _txTracer.ReportAction(currentState.GasAvailable,
+            currentState.Env.Value,
+            currentState.From,
+            currentState.To,
+            currentState.ExecutionType.IsAnyCreate()
+                ? currentState.Env.CodeInfo.MachineCode
+                : currentState.Env.InputData,
+            currentState.ExecutionType);
+
+        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.MachineCode ?? default);
+    }
+
+    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInstructions>(BlockHeader header) where TTracingInstructions : struct, IFlag
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(header.Number, header.Timestamp);
+        if (!TTracingInstructions.IsActive)
+        {
+            if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug("Resetting EVM instructions cache");
+                // Flush the cache every 10_000 transactions to directly point at any PGO optimized methods rather than via pre-stubs
+                // May be a few cycles to pick up pointers to the optimized methods depending on what's in the blocks,
+                // however the the refreshes don't take long.
+                spec.EvmInstructions = EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec);
+            }
+            _opcodeMethods = (OpCode[])(spec.EvmInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
+        }
+        else
+        {
+            _opcodeMethods = (OpCode[])(spec.EvmTracedInstructions ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
+        }
+
+        return (_spec = spec);
+    }
+
+    private void TraceTransactionActionEnd(EvmState currentState, IReleaseSpec spec, in CallResult callResult)
+    {
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+
+        if (callResult.IsException)
+        {
+            _txTracer.ReportActionError(callResult.ExceptionType);
+        }
+        else if (callResult.ShouldRevert)
+        {
+            _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
+                    ? currentState.GasAvailable - codeDepositGasCost
+                    : currentState.GasAvailable,
+                callResult.Output.Bytes);
+        }
+        else if (currentState.ExecutionType.IsAnyCreate())
+        {
+            if (currentState.GasAvailable < codeDepositGasCost)
+            {
+                if (spec.ChargeForTopLevelCreate)
+                {
+                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                }
+                else
+                {
+                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output.Bytes);
+                }
+            }
+            // Reject code starting with 0xEF if EIP-3541 is enabled.
+            else if (CodeDepositHandler.CodeIsInvalid(spec, callResult.Output.Bytes, callResult.FromVersion))
+            {
+                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+            }
+            else
+            {
+                _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
+            }
+        }
+        else
+        {
+            _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
         }
     }
 
