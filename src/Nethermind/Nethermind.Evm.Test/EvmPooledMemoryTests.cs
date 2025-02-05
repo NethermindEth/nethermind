@@ -160,7 +160,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
-                codeInfoRepository,
                 LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,

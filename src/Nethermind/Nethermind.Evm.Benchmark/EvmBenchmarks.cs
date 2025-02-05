@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
             CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             _environment = new ExecutionEnvironment
             (

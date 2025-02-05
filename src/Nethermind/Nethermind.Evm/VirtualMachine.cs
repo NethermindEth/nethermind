@@ -101,13 +101,11 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     public VirtualMachine(
         IBlockhashProvider? blockHashProvider,
         ISpecProvider? specProvider,
-        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
     }
 
