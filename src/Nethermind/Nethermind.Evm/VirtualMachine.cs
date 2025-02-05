@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
+using static Nethermind.Evm.VirtualMachine;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -67,18 +68,18 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly Stack<EvmState> _stateStack = new();
-    private readonly ICodeInfoRepository _codeInfoRepository;
 
-    private IWorldState _state = null!;
+    private IWorldState _worldState = null!;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
     private IReleaseSpec _spec;
 
+    private ICodeInfoRepository _codeInfoRepository;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _spec;
     public ITxTracer TxTracer => _txTracer;
-    public IWorldState WorldState => _state;
+    public IWorldState WorldState => _worldState;
     public ReadOnlySpan<byte> ChainId => _chainId;
     public ReadOnlyMemory<byte> ReturnDataBuffer { get => _returnDataBuffer; set => _returnDataBuffer = value; }
     public object ReturnData { get => _returnData; set => _returnData = value; }
@@ -93,6 +94,10 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     private OpCode[] _opcodeMethods;
     private static long _txCount;
 
+    private EvmState _currentState;
+    private ReadOnlyMemory<byte>? _previousCallResult;
+    private UInt256 _previousCallOutputDestination;
+
     public VirtualMachine(
         IBlockhashProvider? blockHashProvider,
         ISpecProvider? specProvider,
@@ -106,37 +111,35 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
     }
 
-    public TransactionSubstate Run<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate Run<TTracingInstructions>(EvmState evmState, IWorldState worldState, ITxTracer txTracer)
         where TTracingInstructions : struct, IFlag
     {
         _txTracer = txTracer;
-        _state = worldState;
+        _worldState = worldState;
 
-        ref readonly TxExecutionContext txExecutionContext = ref state.Env.TxExecutionContext;
+        ref readonly TxExecutionContext txExecutionContext = ref evmState.Env.TxExecutionContext;
         IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInstructions>(txExecutionContext.BlockExecutionContext.Header);
 
-        ICodeInfoRepository codeInfoRepository = txExecutionContext.CodeInfoRepository;
-        EvmState currentState = state;
-        ReadOnlyMemory<byte>? previousCallResult = null;
+        _codeInfoRepository = txExecutionContext.CodeInfoRepository;
+        _currentState = evmState;
+        _previousCallResult = null;
+        _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
-        UInt256 previousCallOutputDestination = UInt256.Zero;
-        bool isTracing = _txTracer.IsTracing;
-        bool isTracingActions = _txTracer.IsTracingActions;
 
         while (true)
         {
-            Exception? failure = null;
-            if (!currentState.IsContinuation)
+            if (!_currentState.IsContinuation)
             {
                 _returnDataBuffer = Array.Empty<byte>();
             }
 
+            Exception? failure;
             try
             {
                 CallResult callResult;
-                if (currentState.IsPrecompile)
+                if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(currentState, isTracingActions, out failure);
+                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure);
                     if (failure is not null)
                     {
                         goto Failure;
@@ -144,14 +147,14 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
                 }
                 else
                 {
-                    if (isTracingActions && !currentState.IsContinuation)
+                    if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
                     {
-                        TraceTransactionActionStart(currentState);
+                        TraceTransactionActionStart(_currentState);
                     }
 
-                    if (currentState.Env.CodeInfo is not null)
+                    if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInstructions>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
+                        callResult = ExecuteCall<TTracingInstructions>(_currentState, _previousCallResult, previousCallOutput, _previousCallOutputDestination);
                     }
                     else
                     {
@@ -160,222 +163,66 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
 
                     if (!callResult.IsReturn)
                     {
-                        _stateStack.Push(currentState);
-                        currentState = callResult.StateToExecute;
-                        previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
-                        _returnDataBuffer = Array.Empty<byte>();
-                        previousCallOutput = ZeroPaddedSpan.Empty;
+                        PrepareNextCallFrame(in callResult, ref previousCallOutput);
                         continue;
                     }
 
                     if (callResult.IsException)
                     {
-                        if (isTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
-                        _state.Restore(currentState.Snapshot);
-
-                        RevertParityTouchBugAccount();
-
-                        if (currentState.IsTopLevel)
+                        TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
+                        if (substate is not null)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, isTracing);
+                            return substate;
                         }
-
-                        previousCallResult = currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
-                        previousCallOutputDestination = UInt256.Zero;
-                        _returnDataBuffer = Array.Empty<byte>();
-                        previousCallOutput = ZeroPaddedSpan.Empty;
-
-                        currentState.Dispose();
-                        currentState = _stateStack.Pop();
-                        currentState.IsContinuation = true;
                         continue;
                     }
                 }
 
-                if (currentState.IsTopLevel)
+                if (_currentState.IsTopLevel)
                 {
-                    if (isTracingActions)
+                    if (_txTracer.IsTracingActions)
                     {
-                        TraceTransactionActionEnd(currentState, spec, callResult);
+                        TraceTransactionActionEnd(_currentState, spec, callResult);
                     }
 
-                    return new TransactionSubstate(
-                        callResult.Output,
-                        currentState.Refund,
-                        currentState.AccessTracker.DestroyList,
-                        (IReadOnlyCollection<LogEntry>)currentState.AccessTracker.Logs,
-                        callResult.ShouldRevert,
-                        isTracerConnected: isTracing,
-                        _logger);
+                    return PrepareTopLevelSubstate(in callResult);
                 }
 
-                Address callCodeOwner = currentState.Env.ExecutingAccount;
-                using (EvmState previousState = currentState)
+                using (EvmState previousState = _currentState)
                 {
-                    currentState = _stateStack.Pop();
-                    currentState.IsContinuation = true;
-                    currentState.GasAvailable += previousState.GasAvailable;
+                    _currentState = _stateStack.Pop();
+                    _currentState.IsContinuation = true;
+                    _currentState.GasAvailable += previousState.GasAvailable;
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
                     {
-                        long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
+                        long gasAvailableForCodeDeposit = previousState.GasAvailable;
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
-                            previousCallResult = callCodeOwner.Bytes;
-                            previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedSpan.Empty;
+                            PrepareCreateData(previousState, ref previousCallOutput);
                             if (previousState.ExecutionType.IsAnyCreateLegacy())
                             {
-                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
-                                bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
-                                if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
-                                {
-                                    ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-                                    codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
-                                    currentState.GasAvailable -= codeDepositGasCost;
-
-                                    if (isTracingActions)
-                                    {
-                                        _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
-                                    }
-                                }
-                                else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
-                                {
-                                    currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                    worldState.Restore(previousState.Snapshot);
-                                    if (!previousState.IsCreateOnPreExistingAccount)
-                                    {
-                                        _state.DeleteAccount(callCodeOwner);
-                                    }
-
-                                    previousCallResult = BytesZero;
-                                    previousStateSucceeded = false;
-
-                                    if (isTracingActions)
-                                    {
-                                        _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
-                                    }
-                                }
-                                else if (isTracingActions)
-                                {
-                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
-                                }
+                                HandleLegacyCreate(in callResult, previousState, gasAvailableForCodeDeposit, spec, ref previousStateSucceeded);
                             }
                             else if (previousState.ExecutionType.IsAnyCreateEof())
                             {
-                                // ReturnContract was called with a container index and auxdata
-                                // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
-                                ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
-                                EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
-                                byte[] bytecodeResultArray = null;
-
-                                // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-                                Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
-                                // 2 - 1 - 1 - copy old container
-                                deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
-                                // 2 - 1 - 2 - copy aux data to dataSection
-                                auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
-
-                                // 2 - 2 - update data section size in the header u16
-                                int dataSubheaderSectionStart =
-                                    EofValidator.VERSION_OFFSET // magic + version
-                                    + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-                                    + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                                    + (deployCodeInfo.EofContainer.Header.ContainerSections is null
-                                        ? 0 // container section :  (0 bytes if no container section is available)
-                                        : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
-                                    + ONE_BYTE_LENGTH; // data section seperator
-
-                                ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-                                bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
-                                bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
-
-                                bytecodeResultArray = bytecodeResult.ToArray();
-
-                                // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-                                bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
-                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
-                                if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
-                                {
-                                    // 4 - set state[new_address].code to the updated deploy container
-                                    // push new_address onto the stack (already done before the ifs)
-                                    codeInfoRepository.InsertCode(_state, bytecodeResultArray, callCodeOwner, spec);
-                                    currentState.GasAvailable -= codeDepositGasCost;
-
-                                    if (isTracingActions)
-                                    {
-                                        _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
-                                    }
-                                }
-                                else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
-                                {
-                                    currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                    worldState.Restore(previousState.Snapshot);
-                                    if (!previousState.IsCreateOnPreExistingAccount)
-                                    {
-                                        _state.DeleteAccount(callCodeOwner);
-                                    }
-
-                                    previousCallResult = BytesZero;
-                                    previousStateSucceeded = false;
-
-                                    if (isTracingActions)
-                                    {
-                                        _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
-                                    }
-                                }
-                                else if (isTracingActions)
-                                {
-                                    _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
-                                }
+                                HandleEofCreate(in callResult, previousState, gasAvailableForCodeDeposit, spec, ref previousStateSucceeded);
                             }
                         }
                         else
                         {
-                            _returnDataBuffer = callResult.Output.Bytes;
-                            previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
-                                callResult.PrecompileSuccess.HasValue
-                                ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
-                                : StatusCode.SuccessBytes;
-                            previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
-                            previousCallOutputDestination = (ulong)previousState.OutputDestination;
-                            if (previousState.IsPrecompile)
-                            {
-                                // parity induced if else for vmtrace
-                                if (TTracingInstructions.IsActive)
-                                {
-                                    _txTracer.ReportMemoryChange(previousCallOutputDestination, previousCallOutput);
-                                }
-                            }
-
-                            if (isTracingActions)
-                            {
-                                _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
-                            }
+                            previousCallOutput = HandleRegularReturn<TTracingInstructions>(in callResult, previousState);
                         }
 
                         if (previousStateSucceeded)
                         {
-                            previousState.CommitToParent(currentState);
+                            previousState.CommitToParent(_currentState);
                         }
                     }
                     else
                     {
-                        worldState.Restore(previousState.Snapshot);
-                        _returnDataBuffer = callResult.Output.Bytes;
-                        previousCallResult = previousState.ExecutionType.IsAnyCallEof()
-                            ? (callResult.PrecompileSuccess is not null ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
-                            : StatusCode.FailureBytes;
-                        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
-                        previousCallOutputDestination = (ulong)previousState.OutputDestination;
-
-
-                        if (isTracingActions)
-                        {
-                            _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output.Bytes);
-                        }
+                        HandleRevert(previousState, callResult, ref previousCallOutput);
                     }
                 }
             }
@@ -388,40 +235,255 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             continue;
 
         Failure:
+            TransactionSubstate? failSubstate = HandleFailure<TTracingInstructions>(failure, ref previousCallOutput);
+            if (failSubstate is not null)
             {
-                if (_logger.IsTrace) _logger.Trace($"exception ({failure.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
-
-                _state.Restore(currentState.Snapshot);
-
-                RevertParityTouchBugAccount();
-
-                if (TTracingInstructions.IsActive)
-                {
-                    txTracer.ReportOperationRemainingGas(0);
-                    txTracer.ReportOperationError(failure is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
-                }
-
-                if (isTracingActions)
-                {
-                    EvmException evmException = failure as EvmException;
-                    _txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
-                }
-
-                if (currentState.IsTopLevel)
-                {
-                    return new TransactionSubstate(failure is OverflowException ? EvmExceptionType.Other : (failure as EvmException).ExceptionType, isTracing);
-                }
-
-                previousCallResult = currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
-                previousCallOutputDestination = UInt256.Zero;
-                _returnDataBuffer = Array.Empty<byte>();
-                previousCallOutput = ZeroPaddedSpan.Empty;
-
-                currentState.Dispose();
-                currentState = _stateStack.Pop();
-                currentState.IsContinuation = true;
+                return failSubstate;
             }
         }
+    }
+
+    private void PrepareCreateData(EvmState previousState, ref ZeroPaddedSpan previousCallOutput)
+    {
+        _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
+        _previousCallOutputDestination = UInt256.Zero;
+        _returnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+    }
+
+    private ZeroPaddedSpan HandleRegularReturn<TTracingInstructions>(scoped in CallResult callResult, EvmState previousState)
+        where TTracingInstructions : struct, IFlag
+    {
+        ZeroPaddedSpan previousCallOutput;
+        _returnDataBuffer = callResult.Output.Bytes;
+        _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
+            callResult.PrecompileSuccess.HasValue
+            ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
+            : StatusCode.SuccessBytes;
+        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+        if (previousState.IsPrecompile)
+        {
+            // parity induced if else for vmtrace
+            if (TTracingInstructions.IsActive)
+            {
+                _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
+            }
+        }
+
+        if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
+        }
+
+        return previousCallOutput;
+    }
+
+    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
+    {
+        Address callCodeOwner = previousState.Env.ExecutingAccount;
+        // ReturnContract was called with a container index and auxdata
+        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+        ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
+        byte[] bytecodeResultArray = null;
+
+        // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
+        Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+        // 2 - 1 - 1 - copy old container
+        deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+        // 2 - 1 - 2 - copy aux data to dataSection
+        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
+
+        // 2 - 2 - update data section size in the header u16
+        int dataSubheaderSectionStart =
+            EofValidator.VERSION_OFFSET // magic + version
+            + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
+            + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+            + (deployCodeInfo.EofContainer.Header.ContainerSections is null
+                ? 0 // container section :  (0 bytes if no container section is available)
+                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+            + ONE_BYTE_LENGTH; // data section seperator
+
+        ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
+        bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
+        bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
+
+        bytecodeResultArray = bytecodeResult.ToArray();
+
+        // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
+        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+        {
+            // 4 - set state[new_address].code to the updated deploy container
+            // push new_address onto the stack (already done before the ifs)
+            _codeInfoRepository.InsertCode(_worldState, bytecodeResultArray, callCodeOwner, spec);
+            _currentState.GasAvailable -= codeDepositGasCost;
+
+            if (_txTracer.IsTracingActions)
+            {
+                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
+            }
+        }
+        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+        {
+            _currentState.GasAvailable -= gasAvailableForCodeDeposit;
+            _worldState.Restore(previousState.Snapshot);
+            if (!previousState.IsCreateOnPreExistingAccount)
+            {
+                _worldState.DeleteAccount(callCodeOwner);
+            }
+
+            _previousCallResult = BytesZero;
+            previousStateSucceeded = false;
+
+            if (_txTracer.IsTracingActions)
+            {
+                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+            }
+        }
+        else if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
+        }
+    }
+
+    private void HandleLegacyCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
+    {
+        Address callCodeOwner = previousState.Env.ExecutingAccount;
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+        {
+            ReadOnlyMemory<byte> code = callResult.Output.Bytes;
+            _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
+            _currentState.GasAvailable -= codeDepositGasCost;
+
+            if (_txTracer.IsTracingActions)
+            {
+                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+            }
+        }
+        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+        {
+            _currentState.GasAvailable -= gasAvailableForCodeDeposit;
+            _worldState.Restore(previousState.Snapshot);
+            if (!previousState.IsCreateOnPreExistingAccount)
+            {
+                _worldState.DeleteAccount(callCodeOwner);
+            }
+
+            _previousCallResult = BytesZero;
+            previousStateSucceeded = false;
+
+            if (_txTracer.IsTracingActions)
+            {
+                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+            }
+        }
+        else if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+        }
+    }
+
+    private TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
+    {
+        return new TransactionSubstate(
+            callResult.Output,
+            _currentState.Refund,
+            _currentState.AccessTracker.DestroyList,
+            (IReadOnlyCollection<LogEntry>)_currentState.AccessTracker.Logs,
+            callResult.ShouldRevert,
+            isTracerConnected: _txTracer.IsTracing,
+            _logger);
+    }
+
+    private void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    {
+        _worldState.Restore(previousState.Snapshot);
+        _returnDataBuffer = callResult.Output.Bytes;
+        _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
+            ? (callResult.PrecompileSuccess is not null ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
+            : StatusCode.FailureBytes;
+        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+
+        if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output.Bytes);
+        }
+    }
+
+    private TransactionSubstate? HandleFailure<TTracingInstructions>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+        where TTracingInstructions : struct, IFlag
+    {
+        if (_logger.IsTrace) _logger.Trace($"exception ({failure.GetType().Name}) in {_currentState.ExecutionType} at depth {_currentState.Env.CallDepth} - restoring snapshot");
+
+        _worldState.Restore(_currentState.Snapshot);
+
+        RevertParityTouchBugAccount();
+
+        ITxTracer txTracer = _txTracer;
+        if (TTracingInstructions.IsActive)
+        {
+            txTracer.ReportOperationRemainingGas(0);
+            txTracer.ReportOperationError(failure is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
+        }
+
+        if (txTracer.IsTracingActions)
+        {
+            EvmException evmException = failure as EvmException;
+            txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
+        }
+
+        if (_currentState.IsTopLevel)
+        {
+            return new TransactionSubstate(failure is OverflowException ? EvmExceptionType.Other : (failure as EvmException).ExceptionType, txTracer.IsTracing);
+        }
+
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
+        _previousCallOutputDestination = UInt256.Zero;
+        _returnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+
+        _currentState.Dispose();
+        _currentState = _stateStack.Pop();
+        _currentState.IsContinuation = true;
+        return null;
+    }
+
+    private void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    {
+        _stateStack.Push(_currentState);
+        _currentState = callResult.StateToExecute;
+        _previousCallResult = null;
+        _returnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+    }
+
+    private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    {
+        if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
+        _worldState.Restore(_currentState.Snapshot);
+
+        RevertParityTouchBugAccount();
+
+        if (_currentState.IsTopLevel)
+        {
+            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
+        }
+
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof() ? EofStatusCode.FailureBytes : StatusCode.FailureBytes;
+        _previousCallOutputDestination = UInt256.Zero;
+        _returnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+
+        _currentState.Dispose();
+        _currentState = _stateStack.Pop();
+        _currentState.IsContinuation = true;
+        return null;
     }
 
     private CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
@@ -543,9 +605,9 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
-            if (_state.AccountExists(_parityTouchBugAccount.Address))
+            if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
-                _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, _spec);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, _spec);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -579,7 +641,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         long baseGasCost = precompile.BaseGasCost(_spec);
         long blobGasCost = precompile.DataGasCost(callData, _spec);
 
-        bool wasCreated = _state.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, _spec);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, _spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -635,11 +697,11 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         if (!vmState.IsContinuation)
         {
-            _state.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, _spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, _spec);
 
             if (vmState.ExecutionType.IsAnyCreate() && _spec.ClearEmptyAccountWhenTouched)
             {
-                _state.IncrementNonce(env.ExecutingAccount);
+                _worldState.IncrementNonce(env.ExecutingAccount);
             }
         }
 
