@@ -73,7 +73,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isCreateOnPreExistingAccount: false,
             snapshot: snapshot,
             env: env,
-            stateForAccessLists: accessedItems);
+            stateForAccessLists: accessedItems,
+            new());
         return state;
     }
 
@@ -103,7 +104,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
             snapshot: snapshot,
             env: env,
-            stateForAccessLists: stateForAccessLists);
+            stateForAccessLists: stateForAccessLists,
+            new());
 
         return state;
     }
@@ -120,7 +122,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isCreateOnPreExistingAccount,
         in Snapshot snapshot,
         in ExecutionEnvironment env,
-        in StackAccessTracker stateForAccessLists)
+        in StackAccessTracker stateForAccessLists,
+        in ILChunkExecutionState initState)
     {
         GasAvailable = gasAvailable;
         OutputDestination = outputDestination;
@@ -137,6 +140,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
         _snapshot = snapshot;
         _env = env;
+        IlExecutionStepState = initState;
         _accessTracker = new(stateForAccessLists);
         if (executionType.IsAnyCreate())
         {
