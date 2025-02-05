@@ -9,7 +9,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class EofCodeInfo(in EofContainer container) : ICodeInfo
+public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
 {
     public EofContainer EofContainer { get; private set; } = container;
     public ReadOnlyMemory<byte> MachineCode => EofContainer.Container;

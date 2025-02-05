@@ -11,7 +11,7 @@ using static Nethermind.Evm.VirtualMachine;
 namespace Nethermind.Evm;
 using Word = Vector256<byte>;
 
-internal sealed partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for single-parameter mathematical operations on 256‐bit vectors.

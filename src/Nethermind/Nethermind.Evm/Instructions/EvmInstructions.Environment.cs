@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Precompiles;
 using Nethermind.State;
 
 using static Nethermind.Evm.VirtualMachine;
@@ -17,7 +16,7 @@ using static Nethermind.Evm.VirtualMachine;
 namespace Nethermind.Evm;
 using Int256;
 
-internal sealed partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Defines an environment introspection operation that returns a byte span.

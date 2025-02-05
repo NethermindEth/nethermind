@@ -5,16 +5,13 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm;
 
-using static Nethermind.Evm.VirtualMachine;
 using Int256;
 
-internal sealed partial class EvmInstructions
+internal static partial class EvmInstructions
 {
-
     /// <summary>
     /// Computes the Keccak-256 hash of a specified memory region.
     /// Pops a memory offset and length from the stack, charges gas based on the data size,

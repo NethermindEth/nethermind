@@ -9,7 +9,7 @@ using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class CodeInfo : ICodeInfo, IThreadPoolWorkItem
+public sealed class CodeInfo : ICodeInfo, IThreadPoolWorkItem
 {
     public ReadOnlyMemory<byte> MachineCode { get; }
     public IPrecompile? Precompile { get; set; }

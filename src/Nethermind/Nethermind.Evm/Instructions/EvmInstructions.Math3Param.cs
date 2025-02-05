@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Evm;
 using Int256;
 
-internal sealed partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     public interface IOpMath3Param
     {

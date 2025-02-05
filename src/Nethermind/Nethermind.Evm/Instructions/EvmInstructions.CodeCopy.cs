@@ -10,7 +10,7 @@ using Nethermind.Evm.EvmObjectFormat;
 namespace Nethermind.Evm;
 using Int256;
 
-internal sealed partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Provides a mechanism to retrieve a code segment for code copy operations.

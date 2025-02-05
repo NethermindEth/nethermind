@@ -7,7 +7,7 @@ using static Nethermind.Evm.EvmState;
 
 namespace Nethermind.Evm;
 
-internal class StackPool
+internal sealed class StackPool
 {
     // Also have parallel prewarming and Rpc calls
     private const int MaxStacksPooled = VirtualMachine.MaxCallDepth * 2;

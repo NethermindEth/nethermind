@@ -12,7 +12,7 @@ namespace Nethermind.Evm;
 using Int256;
 using Word = Vector256<byte>;
 
-internal sealed partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Pops a value from the EVM stack.

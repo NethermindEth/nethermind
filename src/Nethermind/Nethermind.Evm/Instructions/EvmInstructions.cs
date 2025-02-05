@@ -10,7 +10,7 @@ using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int,
 using Int256;
 using Nethermind.Evm.Precompiles;
 
-internal unsafe sealed partial class EvmInstructions
+internal unsafe static partial class EvmInstructions
 {
     /// <summary>
     /// Generates the opcode lookup table for the Ethereum Virtual Machine.
