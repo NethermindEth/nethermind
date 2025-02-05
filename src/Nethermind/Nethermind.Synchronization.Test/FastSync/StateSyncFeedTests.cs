@@ -394,6 +394,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)] // TODO: Investigate why it fails with parralelization
         public async Task When_empty_response_received_with_no_peer_return_not_allocated()
         {
             DbContext dbContext = new(_logger, _logManager);
