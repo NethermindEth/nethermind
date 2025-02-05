@@ -44,17 +44,12 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverrida
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
 
-    public OverridableTxProcessingScope Build(Hash256 stateRoot)
-    {
-        Hash256 originalStateRoot = StateProvider.StateRoot;
-        StateProvider.StateRoot = stateRoot;
-        return new(CodeInfoRepository, TransactionProcessor, StateProvider, originalStateRoot);
-    }
+    public OverridableTxProcessingScope Build(Hash256 stateRoot) => new(CodeInfoRepository, TransactionProcessor, StateProvider, stateRoot);
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
     {
         OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
-        if (stateOverride != null)
+        if (stateOverride is not null)
         {
             scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);
             header.StateRoot = scope.WorldState.StateRoot;
