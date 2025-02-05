@@ -10,7 +10,7 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMachine
 {
-    public TransactionSubstate Run<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate ExecuteTransaction<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
             where TTracingInstructions : struct, IFlag
     {
         if (txTracer.IsTracingActions && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
@@ -18,7 +18,7 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
             logsMutator.SetLogsToMutate(state.AccessTracker.Logs);
         }
 
-        return virtualMachine.Run<TTracingInstructions>(state, worldState, txTracer);
+        return virtualMachine.ExecuteTransaction<TTracingInstructions>(state, worldState, txTracer);
     }
 
     private static bool TryGetLogsMutator(ITxTracer txTracer, [NotNullWhen(true)] out ITxLogsMutator? txLogsMutator)

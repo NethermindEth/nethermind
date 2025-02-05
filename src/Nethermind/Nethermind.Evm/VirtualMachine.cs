@@ -107,7 +107,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
     }
 
-    public TransactionSubstate Run<TTracingInstructions>(EvmState evmState, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate ExecuteTransaction<TTracingInstructions>(EvmState evmState, IWorldState worldState, ITxTracer txTracer)
         where TTracingInstructions : struct, IFlag
     {
         _txTracer = txTracer;
@@ -490,7 +490,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
             _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
         }
 
-        callResult = ExecutePrecompile(currentState);
+        callResult = RunPrecompile(currentState);
 
         if (!callResult.PrecompileSuccess.Value)
         {
@@ -627,7 +627,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         SSTORE
     }
 
-    private CallResult ExecutePrecompile(EvmState state)
+    private CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
@@ -665,7 +665,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, _spec);
-            CallResult callResult = new(output, success, 0, !success);
+            CallResult callResult = new(output, precompileSuccess: success, fromVersion: 0, shouldRevert: !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
@@ -676,7 +676,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-            CallResult callResult = new(default, false, 0, true);
+            CallResult callResult = new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true);
             return callResult;
         }
     }
@@ -739,8 +739,8 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
         // which use shared generics.
         return _txTracer.IsCancelable switch
         {
-            false => ExecuteCode<TTracingInstructions, OffFlag>(ref stack, gasAvailable),
-            true => ExecuteCode<TTracingInstructions, OnFlag>(ref stack, gasAvailable),
+            false => RunByteCode<TTracingInstructions, OffFlag>(ref stack, gasAvailable),
+            true => RunByteCode<TTracingInstructions, OnFlag>(ref stack, gasAvailable),
         };
     Empty:
         return CallResult.Empty(vmState.Env.CodeInfo.Version);
@@ -749,7 +749,7 @@ public sealed unsafe class VirtualMachine : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    private unsafe CallResult ExecuteCode<TTracingInstructions, TCancelable>(scoped ref EvmStack stack, long gasAvailable)
+    private unsafe CallResult RunByteCode<TTracingInstructions, TCancelable>(scoped ref EvmStack stack, long gasAvailable)
         where TTracingInstructions : struct, IFlag
         where TCancelable : struct, IFlag
     {
