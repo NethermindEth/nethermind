@@ -459,11 +459,11 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
     try
     {
-        NativeLibrary.Load("libjemalloc.so");
+        NativeLibrary.Load("libjemalloc.so", typeof(Program).Assembly, DllImportSearchPath.AssemblyDirectory);
     }
     catch (Exception)
     {
-        NativeLibrary.Load("runtimes/linux-x64/native/libjemalloc.so"); 
+        NativeLibrary.Load("runtimes/linux-x64/native/libjemalloc.so", typeof(Program).Assembly, DllImportSearchPath.AssemblyDirectory); 
     }
 
 
