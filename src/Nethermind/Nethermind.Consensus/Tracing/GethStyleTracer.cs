@@ -121,8 +121,8 @@ public class GethStyleTracer : IGethStyleTracer
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
-        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        block = SetupBlock(block, BlockBody.WithOneTransactionOnly(tx), scope, options);
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
         try
         {
@@ -134,6 +134,19 @@ public class GethStyleTracer : IGethStyleTracer
             blockTracer.TryDispose();
             throw;
         }
+    }
+
+    private static Block SetupBlock(Block block, BlockBody body, IOverridableTxProcessingScope scope, GethTraceOptions options)
+    {
+        if (options.StateOverrides is null)
+        {
+            return block;
+        }
+
+        BlockHeader blockHeader = block.Header.Clone();
+        blockHeader.StateRoot = scope.WorldState.StateRoot;
+        block = new Block(blockHeader, body);
+        return block;
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
@@ -192,7 +205,8 @@ public class GethStyleTracer : IGethStyleTracer
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        block = SetupBlock(block, block.Body, scope, options);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
         try
@@ -231,6 +245,7 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+        block = SetupBlock(block, block.Body, scope, options);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
         try
         {
