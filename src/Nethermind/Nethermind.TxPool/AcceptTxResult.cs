@@ -106,6 +106,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult PendingDelegation = new(18, nameof(PendingDelegation));
 
         /// <summary>
+        /// There is a pending transaction from a delegation in the tx pool already.
+        /// </summary>
+        public static readonly AcceptTxResult DelegatorHasPendingTx = new(19, nameof(DelegatorHasPendingTx));
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));

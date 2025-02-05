@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Filters
 
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
             {
-                return AcceptTxResult.PendingDelegation;
+                return AcceptTxResult.DelegatorHasPendingTx;
             }
 
             if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
@@ -32,7 +32,7 @@ namespace Nethermind.TxPool.Filters
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
-            //Transactios from the same source can only be either blob transactions or other type 
+            //Transactions from the same source can only be either blob transactions or other type 
             if (tx.SupportsBlobs ? !blobPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce)
                 : !standardPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce))
             {
@@ -40,16 +40,22 @@ namespace Nethermind.TxPool.Filters
             }
             return AcceptTxResult.Accepted;
         }
+
         private bool AuthorityHasPendingTx(AuthorizationTuple[] authorizations)
         {
             foreach (AuthorizationTuple authorization in authorizations)
             {
-                if (!standardPool.BucketEmptyExcept(authorization.Authority!, (t) => t.Nonce == authorization.Nonce)
-                    || !blobPool.BucketEmptyExcept(authorization.Authority!, (t) => t.Nonce == authorization.Nonce))
+                if (authorization.Authority is null)
                 {
-
+                    continue;
+                }
+                if (!standardPool.ContainsBucket(authorization.Authority!)
+                    || !blobPool.ContainsBucket(authorization.Authority!))
+                {
+                    return true;
                 }
             }
+            return false;
         }
     }
 }
