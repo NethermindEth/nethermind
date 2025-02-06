@@ -64,6 +64,8 @@ public interface IStateFactory : IAsyncDisposable
 {
     IState Get(Hash256 stateRoot, bool prefetchMerkle);
 
+    IState GetNonCommittable(Hash256 stateRoot);
+
     IReadOnlyState GetReadOnly(Hash256? stateRoot);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;

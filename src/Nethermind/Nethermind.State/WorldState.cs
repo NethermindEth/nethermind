@@ -31,7 +31,7 @@ namespace Nethermind.State
         private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly IStateFactory _factory;
-        private readonly bool _prefetchMerkle;
+        private readonly bool _isMainWorldState;
         private IState _state;
         private PreBlockCaches? PreBlockCaches { get; }
 
@@ -55,10 +55,10 @@ namespace Nethermind.State
             ILogManager? logManager,
             PreBlockCaches? preBlockCaches = null,
             bool populatePreBlockCache = true,
-            bool prefetchMerkle = false)
+            bool isMainWorldState = false)
         {
             _factory = factory;
-            _prefetchMerkle = prefetchMerkle;
+            _isMainWorldState = isMainWorldState;
             PreBlockCaches = preBlockCaches;
             _stateProvider = new StateProvider(this, factory, codeDb, logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
             _persistentStorageProvider = new PersistentStorageProvider(this, logManager, PreBlockCaches?.StorageCache,
@@ -194,7 +194,6 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.CommitTrees();
             _state.Commit(blockNumber);
-            ResetState(_state.StateRoot);
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
@@ -291,7 +290,11 @@ namespace Nethermind.State
 
         private void ResetState(Hash256 stateRoot)
         {
-            Interlocked.Exchange(ref _state, _factory.Get(stateRoot, _prefetchMerkle))?.Dispose();
+            Interlocked.Exchange(ref _state,
+                    _isMainWorldState
+                        ? _factory.Get(stateRoot, _isMainWorldState)
+                        : _factory.GetNonCommittable(stateRoot))
+                ?.Dispose();
         }
 
         private void ResetStateToNull()

@@ -24,11 +24,13 @@ public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
 
-    private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan FlushFileEvery = TimeSpan.FromMinutes(10);
 
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
     private readonly IReadOnlyWorldStateAccessor _accessor;
+
+    private const int AutomaticallyFinalizeAfter = 64;
 
     public PaprikaStateFactory()
     {
@@ -54,7 +56,9 @@ public class PaprikaStateFactory : IStateFactory
         var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
         ComputeMerkleBehavior merkle = new(parallelism);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
+        _blockchain = new Blockchain(_db, merkle, FlushFileEvery, stateOptions, merkleOptions, null,
+            AutomaticallyFinalizeAfter);
+
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
 
@@ -78,10 +82,15 @@ public class PaprikaStateFactory : IStateFactory
         return new State(_blockchain.StartNew(Convert(stateRoot)), this, prefetchMerkle);
     }
 
+    public IState GetNonCommittable(Hash256 stateRoot)
+    {
+        return new State(_blockchain.StartNewNonCommittable(Convert(stateRoot)), this, false);
+    }
+
     public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
         new ReadOnlyState(stateRoot != null
             ? _blockchain.StartReadOnly(Convert(stateRoot))
-            : _blockchain.StartReadOnlyLatestFromDb());
+            : _blockchain.StartReadOnlyLatestFinalized());
 
     public bool HasRoot(Hash256 stateRoot)
     {
@@ -151,10 +160,7 @@ public class PaprikaStateFactory : IStateFactory
 
     public void Finalize(Hash256 finalizedStateRoot, long finalizedNumber)
     {
-        if (_blockchain.TryFinalize(Convert(finalizedStateRoot)) == false)
-        {
-            _logger.Info($"Did not find the state root to finalize {finalizedStateRoot} at block {finalizedNumber}");
-        }
+        _blockchain.Finalize(Convert(finalizedStateRoot));
     }
 
     private static bool ConvertPaprikaAccount(in PaprikaAccount retrieved, out AccountStruct account)

@@ -175,11 +175,6 @@ public partial class BlockProcessor(
                 _stateProvider.Reset(resizeCollections: true);
             }
 
-            if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
-            {
-                RestoreBranch(previousBranchStateRoot);
-            }
-
             return processedBlocks;
         }
         catch (Exception ex) // try to restore at all cost

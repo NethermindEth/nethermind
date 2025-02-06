@@ -98,7 +98,7 @@ public class InitializeStateDb : IStep
         // Main thread should only read from prewarm caches, not spend extra time updating them.
         // Main thread should run Merkle prefetching in the background.
         IWorldState worldState = new WorldState(stateFactory, codeDb, getApi.LogManager, preBlockCaches,
-            populatePreBlockCache: false, prefetchMerkle: true);
+            populatePreBlockCache: false, isMainWorldState: true);
         setApi.WorldState = worldState;
 
         // This is probably the point where a different state implementation would switch.

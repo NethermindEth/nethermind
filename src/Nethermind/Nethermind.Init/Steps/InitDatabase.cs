@@ -109,10 +109,7 @@ namespace Nethermind.Init.Steps
 
                         // select the one with the highest number
                         BlockHeader? selected = finalized.Count == 1 ? finalized[0] : finalized.MaxBy(block => block.Number);
-
                         paprika.Finalize(selected!.StateRoot!, selected.Number);
-
-
                     });
 
                     _api.DisposeStack.Push(paprika);
