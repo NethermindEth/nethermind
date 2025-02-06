@@ -100,6 +100,19 @@ internal static class ConfigGenerator
                 continue;
 
             var description = itemAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
+            string value;
+            string cliValue;
+
+            if (prop.PropertyType == typeof(bool))
+            {
+                value = "true|false";
+                cliValue = $"[{value}]";
+            }
+            else
+            {
+                value = "<value>";
+                cliValue = value;
+            }
 
             file.Write($$"""
                 - #### `{{moduleName}}.{{prop.Name}}` \{#{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}}\}
@@ -107,20 +120,20 @@ internal static class ConfigGenerator
                   <Tabs groupId="usage">
                   <TabItem value="cli" label="CLI">
                   ```
-                  --{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}} <value>
-                  --{{moduleName}}.{{prop.Name}} <value>
+                  --{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}} {{cliValue}}
+                  --{{moduleName}}.{{prop.Name}} {{cliValue}}
                   ```
                   </TabItem>
                   <TabItem value="env" label="Environment variable">
                   ```
-                  NETHERMIND_{{moduleName.ToUpperInvariant()}}CONFIG_{{prop.Name.ToUpperInvariant()}}=<value>
+                  NETHERMIND_{{moduleName.ToUpperInvariant()}}CONFIG_{{prop.Name.ToUpperInvariant()}}={{value}}
                   ```
                   </TabItem>
                   <TabItem value="config" label="Configuration file">
                   ```json
                   {
                     "{{moduleName}}": {
-                      "{{prop.Name}}": <value>
+                      "{{prop.Name}}": {{value}}
                     }
                   }
                   ```
