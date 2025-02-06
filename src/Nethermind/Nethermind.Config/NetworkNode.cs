@@ -54,15 +54,16 @@ namespace Nethermind.Config
             Reputation = reputation;
         }
 
+        public NetworkNode(Enode enode)
+        {
+            _enode = enode;
+        }
+
+        public Enode Enode => _enode;
+
         public PublicKey NodeId => _enode.PublicKey;
         public string Host => _enode.HostIp.ToString();
         public int Port => _enode.Port;
         public long Reputation { get; set; }
-        public NetworkNode(Enode enode)
-        {
-          _enode = enode;
-        }
-
-        public Enode Enode => _enode;
     }
 }

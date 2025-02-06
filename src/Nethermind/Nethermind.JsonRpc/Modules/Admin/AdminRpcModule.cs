@@ -141,12 +141,12 @@ public class AdminRpcModule : IAdminRpcModule
 
         if (_trustedNodesManager.IsTrusted(enodeObj) || await _trustedNodesManager.AddAsync(enodeObj, updateFile: true))
         {
-          _peerPool.GetOrAdd(new NetworkNode(enodeObj));
-          return ResultWrapper<bool>.Success(true);
+            _peerPool.GetOrAdd(new NetworkNode(enodeObj));
+            return ResultWrapper<bool>.Success(true);
         }
         else
         {
-          return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
+            return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
         }
     }
 

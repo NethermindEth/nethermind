@@ -10,6 +10,7 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,12 @@ namespace Nethermind.Network
         private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
         private readonly string _trustedNodesPath;
         private readonly ILogger _logger;
+        private readonly Channel<Node> _nodeChannel = Channel.CreateBounded<Node>(
+        new BoundedChannelOptions(1 << 16)  // capacity of 2^16 = 65536
+        {
+            // "Wait" to have writers wait until there is space.
+            FullMode = BoundedChannelFullMode.Wait
+        });
 
         public TrustedNodesManager(string trustedNodesPath, ILogManager logManager)
         {
@@ -75,23 +82,28 @@ namespace Nethermind.Network
 
 
         // ---- INodeSource requirement: IAsyncEnumerable<Node> ----
-        // C# requires 'async' for IAsyncEnumerable yield. We'll add a small 'await Task.Yield()'
-        // to avoid the warning about "no awaits".
         public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            // At least one 'await', so no compiler warnings
-            await Task.Yield();
-
+            // yield existing nodes.
             foreach (NetworkNode netNode in _nodes.Values)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 yield return new Node(netNode) { IsTrusted = true };
             }
+
+            // continuously yield new nodes as they are added via the channel.
+            while (await _nodeChannel.Reader.WaitToReadAsync(cancellationToken))
+            {
+                while (_nodeChannel.Reader.TryRead(out Node node))
+                {
+                    yield return node;
+                }
+            }
         }
 
         public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
         {
-            NetworkNode networkNode = new(enode);
+            NetworkNode networkNode = new NetworkNode(enode);
             if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
             {
                 if (_logger.IsInfo)
@@ -105,6 +117,10 @@ namespace Nethermind.Network
             {
                 _logger.Info($"Trusted node added: {enode}");
             }
+
+            // Publish the newly added node to the channel so DiscoverNodes will yield it.
+            Node newNode = new Node(networkNode) { IsTrusted = true };
+            await _nodeChannel.Writer.WriteAsync(newNode);
 
             if (updateFile)
             {
