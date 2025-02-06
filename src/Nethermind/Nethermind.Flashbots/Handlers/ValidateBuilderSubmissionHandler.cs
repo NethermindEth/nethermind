@@ -69,7 +69,7 @@ public class ValidateSubmissionHandler
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
-        ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload;
+        ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload.ToExecutionPayloadV3();
 
         if (request.ParentBeaconBlockRoot is null)
         {
@@ -92,7 +92,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid($"Block {payload} coud not be parsed as a block");
         }
 
-        if (block is not null && !ValidateBlock(block, request.BlockRequest.Message, request.RegisterGasLimit, out string? error))
+        if (block is not null && !ValidateBlock(block, request.BlockRequest.Message, request.RegisteredGasLimit, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
@@ -108,7 +108,7 @@ public class ValidateSubmissionHandler
         return FlashbotsResult.Valid();
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, long registerGasLimit, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, out string? error)
     {
         error = null;
 
@@ -139,7 +139,7 @@ public class ValidateSubmissionHandler
         Address feeRecipient = message.ProposerFeeRecipient;
         UInt256 expectedProfit = message.Value;
 
-        if (!ValidatePayload(block, feeRecipient, expectedProfit, registerGasLimit, _flashbotsConfig.UseBalanceDiffProfit, _flashbotsConfig.ExcludeWithdrawals, out error))
+        if (!ValidatePayload(block, feeRecipient, expectedProfit, registeredGasLimit, _flashbotsConfig.UseBalanceDiffProfit, _flashbotsConfig.ExcludeWithdrawals, out error))
         {
             return false;
         }

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -11,11 +14,13 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.Flashbots;
 using Nethermind.Flashbots.Handlers;
 using Nethermind.Flashbots.Modules.Flashbots;
@@ -124,7 +129,7 @@ public partial class FlashbotsModuleTests
         {
             BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
-            IBlockProcessor prcessor = new BlockProcessor(
+            IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
@@ -135,10 +140,11 @@ public partial class FlashbotsModuleTests
                 new BeaconBlockRootHandler(TxProcessor, State),
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
-                WithdrawalProcessor
+                WithdrawalProcessor,
+                preWarmer: CreateBlockCachePreWarmer()
             );
 
-            return prcessor;
+            return new TestBlockProcessorInterceptor(processor);
         }
 
         protected IBlockValidator CreateBlockValidator()
@@ -165,12 +171,59 @@ public partial class FlashbotsModuleTests
 
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
+            TestBlockchain chain = await base.Build(specProvider, initialValues, false);
             return chain;
         }
 
         public async Task<MergeTestBlockChain> Build(ISpecProvider? specProvider = null) =>
             (MergeTestBlockChain)await Build(specProvider, null);
 
+    }
+}
+
+public class TestBlockProcessorInterceptor : IBlockProcessor
+{
+    private readonly IBlockProcessor _blockProcessorImplementation;
+    public Exception? ExceptionToThrow { get; set; }
+
+    public TestBlockProcessorInterceptor(IBlockProcessor baseBlockProcessor)
+    {
+        _blockProcessorImplementation = baseBlockProcessor;
+    }
+
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
+        IBlockTracer blockTracer)
+    {
+
+        if (ExceptionToThrow is not null)
+        {
+            throw ExceptionToThrow;
+        }
+
+        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
+    }
+
+    public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
+    {
+        add => _blockProcessorImplementation.BlocksProcessing += value;
+        remove => _blockProcessorImplementation.BlocksProcessing -= value;
+    }
+
+    public event EventHandler<BlockEventArgs>? BlockProcessing
+    {
+        add => _blockProcessorImplementation.BlockProcessing += value;
+        remove => _blockProcessorImplementation.BlockProcessing -= value;
+    }
+
+    public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
+    {
+        add => _blockProcessorImplementation.BlockProcessed += value;
+        remove => _blockProcessorImplementation.BlockProcessed -= value;
+    }
+
+    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
+    {
+        add => _blockProcessorImplementation.TransactionProcessed += value;
+        remove => _blockProcessorImplementation.TransactionProcessed -= value;
     }
 }

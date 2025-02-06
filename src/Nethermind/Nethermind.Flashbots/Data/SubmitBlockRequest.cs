@@ -1,24 +1,29 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Flashbots.Data;
 
 public class SubmitBlockRequest
 {
-    private readonly ExecutionPayloadV3 _executionPayload;
-    private readonly BlobsBundleV1 _blobsBundle;
-
-    public SubmitBlockRequest(ExecutionPayloadV3 executionPayload, BlobsBundleV1 blobsBundle, BidTrace message, byte[] signature)
+    public SubmitBlockRequest(RExecutionPayloadV3 executionPayload, BlobsBundleV1 blobsBundle, BidTrace message, byte[] signature)
     {
-        _executionPayload = executionPayload;
-        _blobsBundle = blobsBundle;
+        ExecutionPayload = executionPayload;
+        BlobsBundle = blobsBundle;
         Message = message;
         Signature = signature;
     }
-    public ExecutionPayloadV3 ExecutionPayload => _executionPayload;
-    public BlobsBundleV1 BlobsBundle => _blobsBundle;
-    public BidTrace Message { get; }
-    public byte[] Signature { get; }
+    [JsonPropertyName("execution_payload")]
+    public RExecutionPayloadV3 ExecutionPayload { get; set; }
+
+    [JsonPropertyName("blobs_bundle")]
+    public BlobsBundleV1 BlobsBundle { get; set; }
+
+    [JsonPropertyName("message")]
+    public BidTrace Message { get; set; }
+
+    [JsonPropertyName("signature")]
+    public byte[] Signature { get; set; }
 }

@@ -8,10 +8,10 @@ namespace Nethermind.Flashbots.Data;
 
 public class BuilderBlockValidationRequest
 {
-    public BuilderBlockValidationRequest(Hash256 parentBeaconBlockRoot, long registerGasLimit, SubmitBlockRequest blockRequest)
+    public BuilderBlockValidationRequest(Hash256 parentBeaconBlockRoot, long registeredGasLimit, SubmitBlockRequest blockRequest)
     {
         ParentBeaconBlockRoot = parentBeaconBlockRoot;
-        RegisterGasLimit = registerGasLimit;
+        RegisteredGasLimit = registeredGasLimit;
         BlockRequest = blockRequest;
     }
 
@@ -20,11 +20,14 @@ public class BuilderBlockValidationRequest
     /// <see cref=https://github.com/flashbots/builder/blob/df9c765067d57ab4b2d0ad39dbb156cbe4965778/eth/block-validation/api.go#L198"/>
     /// </summary>
     [JsonRequired]
+    [JsonPropertyName("parent_beacon_block_root")]
     public Hash256 ParentBeaconBlockRoot { get; set; }
 
     [JsonRequired]
-    public long RegisterGasLimit { get; set; }
+    [JsonPropertyName("registered_gas_limit")]
+    public long RegisteredGasLimit { get; set; }
 
     [JsonRequired]
+    [JsonPropertyName("block_request")]
     public SubmitBlockRequest BlockRequest { get; set; }
 }

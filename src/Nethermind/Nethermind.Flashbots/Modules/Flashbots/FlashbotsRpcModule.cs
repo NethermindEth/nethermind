@@ -23,12 +23,11 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
 
     Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateRBuilderSubmissionV3(RBuilderBlockValidationRequest @params)
     {
-        ExecutionPayloadV3 executionPayload = @params.execution_payload.ToExecutionPayloadV3();
         BuilderBlockValidationRequest builderBlockValidationRequest = new BuilderBlockValidationRequest(
             @params.parent_beacon_block_root,
             @params.registered_gas_limit,
             new SubmitBlockRequest(
-                executionPayload,
+                @params.execution_payload,
                 @params.blobs_bundle,
                 @params.message.ToBidTrace(),
                 @params.signature
