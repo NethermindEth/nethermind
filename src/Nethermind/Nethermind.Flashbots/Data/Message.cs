@@ -19,7 +19,7 @@ public class Message(
     UInt256 value)
 {
     public ulong slot { get; } = slot;
-    public required Hash256 parent_hash { get; set; } = parent_hash;
+    public Hash256 parent_hash { get; set; } = parent_hash;
     public Hash256 block_hash { get; } = block_hash;
     public PublicKey builder_pubkey { get; } = builder_pubkey;
     public PublicKey proposer_pubkey { get; } = proposer_pubkey;

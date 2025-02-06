@@ -26,6 +26,26 @@ public class RExecutionPayloadV3
     public ulong? blob_gas_used { get; set; }
     public ulong? excess_blob_gas { get; set; }
 
+    public RExecutionPayloadV3(ExecutionPayloadV3 executionPayloadV3)
+    {
+        parent_hash = executionPayloadV3.ParentHash;
+        fee_recipient = executionPayloadV3.FeeRecipient;
+        state_root = executionPayloadV3.StateRoot;
+        receipts_root = executionPayloadV3.ReceiptsRoot;
+        logs_bloom = executionPayloadV3.LogsBloom;
+        prev_randao = executionPayloadV3.PrevRandao;
+        block_number = executionPayloadV3.BlockNumber;
+        gas_limit = executionPayloadV3.GasLimit;
+        gas_used = executionPayloadV3.GasUsed;
+        timestamp = executionPayloadV3.Timestamp;
+        extra_data = executionPayloadV3.ExtraData;
+        base_fee_per_gas = executionPayloadV3.BaseFeePerGas;
+        block_hash = executionPayloadV3.BlockHash;
+        transactions = executionPayloadV3.Transactions;
+        withdrawals = executionPayloadV3.Withdrawals;
+        blob_gas_used = executionPayloadV3.BlobGasUsed;
+        excess_blob_gas = executionPayloadV3.ExcessBlobGas;
+    }
     public ExecutionPayloadV3 ToExecutionPayloadV3()
     {
         return new ExecutionPayloadV3
