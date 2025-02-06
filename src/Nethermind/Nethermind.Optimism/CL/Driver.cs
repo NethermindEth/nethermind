@@ -66,7 +66,7 @@ public class Driver : IDisposable
     private void OnL2BlocksDerived(OptimismPayloadAttributes[] payloadAttributes, ulong l2ParentNumber)
     {
         _logger.Error($"CHECKING PAYLOAD ATTRIBUTES");
-        for (int i = 0; i < 1; i++)
+        for (int i = 0; i < payloadAttributes.Length; i++)
         {
             var block = _l2EthRpc.eth_getBlockByNumber(new((long)l2ParentNumber + 1 + i), true).Data;
             var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
@@ -138,10 +138,10 @@ public class Driver : IDisposable
 
         if (expected.Transactions!.Length != actual.Transactions!.Length)
         {
-            _logger.Error($"Invalid Transactions.Length");
+            _logger.Error($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
         }
         //
-        for (int i = 0; i < expected.Transactions.Length; i++)
+        for (int i = 0; i < 1; i++)
         {
             if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
             {
@@ -205,7 +205,7 @@ public class Driver : IDisposable
 
     private void InsertBlock()
     {
-        var block = _l2EthRpc.eth_getBlockByNumber(new(9176832), true).Data;
+        var block = _l2EthRpc.eth_getBlockByNumber(new(9739163), true).Data;
         DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
         SystemConfig config =
             _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);

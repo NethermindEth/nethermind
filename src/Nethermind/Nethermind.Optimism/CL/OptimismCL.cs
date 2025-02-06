@@ -85,7 +85,7 @@ public class OptimismCL : IDisposable
     private async void GetBatches()
     {
         // BlockForRpc? block = await _l1Bridge.GetBlock(21691682);
-        BeaconBlock? beaconBlock = await _beaconApi.GetBySlotNumber(10905449);
+        BeaconBlock? beaconBlock = await _beaconApi.GetBySlotNumber(10999170);
         ReceiptForRpc[]? receitps = await _ethApi.GetReceiptsByHash(beaconBlock!.Value.ExecutionBlockHash);
         _driver.OnNewL1Head(beaconBlock!.Value, receitps!);
     }
