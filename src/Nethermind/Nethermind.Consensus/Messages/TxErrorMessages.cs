@@ -43,11 +43,11 @@ public static class TxErrorMessages
     public const string BlobTxMissingBlobVersionedHashes =
         "blob transaction missing blob hashes";
 
-    public static readonly string BlobTxGasLimitExceeded =
-        $"BlobTxGasLimitExceeded: Transaction exceeded {Eip4844Constants.MaxBlobGasPerTransaction}.";
+    public static string BlobTxGasLimitExceeded(ulong totalDataGas, ulong maxBlobGas) =>
+        $"BlobTxGasLimitExceeded: Transaction's totalDataGas={totalDataGas} exceeded MaxBlobGas per transaction={maxBlobGas}.";
 
     public const string BlobTxMissingBlobs =
-        "BlobTxMissingBlobs: Blob transaction must have blobs.";
+        "blob transaction missing blob hashes";
 
     public const string MissingBlobVersionedHash =
         "MissingBlobVersionedHash: Must be set.";

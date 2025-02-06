@@ -40,13 +40,14 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly ManualResetEvent _restartQueueSignal;
     private readonly Task<Task>[] _tasksExecutors;
 
-    public BackgroundTaskScheduler(IBlockProcessor blockProcessor, int concurrency, ILogManager logManager)
+    public BackgroundTaskScheduler(IBlockProcessor blockProcessor, int concurrency, int capacity, ILogManager logManager)
     {
         if (concurrency < 1) throw new ArgumentException("concurrency must be at least 1");
+        if (capacity < 1) throw new ArgumentException("capacity must be at least 1");
 
         _mainCancellationTokenSource = new CancellationTokenSource();
         _blockProcessorCancellationTokenSource = new CancellationTokenSource();
-        _taskQueue = Channel.CreateUnbounded<IActivity>();
+        _taskQueue = Channel.CreateBounded<IActivity>(capacity);
         _logger = logManager.GetClassLogger();
         _blockProcessor = blockProcessor;
         _restartQueueSignal = new ManualResetEvent(true);
@@ -130,6 +131,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             // This should never happen unless something goes very wrong.
             throw new InvalidOperationException("Unable to write to background task queue.");
         }
+
+        Evm.Metrics.NumberOfBackgroundTasksScheduled = _taskQueue.Reader.Count;
     }
 
     public async ValueTask DisposeAsync()
