@@ -232,17 +232,8 @@ def to_nethermind_runner(chain_name, l1, chain):
     if chain_name == "op" and l1 == "mainnet":
         # For some reason we need to hardcode the genesis hash. See https://github.com/NethermindEth/nethermind/pull/8105/files#r1944390018
         runner["Init"]["GenesisHash"] = "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b"
-
         runner["Sync"]["AncientBodiesBarrier"] = 105235063
         runner["Sync"]["AncientReceiptsBarrier"] = 105235063
-        runner["Optimism"]["Snapshot"] = (
-            {
-                "Enabled": True,
-                "DownloadUrl": "http://optimism-snapshot.nethermind.io/op-mainnet-genesis-v1.zip",
-                "SnapshotFileName": "op-mainnet-genesis-v1.zip",
-                "Checksum": "0xd7e15b26175c4c924acf75c5790e75d5eaa044977ca8e1904dc62d5d0769eba3",
-            },
-        )
 
     return runner
 
