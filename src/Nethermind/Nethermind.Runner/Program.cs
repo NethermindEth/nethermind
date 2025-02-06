@@ -232,6 +232,11 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
 void AddConfigurationOptions(CliCommand command)
 {
+    static CliOption CreateOption<T>(string name, Type configType) =>
+        new CliOption<T>(
+            $"--{ConfigExtensions.GetCategoryName(configType)}.{name}",
+            $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
+
     IEnumerable<Type> configTypes = TypeDiscovery
         .FindNethermindBasedTypes(typeof(IConfig))
         .Where(ct => ct.IsInterface);
@@ -249,25 +254,25 @@ void AddConfigurationOptions(CliCommand command)
 
         bool categoryHidden = typeLevel?.HiddenFromDocs == true;
 
-        foreach (PropertyInfo propertyInfo in
+        foreach (PropertyInfo prop in
             configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
-            ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? configItemAttribute = prop.GetCustomAttribute<ConfigItemAttribute>();
 
             if (configItemAttribute?.DisabledForCli != true)
             {
-                command.Add(new CliOption<string>(
-                    $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
-                    $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
-                {
-                    Description = configItemAttribute?.Description,
-                    HelpName = "value",
-                    Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true
-                });
+                CliOption option = prop.PropertyType == typeof(bool)
+                    ? CreateOption<bool>(prop.Name, configType)
+                    : CreateOption<string>(prop.Name, configType);
+                option.Description = configItemAttribute?.Description;
+                option.HelpName = "value";
+                option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
+
+                command.Add(option);
             }
 
             if (configItemAttribute?.IsPortOption == true)
-                ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
+                ConfigExtensions.AddPortOptionName(configType, prop.Name);
         }
     }
 }
@@ -384,7 +389,10 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     {
         if (child is OptionResult result)
         {
-            var value = result.GetValueOrDefault<string>();
+            var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
+            var value = isBoolean
+                ? result.GetValueOrDefault<bool>().ToString().ToLowerInvariant()
+                : result.GetValueOrDefault<string>();
 
             if (value is not null)
                 configArgs.Add(result.Option.Name.TrimStart('-'), value);
