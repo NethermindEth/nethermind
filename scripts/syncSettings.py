@@ -97,6 +97,18 @@ configs = {
         "multiplierRequirement": 10000,
         "isPoS": True
     },
+    "worldchain-mainnet": {
+        "url": "https://worldchain-mainnet.g.alchemy.com/public",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000,
+        "isPoS": True
+    },
+    "worldchain-sepolia": {
+        "url": "https://worldchain-sepolia.g.alchemy.com/public",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000,
+        "isPoS": True
+    },
     "linea-mainnet": {
         "url": "https://rpc.linea.build",
         "blockReduced": 8192,
@@ -144,7 +156,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
 
     data['Sync']['PivotNumber'] = baseBlock
     data['Sync']['PivotHash'] = pivotHash
-  
+
     if not isPoS:
         data['Sync']['PivotTotalDifficulty'] = str(pivotTotalDifficulty)
 
