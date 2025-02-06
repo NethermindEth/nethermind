@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -66,6 +67,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 if (i > 0 && ExecutionRequests[i][0] <= ExecutionRequests[i - 1][0])
                 {
                     error = "Execution requests must not contain duplicates and be ordered by request_type in ascending order";
+                    return ValidationResult.Fail;
+                }
+
+                if (!Enum.IsDefined(typeof(ExecutionRequestType), ExecutionRequests[i][0]))
+                {
+                    error = $"Invalid execution request type: {ExecutionRequests[i][0]}";
                     return ValidationResult.Fail;
                 }
             }
