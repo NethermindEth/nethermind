@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
@@ -28,6 +29,16 @@ namespace Nethermind.Network.Rlpx.Handshake
         private readonly PrivateKey _privateKey;
         private readonly ILogger _logger;
         private readonly IEcdsa _ecdsa;
+
+        public HandshakeService(
+            IMessageSerializationService messageSerializationService,
+            IEciesCipher eciesCipher,
+            ICryptoRandom cryptoRandom,
+            IEcdsa ecdsa,
+            [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+            ILogManager logManager)
+        : this(messageSerializationService, eciesCipher, cryptoRandom, ecdsa, nodeKey.Unprotect(), logManager)
+        { }
 
         public HandshakeService(
             IMessageSerializationService messageSerializationService,

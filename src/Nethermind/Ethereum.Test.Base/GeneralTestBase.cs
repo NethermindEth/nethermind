@@ -62,11 +62,13 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            ISpecProvider specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Fork));
+            ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
+                ? GnosisSpecProvider.Instance
+                : new CustomSpecProvider(
+                    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Fork));
 
-            if (specProvider.GenesisSpec != Frontier.Instance)
+            if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
@@ -133,7 +135,7 @@ namespace Ethereum.Test.Base
             TransactionResult? txResult = null;
             if (txIsValid)
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
             else
             {
