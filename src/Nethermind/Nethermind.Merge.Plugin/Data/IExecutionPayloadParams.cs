@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -45,12 +46,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             if (ExecutionRequests is null)
             {
                 error = "Execution requests must be set";
-                return ValidationResult.Fail;
-            }
-
-            if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
-            {
-                error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
                 return ValidationResult.Fail;
             }
 
