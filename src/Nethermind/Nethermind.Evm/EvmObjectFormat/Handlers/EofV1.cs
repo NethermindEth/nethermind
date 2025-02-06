@@ -31,8 +31,8 @@ internal class Eof1 : IEofVersionHandler
                                             + MINIMUM_HEADER_SECTION_SIZE
                                             + ONE_BYTE_LENGTH;
 
-    internal const byte BYTE_BIT_COUNT = 8; // indicates the length of the count immediate of jumpv
-    internal const byte MINIMUMS_ACCEPTABLE_JUMPV_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of jumpv
+    internal const byte BYTE_BIT_COUNT = 8; // indicates the length of the count immediate of JumpV
+    internal const byte MINIMUMS_ACCEPTABLE_JUMPV_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of JumpV
 
     internal const byte INPUTS_OFFSET = 0;
     internal const byte INPUTS_MAX = 0x7F;
@@ -48,7 +48,7 @@ internal class Eof1 : IEofVersionHandler
     internal const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
     internal const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
     internal const ushort MAXIMUM_NUM_CONTAINER_SECTIONS = 0x00FF;
-    internal const ushort RETURN_STACK_MAX_HEIGHT = MAXIMUM_NUM_CODE_SECTIONS; // the size in the type sectionn allocated to each function section
+    internal const ushort RETURN_STACK_MAX_HEIGHT = MAXIMUM_NUM_CODE_SECTIONS; // the size in the type section allocated to each function section
 
     internal const ushort MINIMUM_SIZE = MINIMUM_HEADER_SIZE
                                         + MINIMUM_TYPESECTION_SIZE // minimum type section body size
@@ -652,21 +652,15 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    private static ValidationStrategy GetVisited(ValidationStrategy validationStrategy)
-    {
-        return validationStrategy.HasFlag(ValidationStrategy.ValidateInitcodeMode)
-            ? ValidationStrategy.ValidateInitcodeMode
+    private static ValidationStrategy GetVisited(ValidationStrategy validationStrategy) => validationStrategy.HasFlag(ValidationStrategy.ValidateInitCodeMode)
+            ? ValidationStrategy.ValidateInitCodeMode
             : ValidationStrategy.ValidateRuntimeMode;
-    }
 
-    private static ValidationStrategy GetValidation(ValidationStrategy validationStrategy)
-    {
-        return validationStrategy.HasFlag(ValidationStrategy.ValidateInitcodeMode)
-            ? ValidationStrategy.ValidateInitcodeMode
+    private static ValidationStrategy GetValidation(ValidationStrategy validationStrategy) => validationStrategy.HasFlag(ValidationStrategy.ValidateInitCodeMode)
+            ? ValidationStrategy.ValidateInitCodeMode
             : validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode)
                 ? ValidationStrategy.ValidateRuntimeMode
                 : ValidationStrategy.None;
-    }
 
     /// <summary>
     /// Validates the body of the EOF container, ensuring that the various sections (code, data, and type)
@@ -808,11 +802,9 @@ internal class Eof1 : IEofVersionHandler
     /// <returns>
     /// <c>true</c> if the code sections are valid; otherwise, <c>false</c>.
     /// </returns>
-    private static bool ValidateCodeSectionsNonZero(CompoundSectionHeader codeSections)
-    {
+    private static bool ValidateCodeSectionsNonZero(CompoundSectionHeader codeSections) =>
         // The code sections must contain at least one subsection and none may have a size of zero.
-        return codeSections.Count > 0 && !codeSections.SubSectionsSizes.Any(size => size == 0);
-    }
+        codeSections.Count > 0 && !codeSections.SubSectionsSizes.Any(size => size == 0);
 
     /// <summary>
     /// Validates the instructions in all code sections of the provided EOF container.
@@ -957,7 +949,7 @@ internal class Eof1 : IEofVersionHandler
     /// </summary>
     /// <param name="eofContainer">The container holding the EOF bytecode and type sections.</param>
     /// <param name="sectionId">The index of the code section to validate.</param>
-    /// <param name="strategy">The validation strategy (e.g. runtime or initcode mode).</param>
+    /// <param name="strategy">The validation strategy (e.g. runtime or InitCode mode).</param>
     /// <param name="sectionsWorklist">A queue manager for additional code sections to be validated.</param>
     /// <param name="containersWorklist">A queue manager for container sections that need validation.</param>
     /// <returns>True if the code section is valid; otherwise, false.</returns>
@@ -1013,8 +1005,8 @@ internal class Eof1 : IEofVersionHandler
                 }
                 else if (opcode is Instruction.RETURN or Instruction.STOP)
                 {
-                    // RETURN/STOP are disallowed in initcode mode.
-                    if (strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode))
+                    // RETURN/STOP are disallowed in InitCode mode.
+                    if (strategy.HasFlag(ValidationStrategy.ValidateInitCodeMode))
                     {
                         if (Logger.IsTrace)
                             Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
@@ -1022,8 +1014,8 @@ internal class Eof1 : IEofVersionHandler
                     }
                     else
                     {
-                        // If the container has already been marked for initcode mode, RETURN/STOP is not allowed.
-                        if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateInitcodeMode)
+                        // If the container has already been marked for InitCode mode, RETURN/STOP is not allowed.
+                        if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateInitCodeMode)
                         {
                             if (Logger.IsTrace)
                                 Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
@@ -1089,7 +1081,7 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     sectionsWorklist.Enqueue(targetSectionId, strategy);
-                    BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
+                    BitmapHelper.FlagMultipleBits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
                 }
                 else if (opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
                 {
@@ -1099,7 +1091,7 @@ internal class Eof1 : IEofVersionHandler
                             Logger.Trace($"EOF: Eof{VERSION}, {opcode.FastToString()} Argument underflow");
                         return false;
                     }
-                    BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
+                    BitmapHelper.FlagMultipleBits(ONE_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
                 }
                 else if (opcode == Instruction.RJUMPV)
                 {
@@ -1145,7 +1137,7 @@ internal class Eof1 : IEofVersionHandler
                             Logger.Trace($"EOF: Eof{VERSION}, {opcode.FastToString()} PC Reached out of bounds");
                         return false;
                     }
-                    BitmapHelper.HandleNumbits(pushDataLength, invalidJumpDestinations, ref nextPosition);
+                    BitmapHelper.FlagMultipleBits(pushDataLength, invalidJumpDestinations, ref nextPosition);
                 }
 
                 position = nextPosition;
@@ -1229,7 +1221,7 @@ internal class Eof1 : IEofVersionHandler
             }
             else
             {
-                containersWorklist.VisitedContainers[0] = ValidationStrategy.ValidateInitcodeMode;
+                containersWorklist.VisitedContainers[0] = ValidationStrategy.ValidateInitCodeMode;
             }
         }
 
@@ -1259,7 +1251,7 @@ internal class Eof1 : IEofVersionHandler
         }
 
         containersWorklist.Enqueue(runtimeContainerId + 1, ValidationStrategy.ValidateRuntimeMode | ValidationStrategy.ValidateFullBody);
-        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, invalidJumpDestinations, ref pos);
+        BitmapHelper.FlagMultipleBits(ONE_BYTE_LENGTH, invalidJumpDestinations, ref pos);
         return true;
     }
 
@@ -1288,17 +1280,17 @@ internal class Eof1 : IEofVersionHandler
         }
 
         short offset = code.Slice(pos, TWO_BYTE_LENGTH).ReadEthInt16();
-        int rjumpDest = offset + TWO_BYTE_LENGTH + pos;
+        int rJumpDest = offset + TWO_BYTE_LENGTH + pos;
 
-        if (rjumpDest < 0 || rjumpDest >= code.Length)
+        if (rJumpDest < 0 || rJumpDest >= code.Length)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, {opcode.FastToString()} Destination outside of Code bounds");
             return false;
         }
 
-        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpDestinations, ref rjumpDest);
-        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref pos);
+        BitmapHelper.FlagMultipleBits(ONE_BYTE_LENGTH, jumpDestinations, ref rJumpDest);
+        BitmapHelper.FlagMultipleBits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref pos);
         return true;
     }
 
@@ -1345,17 +1337,17 @@ internal class Eof1 : IEofVersionHandler
         for (int j = 0; j < count; j++)
         {
             short offset = code.Slice(pos + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
-            int rjumpDest = offset + immediateValueSize + pos;
-            if (rjumpDest < 0 || rjumpDest >= code.Length)
+            int rJumpDest = offset + immediateValueSize + pos;
+            if (rJumpDest < 0 || rJumpDest >= code.Length)
             {
                 if (Logger.IsTrace)
                     Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RJUMPV} Destination outside of Code bounds");
                 return false;
             }
-            BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpDestinations, ref rjumpDest);
+            BitmapHelper.FlagMultipleBits(ONE_BYTE_LENGTH, jumpDestinations, ref rJumpDest);
         }
 
-        BitmapHelper.HandleNumbits(immediateValueSize, invalidJumpDestinations, ref pos);
+        BitmapHelper.FlagMultipleBits(immediateValueSize, invalidJumpDestinations, ref pos);
         return true;
     }
 
@@ -1405,7 +1397,7 @@ internal class Eof1 : IEofVersionHandler
         }
 
         sectionsWorklist.Enqueue(targetSectionId, strategy);
-        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref pos);
+        BitmapHelper.FlagMultipleBits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref pos);
         return true;
     }
 
@@ -1439,7 +1431,7 @@ internal class Eof1 : IEofVersionHandler
             return false;
         }
 
-        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref pos);
+        BitmapHelper.FlagMultipleBits(TWO_BYTE_LENGTH, invalidJumpDestinations, ref pos);
         return true;
     }
 
@@ -1477,15 +1469,15 @@ internal class Eof1 : IEofVersionHandler
         }
 
         if (containersWorklist.VisitedContainers[initCodeSectionId + 1] != 0 &&
-            containersWorklist.VisitedContainers[initCodeSectionId + 1] != ValidationStrategy.ValidateInitcodeMode)
+            containersWorklist.VisitedContainers[initCodeSectionId + 1] != ValidationStrategy.ValidateInitCodeMode)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s target container can only be a initCode mode bytecode");
             return false;
         }
 
-        containersWorklist.Enqueue(initCodeSectionId + 1, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateFullBody);
-        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, invalidJumpDestinations, ref pos);
+        containersWorklist.Enqueue(initCodeSectionId + 1, ValidationStrategy.ValidateInitCodeMode | ValidationStrategy.ValidateFullBody);
+        BitmapHelper.FlagMultipleBits(ONE_BYTE_LENGTH, invalidJumpDestinations, ref pos);
         return true;
     }
 
@@ -1501,19 +1493,19 @@ internal class Eof1 : IEofVersionHandler
             ushort currentSectionOutputs = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
             short peakStackHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
-            var unreachedBytes = code.Length;
-            var isTargetSectionNonReturning = false;
-            var programCounter = 0;
+            int unreachedBytes = code.Length;
+            bool isTargetSectionNonReturning = false;
+            int programCounter = 0;
             recordedStackHeight[0].Max = peakStackHeight;
             recordedStackHeight[0].Min = peakStackHeight;
             StackBounds currentStackBounds = recordedStackHeight[0];
 
             while (programCounter < code.Length)
             {
-                var opcode = (Instruction)code[programCounter];
-                (var inputs, var outputs, var immediates) = opcode.StackRequirements();
+                Instruction opcode = (Instruction)code[programCounter];
+                (ushort? inputCount, ushort? outputCount, ushort? immediateCount) = opcode.StackRequirements();
 
-                var posPostInstruction = (ushort)(programCounter + 1);
+                int posPostInstruction = programCounter + 1;
                 if (posPostInstruction > code.Length)
                 {
                     if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
@@ -1523,51 +1515,51 @@ internal class Eof1 : IEofVersionHandler
                 switch (opcode)
                 {
                     case Instruction.CALLF or Instruction.JUMPF:
-                        ushort targetSectionId = code.Slice(posPostInstruction, immediates.Value).ReadEthUInt16();
-                        inputs = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                        ushort targetSectionId = code.Slice(posPostInstruction, immediateCount.Value).ReadEthUInt16();
+                        inputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
-                        outputs = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        outputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                         isTargetSectionNonReturning = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
-                        outputs = (ushort)(isTargetSectionNonReturning ? 0 : outputs);
+                        outputCount = (ushort)(isTargetSectionNonReturning ? 0 : outputCount);
                         int targetMaxStackHeight = typeSection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-                        if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
+                        if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputCount < currentStackBounds.Max)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack head during callf must not exceed {MAX_STACK_HEIGHT}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack head during callF must not exceed {MAX_STACK_HEIGHT}");
                             return false;
                         }
 
-                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currentSectionOutputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
+                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currentSectionOutputs + inputCount - outputCount == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currentSectionOutputs + inputs - outputs} but found {currentStackBounds.Max}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currentSectionOutputs + inputCount - outputCount} but found {currentStackBounds.Max}");
                             return false;
                         }
                         break;
                     case Instruction.DUPN:
-                        var imm_n = 1 + code[posPostInstruction];
-                        inputs = (ushort)imm_n;
-                        outputs = (ushort)(inputs + 1);
+                        int imm_n = 1 + code[posPostInstruction];
+                        inputCount = (ushort)imm_n;
+                        outputCount = (ushort)(inputCount + 1);
                         break;
                     case Instruction.SWAPN:
                         imm_n = 1 + code[posPostInstruction];
-                        outputs = inputs = (ushort)(1 + imm_n);
+                        outputCount = inputCount = (ushort)(1 + imm_n);
                         break;
                     case Instruction.EXCHANGE:
                         imm_n = 1 + (byte)(code[posPostInstruction] >> 4);
-                        var imm_m = 1 + (byte)(code[posPostInstruction] & 0x0F);
-                        outputs = inputs = (ushort)(imm_n + imm_m + 1);
+                        int imm_m = 1 + (byte)(code[posPostInstruction] & 0x0F);
+                        outputCount = inputCount = (ushort)(imm_n + imm_m + 1);
                         break;
                 }
 
-                if ((isTargetSectionNonReturning || opcode is not Instruction.JUMPF) && currentStackBounds.Min < inputs)
+                if ((isTargetSectionNonReturning || opcode is not Instruction.JUMPF) && currentStackBounds.Min < inputCount)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputs} but found {currentStackBounds.Min}");
+                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputCount} but found {currentStackBounds.Min}");
                     return false;
                 }
 
                 if (!opcode.IsTerminating())
                 {
-                    var delta = (short)(outputs - inputs);
+                    short delta = (short)(outputCount - inputCount);
                     currentStackBounds.Max += delta;
                     currentStackBounds.Min += delta;
                 }
@@ -1577,7 +1569,7 @@ internal class Eof1 : IEofVersionHandler
                 {
                     case Instruction.RETF:
                         {
-                            var expectedHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                            int expectedHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                             if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid required height {expectedHeight} but found {currentStackBounds.Min}");
@@ -1587,11 +1579,11 @@ internal class Eof1 : IEofVersionHandler
                         }
                     case Instruction.RJUMP or Instruction.RJUMPI:
                         {
-                            short offset = code.Slice(programCounter + 1, immediates.Value).ReadEthInt16();
-                            var jumpDestination = posPostInstruction + immediates.Value + offset;
+                            short offset = code.Slice(programCounter + 1, immediateCount.Value).ReadEthInt16();
+                            int jumpDestination = posPostInstruction + immediateCount.Value + offset;
 
-                            if (opcode is Instruction.RJUMPI && (posPostInstruction + immediates.Value < recordedStackHeight.Length))
-                                recordedStackHeight[posPostInstruction + immediates.Value].Combine(currentStackBounds);
+                            if (opcode is Instruction.RJUMPI && (posPostInstruction + immediateCount.Value < recordedStackHeight.Length))
+                                recordedStackHeight[posPostInstruction + immediateCount.Value].Combine(currentStackBounds);
 
                             if (jumpDestination > programCounter)
                                 recordedStackHeight[jumpDestination].Combine(currentStackBounds);
@@ -1608,15 +1600,17 @@ internal class Eof1 : IEofVersionHandler
                         }
                     case Instruction.RJUMPV:
                         {
-                            var count = code[posPostInstruction] + 1;
-                            immediates = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
+                            int count = code[posPostInstruction] + 1;
+                            immediateCount = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
                             for (short j = 0; j < count; j++)
                             {
                                 int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
                                 int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
-                                var jumpDestination = posPostInstruction + immediates.Value + offset;
+                                int jumpDestination = posPostInstruction + immediateCount.Value + offset;
                                 if (jumpDestination > programCounter)
+                                {
                                     recordedStackHeight[jumpDestination].Combine(currentStackBounds);
+                                }
                                 else
                                 {
                                     if (recordedStackHeight[jumpDestination] != currentStackBounds)
@@ -1627,7 +1621,7 @@ internal class Eof1 : IEofVersionHandler
                                 }
                             }
 
-                            posPostInstruction += immediates.Value;
+                            posPostInstruction += immediateCount.Value;
                             if (posPostInstruction > code.Length)
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
@@ -1637,8 +1631,8 @@ internal class Eof1 : IEofVersionHandler
                         }
                 }
 
-                unreachedBytes -= 1 + immediates.Value;
-                programCounter += 1 + immediates.Value;
+                unreachedBytes -= 1 + immediateCount.Value;
+                programCounter += 1 + immediateCount.Value;
 
                 if (opcode.IsTerminating())
                 {
@@ -1674,7 +1668,7 @@ internal class Eof1 : IEofVersionHandler
                 return false;
             }
 
-            var result = peakStackHeight < MAX_STACK_HEIGHT;
+            bool result = peakStackHeight < MAX_STACK_HEIGHT;
             if (!result)
             {
                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
@@ -1693,15 +1687,9 @@ internal class Eof1 : IEofVersionHandler
         public readonly Queue<(int index, ValidationStrategy strategy)> ContainerQueue = new();
         public readonly ValidationStrategy[] VisitedContainers = new ValidationStrategy[containerCount];
 
-        public void Enqueue(int index, ValidationStrategy strategy)
-        {
-            ContainerQueue.Enqueue((index, strategy));
-        }
+        public void Enqueue(int index, ValidationStrategy strategy) => ContainerQueue.Enqueue((index, strategy));
 
-        public void MarkVisited(int index, ValidationStrategy strategy)
-        {
-            VisitedContainers[index] = strategy;
-        }
+        public void MarkVisited(int index, ValidationStrategy strategy) => VisitedContainers[index] = strategy;
 
         public bool TryDequeue(out (int Index, ValidationStrategy Strategy) worklet) => ContainerQueue.TryDequeue(out worklet);
 

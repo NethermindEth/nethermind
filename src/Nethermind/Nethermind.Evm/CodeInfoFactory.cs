@@ -28,7 +28,7 @@ public static class CodeInfoFactory
         extraCallData = default;
         if (spec.IsEofEnabled && data.Span.StartsWith(EofValidator.MAGIC))
         {
-            if (EofValidator.IsValidEof(data, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateFullBody | ValidationStrategy.AllowTrailingBytes, out EofContainer? eofContainer))
+            if (EofValidator.IsValidEof(data, ValidationStrategy.ValidateInitCodeMode | ValidationStrategy.ValidateFullBody | ValidationStrategy.AllowTrailingBytes, out EofContainer? eofContainer))
             {
                 int containerSize = eofContainer.Value.Header.DataSection.EndOffset;
                 extraCallData = data[containerSize..];

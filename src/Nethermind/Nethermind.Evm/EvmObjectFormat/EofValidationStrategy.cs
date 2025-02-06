@@ -8,7 +8,7 @@ public enum ValidationStrategy : byte
     None = 0,
     Validate = 1,
     ValidateFullBody = Validate | 2,
-    ValidateInitcodeMode = Validate | 4,
+    ValidateInitCodeMode = Validate | 4,
     ValidateRuntimeMode = Validate | 8,
     AllowTrailingBytes = Validate | 16,
     ExractHeader = 32,

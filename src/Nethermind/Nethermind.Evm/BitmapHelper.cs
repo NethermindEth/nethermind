@@ -29,7 +29,7 @@ public static class BitmapHelper
         // The bitmap is 4 bytes longer than necessary, in case the code
         // ends with a PUSH32, the algorithm will push zeroes onto the
         // bitvector outside the bounds of the actual code.
-        byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
+        byte[] bitVector = new byte[(code.Length / 8) + 1 + 4];
 
         for (int pc = 0; pc < code.Length;)
         {
@@ -44,80 +44,80 @@ public static class BitmapHelper
 
             if (numbits == 0) continue;
 
-            HandleNumbits(numbits, bitvec, ref pc);
+            FlagMultipleBits(numbits, bitVector, ref pc);
         }
-        return bitvec;
+        return bitVector;
     }
 
-    public static void HandleNumbits(int numbits, Span<byte> bitvec, scoped ref int pc)
+    public static void FlagMultipleBits(int bitCount, Span<byte> bitVector, scoped ref int pc)
     {
-        if (numbits == 0) return;
+        if (bitCount == 0) return;
 
-        if (numbits >= 8)
+        if (bitCount >= 8)
         {
-            for (; numbits >= 16; numbits -= 16)
+            for (; bitCount >= 16; bitCount -= 16)
             {
-                bitvec.Set16(pc);
+                bitVector.Set16(pc);
                 pc += 16;
             }
 
-            for (; numbits >= 8; numbits -= 8)
+            for (; bitCount >= 8; bitCount -= 8)
             {
-                bitvec.Set8(pc);
+                bitVector.Set8(pc);
                 pc += 8;
             }
         }
 
-        if (numbits > 1)
+        if (bitCount > 1)
         {
-            bitvec.SetN(pc, _lookup[numbits]);
-            pc += numbits;
+            bitVector.SetN(pc, _lookup[bitCount]);
+            pc += bitCount;
         }
         else
         {
-            bitvec.Set1(pc);
-            pc += numbits;
+            bitVector.Set1(pc);
+            pc += bitCount;
         }
     }
     /// <summary>
     /// Checks if the position is in a code segment.
     /// </summary>
-    public static bool IsCodeSegment(Span<byte> bitvec, int pos)
+    public static bool IsCodeSegment(Span<byte> bitVector, int pos)
     {
-        return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
+        return (bitVector[pos / 8] & (0x80 >> (pos % 8))) == 0;
     }
 
-    private static void Set1(this Span<byte> bitvec, int pos)
+    private static void Set1(this Span<byte> bitVector, int pos)
     {
-        bitvec[pos / 8] |= (byte)(1 << (pos % 8));
+        bitVector[pos / 8] |= (byte)(1 << (pos % 8));
     }
 
-    private static void SetN(this Span<byte> bitvec, int pos, ushort flag)
+    private static void SetN(this Span<byte> bitVector, int pos, ushort flag)
     {
         ushort a = (ushort)(flag << (pos % 8));
-        bitvec[pos / 8] |= (byte)a;
+        bitVector[pos / 8] |= (byte)a;
         byte b = (byte)(a >> 8);
         if (b != 0)
         {
-            //	If the bit-setting affects the neighbouring byte, we can assign - no need to OR it,
+            //	If the bit-setting affects the neighboring byte, we can assign - no need to OR it,
             //	since it's the first write to that byte
-            bitvec[pos / 8 + 1] = b;
+            bitVector[pos / 8 + 1] = b;
         }
     }
 
-    private static void Set8(this Span<byte> bitvec, int pos)
+    private static void Set8(this Span<byte> bitVector, int pos)
     {
         byte a = (byte)(0xFF << (pos % 8));
-        bitvec[pos / 8] |= a;
-        bitvec[pos / 8 + 1] = (byte)~a;
+        bitVector[pos / 8] |= a;
+        bitVector[pos / 8 + 1] = (byte)~a;
     }
 
-    private static void Set16(this Span<byte> bitvec, int pos)
+    private static void Set16(this Span<byte> bitVector, int pos)
     {
         byte a = (byte)(0xFF << (pos % 8));
-        bitvec[pos / 8] |= a;
-        bitvec[pos / 8 + 1] = 0xFF;
-        bitvec[pos / 8 + 2] = (byte)~a;
+        bitVector[pos / 8] |= a;
+        bitVector[pos / 8 + 1] = 0xFF;
+        bitVector[pos / 8 + 2] = (byte)~a;
     }
 
     public static bool CheckCollision(ReadOnlySpan<byte> codeSegments, ReadOnlySpan<byte> jumpmask)

@@ -96,7 +96,9 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 destOffset) ||
             !stack.PopUInt256(out UInt256 sourceOffset) ||
             !stack.PopUInt256(out UInt256 size))
+        {
             goto StackUnderflow;
+        }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas);
@@ -162,8 +164,8 @@ internal static partial class EvmInstructions
         // Pop the offset from the stack.
         stack.PopUInt256(out UInt256 offset);
         // Load 32 bytes from the data section at the given offset (with zero padding if necessary).
-        ZeroPaddedSpan zpbytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
-        stack.PushBytes(zpbytes);
+        ZeroPaddedSpan bytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
+        stack.PushBytes(bytes);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -190,8 +192,8 @@ internal static partial class EvmInstructions
         // Read a 16-bit immediate operand from the code.
         ushort offset = codeInfo.CodeSection.Span.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
         // Load the 32-byte word from the data section at the immediate offset.
-        ZeroPaddedSpan zpbytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
-        stack.PushBytes(zpbytes);
+        ZeroPaddedSpan bytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
+        stack.PushBytes(bytes);
 
         // Advance the program counter past the immediate operand.
         programCounter += EofValidator.TWO_BYTE_LENGTH;
@@ -243,12 +245,16 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 memOffset) ||
             !stack.PopUInt256(out UInt256 offset) ||
             !stack.PopUInt256(out UInt256 size))
+        {
             goto StackUnderflow;
+        }
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
         if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
             || outOfGas)
+        {
             goto OutOfGas;
+        }
 
         if (!size.IsZero)
         {
@@ -356,7 +362,7 @@ internal static partial class EvmInstructions
         // Determine the number of cases in the jump table (first byte + one).
         var count = codeSection[programCounter] + 1;
         // Calculate the total immediate bytes to skip after processing the jump table.
-        var immediates = (ushort)(count * EofValidator.TWO_BYTE_LENGTH + EofValidator.ONE_BYTE_LENGTH);
+        var immediateCount = (ushort)(count * EofValidator.TWO_BYTE_LENGTH + EofValidator.ONE_BYTE_LENGTH);
         if (indexValue < count)
         {
             // Calculate the jump offset from the corresponding entry in the jump table.
@@ -364,8 +370,8 @@ internal static partial class EvmInstructions
             int offset = codeSection.Slice(case_v, EofValidator.TWO_BYTE_LENGTH).ReadEthInt16();
             programCounter += offset;
         }
-        // Skip over the jump table immediates.
-        programCounter += immediates;
+        // Skip over the jump table immediateCount.
+        programCounter += immediateCount;
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -600,38 +606,39 @@ internal static partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
-        ICodeInfo codeInfo = env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (env.CodeInfo.Version == 0)
             goto BadInstruction;
 
         if (vm.EvmState.IsStatic)
             goto StaticCallViolation;
 
         // Cast the current code info to EOF-specific container type.
-        EofCodeInfo container = codeInfo as EofCodeInfo;
+        EofCodeInfo container = env.CodeInfo as EofCodeInfo;
         ExecutionType currentContext = ExecutionType.EOFCREATE;
 
         // 1. Deduct the creation gas cost.
         if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
             goto OutOfGas;
 
-        ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> codeSection = container.CodeSection.Span;
         // 2. Read the immediate operand for the init container index.
-        int initcontainerIndex = codeSection[programCounter++];
+        int initContainerIndex = codeSection[programCounter++];
 
         // 3. Pop contract creation parameters from the stack.
         if (!stack.PopUInt256(out UInt256 value) ||
             !stack.PopWord256(out Span<byte> salt) ||
             !stack.PopUInt256(out UInt256 dataOffset) ||
             !stack.PopUInt256(out UInt256 dataSize))
+        {
             goto OutOfGas;
+        }
 
         // 4. Charge for memory expansion for the input data.
         if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataSize))
             goto OutOfGas;
 
-        // 5. Load the init code (EOF subcontainer) from the container using the given index.
-        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initcontainerIndex).Value];
+        // 5. Load the init code (EOF subContainer) from the container using the given index.
+        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initContainerIndex).Value];
         // EIP-3860: Check that the init code size does not exceed the maximum allowed.
         if (spec.IsEip3860Enabled)
         {
@@ -656,8 +663,8 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        // 8. Prepare the calldata from the caller’s memory slice.
-        Span<byte> calldata = vm.EvmState.Memory.LoadSpan(dataOffset, dataSize);
+        // 8. Prepare the callData from the caller’s memory slice.
+        Span<byte> callData = vm.EvmState.Memory.LoadSpan(dataOffset, dataSize);
 
         // 9. Determine gas available for the new contract execution, applying the 63/64 rule if enabled.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -709,7 +716,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Create new code info for the init code.
-        ICodeInfo codeinfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExractHeader);
 
         // Set up the execution environment for the new contract.
         ExecutionEnvironment callEnv = new
@@ -719,8 +726,8 @@ internal static partial class EvmInstructions
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
             codeSource: null,
-            codeInfo: codeinfo,
-            inputData: calldata.ToArray(),
+            codeInfo: codeInfo,
+            inputData: callData.ToArray(),
             transferValue: value,
             value: value
         );
@@ -826,7 +833,7 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Implements the EOF call instructions (CALL, DELEGATECALL, STATICCALL) for EOF-enabled contracts.
-    /// Pops the target address, calldata parameters, and (if applicable) transfer value from the stack,
+    /// Pops the target address, callData parameters, and (if applicable) transfer value from the stack,
     /// performs account access checks and gas adjustments, and then initiates the call.
     /// </summary>
     /// <typeparam name="TOpEofCall">
@@ -857,7 +864,9 @@ internal static partial class EvmInstructions
         if (!stack.PopWord256(out Span<byte> targetBytes) ||
             !stack.PopUInt256(out UInt256 dataOffset) ||
             !stack.PopUInt256(out UInt256 dataLength))
+        {
             goto StackUnderflow;
+        }
 
         UInt256 transferValue;
         UInt256 callValue;
