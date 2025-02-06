@@ -10,13 +10,15 @@ public class SubmitBlockRequest
     private readonly ExecutionPayloadV3 _executionPayload;
     private readonly BlobsBundleV1 _blobsBundle;
 
-    public SubmitBlockRequest(ExecutionPayloadV3 executionPayload, BlobsBundleV1 blobsBundle, BidTrace message)
+    public SubmitBlockRequest(ExecutionPayloadV3 executionPayload, BlobsBundleV1 blobsBundle, BidTrace message, byte[] signature)
     {
         _executionPayload = executionPayload;
         _blobsBundle = blobsBundle;
         Message = message;
+        Signature = signature;
     }
     public ExecutionPayloadV3 ExecutionPayload => _executionPayload;
     public BlobsBundleV1 BlobsBundle => _blobsBundle;
     public BidTrace Message { get; }
+    public byte[] Signature { get; }
 }
