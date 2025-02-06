@@ -503,7 +503,7 @@ internal class Eof1 : IEofVersionHandler
         if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS + 1)
         {
             // move this check where `header.ExtraContainers.Count` is parsed
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, initcode Containers count must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSections?.Count}");
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, InitCode Containers count must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSections?.Count}");
             return false;
         }
 
@@ -537,10 +537,10 @@ internal class Eof1 : IEofVersionHandler
             return false;
         }
 
-        ReadOnlySpan<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
-        if (!ValidateTypeSection(typesection))
+        ReadOnlySpan<byte> typeSectionBytes = container.Slice(typeSectionStart, typeSectionSize);
+        if (!ValidateTypeSection(typeSectionBytes))
         {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, invalid typesection found");
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, invalid TypeSection found");
             return false;
         }
 

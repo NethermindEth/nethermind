@@ -37,7 +37,7 @@ public sealed unsafe partial class VirtualMachine(
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(EofValidator.MAGIC);
+    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
@@ -333,7 +333,6 @@ public sealed unsafe partial class VirtualMachine(
         // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
         ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
         EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
-        byte[] bytecodeResultArray = null;
 
         // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
         Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
@@ -343,20 +342,29 @@ public sealed unsafe partial class VirtualMachine(
         auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
 
         // 2 - 2 - update data section size in the header u16
-        int dataSubheaderSectionStart =
-            EofValidator.VERSION_OFFSET // magic + version
-            + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-            + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+        int dataSubHeaderSectionStart =
+            // magic + version
+            VERSION_OFFSET
+            // type section : (1 byte of separator + 2 bytes for size)
+            + Eof1.MINIMUM_HEADER_SECTION_SIZE
+            // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+            + ONE_BYTE_LENGTH
+            + TWO_BYTE_LENGTH
+            + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count
+            // container section
             + (deployCodeInfo.EofContainer.Header.ContainerSections is null
-                ? 0 // container section :  (0 bytes if no container section is available)
-                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
-            + ONE_BYTE_LENGTH; // data section seperator
+                // bytes if no container section is available
+                ? 0
+                // 1 byte of separator + (ContainerSections count) * 2 bytes for size
+                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count)
+            // data section separator
+            + ONE_BYTE_LENGTH;
 
         ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-        bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
-        bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
+        bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
+        bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
 
-        bytecodeResultArray = bytecodeResult.ToArray();
+        byte[] bytecodeResultArray = bytecodeResult.ToArray();
 
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
         bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
@@ -753,14 +761,14 @@ public sealed unsafe partial class VirtualMachine(
             // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
             if (callResult.IsException)
             {
-                failure = VirtualMachine.PrecompileOutOfGasException;
+                failure = PrecompileOutOfGasException;
                 goto Failure;
             }
 
             // If running a precompile on a top-level call frame and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
-                failure = VirtualMachine.PrecompileExecutionFailureException;
+                failure = PrecompileExecutionFailureException;
                 goto Failure;
             }
 
