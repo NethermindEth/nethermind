@@ -5,6 +5,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace Nethermind.TxPool.Filters
 {
@@ -23,12 +24,21 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
 
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
-            {
                 return AcceptTxResult.DelegatorHasPendingTx;
-            }
 
             if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
+            {
+                Transaction[] userTxs = standardPool.GetSnapshot();
+                //Check if the sender has a self-sponsored SetCode transaction with same nonce.
+                //If he does then this is a replacement tx and should be accepted
+                if (userTxs.Any(t => t.Nonce == tx.Nonce
+                && t.HasAuthorizationList
+                && t.AuthorizationList.Any(tuple => tuple.Authority == tx.SenderAddress)))
+                {
+                    return AcceptTxResult.Accepted;
+                }
                 return AcceptTxResult.PendingDelegation;
+            }
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
@@ -45,12 +55,13 @@ namespace Nethermind.TxPool.Filters
         {
             foreach (AuthorizationTuple authorization in authorizations)
             {
+                //RecoverAuthorityFilter runs before so if a signature is null, it must be bad
                 if (authorization.Authority is null)
                 {
                     continue;
                 }
-                if (!standardPool.ContainsBucket(authorization.Authority!)
-                    || !blobPool.ContainsBucket(authorization.Authority!))
+                if (standardPool.ContainsBucket(authorization.Authority!)
+                    || blobPool.ContainsBucket(authorization.Authority!))
                 {
                     return true;
                 }

@@ -166,4 +166,44 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.PendingDelegation));
     }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Accept_AuthorityHasPendingTransaction_ReturnsDelegatorHasPendingTx(bool useBlobPool)
+    {
+        IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
+        headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), new());
+        Transaction transaction;
+        if (useBlobPool)
+        {
+            transaction
+                = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            blobPool.TryInsert(transaction.Hash, transaction, out _);
+        }
+        else
+        {
+            transaction
+                = Build.A.Transaction
+                .WithNonce(0)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            standardPool.TryInsert(transaction.Hash, transaction, out _);
+        }
+        TxFilteringState state = new();
+        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
+        AuthorizationTuple authTuple = new AuthorizationTuple(0, TestItem.AddressB, 0, new Core.Crypto.Signature(0, 0, 27), TestItem.AddressA);
+        Transaction setCodeTx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode(authTuple)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+
+        AcceptTxResult setCodeTxResult = filter.Accept(setCodeTx, ref state, TxHandlingOptions.None);
+
+        Assert.That(setCodeTxResult, Is.EqualTo(AcceptTxResult.DelegatorHasPendingTx));
+    }
 }

@@ -120,6 +120,8 @@ namespace Nethermind.TxPool
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _transactions.Removed += OnReplacedTx;
+
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
@@ -198,6 +200,10 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? proof)
             => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
 
+        private void OnReplacedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            RemovePendingDelegations(args.Value);
+        }
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing) return;
@@ -460,7 +466,7 @@ namespace Nethermind.TxPool
         {
             if (tx.HasAuthorizationList)
             {
-                foreach (var auth in tx.AuthorizationList)
+                foreach (AuthorizationTuple auth in tx.AuthorizationList)
                 {
                     if (auth.Authority is not null)
                         _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
@@ -509,7 +515,7 @@ namespace Nethermind.TxPool
             if (!inserted)
             {
                 // it means it failed on adding to the pool - it is possible when new tx has the same sender
-                // and nonce as already existent tx and is not good enough to replace it
+                // and nonce as already eqxistent tx and is not good enough to replace it
                 Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
                 return AcceptTxResult.ReplacementNotAllowed;
             }
@@ -801,6 +807,7 @@ namespace Nethermind.TxPool
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
+            _transactions.Removed -= OnReplacedTx;
         }
 
         /// <summary>
