@@ -254,7 +254,7 @@ public class ValidateSubmissionHandler
 
         if (ValidateProposerPayment(expectedProfit, useBalanceDiffProfit, feeRecipientBalanceAfter, amtBeforeOrWithdrawn)) return true;
 
-        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, [.. blockReceiptsTracer.TxReceipts], out error))
+        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.TxReceipts, out error))
         {
             return false;
         }
@@ -340,9 +340,9 @@ public class ValidateSubmissionHandler
         return false;
     }
 
-    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, TxReceipt[] receipts, out string? error)
+    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, IReadOnlyList<TxReceipt> receipts, out string? error)
     {
-        if (receipts.Length == 0)
+        if (receipts.Count == 0)
         {
             error = "No proposer payment receipt";
             return false;
