@@ -106,7 +106,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
 
     public void SetSigner(PrivateKey key) => ThrowInvalidOperationSetSigner();
 
-    public void SetSigner(ProtectedPrivateKey key) => ThrowInvalidOperationSetSigner();
+    public void SetSigner(IProtectedPrivateKey key) => ThrowInvalidOperationSetSigner();
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

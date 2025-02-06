@@ -323,12 +323,15 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_pruningStrategy.PruningEnabled)
         {
+            while (!Monitor.TryEnter(_dirtyNodesLock, TimeSpan.FromSeconds(10)))
+            {
+                if (_logger.IsInfo) _logger.Info("Waiting for state to be unlocked.");
+            }
+
             if (_currentBlockCommitter is not null)
             {
                 throw new InvalidOperationException("Cannot start a new block commit when an existing one is still not closed");
             }
-
-            Monitor.Enter(_dirtyNodesLock);
         }
 
         _currentBlockCommitter = new BlockCommitter(this, CreateCommitSet(blockNumber));
@@ -384,16 +387,16 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
         if (rlp is null)
         {
-            ThrowMissingNode(keccak);
+            ThrowMissingNode(address, path, keccak);
         }
 
         return rlp;
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowMissingNode(Hash256 keccak)
+        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak)
         {
-            throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+            throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
         }
     }
 

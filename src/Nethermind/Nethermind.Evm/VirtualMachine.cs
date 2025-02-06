@@ -500,10 +500,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         bool notOutOfGas = ChargeAccountGas(ref gasAvailable, vmState, address, spec);
         return notOutOfGas
-               && chargeForDelegation
-               && vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegated)
-            ? ChargeAccountGas(ref gasAvailable, vmState, delegated, spec)
-            : notOutOfGas;
+               && (!chargeForDelegation
+                   || !vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegated)
+                   || ChargeAccountGas(ref gasAvailable, vmState, delegated, spec));
 
         bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
         {
@@ -1348,11 +1347,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             Address delegation;
-                            ReadOnlyMemory<byte> externalCode = txCtx.CodeInfoRepository.GetCachedCodeInfo(_state, address, spec, out delegation).MachineCode;
-                            if (delegation is not null)
-                            {
-                                externalCode = Eip7702Constants.FirstTwoBytesOfHeader;
-                            }
+                            ReadOnlyMemory<byte> externalCode = txCtx.CodeInfoRepository.GetCachedCodeInfo(_state, address, false, spec, out delegation).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1910,20 +1905,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
-                        Address delegatedAddress = null;
                         if (_state.AccountExists(address)
-                            && !_state.IsDeadAccount(address)
-                            && (!env.TxExecutionContext.CodeInfoRepository
-                            .TryGetDelegation(_state, address, out delegatedAddress)))
+                            && !_state.IsDeadAccount(address))
                         {
                             stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
                         }
                         else
                         {
-                            if (delegatedAddress is null)
-                                stack.PushZero();
-                            else
-                                stack.PushBytes(Eip7702Constants.HashOfDelegationCode.Bytes);
+                            stack.PushZero();
                         }
 
                         break;
@@ -2071,13 +2060,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
         Address delegation;
-        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_state, address, spec, out delegation).MachineCode;
+        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_state, address, false, spec, out delegation).MachineCode;
         UInt256 result = (UInt256)accountCode.Span.Length;
-        if (delegation is not null)
-        {
-            //If the account has been delegated only the first two bytes of the delegation header counts as size 
-            result = (UInt256)Eip7702Constants.FirstTwoBytesOfHeader.Length;
-        }
         stack.PushUInt256(in result);
     }
 

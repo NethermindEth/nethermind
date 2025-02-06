@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -61,7 +62,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public BloomStorage(IBloomConfig config, IDb bloomDb, IFileStoreFactory fileStoreFactory)
+        public BloomStorage(IBloomConfig config, [KeyFilter(DbNames.Bloom)] IDb bloomDb, IFileStoreFactory fileStoreFactory)
         {
             long Get(Hash256 key, long defaultValue) => bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
@@ -283,7 +284,7 @@ namespace Nethermind.Db.Blooms
                 }
             }
 
-            private static uint CountBits(Bloom bloom) => bloom.Bytes.AsSpan().CountBits();
+            private static uint CountBits(Bloom bloom) => bloom.Bytes.CountBits();
 
             public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
 
