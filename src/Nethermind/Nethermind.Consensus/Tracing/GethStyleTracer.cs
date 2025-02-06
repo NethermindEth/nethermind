@@ -235,7 +235,7 @@ public class GethStyleTracer : IGethStyleTracer
         try
         {
             _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult();
+            return new GethLikeTxTraceCollection(tracer.BuildResult());
         }
         catch
         {

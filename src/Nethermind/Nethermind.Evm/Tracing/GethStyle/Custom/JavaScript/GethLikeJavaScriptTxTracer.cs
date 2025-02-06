@@ -12,7 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -60,8 +60,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+
         _resultConstructed = true;
+
         return result;
     }
 

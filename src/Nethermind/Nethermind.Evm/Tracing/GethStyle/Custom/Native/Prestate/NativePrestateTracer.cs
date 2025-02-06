@@ -19,6 +19,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public const string PrestateTracer = "prestateTracer";
 
     private readonly IWorldState? _worldState;
+    private readonly Hash256? _txHash;
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
@@ -32,6 +33,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public NativePrestateTracer(
         IWorldState worldState,
         GethTraceOptions options,
+        Hash256? txHash,
         Address? from,
         Address? to = null,
         Address? beneficiary = null)
@@ -43,6 +45,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         IsTracingStack = true;
 
         _worldState = worldState;
+        _txHash = txHash;
 
         NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
@@ -64,6 +67,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
 
+        result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace
         {
             Value = _diffMode
