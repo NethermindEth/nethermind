@@ -16,7 +16,7 @@ namespace Nethermind.Optimism.Rpc;
 /// - https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
 /// - https://specs.optimism.io/protocol/deposits.html#the-deposited-transaction-type
 /// </remarks>
-public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<OptimismTransactionForRpc>
+public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<DepositTransactionForRpc>
 {
     public static TxType TxType => TxType.DepositTx;
 
@@ -47,9 +47,9 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<Opt
     #endregion
 
     [JsonConstructor]
-    public OptimismTransactionForRpc() { }
+    public DepositTransactionForRpc() { }
 
-    public OptimismTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
+    public DepositTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
@@ -88,6 +88,6 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<Opt
 
     public override bool ShouldSetBaseFee() => false;
 
-    public static OptimismTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+    public static DepositTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
 }
