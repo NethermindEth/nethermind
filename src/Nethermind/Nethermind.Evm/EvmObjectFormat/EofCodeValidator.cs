@@ -86,7 +86,7 @@ public static class EofValidator
 
         if (IsEof(code, out byte version) && _eofVersionHandlers.TryGetValue(version, out IEofVersionHandler handler))
         {
-            return handler.TryGetEofContainer(code, strategy, out eofContainer);
+            return handler.TryGetEofContainer(strategy, out eofContainer, code);
         }
 
         if (Logger.IsTrace) Logger.Trace($"EOF: Not EOF");

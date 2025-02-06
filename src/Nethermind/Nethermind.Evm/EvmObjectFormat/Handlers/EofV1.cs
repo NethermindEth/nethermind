@@ -8,7 +8,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using DotNetty.Common.Utilities;
 using FastEnumUtility;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -19,69 +18,7 @@ namespace Nethermind.Evm.EvmObjectFormat.Handlers;
 
 internal class Eof1 : IEofVersionHandler
 {
-    private readonly struct QueueManager
-    {
-        public readonly Queue<(int index, ValidationStrategy strategy)> ContainerQueue;
-        public readonly ValidationStrategy[] VisitedContainers;
-
-        public QueueManager(int containerCount)
-        {
-            ContainerQueue = new();
-            VisitedContainers = new ValidationStrategy[containerCount];
-        }
-
-        public void Enqueue(int index, ValidationStrategy strategy)
-        {
-            ContainerQueue.Enqueue((index, strategy));
-        }
-
-        public void MarkVisited(int index, ValidationStrategy strategy)
-        {
-            VisitedContainers[index] = strategy;
-        }
-
-        public bool TryDequeue(out (int Index, ValidationStrategy Strategy) worklet) => ContainerQueue.TryDequeue(out worklet);
-
-        public bool IsAllVisited() => VisitedContainers.All(x => x != 0);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct StackBounds()
-    {
-        public short Max = -1;
-        public short Min = 1023;
-
-        public void Combine(StackBounds other)
-        {
-            this.Max = Math.Max(this.Max, other.Max);
-            this.Min = Math.Min(this.Min, other.Min);
-        }
-
-        public readonly bool BoundsEqual() => Max == Min;
-
-        public static bool operator ==(StackBounds left, StackBounds right) => left.Max == right.Max && right.Min == left.Min;
-        public static bool operator !=(StackBounds left, StackBounds right) => !(left == right);
-        public override readonly bool Equals(object obj) => obj is StackBounds bounds && this == bounds;
-        public override readonly int GetHashCode() => Max ^ Min;
-    }
-
-    private ref struct Sizes
-    {
-        public ushort? TypeSectionSize;
-        public ushort? CodeSectionSize;
-        public ushort? DataSectionSize;
-        public ushort? ContainerSectionSize;
-    }
-
     public const byte VERSION = 0x01;
-    internal enum Separator : byte
-    {
-        KIND_TYPE = 0x01,
-        KIND_CODE = 0x02,
-        KIND_CONTAINER = 0x03,
-        KIND_DATA = 0x04,
-        TERMINATOR = 0x00
-    }
 
     internal const byte MINIMUM_HEADER_SECTION_SIZE = 3;
     internal const byte MINIMUM_TYPESECTION_SIZE = 4;
@@ -121,240 +58,178 @@ internal class Eof1 : IEofVersionHandler
     // EIP-3540 ties this to MAX_INIT_CODE_SIZE from EIP-3860, but we need a constant here
     internal const ushort MAXIMUM_SIZE = 0xc000;
 
+    /// <summary>
+    /// Attempts to parse the EOF header from the provided container memory.
+    /// </summary>
+    /// <param name="containerMemory">
+    /// The memory containing the raw EOF data to parse.
+    /// </param>
+    /// <param name="validationStrategy">
+    /// Flags that control additional validation (for example, whether to allow trailing bytes).
+    /// </param>
+    /// <param name="header">
+    /// When this method returns, contains the parsed header if successful; otherwise, <c>null</c>.
+    /// </param>
+    /// <returns>
+    /// <c>true</c> if the header was successfully parsed; otherwise, <c>false</c>.
+    /// </returns>
     public bool TryParseEofHeader(ReadOnlyMemory<byte> containerMemory, ValidationStrategy validationStrategy, out EofHeader? header)
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static ushort GetUInt16(ReadOnlySpan<byte> container, int offset) =>
-            container.Slice(offset, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
-
+        header = null;
         ReadOnlySpan<byte> container = containerMemory.Span;
 
-        header = null;
-        // we need to be able to parse header + minimum section lengths
-        if (container.Length < MINIMUM_SIZE)
+        // Validate overall container size, magic value, and version.
+        if (!ValidateBasicConstraints(container))
         {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
-            return false;
-        }
-        if (container.Length > MAXIMUM_SIZE)
-        {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is larger than allowed maximum size of {MAXIMUM_SIZE}");
             return false;
         }
 
-        if (!container.StartsWith(EofValidator.MAGIC))
-        {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code doesn't start with magic byte sequence expected {EofValidator.MAGIC.ToHexString(true)} ");
-            return false;
-        }
-
-        if (container[EofValidator.VERSION_OFFSET] != VERSION)
-        {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not Eof version {VERSION}");
-            return false;
-        }
-
-        Sizes sectionSizes = new();
-        int[] codeSections = null;
-        int[] containerSections = null;
+        // The current read position; after the version byte.
         int pos = EofValidator.VERSION_OFFSET + 1;
 
-        var continueParsing = true;
+        // Holds header size information for each section.
+        Sizes sectionSizes = new();
+
+        // These arrays hold the sizes for compound sections.
+        int[]? codeSections = null;
+        int[]? containerSections = null;
+
+        bool continueParsing = true;
         while (continueParsing && pos < container.Length)
         {
-            var separator = (Separator)container[pos++];
-
+            // Read the next separator that indicates which section comes next.
+            Separator separator = (Separator)container[pos++];
             switch (separator)
             {
                 case Separator.KIND_TYPE:
                     if (sectionSizes.TypeSectionSize != null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple type sections");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Multiple type sections");
                         return false;
                     }
-
-                    if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+                    if (!TryParseTypeSection(ref pos, out ushort typeSectionSize, container))
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                         return false;
                     }
-
-                    sectionSizes.TypeSectionSize = GetUInt16(container, pos);
-                    if (sectionSizes.TypeSectionSize < MINIMUM_TYPESECTION_SIZE)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, TypeSection Size must be at least 3, but found {sectionSizes.TypeSectionSize}");
-                        return false;
-                    }
-
-                    pos += EofValidator.TWO_BYTE_LENGTH;
+                    sectionSizes.TypeSectionSize = typeSectionSize;
                     break;
+
                 case Separator.KIND_CODE:
                     if (sectionSizes.CodeSectionSize != null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple code sections");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Multiple code sections");
                         return false;
                     }
-
                     if (sectionSizes.TypeSectionSize is null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
                         return false;
                     }
-
-                    if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+                    if (!TryParseCodeSection(ref pos, out codeSections, out ushort codeHeaderSize, container))
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                         return false;
                     }
-
-                    var numberOfCodeSections = GetUInt16(container, pos);
-                    sectionSizes.CodeSectionSize = (ushort)(numberOfCodeSections * EofValidator.TWO_BYTE_LENGTH);
-                    if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, code sections count must not exceed {MAXIMUM_NUM_CODE_SECTIONS}");
-                        return false;
-                    }
-
-                    if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfCodeSections)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
-                        return false;
-                    }
-
-                    codeSections = new int[numberOfCodeSections];
-                    int CODESECTION_HEADER_PREFIX_SIZE = pos + EofValidator.TWO_BYTE_LENGTH;
-                    for (ushort i = 0; i < codeSections.Length; i++)
-                    {
-                        int currentCodeSizeOffset = CODESECTION_HEADER_PREFIX_SIZE + i * EofValidator.TWO_BYTE_LENGTH; // offset of pos'th code size
-                        int codeSectionSize = GetUInt16(container, currentCodeSizeOffset);
-
-                        if (codeSectionSize == 0)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSectionSize}");
-                            return false;
-                        }
-
-                        codeSections[i] = codeSectionSize;
-                    }
-
-                    pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * codeSections.Length;
+                    sectionSizes.CodeSectionSize = codeHeaderSize;
                     break;
+
                 case Separator.KIND_CONTAINER:
                     if (sectionSizes.ContainerSectionSize != null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple container sections");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Multiple container sections");
                         return false;
                     }
-
                     if (sectionSizes.CodeSectionSize is null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
                         return false;
                     }
-
-                    if (sectionSizes.DataSectionSize is not null)
+                    if (sectionSizes.DataSectionSize != null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container section is out of order");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Container section is out of order");
                         return false;
                     }
-
-                    if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+                    if (!TryParseContainerSection(ref pos, out containerSections, out ushort containerHeaderSize, container))
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                         return false;
                     }
-
-                    var numberOfContainerSections = GetUInt16(container, pos);
-                    sectionSizes.ContainerSectionSize = (ushort)(numberOfContainerSections * EofValidator.TWO_BYTE_LENGTH);
-                    if (numberOfContainerSections is > (MAXIMUM_NUM_CONTAINER_SECTIONS + 1) or 0)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, container sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
-                        return false;
-                    }
-
-                    if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfContainerSections)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
-                        return false;
-                    }
-
-                    containerSections = new int[numberOfContainerSections];
-                    int CONTAINER_SECTION_HEADER_PREFIX_SIZE = pos + EofValidator.TWO_BYTE_LENGTH;
-                    for (ushort i = 0; i < containerSections.Length; i++)
-                    {
-                        int currentContainerSizeOffset = CONTAINER_SECTION_HEADER_PREFIX_SIZE + i * EofValidator.TWO_BYTE_LENGTH; // offset of pos'th code size
-                        int containerSectionSize = GetUInt16(container, currentContainerSizeOffset);
-
-                        if (containerSectionSize == 0)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Empty Container Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
-                            return false;
-                        }
-
-                        containerSections[i] = containerSectionSize;
-                    }
-
-                    pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * containerSections.Length;
+                    sectionSizes.ContainerSectionSize = containerHeaderSize;
                     break;
+
                 case Separator.KIND_DATA:
                     if (sectionSizes.DataSectionSize != null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Multiple data sections");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Multiple data sections");
                         return false;
                     }
-
                     if (sectionSizes.CodeSectionSize is null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
                         return false;
                     }
-
-                    if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+                    if (!TryParseDataSection(ref pos, out ushort dataSectionSize, container))
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                         return false;
                     }
-
-                    sectionSizes.DataSectionSize = GetUInt16(container, pos);
-
-                    pos += EofValidator.TWO_BYTE_LENGTH;
+                    sectionSizes.DataSectionSize = dataSectionSize;
                     break;
+
                 case Separator.TERMINATOR:
+                    // The terminator must be followed by at least one byte.
                     if (container.Length < pos + EofValidator.ONE_BYTE_LENGTH)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
                         return false;
                     }
-
                     continueParsing = false;
                     break;
+
                 default:
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code header is not well formatted");
+                    if (Logger.IsTrace)
+                        Logger.Trace($"EOF: Eof{VERSION}, Code header is not well formatted");
                     return false;
             }
         }
 
+        // Make sure mandatory sections (type, code, and data) were found.
         if (sectionSizes.TypeSectionSize is null || sectionSizes.CodeSectionSize is null || sectionSizes.DataSectionSize is null)
         {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
             return false;
         }
 
-        var typeSectionSubHeader = new SectionHeader(pos, sectionSizes.TypeSectionSize.Value);
-        var codeSectionSubHeader = new CompoundSectionHeader(typeSectionSubHeader.EndOffset, codeSections);
-        CompoundSectionHeader? containerSectionSubHeader = containerSections is null ? null
-            : new CompoundSectionHeader(codeSectionSubHeader.EndOffset, containerSections);
-        var dataSectionSubHeader = new SectionHeader(containerSectionSubHeader?.EndOffset ?? codeSectionSubHeader.EndOffset, sectionSizes.DataSectionSize.Value);
+        // Build the sub-headers for the various sections.
+        var typeSectionHeader = new SectionHeader(pos, sectionSizes.TypeSectionSize.Value);
+        var codeSectionHeader = new CompoundSectionHeader(typeSectionHeader.EndOffset, codeSections);
+        CompoundSectionHeader? containerSectionHeader = containerSections is null ? null :
+                                                          new CompoundSectionHeader(codeSectionHeader.EndOffset, containerSections);
+        var dataSectionHeader = new SectionHeader(containerSectionHeader?.EndOffset ?? codeSectionHeader.EndOffset,
+                                                   sectionSizes.DataSectionSize.Value);
 
-        if (!validationStrategy.HasFlag(ValidationStrategy.AllowTrailingBytes) && dataSectionSubHeader.EndOffset < containerMemory.Length)
+        // Validate that the container does not have extra trailing bytes (unless allowed) and that
+        // the data section is fully contained.
+        if (!validationStrategy.HasFlag(ValidationStrategy.AllowTrailingBytes) &&
+            dataSectionHeader.EndOffset < containerMemory.Length)
         {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Extra data after end of container, starting at {dataSectionSubHeader.EndOffset}");
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Extra data after end of container, starting at {dataSectionHeader.EndOffset}");
             return false;
         }
-        if ((validationStrategy.HasFlag(ValidationStrategy.Validate) && !validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
-            && dataSectionSubHeader.EndOffset > container.Length)
+        if (validationStrategy.HasFlag(ValidationStrategy.Validate) &&
+           !validationStrategy.HasFlag(ValidationStrategy.ValidateRuntimeMode) &&
+            dataSectionHeader.EndOffset > container.Length)
         {
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container has truncated data where full data is required");
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Container has truncated data where full data is required");
             return false;
         }
 
@@ -362,38 +237,280 @@ internal class Eof1 : IEofVersionHandler
         {
             Version = VERSION,
             PrefixSize = pos,
-            TypeSection = typeSectionSubHeader,
-            CodeSections = codeSectionSubHeader,
-            ContainerSections = containerSectionSubHeader,
-            DataSection = dataSectionSubHeader,
+            TypeSection = typeSectionHeader,
+            CodeSections = codeSectionHeader,
+            ContainerSections = containerSectionHeader,
+            DataSection = dataSectionHeader,
         };
+
         return true;
     }
 
-    public bool TryGetEofContainer(ReadOnlyMemory<byte> code, ValidationStrategy validationStrategy, [NotNullWhen(true)] out EofContainer? eofContainer)
+    /// <summary>
+    /// Validates overall constraints for the container (size, magic header, and version).
+    /// </summary>
+    /// <param name="container">The container data as a span.</param>
+    /// <returns><c>true</c> if the basic constraints pass; otherwise, <c>false</c>.</returns>
+    private static bool ValidateBasicConstraints(ReadOnlySpan<byte> container)
     {
+        if (container.Length < MINIMUM_SIZE)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+        if (container.Length > MAXIMUM_SIZE)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is larger than allowed maximum size of {MAXIMUM_SIZE}");
+            return false;
+        }
+        if (!container.StartsWith(EofValidator.MAGIC))
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code doesn't start with magic byte sequence expected {EofValidator.MAGIC.ToHexString(true)} ");
+            return false;
+        }
+        if (container[EofValidator.VERSION_OFFSET] != VERSION)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is not Eof version {VERSION}");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Parses the type section header.
+    /// </summary>
+    /// <param name="pos">
+    /// The current read position. On success, this is advanced past the type section header.
+    /// </param>
+    /// <param name="typeSectionSize">The size of the type section as read from the header.</param>
+    /// <param name="container">The container span.</param>
+    /// <returns><c>true</c> if the type section header was parsed successfully; otherwise, <c>false</c>.</returns>
+    private static bool TryParseTypeSection(ref int pos, out ushort typeSectionSize, ReadOnlySpan<byte> container)
+    {
+        typeSectionSize = 0;
+        // Ensure enough bytes are available to read the type section size.
+        if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+        typeSectionSize = GetUInt16(pos, container);
+        if (typeSectionSize < MINIMUM_TYPESECTION_SIZE)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, TypeSection Size must be at least {MINIMUM_TYPESECTION_SIZE}, but found {typeSectionSize}");
+            return false;
+        }
+        pos += EofValidator.TWO_BYTE_LENGTH;
+        return true;
+    }
+
+    /// <summary>
+    /// Parses the code section header and its list of section sizes.
+    /// </summary>
+    /// <param name="pos">
+    /// The current read position. On success, this is advanced past the code section header.
+    /// </param>
+    /// <param name="codeSections">
+    /// On success, the array of individual code section sizes.
+    /// </param>
+    /// <param name="headerSize">
+    /// On success, the total header size (in bytes) for the code section.
+    /// </param>
+    /// <param name="container">The container span.</param>
+    /// <returns><c>true</c> if the code section header was parsed successfully; otherwise, <c>false</c>.</returns>
+    private static bool TryParseCodeSection(ref int pos, out int[]? codeSections, out ushort headerSize, ReadOnlySpan<byte> container)
+    {
+        codeSections = null;
+        headerSize = 0;
+        // Must have enough bytes to read the count of code sections.
+        if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+
+        ushort numberOfCodeSections = GetUInt16(pos, container);
+        headerSize = (ushort)(numberOfCodeSections * EofValidator.TWO_BYTE_LENGTH);
+
+        if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, code sections count must not exceed {MAXIMUM_NUM_CODE_SECTIONS}");
+            return false;
+        }
+
+        int requiredLength = pos + EofValidator.TWO_BYTE_LENGTH + (numberOfCodeSections * EofValidator.TWO_BYTE_LENGTH);
+        if (container.Length < requiredLength)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+
+        codeSections = new int[numberOfCodeSections];
+        int headerStart = pos + EofValidator.TWO_BYTE_LENGTH;
+        for (int i = 0; i < codeSections.Length; i++)
+        {
+            int currentOffset = headerStart + (i * EofValidator.TWO_BYTE_LENGTH);
+            int codeSectionSize = GetUInt16(currentOffset, container);
+            if (codeSectionSize == 0)
+            {
+                if (Logger.IsTrace)
+                    Logger.Trace($"EOF: Eof{VERSION}, Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSectionSize}");
+                return false;
+            }
+            codeSections[i] = codeSectionSize;
+        }
+        pos += EofValidator.TWO_BYTE_LENGTH + (numberOfCodeSections * EofValidator.TWO_BYTE_LENGTH);
+        return true;
+    }
+
+    /// <summary>
+    /// Parses the container section header and its list of section sizes.
+    /// </summary>
+    /// <param name="pos">
+    /// The current read position. On success, this is advanced past the container section header.
+    /// </param>
+    /// <param name="containerSections">
+    /// On success, the array of individual container section sizes.
+    /// </param>
+    /// <param name="headerSize">
+    /// On success, the total header size (in bytes) for the container section.
+    /// </param>
+    /// <param name="container">The container span.</param>
+    /// <returns><c>true</c> if the container section header was parsed successfully; otherwise, <c>false</c>.</returns>
+    private static bool TryParseContainerSection(ref int pos, out int[]? containerSections, out ushort headerSize, ReadOnlySpan<byte> container)
+    {
+        containerSections = null;
+        headerSize = 0;
+        if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+
+        ushort numberOfContainerSections = GetUInt16(pos, container);
+        headerSize = (ushort)(numberOfContainerSections * EofValidator.TWO_BYTE_LENGTH);
+
+        // Enforce that the count is not zero and does not exceed the maximum allowed.
+        if (numberOfContainerSections == 0 || numberOfContainerSections > (MAXIMUM_NUM_CONTAINER_SECTIONS + 1))
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, container sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
+            return false;
+        }
+
+        int requiredLength = pos + EofValidator.TWO_BYTE_LENGTH + (numberOfContainerSections * EofValidator.TWO_BYTE_LENGTH);
+        if (container.Length < requiredLength)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+
+        containerSections = new int[numberOfContainerSections];
+        int headerStart = pos + EofValidator.TWO_BYTE_LENGTH;
+        for (int i = 0; i < containerSections.Length; i++)
+        {
+            int currentOffset = headerStart + (i * EofValidator.TWO_BYTE_LENGTH);
+            int containerSectionSize = GetUInt16(currentOffset, container);
+            if (containerSectionSize == 0)
+            {
+                if (Logger.IsTrace)
+                    Logger.Trace($"EOF: Eof{VERSION}, Empty Container Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
+                return false;
+            }
+            containerSections[i] = containerSectionSize;
+        }
+        pos += EofValidator.TWO_BYTE_LENGTH + (numberOfContainerSections * EofValidator.TWO_BYTE_LENGTH);
+        return true;
+    }
+
+    /// <summary>
+    /// Parses the data section header.
+    /// </summary>
+    /// <param name="pos">
+    /// The current read position. On success, this is advanced past the data section header.
+    /// </param>
+    /// <param name="dataSectionSize">
+    /// On success, the size of the data section as specified in the header.
+    /// </param>
+    /// <param name="container">The container span.</param>
+    /// <returns><c>true</c> if the data section header was parsed successfully; otherwise, <c>false</c>.</returns>
+    private static bool TryParseDataSection(ref int pos, out ushort dataSectionSize, ReadOnlySpan<byte> container)
+    {
+        dataSectionSize = 0;
+        if (container.Length < pos + EofValidator.TWO_BYTE_LENGTH)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
+            return false;
+        }
+        dataSectionSize = GetUInt16(pos, container);
+        pos += EofValidator.TWO_BYTE_LENGTH;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads an unsigned 16-bit integer from the specified container at the given offset.
+    /// </summary>
+    /// <param name="offset">The offset within the span to read from.</param>
+    /// <param name="container">The byte span containing the data.</param>
+    /// <returns>The 16‐bit unsigned integer value.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ushort GetUInt16(int offset, ReadOnlySpan<byte> container) =>
+        container.Slice(offset, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
+
+    /// <summary>
+    /// Attempts to create an <see cref="EofContainer"/> from the provided raw code data.
+    /// </summary>
+    /// <param name="validationStrategy">
+    /// The flags indicating which validation steps to perform (e.g. whether full container validation is required).
+    /// </param>
+    /// <param name="eofContainer">
+    /// When this method returns, contains the parsed <see cref="EofContainer"/> if successful; otherwise, <c>null</c>.
+    /// </param>
+    /// <param name="code">
+    /// The raw code data as a <see cref="ReadOnlyMemory{T}"/>.
+    /// </param>
+    /// <returns>
+    /// <c>true</c> if a valid EOF container was created from the code; otherwise, <c>false</c>.
+    /// </returns>
+    public bool TryGetEofContainer(ValidationStrategy validationStrategy, [NotNullWhen(true)] out EofContainer? eofContainer, ReadOnlyMemory<byte> code)
+    {
+        eofContainer = null;
+
+        // Step 1: Attempt to parse the header from the code.
         if (!TryParseEofHeader(code, validationStrategy, out EofHeader? header))
         {
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Header not parsed");
-            eofContainer = null;
             return false;
         }
 
-        if (!ValidateBody(code.Span, header.Value, validationStrategy))
+        // Step 2: Validate the body using the parsed header and the full code span.
+        if (!ValidateBody(header.Value, validationStrategy, code.Span))
         {
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Body not valid");
-            eofContainer = null;
             return false;
         }
 
+        // Step 3: Construct the container using the raw code and the parsed header.
         eofContainer = new EofContainer(code, header.Value);
 
+        // Step 4: If full validation is requested, verify the container's integrity.
         if (validationStrategy.HasFlag(ValidationStrategy.Validate))
         {
             if (!ValidateContainer(eofContainer.Value, validationStrategy))
             {
                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container not valid");
-                eofContainer = null;
                 return false;
             }
         }
@@ -401,63 +518,135 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    private bool ValidateContainer(EofContainer eofContainer, ValidationStrategy validationStrategy)
+    /// <summary>
+    /// Validates the integrity of the given EOF container, including its nested container sections,
+    /// according to the provided <see cref="ValidationStrategy"/>.
+    /// </summary>
+    /// <param name="eofContainer">The EOF container to validate.</param>
+    /// <param name="validationStrategy">The strategy flags controlling the level of validation.</param>
+    /// <returns><c>true</c> if the container and all its nested sections are valid; otherwise, <c>false</c>.</returns>
+    private bool ValidateContainer(in EofContainer eofContainer, ValidationStrategy validationStrategy)
     {
+        // Use a FIFO queue to process nested containers.
+        // Each entry pairs a container with its associated validation strategy.
         Queue<(EofContainer container, ValidationStrategy strategy)> containers = new();
         containers.Enqueue((eofContainer, validationStrategy));
+
+        // Process each container (including nested ones) until none remain.
         while (containers.TryDequeue(out (EofContainer container, ValidationStrategy strategy) target))
         {
-            EofContainer targetContainer = target.container;
-            validationStrategy = target.strategy;
-
-            QueueManager containerQueue = new(1 + (targetContainer.Header.ContainerSections?.Count ?? 0));
-            containerQueue.Enqueue(0, validationStrategy);
-
-            containerQueue.VisitedContainers[0] = GetValidation(validationStrategy);
-
-            while (containerQueue.TryDequeue(out (int Index, ValidationStrategy Strategy) worklet))
+            // Process the current container. If validation fails at any level, return false.
+            if (!ProcessContainer(target.container, target.strategy, containers))
             {
-                if (worklet.Index != 0)
-                {
-                    if (containerQueue.VisitedContainers[worklet.Index] != 0)
-                        continue;
-
-                    if (targetContainer.ContainerSections.Length < worklet.Index)
-                        continue;
-
-                    var section = worklet.Index - 1;
-                    ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[section];
-                    if (!TryParseEofHeader(subsection, validationStrategy, out EofHeader? header))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Header invalid: section {section}");
-                        return false;
-                    }
-                    if (!ValidateBody(subsection.Span, header.Value, validationStrategy))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Body invalid: section {section}");
-                        return false;
-                    }
-
-                    if (validationStrategy.HasFlag(ValidationStrategy.Validate))
-                    {
-                        containers.Enqueue((new EofContainer(subsection, header.Value), worklet.Strategy));
-                    }
-                }
-                else
-                {
-                    if (!ValidateCodeSections(targetContainer, worklet.Strategy, in containerQueue))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code sections invalid");
-                        return false;
-                    }
-                }
-                containerQueue.MarkVisited(worklet.Index, GetVisited(worklet.Strategy));
-            }
-            if (!containerQueue.IsAllVisited())
-            {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Not all containers visited");
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Processes a single container by validating its code sections and any nested container sections.
+    /// </summary>
+    /// <param name="targetContainer">The container to process.</param>
+    /// <param name="strategy">The validation strategy to apply.</param>
+    /// <param name="containers">
+    /// A queue into which any nested container (subsection) that requires further validation will be enqueued.
+    /// </param>
+    /// <returns><c>true</c> if all sections in the container are valid; otherwise, <c>false</c>.</returns>
+    private bool ProcessContainer(in EofContainer targetContainer, ValidationStrategy strategy,
+                                  Queue<(EofContainer container, ValidationStrategy strategy)> containers)
+    {
+        // Create a work queue to traverse the container’s sections.
+        // The capacity is 1 (for the main container’s code sections) plus any nested container sections.
+        QueueManager containerQueue = new(1 + (targetContainer.Header.ContainerSections?.Count ?? 0));
+
+        // Enqueue index 0 to represent the main container's code section.
+        containerQueue.Enqueue(0, strategy);
+        containerQueue.VisitedContainers[0] = GetValidation(strategy);
+
+        // Process each work item in the container queue.
+        while (containerQueue.TryDequeue(out (int Index, ValidationStrategy Strategy) worklet))
+        {
+            // Worklet index 0 represents the primary container's code sections.
+            if (worklet.Index == 0)
+            {
+                if (!ValidateCodeSections(targetContainer, worklet.Strategy, in containerQueue))
+                {
+                    if (Logger.IsTrace)
+                        Logger.Trace($"EOF: Eof{VERSION}, Code sections invalid");
+                    return false;
+                }
+            }
+            else
+            {
+                // Process a nested container section.
+                if (!ProcessContainerSection(targetContainer, worklet.Index, worklet.Strategy, containers))
+                {
+                    return false;
+                }
+            }
+
+            // Mark the current worklet as visited using a helper value derived from the strategy.
+            containerQueue.MarkVisited(worklet.Index, GetVisited(worklet.Strategy));
+        }
+
+        // After processing, all expected work items must have been visited.
+        if (!containerQueue.IsAllVisited())
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Not all containers visited");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Processes a container section (i.e. a nested container) by parsing its header and validating its body.
+    /// If the current strategy indicates full validation, the new container is enqueued for further processing.
+    /// </summary>
+    /// <param name="targetContainer">The parent container that holds the container sections.</param>
+    /// <param name="workletIndex">
+    /// The worklet index representing the container section. (A value of 1 corresponds to the first container section.)
+    /// </param>
+    /// <param name="strategy">The validation strategy to apply.</param>
+    /// <param name="containers">
+    /// The queue to which a newly constructed nested container will be enqueued if further validation is required.
+    /// </param>
+    /// <returns><c>true</c> if the container section is valid or skipped; otherwise, <c>false</c>.</returns>
+    private bool ProcessContainerSection(in EofContainer targetContainer, int workletIndex,
+                                         ValidationStrategy strategy,
+                                         Queue<(EofContainer container, ValidationStrategy strategy)> containers)
+    {
+        // If the worklet index exceeds the number of available container sections, skip processing.
+        if (targetContainer.ContainerSections.Length < workletIndex)
+            return true;
+
+        // Adjust the section index (worklet indices start at 1 for container sections).
+        int section = workletIndex - 1;
+        ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[section];
+
+        // Parse the header for the nested container section.
+        if (!TryParseEofHeader(subsection, strategy, out EofHeader? header))
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Header invalid: section {section}");
+            return false;
+        }
+
+        // Validate the body of the nested container section.
+        if (!ValidateBody(header.Value, strategy, subsection.Span))
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Body invalid: section {section}");
+            return false;
+        }
+
+        // If full validation is required, enqueue the new nested container for further processing.
+        if (strategy.HasFlag(ValidationStrategy.Validate))
+        {
+            containers.Enqueue((new EofContainer(subsection, header.Value), strategy));
         }
 
         return true;
@@ -479,7 +668,7 @@ internal class Eof1 : IEofVersionHandler
                 : ValidationStrategy.None;
     }
 
-    private bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header, ValidationStrategy strategy)
+    private static bool ValidateBody(in EofHeader header, ValidationStrategy strategy, ReadOnlySpan<byte> container)
     {
         int startOffset = header.TypeSection.Start;
         int endOffset = header.DataSection.Start;
@@ -547,7 +736,7 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    private bool ValidateCodeSections(EofContainer eofContainer, ValidationStrategy strategy, in QueueManager containerQueue)
+    private static bool ValidateCodeSections(in EofContainer eofContainer, ValidationStrategy strategy, in QueueManager containerQueue)
     {
         QueueManager sectionQueue = new(eofContainer.Header.CodeSections.Count);
 
@@ -567,7 +756,7 @@ internal class Eof1 : IEofVersionHandler
         return sectionQueue.IsAllVisited();
     }
 
-    private bool ValidateTypeSection(ReadOnlySpan<byte> types)
+    private static bool ValidateTypeSection(ReadOnlySpan<byte> types)
     {
         if (types[INPUTS_OFFSET] != 0 || types[OUTPUTS_OFFSET] != NON_RETURNING)
         {
@@ -608,7 +797,7 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
-    private bool ValidateInstructions(EofContainer eofContainer, int sectionId, ValidationStrategy strategy, in QueueManager sectionsWorklist, in QueueManager containersWorklist)
+    private static bool ValidateInstructions(in EofContainer eofContainer, int sectionId, ValidationStrategy strategy, in QueueManager sectionsWorklist, in QueueManager containersWorklist)
     {
         ReadOnlySpan<byte> code = eofContainer.CodeSections[sectionId].Span;
 
@@ -948,22 +1137,21 @@ internal class Eof1 : IEofVersionHandler
             ArrayPool<byte>.Shared.Return(jumpDestinationsArray);
         }
     }
-    public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection)
+
+    public static bool ValidateStackState(int sectionId, ReadOnlySpan<byte> code, ReadOnlySpan<byte> typeSection)
     {
         StackBounds[] recordedStackHeight = ArrayPool<StackBounds>.Shared.Rent(code.Length);
-        recordedStackHeight.Fill(new StackBounds());
+        Array.Fill(recordedStackHeight, new StackBounds());
 
         try
         {
-            ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + EofValidator.TWO_BYTE_LENGTH, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
+            ushort suggestedMaxHeight = typeSection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + EofValidator.TWO_BYTE_LENGTH, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
 
-            var currrentSectionOutputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-            short peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+            ushort currentSectionOutputs = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+            short peakStackHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
             var unreachedBytes = code.Length;
             var isTargetSectionNonReturning = false;
-
-            var targetMaxStackHeight = 0;
             var programCounter = 0;
             recordedStackHeight[0].Max = peakStackHeight;
             recordedStackHeight[0].Min = peakStackHeight;
@@ -985,12 +1173,12 @@ internal class Eof1 : IEofVersionHandler
                 {
                     case Instruction.CALLF or Instruction.JUMPF:
                         ushort targetSectionId = code.Slice(posPostInstruction, immediates.Value).ReadEthUInt16();
-                        inputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                        inputs = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
-                        outputs = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                        isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
+                        outputs = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        isTargetSectionNonReturning = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
                         outputs = (ushort)(isTargetSectionNonReturning ? 0 : outputs);
-                        targetMaxStackHeight = typesection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        int targetMaxStackHeight = typeSection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
 
                         if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputs < currentStackBounds.Max)
                         {
@@ -998,9 +1186,9 @@ internal class Eof1 : IEofVersionHandler
                             return false;
                         }
 
-                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currrentSectionOutputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
+                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currentSectionOutputs + inputs - outputs == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currrentSectionOutputs + inputs - outputs} but found {currentStackBounds.Max}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currentSectionOutputs + inputs - outputs} but found {currentStackBounds.Max}");
                             return false;
                         }
                         break;
@@ -1038,7 +1226,7 @@ internal class Eof1 : IEofVersionHandler
                 {
                     case Instruction.RETF:
                         {
-                            var expectedHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                            var expectedHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                             if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid required height {expectedHeight} but found {currentStackBounds.Min}");
@@ -1147,6 +1335,63 @@ internal class Eof1 : IEofVersionHandler
         {
             ArrayPool<StackBounds>.Shared.Return(recordedStackHeight);
         }
+    }
+
+    private readonly struct QueueManager(int containerCount)
+    {
+        public readonly Queue<(int index, ValidationStrategy strategy)> ContainerQueue = new();
+        public readonly ValidationStrategy[] VisitedContainers = new ValidationStrategy[containerCount];
+
+        public void Enqueue(int index, ValidationStrategy strategy)
+        {
+            ContainerQueue.Enqueue((index, strategy));
+        }
+
+        public void MarkVisited(int index, ValidationStrategy strategy)
+        {
+            VisitedContainers[index] = strategy;
+        }
+
+        public bool TryDequeue(out (int Index, ValidationStrategy Strategy) worklet) => ContainerQueue.TryDequeue(out worklet);
+
+        public bool IsAllVisited() => VisitedContainers.All(x => x != 0);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StackBounds()
+    {
+        public short Max = -1;
+        public short Min = 1023;
+
+        public void Combine(StackBounds other)
+        {
+            Max = Math.Max(Max, other.Max);
+            Min = Math.Min(Min, other.Min);
+        }
+
+        public readonly bool BoundsEqual() => Max == Min;
+
+        public static bool operator ==(StackBounds left, StackBounds right) => left.Max == right.Max && right.Min == left.Min;
+        public static bool operator !=(StackBounds left, StackBounds right) => !(left == right);
+        public override readonly bool Equals(object obj) => obj is StackBounds bounds && this == bounds;
+        public override readonly int GetHashCode() => (Max << 16) | (int)Min;
+    }
+
+    private ref struct Sizes
+    {
+        public ushort? TypeSectionSize;
+        public ushort? CodeSectionSize;
+        public ushort? DataSectionSize;
+        public ushort? ContainerSectionSize;
+    }
+
+    internal enum Separator : byte
+    {
+        KIND_TYPE = 0x01,
+        KIND_CODE = 0x02,
+        KIND_CONTAINER = 0x03,
+        KIND_DATA = 0x04,
+        TERMINATOR = 0x00
     }
 }
 

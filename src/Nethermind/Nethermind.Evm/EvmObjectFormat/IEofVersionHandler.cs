@@ -8,5 +8,5 @@ namespace Nethermind.Evm.EvmObjectFormat;
 interface IEofVersionHandler
 {
     bool TryParseEofHeader(ReadOnlyMemory<byte> code, ValidationStrategy strategy, [NotNullWhen(true)] out EofHeader? header);
-    bool TryGetEofContainer(ReadOnlyMemory<byte> code, ValidationStrategy strategy, [NotNullWhen(true)] out EofContainer? header);
+    bool TryGetEofContainer(ValidationStrategy strategy, [NotNullWhen(true)] out EofContainer? header, ReadOnlyMemory<byte> code);
 }
