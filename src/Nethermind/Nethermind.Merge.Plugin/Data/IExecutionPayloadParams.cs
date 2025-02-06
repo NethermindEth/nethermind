@@ -49,11 +49,11 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
-            {
-                error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
-                return ValidationResult.Fail;
-            }
+            // if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
+            // {
+            //     error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
+            //     return ValidationResult.Fail;
+            // }
 
             // verification of the requests
             for (int i = 0; i < ExecutionRequests.Length; i++)
@@ -70,11 +70,11 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                     return ValidationResult.Fail;
                 }
 
-                if (!Enum.IsDefined(typeof(ExecutionRequestType), ExecutionRequests[i][0]))
-                {
-                    error = $"Invalid execution request type: {ExecutionRequests[i][0]}";
-                    return ValidationResult.Fail;
-                }
+                // if (!Enum.IsDefined(typeof(ExecutionRequestType), ExecutionRequests[i][0]))
+                // {
+                //     error = $"Invalid execution request type: {ExecutionRequests[i][0]}";
+                //     return ValidationResult.Fail;
+                // }
             }
 
         }
