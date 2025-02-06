@@ -30,7 +30,13 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeStateDb), typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(
+        typeof(InitializeStateDb),
+        typeof(InitializePlugins),
+        typeof(InitializeBlockTree),
+        typeof(SetupKeyStore),
+        typeof(InitializePrecompiles)
+    )]
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
@@ -58,7 +64,7 @@ namespace Nethermind.Init.Steps
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             IStateReader stateReader = setApi.StateReader!;
-            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            PreBlockCaches? preBlockCaches = (_api.WorldStateManager?.GlobalWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             ITxPool txPool = _api.TxPool = CreateTxPool(codeInfoRepository);
 
@@ -94,7 +100,15 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, _api.WorldState), _api.SpecProvider!, _api.LogManager, preBlockCaches)
+                ? new(new(
+                        _api.WorldStateManager!,
+                        _api.BlockTree!,
+                        _api.SpecProvider,
+                        _api.LogManager,
+                        _api.WorldStateManager!.GlobalWorldState),
+                    _api.SpecProvider!,
+                    _api.LogManager,
+                    preBlockCaches)
                 : null;
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor(preWarmer);
 
@@ -124,6 +138,7 @@ namespace Nethermind.Init.Steps
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,
                 initConfig.BackgroundTaskConcurrency,
+                initConfig.BackgroundTaskMaxNumber,
                 _api.LogManager);
             setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
             _api.DisposeStack.Push(backgroundTaskScheduler);
@@ -175,7 +190,7 @@ namespace Nethermind.Init.Steps
 
             return new TransactionProcessor(
                 _api.SpecProvider,
-                _api.WorldState,
+                _api.WorldStateManager!.GlobalWorldState,
                 virtualMachine,
                 codeInfoRepository,
                 _api.LogManager);
@@ -185,11 +200,11 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
+                _api.BlockTree, _api.SpecProvider, _api.WorldStateManager.GlobalWorldState, _api.LogManager);
 
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -235,7 +250,7 @@ namespace Nethermind.Init.Steps
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IWorldState worldState = _api.WorldState!;
+            IWorldState worldState = _api.WorldStateManager.GlobalWorldState!;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,

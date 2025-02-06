@@ -392,7 +392,7 @@ public class DebugModuleTests
     [Test]
     public async Task Migrate_receipts()
     {
-        debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
+        debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);
@@ -451,7 +451,7 @@ public class DebugModuleTests
 
         debugBridge
             .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(c => GetFileNames(c.ArgAt<Hash256>(0)));
+            .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
@@ -470,7 +470,7 @@ public class DebugModuleTests
 
         debugBridge
             .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(c => GetFileNames(c.ArgAt<Hash256>(0)));
+            .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);

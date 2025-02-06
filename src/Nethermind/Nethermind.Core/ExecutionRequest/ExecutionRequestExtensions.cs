@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -18,11 +17,11 @@ public static class ExecutionRequestExtensions
     public const int DepositRequestsBytesSize = PublicKeySize /*pubkey: Bytes48 */ + Hash256.Size /*withdrawal_credentials: Bytes32 */ + sizeof(ulong) /*amount: uint64*/ + 96 /*signature: Bytes96*/ + sizeof(ulong) /*index: uint64*/;
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
-    public const int RequestPartsCount = 3;
+    public const int MaxRequestsCount = 3;
     private const int PublicKeySize = 48;
 
-    public static readonly byte[][] EmptyRequests = [[], [], []];
-    public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
+    public static byte[][] EmptyRequests = [];
+    public static Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
 
     public static int GetRequestsByteSize(this IEnumerable<ExecutionRequest> requests)
     {
@@ -37,29 +36,22 @@ public static class ExecutionRequestExtensions
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
-        // make sure that length is exactly 3
-        if (flatEncodedRequests is null || flatEncodedRequests.Length != RequestPartsCount)
+        // make sure that length is 3 or less elements
+        if (flatEncodedRequests is null)
         {
-            throw new ArgumentException("Flat encoded requests must be an array of 3 elements");
+            throw new ArgumentException("Flat encoded requests must be an array");
         }
 
-        byte[] concatenatedHashes = new byte[Hash256.Size * RequestPartsCount];
-        int currentPosition = 0;
-        byte type = 0;
-        // Allocate the buffer once outside the loop
-        Span<byte> requestBuffer = stackalloc byte[Math.Max(Math.Max(flatEncodedRequests[0].Length, flatEncodedRequests[1].Length), flatEncodedRequests[2].Length) + 1];
-        // Compute sha256 for each request and concatenate them
+        using SHA256 sha256 = SHA256.Create();
+        using ArrayPoolList<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
-            requestBuffer[0] = type;
-            requests.CopyTo(requestBuffer.Slice(1, requests.Length));
-            SHA256.HashData(requestBuffer[..(requests.Length + 1)]).CopyTo(concatenatedHashes.AsSpan(currentPosition, Hash256.Size));
-            currentPosition += Hash256.Size;
-            type++;
+            if (requests.Length <= 1) continue;
+            concatenatedHashes.AddRange(sha256.ComputeHash(requests));
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(SHA256.HashData(concatenatedHashes));
+        return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
     }
 
 
@@ -70,16 +62,28 @@ public static class ExecutionRequestExtensions
         ExecutionRequest[] consolidationRequests
     )
     {
-        return new(RequestPartsCount)
-        {
-            FlatEncodeRequests(depositRequests, depositRequests.Length * DepositRequestsBytesSize),
-            FlatEncodeRequests(withdrawalRequests, withdrawalRequests.Length * WithdrawalRequestsBytesSize),
-            FlatEncodeRequests(consolidationRequests, consolidationRequests.Length * ConsolidationRequestsBytesSize)
-        };
+        var result = new ArrayPoolList<byte[]>(MaxRequestsCount);
 
-        static byte[] FlatEncodeRequests(ExecutionRequest[] requests, int bufferSize)
+        if (depositRequests.Length > 0)
         {
-            using ArrayPoolList<byte> buffer = new(bufferSize);
+            result.Add(FlatEncodeRequests(depositRequests, depositRequests.Length * DepositRequestsBytesSize, (byte)ExecutionRequestType.Deposit));
+        }
+
+        if (withdrawalRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(withdrawalRequests, withdrawalRequests.Length * WithdrawalRequestsBytesSize, (byte)ExecutionRequestType.WithdrawalRequest));
+        }
+
+        if (consolidationRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(consolidationRequests, consolidationRequests.Length * ConsolidationRequestsBytesSize, (byte)ExecutionRequestType.ConsolidationRequest));
+        }
+
+        return result;
+
+        static byte[] FlatEncodeRequests(ExecutionRequest[] requests, int bufferSize, byte type)
+        {
+            using ArrayPoolList<byte> buffer = new(bufferSize + 1) { type };
 
             foreach (ExecutionRequest request in requests)
             {

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "IsMining": false,
     "ChainSpecPath": "chainspec/volta.json",
@@ -15,9 +16,9 @@
   },
   "Sync": {
     "FastSync": true,
-    "PivotNumber": 30070000,
-    "PivotHash": "0xa9641f726331c2aea106eb22dad8a29dcb4e812e49a6f224986c7f4c2540392e",
-    "PivotTotalDifficulty": "10232290773312619596343674445473270118105512955",
+    "PivotNumber": 30940000,
+    "PivotHash": "0xdb8026f4f80d74024be8f5f22f8f9afa8d130829f857d041f1e8c3d640f226eb",
+    "PivotTotalDifficulty": "10528336432533836059556810353938908462070119854",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },

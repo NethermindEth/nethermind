@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/linea-mainnet.json",
     "GenesisHash": "0xb6762a65689107b2326364aefc18f94cda413209fab35c00d4af51eaa20ffbc6",
@@ -16,9 +17,10 @@
   },
   "Sync": {
     "SnapSync": true,
-    "PivotNumber": 12440000,
-    "PivotHash": "0xf0c285d834ee01ca43c67f4c15208ad480386b369b69c5bc8b7c87ee0a708891",
-    "PivotTotalDifficulty": "24880001"
+    "PivotNumber": 15400000,
+    "PivotHash": "0x9e9cd49aeffd2bea5eebc6a6223622c4cdb807d7db4b63c1b0a499834cad65b4",
+    "PivotTotalDifficulty": "30800001",
+    "HeaderStateDistance": 6
   },
   "JsonRpc": {
     "Enabled": true,

@@ -48,7 +48,7 @@ public class BlockchainBridgeTests
     private IDbProvider _dbProvider;
 
     private class TestReadOnlyTxProcessingEnv(
-        OverridableWorldStateManager worldStateManager,
+        IOverridableWorldScope worldStateManager,
         IReadOnlyBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager logManager,
@@ -72,13 +72,12 @@ public class BlockchainBridgeTests
         _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
         _specProvider = MainnetSpecProvider.Instance;
 
-        IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
-        OverridableWorldStateManager worldStateManager = new(_dbProvider, trieStore, LimboLogs.Instance);
+        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        IOverridableWorldScope overridableWorldScope = worldStateManager.CreateOverridableWorldScope();
 
         IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
         TestReadOnlyTxProcessingEnv processingEnv = new(
-            worldStateManager,
+            overridableWorldScope,
             readOnlyBlockTree,
             _specProvider,
             LimboLogs.Instance,
@@ -129,7 +128,7 @@ public class BlockchainBridgeTests
             .WithIndex(index)
             .TestObject;
         IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
-            .Select(i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
+            .Select(static i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
         var block = Build.A.Block
             .WithTransactions(transactions.ToArray())
             .TestObject;
@@ -153,7 +152,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx =>
+            Arg.Is<BlockExecutionContext>(static blkCtx =>
                 blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
@@ -169,7 +168,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Number == 10),
             Arg.Any<ITxTracer>());
     }
 
@@ -184,7 +183,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
             Arg.Any<ITxTracer>());
     }
 
@@ -199,7 +198,7 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().CallAndRestore(
             tx,
-            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
             Arg.Any<ITxTracer>());
     }
 
@@ -207,13 +206,10 @@ public class BlockchainBridgeTests
     [TestCase(0)]
     public void Bridge_head_is_correct(long headNumber)
     {
-        IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-
-        OverridableWorldStateManager worldStateManager =
-            new(_dbProvider, trieStore, LimboLogs.Instance);
+        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
         IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
         OverridableTxProcessingEnv processingEnv = new(
-            worldStateManager,
+            worldStateManager.CreateOverridableWorldScope(),
             roBlockTree,
             _specProvider,
             LimboLogs.Instance);
@@ -261,19 +257,25 @@ public class BlockchainBridgeTests
         Transaction tx = postEip4844
             ? Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
+                .WithMaxFeePerGas(effectiveGasPrice)
                 .WithType(TxType.Blob)
                 .WithMaxFeePerBlobGas(2)
                 .WithBlobVersionedHashes(2)
                 .TestObject
             : Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
+                .WithMaxFeePerGas(effectiveGasPrice)
                 .TestObject;
         Block block = postEip4844
             ? Build.A.Block
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
                 .WithTransactions(tx)
                 .WithExcessBlobGas(2)
                 .TestObject
             : Build.A.Block
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
                 .WithTransactions(tx)
                 .TestObject;
         TxReceipt receipt = Build.A.Receipt
@@ -296,5 +298,364 @@ public class BlockchainBridgeTests
         }
 
         _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
+    }
+
+    [Test]
+    public void Call_sets_maxFeePerBlobGas()
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(0)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new() { Type = TxType.Blob, MaxFeePerBlobGas = null, BlobVersionedHashes = [] };
+
+        _blockchainBridge.Call(header, tx);
+        _transactionProcessor.Received().CallAndRestore(
+            Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+            Arg.Any<ITxTracer>());
+    }
+
+    [Test]
+    public void Call_tx_returns_InsufficientSenderBalanceError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 100 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.InsufficientSenderBalance);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient sender balance (supplied gas 100)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_InsufficientSenderBalanceError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 100 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.InsufficientSenderBalance);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient sender balance (supplied gas 100)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_SenderNotSpecifiedError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 123 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.SenderNotSpecified);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: sender not specified (supplied gas 123)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_SenderNotSpecifiedError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 123 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.SenderNotSpecified);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: sender not specified (supplied gas 123)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_MalformedTransactionError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.MalformedTransaction);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: malformed (supplied gas 0)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_MalformedTransactionError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.MalformedTransaction);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: malformed (supplied gas 0)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_WrongTransactionNonceError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 456 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.WrongTransactionNonce);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: wrong transaction nonce (supplied gas 456)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_WrongTransactionNonceError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 456 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.WrongTransactionNonce);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: wrong transaction nonce (supplied gas 456)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_NonceOverflowError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 0 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.NonceOverflow);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: nonce overflow (supplied gas 0)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_NonceOverflowError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 0 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.NonceOverflow);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: nonce overflow (supplied gas 0)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_MinerPremiumIsNegativeError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 1 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.MinerPremiumNegative);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: miner premium is negative (supplied gas 1)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 1 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.MinerPremiumNegative);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: miner premium is negative (supplied gas 1)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_BlockGasLimitExceededError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 1 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.BlockGasLimitExceeded);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: Block gas limit exceeded (supplied gas 1)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_BlockGasLimitExceededError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 1 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.BlockGasLimitExceeded);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: Block gas limit exceeded (supplied gas 1)"));
+    }
+
+
+    [Test]
+    public void Call_tx_returns_SenderHasDeployedCodeError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 1 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.SenderHasDeployedCode);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: sender has deployed code (supplied gas 1)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_SenderHasDeployedCodeError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 1 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.SenderHasDeployedCode);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: sender has deployed code (supplied gas 1)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_TransactionSizeOverMaxInitCodeSizeError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.TransactionSizeOverMaxInitCodeSize);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: EIP-3860 - transaction size over max init code size (supplied gas 0)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_TransactionSizeOverMaxInitCodeSizeError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.TransactionSizeOverMaxInitCodeSize);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: EIP-3860 - transaction size over max init code size (supplied gas 0)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_GasLimitBelowIntrinsicGasError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.GasLimitBelowIntrinsicGas);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: gas limit below intrinsic gas (supplied gas 0)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_GasLimitBelowIntrinsicGasError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.GasLimitBelowIntrinsicGas);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: gas limit below intrinsic gas (supplied gas 0)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_InsufficientMaxFeePerGasForSenderBalanceError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient MaxFeePerGas for sender balance (supplied gas 0)"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_InsufficientMaxFeePerGasForSenderBalanceError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient MaxFeePerGas for sender balance (supplied gas 0)"));
+    }
+
+    [Test]
+    public void Call_tx_returns_noError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.Ok);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.Null);
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_noError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new();
+
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.Ok);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.Null);
     }
 }

@@ -16,12 +16,12 @@ namespace Nethermind.Network.Test
         private readonly Queue<byte[]> _nextRandomBytesQueue = new();
 
         public TestRandom()
-            : this(i => i / 2, (Func<int, byte[]>)null)
+            : this(static i => i / 2, (Func<int, byte[]>)null)
         {
         }
 
         public TestRandom(params byte[][] randomBytesInQueue)
-            : this(i => i / 2, randomBytesInQueue)
+            : this(static i => i / 2, randomBytesInQueue)
         {
         }
 

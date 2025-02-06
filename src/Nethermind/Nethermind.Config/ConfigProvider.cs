@@ -20,6 +20,30 @@ public class ConfigProvider : IConfigProvider
 
     private readonly Dictionary<Type, Type> _implementations = [];
 
+    public ConfigProvider()
+    {
+    }
+
+    public ConfigProvider(params IConfig[] existingConfigs)
+    {
+        foreach (IConfig existingConfig in existingConfigs)
+        {
+            Type type = existingConfig.GetType();
+            if (!type.IsInterface)
+            {
+                // Try to get the interface type of the config
+                foreach (Type @interface in type.GetInterfaces())
+                {
+                    if (@interface.Name == $"I{type.Name}")
+                    {
+                        type = @interface;
+                    }
+                }
+            }
+            _instances[type] = existingConfig;
+        }
+    }
+
     public T GetConfig<T>() where T : IConfig
     {
         return (T)GetConfig(typeof(T));
@@ -53,7 +77,7 @@ public class ConfigProvider : IConfigProvider
 
         return Categories.TryGetValue(category, out object value) ? value.GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
+            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
     }
 
@@ -65,11 +89,12 @@ public class ConfigProvider : IConfigProvider
     public void Initialize()
     {
         Type type = typeof(IConfig);
-        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(x => x.IsInterface);
+        IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
 
         foreach (Type @interface in interfaces)
         {
             Type directImplementation = @interface.GetDirectInterfaceImplementation();
+            if (_instances.ContainsKey(@interface)) continue;
 
             if (directImplementation is not null)
             {

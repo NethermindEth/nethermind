@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Contracts
 
         public int GetHashCode(LogEntry obj)
         {
-            return obj.Topics.Aggregate(obj.Address.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+            return obj.Topics.Aggregate(obj.Address.GetHashCode(), static (i, keccak) => i ^ keccak.GetHashCode());
         }
     }
 }

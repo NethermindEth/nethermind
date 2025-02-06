@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags) { }
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber = null) { }
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => [];
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => [];
@@ -31,12 +31,6 @@ namespace Nethermind.Blockchain.Receipts
         {
             iterator = new ReceiptsIterator();
             return false;
-        }
-
-        public long? LowestInsertedReceiptBlockNumber
-        {
-            get => 0;
-            set { }
         }
 
         public long MigratedBlockNumber { get; set; } = 0;

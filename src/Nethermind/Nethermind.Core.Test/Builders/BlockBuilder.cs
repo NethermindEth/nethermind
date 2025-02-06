@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -185,7 +186,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedUncles(uncles.Select(o => o.Header).ToArray()));
+                TestObjectInternal.Body.WithChangedUncles(uncles.Select(static o => o.Header).ToArray()));
             return this;
         }
 
@@ -193,6 +194,7 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedUncles(uncles));
+            TestObjectInternal.Header.UnclesHash = UnclesHash.Calculate(uncles);
             return this;
         }
 

@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
@@ -86,8 +86,6 @@ namespace Nethermind.Blockchain.Receipts
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
         }
-
-        public long? LowestInsertedReceiptBlockNumber { get; set; }
 
         public long MigratedBlockNumber { get; set; }
 

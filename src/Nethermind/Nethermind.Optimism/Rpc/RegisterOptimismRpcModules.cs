@@ -22,14 +22,12 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     private readonly OptimismNethermindApi _api;
     private readonly ILogger _logger;
     private readonly IOptimismConfig _config;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
 
     public RegisterOptimismRpcModules(INethermindApi api) : base(api)
     {
         _api = (OptimismNethermindApi)api;
         _config = _api.Config<IOptimismConfig>();
         _logger = _api.LogManager.GetClassLogger();
-        _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
     }
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -44,7 +42,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
 
@@ -80,7 +78,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
 
         sequencerJsonRpcClient,
-            _api.WorldState,
+            _api.WorldStateManager.GlobalWorldState,
             _api.EthereumEcdsa,
             sealer,
             _api.SpecHelper);
@@ -97,13 +95,11 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.WorldState);
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
 
         OptimismTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager.TrieStore,
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,

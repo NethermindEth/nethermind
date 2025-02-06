@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
-using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
@@ -25,6 +24,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -116,7 +117,7 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 new NetworkConfig(),
-                Substitute.For<ISnapServer>(),
+                Substitute.For<IWorldStateManager>(),
                 LimboLogs.Instance);
 
             _serializer.Register(new HelloMessageSerializer());
@@ -181,12 +182,6 @@ public class ProtocolsManagerTests
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
             _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
-            return this;
-        }
-
-        public Context Wait(int i)
-        {
-            Thread.Sleep(i);
             return this;
         }
 

@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Net;
 using FluentAssertions;
+using Nethermind.Core.Test;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests;
@@ -36,14 +37,14 @@ public class StateSyncDispatcherTests
 
     private readonly PublicKey _publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
-    private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
+    private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
     [SetUp]
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
 
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
+        IBlockTree blockTree = CachedBlockTreeBuilder.OfLength((int)BlockTree.BestSuggestedHeader!.Number);
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
         _pool.Start();
@@ -57,6 +58,7 @@ public class StateSyncDispatcherTests
     public async Task TearDown()
     {
         await _pool.DisposeAsync();
+        await _dispatcher.DisposeAsync();
     }
 
     [Test]

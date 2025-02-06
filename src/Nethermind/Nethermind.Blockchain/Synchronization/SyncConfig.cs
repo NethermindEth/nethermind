@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 using Nethermind.Config;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -72,6 +73,15 @@ namespace Nethermind.Blockchain.Synchronization
         public bool TrieHealing { get; set; } = true;
         public int StateMaxDistanceFromHead { get; set; } = 128;
         public int StateMinDistanceFromHead { get; set; } = 32;
+        public bool GCOnFeedFinished { get; set; } = true;
+        /// <summary>
+        /// Additional delay in blocks between best suggested header and synced state to allow faster state switching for PoW chains
+        /// with higher block processing frequency. Effectively this is the max allowed difference between best header (used as sync
+        /// pivot) and synced state block, to assume that state is synced and node can start processing blocks
+        /// </summary>
+        public int HeaderStateDistance { get; set; } = 0;
+
+        public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
 
         public override string ToString()
         {

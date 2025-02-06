@@ -12,7 +12,7 @@ namespace Nethermind.Precompiles.Benchmark
     {
         public readonly struct Param
         {
-            private static Random _random = new Random(42);
+            private static readonly Random _random = new(42);
 
             public Param(byte[] bytes)
             {

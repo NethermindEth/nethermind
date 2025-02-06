@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -22,6 +23,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State;
 
 using Nethermind.Core.Cpu;
+
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
@@ -266,19 +268,27 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         void UpdateRootHashesMultiThread()
         {
             // We can recalculate the roots in parallel as they are all independent tries
-            Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsLogicalCores, kvp =>
+            using var storages = _storages.ToPooledList();
+            ParallelUnbalancedWork.For(
+                0,
+                storages.Count,
+                RuntimeInformation.ParallelOptionsLogicalCores,
+                (storages, toUpdateRoots: _toUpdateRoots),
+                static (i, state) =>
             {
-                if (!_toUpdateRoots.Contains(kvp.Key))
+                ref var kvp = ref state.storages.GetRef(i);
+                if (!state.toUpdateRoots.Contains(kvp.Key))
                 {
                     // Wasn't updated don't recalculate
-                    return;
+                    return state;
                 }
                 StorageTree storageTree = kvp.Value;
                 storageTree.UpdateRootHash(canBeParallel: false);
+                return state;
             });
 
             // Update the storage roots in the main thread non in parallel
-            foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
+            foreach (ref var kvp in storages.AsSpan())
             {
                 if (!_toUpdateRoots.Contains(kvp.Key))
                 {
@@ -288,7 +298,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 // Update the storage root for the Account
                 _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
             }
-
         }
     }
 
@@ -460,13 +469,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 tracer.ReportStorageChange(address, before, after);
             }
         }
-    }
-
-    private Hash256 RecalculateRootHash(Address address)
-    {
-        StorageTree storageTree = GetOrCreateStorage(address);
-        storageTree.UpdateRootHash();
-        return storageTree.RootHash;
     }
 
     /// <summary>

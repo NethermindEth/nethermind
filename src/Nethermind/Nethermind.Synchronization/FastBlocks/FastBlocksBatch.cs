@@ -81,7 +81,9 @@ namespace Nethermind.Synchronization.FastBlocks
             => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public double? HandlingTime
             => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        public long? MinNumber { get; set; }
+
+        /// Minimum head number for peer to be allocated
+        public abstract long? MinNumber { get; }
         public virtual void Dispose() { }
     }
 }

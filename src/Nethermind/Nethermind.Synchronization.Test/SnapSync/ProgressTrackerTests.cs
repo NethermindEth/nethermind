@@ -142,11 +142,11 @@ public class ProgressTrackerTests
     [Test]
     public void Will_mark_progress_and_flush_when_finished()
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
+        BlockTree blockTree = Build.A.BlockTree()
             .WithStateRoot(Keccak.EmptyTreeHash)
-            .TestObject).TestObject;
+            .OfChainLength(2).TestObject;
         TestMemDb memDb = new();
-        SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
         using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
@@ -163,8 +163,8 @@ public class ProgressTrackerTests
 
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
-        SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
+        BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
         return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

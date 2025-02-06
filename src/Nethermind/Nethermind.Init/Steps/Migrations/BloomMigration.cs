@@ -29,7 +29,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
-        private readonly MeasuredProgress _progress = new MeasuredProgress();
+        private readonly ProgressLogger _progressLogger;
         private long _migrateCount;
         private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
@@ -39,6 +39,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger<BloomMigration>();
+            _progressLogger = new ProgressLogger("Bloom migration ", api.LogManager);
             _bloomConfig = api.Config<IBloomConfig>();
         }
 
@@ -53,14 +54,7 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (!CanMigrate(_api.SyncModeSelector.Current))
-                    {
-                        await Wait.ForEventCondition<SyncModeChangedEventArgs>(
-                            cancellationToken,
-                            (d) => _api.SyncModeSelector.Changed += d,
-                            (d) => _api.SyncModeSelector.Changed -= d,
-                            (arg) => CanMigrate(arg.Current));
-                    }
+                    await _api.SyncModeSelector.WaitUntilMode(CanMigrate, cancellationToken);
 
                     _stopwatch = Stopwatch.StartNew();
                     try
@@ -120,7 +114,7 @@ namespace Nethermind.Init.Steps.Migrations
             _averages = _api.BloomStorage.Averages.ToArray();
             IChainLevelInfoRepository? chainLevelInfoRepository = _api.ChainLevelInfoRepository;
 
-            _progress.Update(synced);
+            _progressLogger.Update(synced);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
@@ -137,7 +131,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
                 finally
                 {
-                    _progress.MarkEnd();
+                    _progressLogger.MarkEnd();
                     _stopwatch?.Stop();
                 }
 
@@ -187,7 +181,7 @@ namespace Nethermind.Init.Steps.Migrations
                             yield return GetMissingBlockHeader(i);
                         }
 
-                        _progress.Update(++synced);
+                        _progressLogger.Update(++synced);
                     }
                 }
             }
@@ -200,8 +194,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private string GetLogMessage(string status, string? suffix = null)
         {
-            string message = $"BloomDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progress.CurrentPerSecond:F2} Blk/s | total {_progress.TotalPerSecond:F2} Blk/s. {GeAveragesMessage()} {suffix}";
-            _progress.SetMeasuringPoint();
+            string message = $"BloomDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progressLogger.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progressLogger.CurrentPerSecond:F2} Blk/s | total {_progressLogger.TotalPerSecond:F2} Blk/s. {GeAveragesMessage()} {suffix}";
+            _progressLogger.SetMeasuringPoint();
             return message;
         }
 

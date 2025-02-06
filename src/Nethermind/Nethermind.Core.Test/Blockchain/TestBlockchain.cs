@@ -253,7 +253,7 @@ public class TestBlockchain : IDisposable
     {
         return specProvider is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
-            : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+            : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
     private void BlockAddedToMain(object? sender, BlockEventArgs e)
@@ -320,7 +320,7 @@ public class TestBlockchain : IDisposable
         new(
             EthereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState, codeInfoRepository),
+            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState, codeInfoRepository) { HasSynced = true },
             new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,

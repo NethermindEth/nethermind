@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -23,11 +25,12 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.Rlpx;
+using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
@@ -35,6 +38,14 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
+        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
+        {
+            new(Protocol.Eth, 66),
+            new(Protocol.Eth, 67),
+            new(Protocol.Eth, 68),
+            new(Protocol.NodeData, 1)
+        };
+
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
@@ -54,11 +65,10 @@ namespace Nethermind.Network
         private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
-        private readonly HashSet<Capability> _capabilities = new();
+        private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly Regex? _clientIdPattern;
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
@@ -75,11 +85,11 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
-            INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,
-            ISnapServer? snapServer,
+            IWorldStateManager worldStateManager,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
         {
@@ -98,8 +108,7 @@ namespace Nethermind.Network
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _snapServer = snapServer;
+            _snapServer = worldStateManager.SnapServer;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (networkConfig.ClientIdMatcher is not null)

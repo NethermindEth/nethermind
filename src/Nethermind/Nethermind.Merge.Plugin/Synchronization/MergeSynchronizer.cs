@@ -41,7 +41,7 @@ public class MergeSynchronizer(
     public ValueTask DisposeAsync()
     {
         _syncCancellation?.Cancel();
-        return baseSynchronizer.DisposeAsync();
+        return ValueTask.CompletedTask;
     }
 
     private void StartBeaconHeadersComponents()

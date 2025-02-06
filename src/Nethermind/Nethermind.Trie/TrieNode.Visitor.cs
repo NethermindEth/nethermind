@@ -21,8 +21,6 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int BranchesCount = 16;
-
         /// <summary>
         /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
         /// `nextToVisit`. Also, it assume the node is already resolved.
@@ -205,7 +203,7 @@ namespace Nethermind.Trie
 
                             if (tasks is { Count: > 0 })
                             {
-                                Task.WaitAll(tasks.ToArray());
+                                Task.WaitAll(tasks.AsSpan());
                                 tasks.Dispose();
                             }
                             return;
@@ -217,8 +215,7 @@ namespace Nethermind.Trie
 
                                     // we need to have separate context for each thread as context tracks level and branch child index
                                     TrieVisitContext childContext = visitContext.Clone();
-                                    VisitChild(ref closureParentPath, i, childNode, trieNodeResolver, treeVisitor,
-                                        contextCopy, childContext);
+                                    VisitChild(ref closureParentPath, i, childNode, trieNodeResolver, treeVisitor, contextCopy, childContext);
                                 });
                         }
 

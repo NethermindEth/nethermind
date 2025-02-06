@@ -26,6 +26,8 @@ namespace Nethermind.Trie
     public class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
+        private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
+
         private readonly ILogger _logger;
 
         public const int OneNodeAvgMemoryEstimate = 384;
@@ -572,20 +574,16 @@ namespace Nethermind.Trie
             }
             catch (RlpException rlpException)
             {
-                ThrowDecodingError(node, in traverseContext, rlpException);
-            }
-            catch (TrieNodeException e)
-            {
-                ThrowMissingTrieNodeException(e, in traverseContext);
+                ThrowDecodingError(node, in path, rlpException);
             }
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static void ThrowDecodingError(TrieNode node, in TraverseContext traverseContext, RlpException rlpException)
+            static void ThrowDecodingError(TrieNode node, in TreePath path, RlpException rlpException)
             {
-                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", node.Keccak ?? Keccak.Zero, rlpException);
+                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path, node.Keccak ?? Keccak.Zero, rlpException);
                 exception = (TrieNodeException)ExceptionDispatchInfo.SetCurrentStackTrace(exception);
-                ThrowMissingTrieNodeException(exception, in traverseContext);
+                throw exception;
             }
         }
 
@@ -733,7 +731,7 @@ namespace Nethermind.Trie
                             if (childNode.IsBranch)
                             {
                                 TrieNode extensionFromBranch =
-                                    TrieNodeFactory.CreateExtension(new[] { (byte)childNodeIndex }, childNode);
+                                    TrieNodeFactory.CreateExtension(_singleByteKeys[childNodeIndex], childNode);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
@@ -1436,13 +1434,6 @@ namespace Nethermind.Trie
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowMissingTrieNodeException(TrieNodeException e, in TraverseContext traverseContext)
-        {
-            throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
     }
 }

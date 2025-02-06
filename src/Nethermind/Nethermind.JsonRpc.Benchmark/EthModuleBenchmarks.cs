@@ -39,7 +39,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -66,7 +68,8 @@ namespace Nethermind.JsonRpc.Benchmark
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            OverridableWorldStateManager stateManager = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+            WorldStateManager stateManager = new(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            OverridableWorldStateManager overridableScope = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
@@ -136,7 +139,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             BlockchainBridge bridge = new(
                 new OverridableTxProcessingEnv(
-                    stateManager,
+                    overridableScope,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
@@ -162,7 +165,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, Substitute.For<ISyncPointers>(), syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),

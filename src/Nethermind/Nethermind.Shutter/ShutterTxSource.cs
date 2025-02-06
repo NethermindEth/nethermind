@@ -43,7 +43,7 @@ public class ShutterTxSource(
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"Could not calculate Shutter building slot: {e}");
+            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
             return [];
         }
 
@@ -122,5 +122,5 @@ public class ShutterTxSource(
     }
 
     public void Dispose()
-        => _keyWaitTasks.ForEach(x => x.Value.ForEach(waitTask => waitTask.Value.Item2.Dispose()));
+        => _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
 }

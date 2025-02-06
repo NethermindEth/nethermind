@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/sepolia.json",
     "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
@@ -14,7 +15,7 @@
     "NodeName": "Sepolia Archive"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 30000000
+    "TargetBlockGasLimit": 36000000
   },
   "Receipt": {
     "TxLookupLimit": 0

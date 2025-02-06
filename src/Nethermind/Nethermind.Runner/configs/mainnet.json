@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
@@ -9,8 +10,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 21253000,
-    "PivotHash": "0x933615af2608ecb1c0e9d0cc0272396467db184470fa43f8ab143669c2cbefb1",
+    "PivotNumber": 21771000,
+    "PivotHash": "0x067bda300e15ed3b8893ee0f4f0ab3e23f9bb64fa794978eebf8d9a58e4ee158",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": "10000000000"
   },
@@ -21,7 +22,7 @@
     "NodeName": "Mainnet"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 30000000
+    "TargetBlockGasLimit": 36000000
   },
   "JsonRpc": {
     "Enabled": true,

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -13,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
@@ -194,11 +196,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlock = new((long)0);
             blockTree.FindBlock(newestBlock).Returns(noTxBlock);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
-            double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(x => (double)x).ToArray();
+            double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(static x => (double)x).ToArray();
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, rewardPercentiles);
 
-            UInt256[] expectedRewardsUInt256 = expectedRewards.Select(x => (UInt256)x).ToArray();
+            UInt256[] expectedRewardsUInt256 = expectedRewards.Select(static x => (UInt256)x).ToArray();
             resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedRewardsUInt256);
         }
 
@@ -298,7 +300,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentiles);
 
-            UInt256[] expectedUInt256 = expected.Select(x => (UInt256)x).ToArray();
+            UInt256[] expectedUInt256 = expected.Select(static x => (UInt256)x).ToArray();
             resultWrapper.Data.Reward!.Count.Should().Be(1);
             resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
         }
@@ -342,7 +344,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     using ResultWrapper<FeeHistoryResults> resultWrapper =
                         feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentilesArray[i]);
 
-                    UInt256[] expectedUInt256 = expectedArray[i].Select(x => (UInt256)x).ToArray();
+                    UInt256[] expectedUInt256 = expectedArray[i].Select(static x => (UInt256)x).ToArray();
                     resultWrapper.Data.Reward!.Count.Should().Be(1);
                     resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
                 }
@@ -384,17 +386,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             return transactions;
         }
 
+        public static IEnumerable<TestCaseData> AscendingBlockNumberTestCases()
+        {
+            yield return new TestCaseData(
+                Cancun.Instance,
+                new[] { 0.5, 0.3333333333333333 }
+            );
+            yield return new TestCaseData(
+                Prague.Instance,
+                new[] { 0.3333333333333333, 0.2222222222222222 }
+            );
+        }
+
         [Test]
-        public void GetFeeHistory_ResultsSortedInOrderOfAscendingBlockNumber()
+        [TestCaseSource(nameof(AscendingBlockNumberTestCases))]
+        public void GetFeeHistory_ResultsSortedInOrderOfAscendingBlockNumber(IReleaseSpec spec, IEnumerable<double> blobGasUsedRatio)
         {
             BlockParameter newestBlockParameter = new(1);
-            FeeHistoryOracle feeHistoryOracle = SetUpFeeHistoryManager(newestBlockParameter);
+            FeeHistoryOracle feeHistoryOracle = SetUpFeeHistoryManager(newestBlockParameter, spec);
             double[] rewardPercentiles = { 0 };
             using FeeHistoryResults expected = new(0,
                 new ArrayPoolList<UInt256>(3, [2, 3, 3]),
                 new ArrayPoolList<double>(2, [0.6, 0.25]),
                 new ArrayPoolList<UInt256>(3, [1, 1, 1]),
-                new ArrayPoolList<double>(2, [0.5, 0.3333333333333333]),
+                new ArrayPoolList<double>(2, blobGasUsedRatio),
                 new ArrayPoolList<ArrayPoolList<UInt256>>(2,
                 [
                     new ArrayPoolList<UInt256>(1, [1]),
@@ -405,7 +420,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
             resultWrapper.Data.Should().BeEquivalentTo(expected);
 
-            static FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter)
+            static FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter, IReleaseSpec spec)
             {
                 Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1
                 Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).TestObject; //Reward: BaseFee > FeeCap => 0
@@ -431,7 +446,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 receiptStorage.Get(secondBlock).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
                 receiptStorage.Get(secondBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
                 FeeHistoryOracle feeHistoryOracle1 =
-                    GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
+                    GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, spec: spec);
                 return feeHistoryOracle1;
             }
         }
@@ -441,7 +456,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage? receiptStorage = null,
             ISpecProvider? specProvider = null,
             int? cacheSize = null,
-            int? maxDistFromHead = null)
+            int? maxDistFromHead = null,
+            IReleaseSpec? spec = null)
         {
             ISpecProvider provider;
             if (specProvider is not null)
@@ -452,6 +468,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 provider = Substitute.For<ISpecProvider>();
                 provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
+                if (spec is not null)
+                {
+                    provider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+                }
             }
 
             return new(

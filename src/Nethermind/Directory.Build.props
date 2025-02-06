@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>13.0</LangVersion>
     <NuGetAuditMode>direct</NuGetAuditMode>
     <TargetFramework>net9.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -15,7 +15,7 @@
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
-    <VersionPrefix>1.30.0</VersionPrefix>
+    <VersionPrefix>1.32.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 

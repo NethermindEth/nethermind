@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain
 
         private void Preallocate(Block genesis)
         {
-            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
+            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(static a => a.Key))
             {
                 _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
 
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain
                     };
 
                     CallOutputTracer outputTracer = new();
-                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
+                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)), outputTracer);
 
                     if (outputTracer.StatusCode != StatusCode.Success)
                     {

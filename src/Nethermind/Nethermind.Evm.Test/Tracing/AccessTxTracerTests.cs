@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(tuples => tuples.Address);
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(static tuples => tuples.Address);
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(a => a.Address).ToArray(), Is.EquivalentTo(expected));
+            Assert.That(sut.AccessList.Select(static a => a.Address).ToArray(), Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(sut.AccessList.Select(static x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
         }
 
         [Test]
@@ -108,7 +108,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
+            Assert.That(sut.AccessList.Select(static x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
             AccessTxTracer tracer = new();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
             return (tracer, block, transaction);
         }
     }

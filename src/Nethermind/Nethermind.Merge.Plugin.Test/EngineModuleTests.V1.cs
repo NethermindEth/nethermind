@@ -174,7 +174,7 @@ public partial class EngineModuleTests
         expected.PrevRandao = random;
         expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");
 
-        executionPayloadV1.Should().BeEquivalentTo(expected, o => o.IgnoringCyclicReferences());
+        executionPayloadV1.Should().BeEquivalentTo(expected, static o => o.IgnoringCyclicReferences());
         Hash256 actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(expected.BlockHash);
         actualHead.Should().Be(startingHead);
@@ -351,17 +351,17 @@ public partial class EngineModuleTests
     {
         get
         {
-            yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
-            yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.ReceiptsRoot, TestItem.KeccakD);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.StateRoot, TestItem.KeccakD);
 
             Bloom bloom = new();
             bloom.Add(new[]
             {
                 Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakG).TestObject
             });
-            yield return GetNewBlockRequestBadDataTestCase(r => r.LogsBloom, bloom);
-            yield return GetNewBlockRequestBadDataTestCase(r => r.Transactions, new[] { new byte[] { 1 } });
-            yield return GetNewBlockRequestBadDataTestCase(r => r.GasUsed, 1);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.LogsBloom, bloom);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, new[] { new byte[] { 1 } });
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1);
         }
     }
 
@@ -905,7 +905,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
+        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, static o => o.IgnoringCyclicReferences());
     }
 
     [Test]
@@ -934,7 +934,7 @@ public partial class EngineModuleTests
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
     }
@@ -1082,7 +1082,7 @@ public partial class EngineModuleTests
             chain.StateReader.GetBalance(executionPayload.StateRoot, to).Should().Be(toBalanceAfter);
             Block findBlock = chain.BlockTree.FindBlock(executionPayload.BlockHash, BlockTreeLookupOptions.None)!;
             TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
-            findBlock.Transactions.Select(t => t.Hash).Should().BeEquivalentTo(receipts.Select(r => r.TxHash));
+            findBlock.Transactions.Select(static t => t.Hash).Should().BeEquivalentTo(receipts.Select(static r => r.TxHash));
         }
     }
 
@@ -1143,11 +1143,11 @@ public partial class EngineModuleTests
 
         Transaction[] txsReceived = executionPayload.GetTransactions();
 
-        txsReceived.Should().BeEquivalentTo(txsSource, options => options
-            .Excluding(t => t.ChainId)
-            .Excluding(t => t.Data)
-            .Excluding(t => t.SenderAddress)
-            .Excluding(t => t.Timestamp)
+        txsReceived.Should().BeEquivalentTo(txsSource, static options => options
+            .Excluding(static t => t.ChainId)
+            .Excluding(static t => t.Data)
+            .Excluding(static t => t.SenderAddress)
+            .Excluding(static t => t.Timestamp)
         );
     }
 
@@ -1531,8 +1531,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
-            .Select(m => m.Name)
-            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Select(static m => m.Name)
+            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
             .Order();
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
@@ -1576,7 +1576,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_warn_for_missing_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain = await CreateBaseBlockchain()
+            .Build(new TestSingleReleaseSpecProvider(Prague.Instance));
         var loggerManager = Substitute.For<ILogManager>();
         var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
@@ -1588,16 +1589,17 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         string[] list = new[]
         {
-            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
-            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
+            nameof(IEngineRpcModule.engine_newPayloadV3),
+            nameof(IEngineRpcModule.engine_newPayloadV4),
+            nameof(IEngineRpcModule.engine_getPayloadV3)
         };
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger().UnderlyingLogger.Received().Warn(
-            Arg.Is<string>(a =>
-                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal)/* &&
-                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)*/));
+            Arg.Is<string>(static a =>
+                    a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(

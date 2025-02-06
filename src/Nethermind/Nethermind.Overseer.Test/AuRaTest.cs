@@ -59,7 +59,7 @@ namespace Nethermind.Overseer.Test
 
             var expectedCount = 14;
 
-            auRaState.BlocksCount.Should().BeGreaterOrEqualTo(expectedCount, $"at least {expectedCount} steps.");
+            auRaState.BlocksCount.Should().BeGreaterThanOrEqualTo(expectedCount, $"at least {expectedCount} steps.");
 
             var blockNumbers = auRaState.Blocks.Take(expectedCount).Select(v => v.Key);
             blockNumbers.Should().BeEquivalentTo(Enumerable.Range(1, expectedCount), "block numbers sequential from 1.");

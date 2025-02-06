@@ -278,7 +278,6 @@ void CheckForDeprecatedOptions(ParseResult parseResult)
     [
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
-        BasicOptions.DataDirectory,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.PluginsDirectory
     ];
@@ -347,7 +346,7 @@ void ConfigureLogger(ParseResult parseResult)
         return;
     }
 
-    using NLogManager logManager = new("nethermind.log");
+    using NLogManager logManager = new();
 
     logger = logManager.GetClassLogger();
 

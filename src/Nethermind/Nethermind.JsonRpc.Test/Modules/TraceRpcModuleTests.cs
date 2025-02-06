@@ -28,6 +28,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -45,6 +46,7 @@ public class TraceRpcModuleTests
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
 
+            Hash256 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             for (int i = 1; i < 10; i++)
             {
                 List<Transaction> transactions = new();
@@ -52,15 +54,16 @@ public class TraceRpcModuleTests
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction
                         .WithTo(Address.Zero)
-                        .WithNonce(Blockchain.State.GetNonce(TestItem.AddressB) + (UInt256)j)
+                        .WithNonce(Blockchain.StateReader.GetNonce(stateRoot, TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
                 await Blockchain.AddBlock(transactions.ToArray());
+
+                stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
 
             Factory = new(
-                Blockchain.OverridableWorldStateManager.TrieStore,
-                Blockchain.DbProvider,
+                Blockchain.WorldStateManager,
                 Blockchain.BlockTree,
                 JsonRpcConfig,
                 Blockchain.BlockPreprocessorStep,
@@ -413,7 +416,7 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction);
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
-        traces.Data.Should().BeEquivalentTo(new[] { new { TransactionHash = transaction.Hash } }, o => o.Including(o => o.TransactionHash));
+        traces.Data.Should().BeEquivalentTo(new[] { new { TransactionHash = transaction.Hash } }, static o => o.Including(static o => o.TransactionHash));
 
         long[] positions = { 0 };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
