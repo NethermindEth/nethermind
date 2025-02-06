@@ -1481,21 +1481,42 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
+    /// <summary>
+    /// Validates the stack state for a given section of bytecode.
+    /// This method checks that the code’s instructions maintain a valid stack height
+    /// and that all control flow paths (calls, jumps, returns) yield a consistent stack state.
+    /// </summary>
+    /// <param name="sectionId">The identifier for the section being validated.</param>
+    /// <param name="code">The bytecode instructions to validate.</param>
+    /// <param name="typeSection">
+    /// A section of type metadata containing input/output stack requirements and maximum stack height constraints
+    /// for each section.
+    /// </param>
+    /// <returns>True if the stack state is valid; otherwise, false.</returns>
     public static bool ValidateStackState(int sectionId, ReadOnlySpan<byte> code, ReadOnlySpan<byte> typeSection)
     {
+        // Rent an array to record the stack bounds at each code offset.
         StackBounds[] recordedStackHeight = ArrayPool<StackBounds>.Shared.Rent(code.Length);
         Array.Fill(recordedStackHeight, new StackBounds());
 
         try
         {
-            ushort suggestedMaxHeight = typeSection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+            // Get the suggested maximum stack height for this section.
+            ushort suggestedMaxHeight = typeSection
+                .Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH)
+                .ReadEthUInt16();
 
-            ushort currentSectionOutputs = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+            // Determine the output count for this section. A value of 0x80 indicates non-returning.
+            ushort currentSectionOutputs = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80
+                ? (ushort)0
+                : typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+
+            // The initial stack height is determined by the number of inputs.
             short peakStackHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
             int unreachedBytes = code.Length;
-            bool isTargetSectionNonReturning = false;
             int programCounter = 0;
+            // Initialize the recorded stack bounds for the starting instruction.
             recordedStackHeight[0].Max = peakStackHeight;
             recordedStackHeight[0].Min = peakStackHeight;
             StackBounds currentStackBounds = recordedStackHeight[0];
@@ -1503,60 +1524,48 @@ internal class Eof1 : IEofVersionHandler
             while (programCounter < code.Length)
             {
                 Instruction opcode = (Instruction)code[programCounter];
-                (ushort? inputCount, ushort? outputCount, ushort? immediateCount) = opcode.StackRequirements();
+                (ushort? baseInput, ushort? baseOutput, ushort? baseImmediate) = opcode.StackRequirements();
 
                 int posPostInstruction = programCounter + 1;
                 if (posPostInstruction > code.Length)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
+                    if (Logger.IsTrace)
+                        Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
                     return false;
                 }
 
-                switch (opcode)
+                ushort inputCount = baseInput ?? 0;
+                ushort outputCount = baseOutput ?? 0;
+                ushort immediateCount = baseImmediate ?? 0;
+                bool isTargetSectionNonReturning = false;
+
+                // Apply opcode-specific modifications for opcodes that carry immediate data.
+                if (opcode is Instruction.CALLF or Instruction.JUMPF or Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
                 {
-                    case Instruction.CALLF or Instruction.JUMPF:
-                        ushort targetSectionId = code.Slice(posPostInstruction, immediateCount.Value).ReadEthUInt16();
-                        inputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
-
-                        outputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                        isTargetSectionNonReturning = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
-                        outputCount = (ushort)(isTargetSectionNonReturning ? 0 : outputCount);
-                        int targetMaxStackHeight = typeSection.Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
-
-                        if (MAX_STACK_HEIGHT - targetMaxStackHeight + inputCount < currentStackBounds.Max)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack head during callF must not exceed {MAX_STACK_HEIGHT}");
-                            return false;
-                        }
-
-                        if (opcode is Instruction.JUMPF && !isTargetSectionNonReturning && !(currentSectionOutputs + inputCount - outputCount == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currentSectionOutputs + inputCount - outputCount} but found {currentStackBounds.Max}");
-                            return false;
-                        }
-                        break;
-                    case Instruction.DUPN:
-                        int imm_n = 1 + code[posPostInstruction];
-                        inputCount = (ushort)imm_n;
-                        outputCount = (ushort)(inputCount + 1);
-                        break;
-                    case Instruction.SWAPN:
-                        imm_n = 1 + code[posPostInstruction];
-                        outputCount = inputCount = (ushort)(1 + imm_n);
-                        break;
-                    case Instruction.EXCHANGE:
-                        imm_n = 1 + (byte)(code[posPostInstruction] >> 4);
-                        int imm_m = 1 + (byte)(code[posPostInstruction] & 0x0F);
-                        outputCount = inputCount = (ushort)(imm_n + imm_m + 1);
-                        break;
+                    try
+                    {
+                        var mod = ApplyOpcodeImmediateModifiers(opcode, posPostInstruction, currentSectionOutputs, immediateCount, currentStackBounds, code, typeSection);
+                        inputCount = mod.InputCount;
+                        outputCount = mod.OutputCount;
+                        immediateCount = mod.ImmediateCount;
+                        isTargetSectionNonReturning = mod.IsTargetSectionNonReturning;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // The helper methods throw on validation errors.
+                        return false;
+                    }
                 }
 
+                // Check for stack underflow.
                 if ((isTargetSectionNonReturning || opcode is not Instruction.JUMPF) && currentStackBounds.Min < inputCount)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputCount} but found {currentStackBounds.Min}");
+                    if (Logger.IsTrace)
+                        Logger.Trace($"EOF: Eof{VERSION}, Stack Underflow required {inputCount} but found {currentStackBounds.Min}");
                     return false;
                 }
 
+                // For non-terminating instructions, adjust the current stack bounds.
                 if (!opcode.IsTerminating())
                 {
                     short delta = (short)(outputCount - inputCount);
@@ -1565,82 +1574,35 @@ internal class Eof1 : IEofVersionHandler
                 }
                 peakStackHeight = Math.Max(peakStackHeight, currentStackBounds.Max);
 
-                switch (opcode)
+                // Process control-flow opcodes.
+                if (opcode == Instruction.RETF)
                 {
-                    case Instruction.RETF:
-                        {
-                            int expectedHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                            if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
-                            {
-                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid required height {expectedHeight} but found {currentStackBounds.Min}");
-                                return false;
-                            }
-                            break;
-                        }
-                    case Instruction.RJUMP or Instruction.RJUMPI:
-                        {
-                            short offset = code.Slice(programCounter + 1, immediateCount.Value).ReadEthInt16();
-                            int jumpDestination = posPostInstruction + immediateCount.Value + offset;
-
-                            if (opcode is Instruction.RJUMPI && (posPostInstruction + immediateCount.Value < recordedStackHeight.Length))
-                                recordedStackHeight[posPostInstruction + immediateCount.Value].Combine(currentStackBounds);
-
-                            if (jumpDestination > programCounter)
-                                recordedStackHeight[jumpDestination].Combine(currentStackBounds);
-                            else
-                            {
-                                if (recordedStackHeight[jumpDestination] != currentStackBounds)
-                                {
-                                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
-                                    return false;
-                                }
-                            }
-
-                            break;
-                        }
-                    case Instruction.RJUMPV:
-                        {
-                            int count = code[posPostInstruction] + 1;
-                            immediateCount = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
-                            for (short j = 0; j < count; j++)
-                            {
-                                int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
-                                int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
-                                int jumpDestination = posPostInstruction + immediateCount.Value + offset;
-                                if (jumpDestination > programCounter)
-                                {
-                                    recordedStackHeight[jumpDestination].Combine(currentStackBounds);
-                                }
-                                else
-                                {
-                                    if (recordedStackHeight[jumpDestination] != currentStackBounds)
-                                    {
-                                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
-                                        return false;
-                                    }
-                                }
-                            }
-
-                            posPostInstruction += immediateCount.Value;
-                            if (posPostInstruction > code.Length)
-                            {
-                                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
-                                return false;
-                            }
-                            break;
-                        }
+                    if (!ValidateReturnInstruction(sectionId, typeSection, currentStackBounds))
+                        return false;
+                }
+                else if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                {
+                    if (!ValidateRelativeJumpInstruction(opcode, programCounter, posPostInstruction, immediateCount, code, currentStackBounds, recordedStackHeight))
+                        return false;
+                }
+                else if (opcode == Instruction.RJUMPV)
+                {
+                    if (!ValidateRelativeJumpVInstruction(programCounter, posPostInstruction, currentStackBounds, recordedStackHeight, code, out immediateCount, out posPostInstruction))
+                        return false;
                 }
 
-                unreachedBytes -= 1 + immediateCount.Value;
-                programCounter += 1 + immediateCount.Value;
+                unreachedBytes -= 1 + immediateCount;
+                programCounter += 1 + immediateCount;
 
+                // Propagate recorded stack bounds for subsequent instructions.
                 if (opcode.IsTerminating())
                 {
                     if (programCounter < code.Length)
                     {
                         if (recordedStackHeight[programCounter].Max < 0)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, opcode not forward referenced, section {sectionId} pc {programCounter}");
+                            if (Logger.IsTrace)
+                                Logger.Trace($"EOF: Eof{VERSION}, opcode not forward referenced, section {sectionId} pc {programCounter}");
                             return false;
                         }
                         currentStackBounds = recordedStackHeight[programCounter];
@@ -1658,28 +1620,259 @@ internal class Eof1 : IEofVersionHandler
 
             if (unreachedBytes != 0)
             {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, bytecode has unreachable segments");
+                if (Logger.IsTrace)
+                    Logger.Trace($"EOF: Eof{VERSION}, bytecode has unreachable segments");
                 return false;
             }
 
             if (peakStackHeight != suggestedMaxHeight)
             {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
+                if (Logger.IsTrace)
+                    Logger.Trace($"EOF: Eof{VERSION}, Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
                 return false;
             }
 
-            bool result = peakStackHeight < MAX_STACK_HEIGHT;
-            if (!result)
+            if (peakStackHeight >= MAX_STACK_HEIGHT)
             {
-                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
+                if (Logger.IsTrace)
+                    Logger.Trace($"EOF: Eof{VERSION}, stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
                 return false;
             }
-            return result;
+
+            return true;
         }
         finally
         {
             ArrayPool<StackBounds>.Shared.Return(recordedStackHeight);
         }
+    }
+
+    /// <summary>
+    /// Holds the result from adjusting an opcode’s immediate data.
+    /// </summary>
+    private struct InstructionModificationResult
+    {
+        public ushort InputCount;
+        public ushort OutputCount;
+        public ushort ImmediateCount;
+        public bool IsTargetSectionNonReturning;
+    }
+
+    /// <summary>
+    /// Adjusts the stack requirements for opcodes that carry immediate data.
+    /// For CALLF and JUMPF the target section information is read from the immediate bytes,
+    /// and additional validation is performed.
+    /// For DUPN, SWAPN, and EXCHANGE the immediate value adjusts the input/output counts.
+    /// </summary>
+    /// <param name="opcode">The current opcode.</param>
+    /// <param name="posPostInstruction">The code offset immediately after the opcode.</param>
+    /// <param name="currentSectionOutputs">The output count for the current section.</param>
+    /// <param name="immediateCount">The base immediate count from the opcode’s stack requirements.</param>
+    /// <param name="currentStackBounds">The current stack bounds.</param>
+    /// <param name="code">The full bytecode.</param>
+    /// <param name="typeSection">The type section metadata.</param>
+    /// <returns>A structure with the adjusted stack counts and immediate count.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if validation fails.</exception>
+    private static InstructionModificationResult ApplyOpcodeImmediateModifiers(
+        Instruction opcode,
+        int posPostInstruction,
+        ushort currentSectionOutputs,
+        ushort immediateCount,
+        StackBounds currentStackBounds,
+        ReadOnlySpan<byte> code,
+        ReadOnlySpan<byte> typeSection)
+    {
+        var result = new InstructionModificationResult { ImmediateCount = immediateCount, IsTargetSectionNonReturning = false };
+
+        switch (opcode)
+        {
+            case Instruction.CALLF:
+            case Instruction.JUMPF:
+                {
+                    // Read the target section identifier from the immediate bytes.
+                    ushort targetSectionId = code.Slice(posPostInstruction, immediateCount).ReadEthUInt16();
+                    result.InputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                    result.OutputCount = typeSection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                    result.IsTargetSectionNonReturning = result.OutputCount == 0x80;
+                    if (result.IsTargetSectionNonReturning)
+                    {
+                        result.OutputCount = 0;
+                    }
+                    // Retrieve the maximum stack height allowed for the target section.
+                    int targetMaxStackHeight = typeSection
+                        .Slice(targetSectionId * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH)
+                        .ReadEthUInt16();
+                    // Validate the stack height against the global maximum.
+                    if (MAX_STACK_HEIGHT - targetMaxStackHeight + result.InputCount < currentStackBounds.Max)
+                    {
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, stack head during callF must not exceed {MAX_STACK_HEIGHT}");
+                        throw new InvalidOperationException("Stack height exceeded in CALLF/JUMPF");
+                    }
+                    // For JUMPF (when returning) the stack state must match expected values.
+                    if (opcode == Instruction.JUMPF && !result.IsTargetSectionNonReturning &&
+                        !(currentSectionOutputs + result.InputCount - result.OutputCount == currentStackBounds.Min && currentStackBounds.BoundsEqual()))
+                    {
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, Stack State invalid, required height {currentSectionOutputs + result.InputCount - result.OutputCount} but found {currentStackBounds.Max}");
+                        throw new InvalidOperationException("Invalid stack state in JUMPF");
+                    }
+                    break;
+                }
+            case Instruction.DUPN:
+                {
+                    int imm_n = 1 + code[posPostInstruction];
+                    result.InputCount = (ushort)imm_n;
+                    result.OutputCount = (ushort)(result.InputCount + 1);
+                    break;
+                }
+            case Instruction.SWAPN:
+                {
+                    int imm_n = 1 + code[posPostInstruction];
+                    result.InputCount = result.OutputCount = (ushort)(1 + imm_n);
+                    break;
+                }
+            case Instruction.EXCHANGE:
+                {
+                    int imm_n = 1 + (code[posPostInstruction] >> 4);
+                    int imm_m = 1 + (code[posPostInstruction] & 0x0F);
+                    result.InputCount = result.OutputCount = (ushort)(imm_n + imm_m + 1);
+                    break;
+                }
+            default:
+                throw new NotSupportedException("Opcode does not require immediate modifier adjustments.");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Validates the RETF instruction by checking that the current stack state exactly matches
+    /// the expected output count for the section.
+    /// </summary>
+    /// <param name="sectionId">The identifier of the current section.</param>
+    /// <param name="typeSection">The type section metadata.</param>
+    /// <param name="currentStackBounds">The current stack bounds.</param>
+    /// <returns>True if the RETF instruction’s requirements are met; otherwise, false.</returns>
+    private static bool ValidateReturnInstruction(int sectionId, ReadOnlySpan<byte> typeSection, StackBounds currentStackBounds)
+    {
+        int expectedHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+        if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid required height {expectedHeight} but found {currentStackBounds.Min}");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Validates relative jump instructions (RJUMP and RJUMPI).
+    /// Reads the jump offset, computes the destination and updates the recorded stack state as needed.
+    /// </summary>
+    /// <param name="opcode">The current opcode (RJUMP or RJUMPI).</param>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <param name="posPostInstruction">The offset immediately after the opcode.</param>
+    /// <param name="immediateCount">The immediate count associated with the opcode.</param>
+    /// <param name="code">The full bytecode.</param>
+    /// <param name="currentStackBounds">The current stack bounds.</param>
+    /// <param name="recordedStackHeight">The array of recorded stack bounds per code offset.</param>
+    /// <returns>True if the jump destination’s stack state is valid; otherwise, false.</returns>
+    private static bool ValidateRelativeJumpInstruction(
+        Instruction opcode,
+        int programCounter,
+        int posPostInstruction,
+        ushort immediateCount,
+        ReadOnlySpan<byte> code,
+        StackBounds currentStackBounds,
+        StackBounds[] recordedStackHeight)
+    {
+        // Read the jump offset from the immediate bytes.
+        short offset = code.Slice(programCounter + 1, immediateCount).ReadEthInt16();
+        int jumpDestination = posPostInstruction + immediateCount + offset;
+
+        // For RJUMPI, record the current stack state after the immediate data.
+        if (opcode == Instruction.RJUMPI && (posPostInstruction + immediateCount < recordedStackHeight.Length))
+            recordedStackHeight[posPostInstruction + immediateCount].Combine(currentStackBounds);
+
+        return ValidateJumpDestination(jumpDestination, programCounter, currentStackBounds, recordedStackHeight);
+    }
+
+    /// <summary>
+    /// Validates the RJUMPV instruction (relative jump vector).
+    /// Reads the jump vector, validates each jump destination and returns updated immediate count and position.
+    /// </summary>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <param name="posPostInstruction">The offset immediately after the opcode.</param>
+    /// <param name="currentStackBounds">The current stack bounds.</param>
+    /// <param name="recordedStackHeight">The array of recorded stack bounds per code offset.</param>
+    /// <param name="code">The full bytecode.</param>
+    /// <param name="updatedImmediateCount">The updated immediate count after processing the jump vector.</param>
+    /// <param name="updatedPosPostInstruction">The updated position after the jump vector.</param>
+    /// <returns>True if all jump destinations in the vector are valid; otherwise, false.</returns>
+    private static bool ValidateRelativeJumpVInstruction(
+        int programCounter,
+        int posPostInstruction,
+        StackBounds currentStackBounds,
+        StackBounds[] recordedStackHeight,
+        ReadOnlySpan<byte> code,
+        out ushort updatedImmediateCount,
+        out int updatedPosPostInstruction)
+    {
+        int count = code[posPostInstruction] + 1;
+        updatedImmediateCount = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
+
+        // Validate each jump destination in the jump vector.
+        for (short j = 0; j < count; j++)
+        {
+            int casePosition = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
+            int offset = code.Slice(casePosition, TWO_BYTE_LENGTH).ReadEthInt16();
+            int jumpDestination = posPostInstruction + updatedImmediateCount + offset;
+            if (!ValidateJumpDestination(jumpDestination, programCounter, currentStackBounds, recordedStackHeight))
+            {
+                updatedPosPostInstruction = posPostInstruction;
+                return false;
+            }
+        }
+
+        updatedPosPostInstruction = posPostInstruction + updatedImmediateCount;
+        if (updatedPosPostInstruction > code.Length)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, PC Reached out of bounds");
+            return false;
+        }
+        return true;
+    }
+
+
+    /// <summary>
+    /// Validates the recorded stack bounds at a given jump destination.
+    /// For forward jumps the current stack state is combined with the destination’s state;
+    /// for backward jumps the destination’s recorded state must exactly match the current state.
+    /// </summary>
+    /// <param name="jumpDestination">The target code offset for the jump.</param>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <param name="currentStackBounds">The current stack bounds.</param>
+    /// <param name="recordedStackHeight">The array of recorded stack bounds per code offset.</param>
+    /// <returns>True if the destination’s stack state is valid; otherwise, false.</returns>
+    private static bool ValidateJumpDestination(
+        int jumpDestination,
+        int programCounter,
+        StackBounds currentStackBounds,
+        StackBounds[] recordedStackHeight)
+    {
+        if (jumpDestination > programCounter)
+        {
+            recordedStackHeight[jumpDestination].Combine(currentStackBounds);
+        }
+        else if (recordedStackHeight[jumpDestination] != currentStackBounds)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
+            return false;
+        }
+        return true;
     }
 
     private readonly struct QueueManager(int containerCount)
