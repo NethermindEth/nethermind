@@ -27,12 +27,12 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
 
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
     {
-        ReadOnlySpan<byte> typesectionSpan = EofContainer.TypeSections[index].Span;
+        ReadOnlySpan<byte> typeSection = EofContainer.TypeSections[index].Span;
         return
             (
-                typesectionSpan[Eof1.INPUTS_OFFSET],
-                typesectionSpan[Eof1.OUTPUTS_OFFSET],
-                typesectionSpan.Slice(Eof1.MAX_STACK_HEIGHT_OFFSET, Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
+                typeSection[Eof1.INPUTS_OFFSET],
+                typeSection[Eof1.OUTPUTS_OFFSET],
+                typeSection.Slice(Eof1.MAX_STACK_HEIGHT_OFFSET, Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
             );
     }
 
