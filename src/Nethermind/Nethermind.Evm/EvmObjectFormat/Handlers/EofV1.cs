@@ -1497,7 +1497,7 @@ internal class Eof1 : IEofVersionHandler
     {
         // Rent an array to record the stack bounds at each code offset.
         StackBounds[] recordedStackHeight = ArrayPool<StackBounds>.Shared.Rent(code.Length);
-        Array.Fill(recordedStackHeight, new StackBounds());
+        Array.Fill(recordedStackHeight, new StackBounds(min: 1023, max: -1));
 
         try
         {
@@ -1517,8 +1517,7 @@ internal class Eof1 : IEofVersionHandler
             int unreachedBytes = code.Length;
             int programCounter = 0;
             // Initialize the recorded stack bounds for the starting instruction.
-            recordedStackHeight[0].Max = peakStackHeight;
-            recordedStackHeight[0].Min = peakStackHeight;
+            recordedStackHeight[0] = new(peakStackHeight, peakStackHeight);
             StackBounds currentStackBounds = recordedStackHeight[0];
 
             while (programCounter < code.Length)
@@ -1544,7 +1543,7 @@ internal class Eof1 : IEofVersionHandler
                 {
                     try
                     {
-                        var mod = ApplyOpcodeImmediateModifiers(opcode, posPostInstruction, currentSectionOutputs, immediateCount, currentStackBounds, code, typeSection);
+                        InstructionModificationResult mod = ApplyOpcodeImmediateModifiers(opcode, posPostInstruction, currentSectionOutputs, immediateCount, currentStackBounds, code, typeSection);
                         inputCount = mod.InputCount;
                         outputCount = mod.OutputCount;
                         immediateCount = mod.ImmediateCount;
@@ -1569,20 +1568,19 @@ internal class Eof1 : IEofVersionHandler
                 if (!opcode.IsTerminating())
                 {
                     short delta = (short)(outputCount - inputCount);
-                    currentStackBounds.Max += delta;
-                    currentStackBounds.Min += delta;
+                    currentStackBounds = new((short)(currentStackBounds.Min + delta), (short)(currentStackBounds.Max + delta));
                 }
                 peakStackHeight = Math.Max(peakStackHeight, currentStackBounds.Max);
 
                 // Process control-flow opcodes.
                 if (opcode == Instruction.RETF)
                 {
-                    if (!ValidateReturnInstruction(sectionId, typeSection, currentStackBounds))
+                    if (!ValidateReturnInstruction(sectionId, currentStackBounds, typeSection))
                         return false;
                 }
                 else if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                 {
-                    if (!ValidateRelativeJumpInstruction(opcode, programCounter, posPostInstruction, immediateCount, code, currentStackBounds, recordedStackHeight))
+                    if (!ValidateRelativeJumpInstruction(opcode, programCounter, posPostInstruction, immediateCount, currentStackBounds, recordedStackHeight, code))
                         return false;
                 }
                 else if (opcode == Instruction.RJUMPV)
@@ -1599,21 +1597,23 @@ internal class Eof1 : IEofVersionHandler
                 {
                     if (programCounter < code.Length)
                     {
-                        if (recordedStackHeight[programCounter].Max < 0)
+                        ref StackBounds recordedBounds = ref recordedStackHeight[programCounter];
+                        if (recordedBounds.Max < 0)
                         {
                             if (Logger.IsTrace)
                                 Logger.Trace($"EOF: Eof{VERSION}, opcode not forward referenced, section {sectionId} pc {programCounter}");
                             return false;
                         }
-                        currentStackBounds = recordedStackHeight[programCounter];
+                        currentStackBounds = recordedBounds;
                     }
                 }
                 else
                 {
                     if (programCounter < code.Length)
                     {
-                        recordedStackHeight[programCounter].Combine(currentStackBounds);
-                        currentStackBounds = recordedStackHeight[programCounter];
+                        ref StackBounds recordedBounds = ref recordedStackHeight[programCounter];
+                        recordedBounds.Combine(currentStackBounds);
+                        currentStackBounds = recordedBounds;
                     }
                 }
             }
@@ -1678,7 +1678,7 @@ internal class Eof1 : IEofVersionHandler
         int posPostInstruction,
         ushort currentSectionOutputs,
         ushort immediateCount,
-        StackBounds currentStackBounds,
+        in StackBounds currentStackBounds,
         ReadOnlySpan<byte> code,
         ReadOnlySpan<byte> typeSection)
     {
@@ -1751,10 +1751,10 @@ internal class Eof1 : IEofVersionHandler
     /// the expected output count for the section.
     /// </summary>
     /// <param name="sectionId">The identifier of the current section.</param>
-    /// <param name="typeSection">The type section metadata.</param>
     /// <param name="currentStackBounds">The current stack bounds.</param>
+    /// <param name="typeSection">The type section metadata.</param>
     /// <returns>True if the RETF instruction’s requirements are met; otherwise, false.</returns>
-    private static bool ValidateReturnInstruction(int sectionId, ReadOnlySpan<byte> typeSection, StackBounds currentStackBounds)
+    private static bool ValidateReturnInstruction(int sectionId, in StackBounds currentStackBounds, ReadOnlySpan<byte> typeSection)
     {
         int expectedHeight = typeSection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
         if (expectedHeight != currentStackBounds.Min || !currentStackBounds.BoundsEqual())
@@ -1774,18 +1774,18 @@ internal class Eof1 : IEofVersionHandler
     /// <param name="programCounter">The current program counter.</param>
     /// <param name="posPostInstruction">The offset immediately after the opcode.</param>
     /// <param name="immediateCount">The immediate count associated with the opcode.</param>
-    /// <param name="code">The full bytecode.</param>
     /// <param name="currentStackBounds">The current stack bounds.</param>
     /// <param name="recordedStackHeight">The array of recorded stack bounds per code offset.</param>
+    /// <param name="code">The full bytecode.</param>
     /// <returns>True if the jump destination’s stack state is valid; otherwise, false.</returns>
     private static bool ValidateRelativeJumpInstruction(
         Instruction opcode,
         int programCounter,
         int posPostInstruction,
         ushort immediateCount,
-        ReadOnlySpan<byte> code,
-        StackBounds currentStackBounds,
-        StackBounds[] recordedStackHeight)
+        in StackBounds currentStackBounds,
+        StackBounds[] recordedStackHeight,
+        ReadOnlySpan<byte> code)
     {
         // Read the jump offset from the immediate bytes.
         short offset = code.Slice(programCounter + 1, immediateCount).ReadEthInt16();
@@ -1813,7 +1813,7 @@ internal class Eof1 : IEofVersionHandler
     private static bool ValidateRelativeJumpVInstruction(
         int programCounter,
         int posPostInstruction,
-        StackBounds currentStackBounds,
+        in StackBounds currentStackBounds,
         StackBounds[] recordedStackHeight,
         ReadOnlySpan<byte> code,
         out ushort updatedImmediateCount,
@@ -1859,14 +1859,15 @@ internal class Eof1 : IEofVersionHandler
     private static bool ValidateJumpDestination(
         int jumpDestination,
         int programCounter,
-        StackBounds currentStackBounds,
+        in StackBounds currentStackBounds,
         StackBounds[] recordedStackHeight)
     {
+        ref StackBounds recordedBounds = ref recordedStackHeight[jumpDestination];
         if (jumpDestination > programCounter)
         {
-            recordedStackHeight[jumpDestination].Combine(currentStackBounds);
+            recordedBounds.Combine(currentStackBounds);
         }
-        else if (recordedStackHeight[jumpDestination] != currentStackBounds)
+        else if (recordedBounds != currentStackBounds)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, Stack state invalid at {jumpDestination}");
@@ -1875,6 +1876,7 @@ internal class Eof1 : IEofVersionHandler
         return true;
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly struct QueueManager(int containerCount)
     {
         public readonly Queue<(int index, ValidationStrategy strategy)> ContainerQueue = new();
@@ -1889,26 +1891,7 @@ internal class Eof1 : IEofVersionHandler
         public bool IsAllVisited() => VisitedContainers.All(x => x != 0);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct StackBounds()
-    {
-        public short Max = -1;
-        public short Min = 1023;
-
-        public void Combine(StackBounds other)
-        {
-            Max = Math.Max(Max, other.Max);
-            Min = Math.Min(Min, other.Min);
-        }
-
-        public readonly bool BoundsEqual() => Max == Min;
-
-        public static bool operator ==(StackBounds left, StackBounds right) => left.Max == right.Max && right.Min == left.Min;
-        public static bool operator !=(StackBounds left, StackBounds right) => !(left == right);
-        public override readonly bool Equals(object obj) => obj is StackBounds bounds && this == bounds;
-        public override readonly int GetHashCode() => (Max << 16) | (int)Min;
-    }
-
+    [StructLayout(LayoutKind.Auto)]
     private ref struct Sizes
     {
         public ushort? TypeSectionSize;
@@ -1927,3 +1910,24 @@ internal class Eof1 : IEofVersionHandler
     }
 }
 
+[StructLayout(LayoutKind.Auto)]
+internal readonly struct StackBounds(short min, short max)
+{
+    public readonly short Min = min;
+    public readonly short Max = max;
+
+    public readonly bool BoundsEqual() => Max == Min;
+
+    public static bool operator ==(in StackBounds left, in StackBounds right) => left.Max == right.Max && right.Min == left.Min;
+    public static bool operator !=(in StackBounds left, in StackBounds right) => !(left == right);
+    public override readonly bool Equals(object obj) => obj is StackBounds bounds && this == bounds;
+    public override readonly int GetHashCode() => (Max << 16) | (int)Min;
+}
+
+file static class StackBoundsExtensions
+{
+    public static void Combine(this ref StackBounds bounds, StackBounds other)
+    {
+        bounds = new(Math.Min(bounds.Min, other.Min), Math.Max(bounds.Max, other.Max));
+    }
+}
