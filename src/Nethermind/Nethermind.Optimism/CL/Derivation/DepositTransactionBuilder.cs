@@ -13,7 +13,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
 {
     private const int SystemTxDataLengthEcotone = 164;
 
-    public Transaction BuildSystemTransaction(L1BlockInfo blockInfo)
+    public Transaction BuildL1InfoTransaction(L1BlockInfo blockInfo)
     {
         byte[] data = new byte[SystemTxDataLengthEcotone];
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(), 1141530144); // TODO method id

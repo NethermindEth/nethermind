@@ -76,7 +76,7 @@ public class OptimismCL : IDisposable
         BlockForRpc block = _l2EthRpc.eth_getBlockByNumber(BlockParameter.Latest, true).Data;
         var enumerator = block.Transactions.GetEnumerator();
         enumerator.MoveNext();
-        OptimismTransactionForRpc tx = (OptimismTransactionForRpc)enumerator.Current;
+        DepositTransactionForRpc tx = (DepositTransactionForRpc)enumerator.Current;
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input, block.ExtraData);
         _logger.Error($"DONE: {l1BlockInfo.Number}, {l1BlockInfo.BlockHash}, {l1BlockInfo.BatcherAddress}");
         GetBatches();

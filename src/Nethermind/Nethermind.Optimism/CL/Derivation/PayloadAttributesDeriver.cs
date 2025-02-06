@@ -58,7 +58,7 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
                 currentL1OriginBlockInfo.SequenceNumber++;
             }
 
-            Transaction systemTransaction = _depositTransactionBuilder.BuildSystemTransaction(currentL1OriginBlockInfo);
+            Transaction systemTransaction = _depositTransactionBuilder.BuildL1InfoTransaction(currentL1OriginBlockInfo);
             systemTransaction.Nonce = l2Parent.Number + 2 + (ulong)i;
 
             if (isNewOrigin)

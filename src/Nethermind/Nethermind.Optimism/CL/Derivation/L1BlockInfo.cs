@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
@@ -74,7 +75,8 @@ public class L1BlockInfoBuilder
 
     public static L1BlockInfo FromL1BlockAndSystemConfig(BlockForRpc block, SystemConfig config, ulong sequenceNumber)
     {
-        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, out UInt256 feePerBlobGas);
+        // TODO: eip 7840
+        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
         return new()
         {
             BaseFeeScalar = config.BaseFeeScalar,

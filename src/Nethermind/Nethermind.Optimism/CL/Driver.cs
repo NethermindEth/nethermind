@@ -206,7 +206,7 @@ public class Driver : IDisposable
     private void InsertBlock()
     {
         var block = _l2EthRpc.eth_getBlockByNumber(new(9176832), true).Data;
-        OptimismTransactionForRpc tx = (OptimismTransactionForRpc)block.Transactions.First();
+        DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
         SystemConfig config =
             _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
         L2Block nativeBlock = new()
