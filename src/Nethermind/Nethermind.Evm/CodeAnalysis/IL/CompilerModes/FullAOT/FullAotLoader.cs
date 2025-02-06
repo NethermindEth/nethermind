@@ -175,12 +175,10 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
 
         LoadVmState(il, locals, false);
-        il.LoadField(typeof(EvmState).GetField(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance));
-        if(loadAddress)
+        il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance).GetMethod);
+        if(!loadAddress)
         {
-            using Local local = il.DeclareLocal<ExecutionEnvironment>();
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadObject<ExecutionEnvironment>();
         }
     }
 

@@ -122,6 +122,7 @@ namespace Nethermind.Specs.Test
             get => _isOntakeEnabled ?? _spec.IsOntakeEnabled;
             set => _isOntakeEnabled = value;
         }
+        public bool IsEip7623Enabled => _spec.IsEip7623Enabled;
 
         public bool IsEip3607Enabled { get; set; }
 
@@ -154,6 +155,9 @@ namespace Nethermind.Specs.Test
             }
         }
 
+        public ulong TargetBlobCount => _spec.TargetBlobCount;
+        public ulong MaxBlobCount => _spec.MaxBlobCount;
+        public UInt256 BlobBaseFeeUpdateFraction => _spec.BlobBaseFeeUpdateFraction;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;

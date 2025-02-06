@@ -153,6 +153,10 @@ public class Metrics
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
+    [GaugeMetric]
+    [Description("The number of tasks scheduled in the background.")]
+    public static long NumberOfBackgroundTasksScheduled { get; set; }
+
     internal static long BlockTransactions { get; set; }
 
     private static float _blockAveGasPrice;

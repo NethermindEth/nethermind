@@ -23,20 +23,20 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x10);
+    public static Address Address { get; } = Address.FromNumber(0xe);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 45000L * k * Discount.For(k) / 1000;
+        return 22500L * k * Discount.ForG2(k) / 1000;
     }
 
     public const int ItemSize = 288;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG2MSMPrecompile++;
 
@@ -50,7 +50,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     }
 
 
-    private (ReadOnlyMemory<byte>, bool) Mul(ReadOnlyMemory<byte> inputData)
+    private (byte[], bool) Mul(ReadOnlyMemory<byte> inputData)
     {
         G2 x = new(stackalloc long[G2.Sz]);
         if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
@@ -72,7 +72,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         return (res.EncodeRaw(), true);
     }
 
-    private (ReadOnlyMemory<byte>, bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    private (byte[], bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
     {
         using ArrayPoolList<long> pointBuffer = new(nItems * G2.Sz, nItems * G2.Sz);
         using ArrayPoolList<byte> scalarBuffer = new(nItems * 32, nItems * 32);

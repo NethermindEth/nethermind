@@ -74,9 +74,9 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         internal IlInfo? IlInfo { get; set; }
 
-        public CodeInfo(IPrecompile precompile, Address source)
+        public CodeInfo(IPrecompile precompile)
         {
-            Address = source;
+            Address = null;
             Precompile = precompile;
             MachineCode = Array.Empty<byte>();
             _analyzer = _emptyAnalyzer;

@@ -23,6 +23,11 @@ namespace Nethermind.Config
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {
             (bool isSet, string value) = GetRawValue(category, name);
+
+            // Unset blank values for non-string types
+            if (type != typeof(string) && string.IsNullOrWhiteSpace(value))
+                isSet = false;
+
             return (isSet, isSet ? ConfigSourceHelper.ParseValue(type, value, category, name) : ConfigSourceHelper.GetDefault(type));
         }
 
@@ -30,7 +35,7 @@ namespace Nethermind.Config
         {
             var variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
             var variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
-            return string.IsNullOrWhiteSpace(variableValueString) ? (false, null) : (true, variableValueString);
+            return (variableValueString is not null, variableValueString);
         }
 
         public IEnumerable<(string Category, string Name)> GetConfigKeys()

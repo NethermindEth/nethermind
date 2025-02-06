@@ -1,9 +1,17 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -47,10 +55,51 @@ public class WorldStateManagerTests
         ITrieStore trieStore = Substitute.For<ITrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
-        readOnlyTrieStore.Scheme.Returns(keyScheme);
+        trieStore.Scheme.Returns(keyScheme);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
-        worldStateManager.SupportHashLookup.Should().Be(hashSupported);
+        if (hashSupported)
+        {
+            worldStateManager.HashServer.Should().NotBeNull();
+        }
+        else
+        {
+            worldStateManager.HashServer.Should().BeNull();
+        }
+    }
+
+    [Test]
+    public void ShouldAnnounceReorgOnDispose()
+    {
+        int lastBlock = 256;
+        int reorgDepth = 128; // Default reorg depth with snap serving
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IConfigProvider configProvider = new ConfigProvider();
+
+        {
+            using IContainer ctx = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton(blockTree)
+                .Build();
+
+            IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+
+            worldState.StateRoot = Keccak.EmptyTreeHash;
+
+            worldState.CreateAccount(TestItem.AddressA, 1, 2);
+            worldState.Commit(Cancun.Instance);
+            worldState.CommitTree(1);
+
+            for (int i = 2; i <= lastBlock; i++)
+            {
+                worldState.IncrementNonce(TestItem.AddressA, 1);
+                worldState.Commit(Cancun.Instance);
+                worldState.CommitTree(i);
+            }
+        }
+
+        blockTree.Received().BestPersistedState = lastBlock - reorgDepth - 1;
     }
 }
