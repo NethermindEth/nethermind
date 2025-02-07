@@ -43,6 +43,7 @@ public static class StateOverridesExtensions
         state.Commit(spec);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
+
     }
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
