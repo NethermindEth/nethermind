@@ -7,6 +7,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
@@ -197,13 +198,12 @@ public class BatchDecoder
         BigInteger yParityBits = DecodeBits(ref data, totalTxCount);
 
         // Signatures
-        Signature[] signatures = new Signature[totalTxCount];
+        (UInt256 R, UInt256 S)[] signatures = new (UInt256 R, UInt256 S)[totalTxCount];
         for (int i = 0; i < (int)totalTxCount; ++i)
         {
             signatures[i] = new(
-                data.TakeAndMove(32),
-                data.TakeAndMove(32),
-                27 // TODO: recover v
+                new(data.TakeAndMove(32)),
+                new(data.TakeAndMove(32))
             );
         }
 

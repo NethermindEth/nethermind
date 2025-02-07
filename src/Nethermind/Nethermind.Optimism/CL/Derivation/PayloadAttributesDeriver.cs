@@ -3,7 +3,9 @@
 
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -129,11 +131,14 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         for (ulong i = 0; i < txCount; i++)
         {
             ulong txIdx = from + i;
+            bool parityBit = ((batch.Txs.YParityBits >> (int)i) & 1) == 1;
+            ulong v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
+            Signature signature = new(batch.Txs.Signatures[txIdx].R, batch.Txs.Signatures[txIdx].S, v);
             var tx = new Transaction
             {
                 ChainId = _chainId,
                 Type = batch.Txs.Types[txIdx],
-                Signature = batch.Txs.Signatures[txIdx],
+                Signature = signature,
                 To = batch.Txs.Tos[txIdx],
                 Nonce = batch.Txs.Nonces[txIdx],
                 GasLimit = (long)batch.Txs.Gases[txIdx],
