@@ -1,21 +1,19 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
+import argparse
 import json
 import subprocess
 import emoji
-import sys
 import requests
 
 configsPath = './src/Nethermind/Nethermind.Runner/configs'
-
-key = sys.argv[1]
 
 headers = {
     'Content-type': 'application/json',
 }
 
-print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: "))
+SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "base-mainnet", "base-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
 
 configs = {
     # fast sync section
@@ -163,6 +161,18 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     with open(f'{configsPath}/{configuration}.json', 'w') as mainnetCfgChanged:
         json.dump(data, mainnetCfgChanged, indent=2)
 
-for config, value in configs.items():
-    print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
-    fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'])
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Fast Sync configuration settings")
+    parser.add_argument("-k", "--key", default="", help="etherscan API key")
+    parser.add_argument("--superchain", action="store_true", help="only process superchain chains")
+
+    args = parser.parse_args()
+    key = args.key
+
+    print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: "))
+    for config, value in configs.items():
+        if args.superchain and config not in SUPERCHAIN_CHAINS:
+            continue
+
+        print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
+        fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'])
