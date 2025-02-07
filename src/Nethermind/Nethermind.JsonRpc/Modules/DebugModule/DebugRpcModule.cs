@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Trie;
+using System.Reflection;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -29,6 +31,9 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
     private readonly BlockDecoder _blockDecoder;
+
+    private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
+    ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 
     public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
     {
@@ -56,6 +61,28 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+
+        // Fetch the block header for the transaction
+        var blockHashSearch = _debugBridge.GetBlockHashForTransaction(transactionHash);
+        if (blockHashSearch.IsError)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(blockHashSearch);
+        }
+
+        var blockHeaderSearch = _debugBridge.GetBlockHeader(new BlockParameter(blockHashSearch.Object));
+        if (blockHeaderSearch.IsError)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(blockHeaderSearch);
+        }
+
+        BlockHeader header = blockHeaderSearch.Object;
+
+        // Check if the state is available for the block
+        if (!_debugBridge.HasStateForBlock(header))
+        {
+            return GetStateFailureResult<GethLikeTxTrace>(header);
+        }
+
         GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
@@ -71,17 +98,30 @@ public class DebugRpcModule : IDebugRpcModule
         blockParameter ??= BlockParameter.Latest;
         call.EnsureDefaults(_jsonRpcConfig.GasCap);
         Transaction tx = call.ToTransaction();
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
 
-        GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
-        if (transactionTrace is null)
+        try // try-catch to intercept state pruned errors.
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
-        }
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            CancellationToken cancellationToken = timeout.Token;
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
-        return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            if (transactionTrace is null)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
+            }
+
+            if (_logger.IsTrace)
+                _logger.Trace($"{nameof(debug_traceCall)} request {tx.Hash}, result: trace");
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+        }
+        catch (MissingTrieNodeException) // Catching state pruned exception.
+        {
+            return GetStateFailureResult<GethLikeTxTrace>();
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is MissingTrieNodeException) // catching wrapped exceptions.
+        {
+            return GetStateFailureResult<GethLikeTxTrace>();
+        }
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
