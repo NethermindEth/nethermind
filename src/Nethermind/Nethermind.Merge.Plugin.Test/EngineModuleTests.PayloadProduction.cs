@@ -281,7 +281,7 @@ public partial class EngineModuleTests
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
 
-        Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.InRange(3, 5).After( timePerSlot.Milliseconds * 10, 1));
+        Assert.That(() => improvementContextFactory.CreatedContexts.Count, Is.InRange(3, 5).After(timePerSlot.Milliseconds * 10, 1));
 
         improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(static i => i.Disposed);
 
