@@ -121,18 +121,21 @@ public class GethStyleTracer : IGethStyleTracer
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        block = SetupBlock(block, BlockBody.WithOneTransactionOnly(tx), scope, options);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
-        try
+        lock (_env) //env shouldn't be shared, but can't find the root cause where it could be
         {
-            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
-            return blockTracer.BuildResult().SingleOrDefault();
-        }
-        catch
-        {
-            blockTracer.TryDispose();
-            throw;
+            using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+            block = SetupBlock(block, BlockBody.WithOneTransactionOnly(tx), scope, options);
+            IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
+            try
+            {
+                _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
+                return blockTracer.BuildResult().SingleOrDefault();
+            }
+            catch
+            {
+                blockTracer.TryDispose();
+                throw;
+            }
         }
     }
 
@@ -205,19 +208,22 @@ public class GethStyleTracer : IGethStyleTracer
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        block = SetupBlock(block, block.Body, scope, options);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
+        lock (_env) //env shouldn't be shared, but can't find the root cause where it could be
+        {
+            using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+            block = SetupBlock(block, block.Body, scope, options);
+            IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
-        try
-        {
-            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult().SingleOrDefault();
-        }
-        catch
-        {
-            tracer.TryDispose();
-            throw;
+            try
+            {
+                _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
+                return tracer.BuildResult().SingleOrDefault();
+            }
+            catch
+            {
+                tracer.TryDispose();
+                throw;
+            }
         }
     }
 
@@ -244,18 +250,21 @@ public class GethStyleTracer : IGethStyleTracer
             if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
         }
 
-        using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        block = SetupBlock(block, block.Body, scope, options);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
-        try
+        lock (_env) //env shouldn't be shared, but can't find the root cause where it could be
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult();
-        }
-        catch
-        {
-            tracer.TryDispose();
-            throw;
+            using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+            block = SetupBlock(block, block.Body, scope, options);
+            IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
+            try
+            {
+                _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+                return tracer.BuildResult();
+            }
+            catch
+            {
+                tracer.TryDispose();
+                throw;
+            }
         }
     }
 
