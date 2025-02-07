@@ -96,11 +96,10 @@ public class ChainSpecFileLoader
                     missingChainspecFileMessage.AppendLine($"  * {configFile}");
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+                throw new FileNotFoundException(missingChainspecFileMessage.ToString(), e);
             }
-
             throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
 
