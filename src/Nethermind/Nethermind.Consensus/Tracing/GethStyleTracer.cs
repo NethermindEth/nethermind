@@ -122,17 +122,20 @@ public class GethStyleTracer : IGethStyleTracer
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
-        try
+        lock (_env) //env shouldn't be shared, but can't find the root cause where it could be
         {
-            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
-            return blockTracer.BuildResult().SingleOrDefault();
-        }
-        catch
-        {
-            blockTracer.TryDispose();
-            throw;
+            using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+            IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
+            try
+            {
+                _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
+                return blockTracer.BuildResult().SingleOrDefault();
+            }
+            catch
+            {
+                blockTracer.TryDispose();
+                throw;
+            }
         }
     }
 
@@ -192,18 +195,21 @@ public class GethStyleTracer : IGethStyleTracer
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
+        lock (_env) //env shouldn't be shared, but can't find the root cause where it could be
+        {
+            using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+            IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
-        try
-        {
-            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult().SingleOrDefault();
-        }
-        catch
-        {
-            tracer.TryDispose();
-            throw;
+            try
+            {
+                _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
+                return tracer.BuildResult().SingleOrDefault();
+            }
+            catch
+            {
+                tracer.TryDispose();
+                throw;
+            }
         }
     }
 
@@ -230,17 +236,20 @@ public class GethStyleTracer : IGethStyleTracer
             if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
         }
 
-        using IOverridableTxProcessingScope? scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
-        try
+        lock (_env) //env shouldn't be shared, but can't find the root cause where it could be
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult();
-        }
-        catch
-        {
-            tracer.TryDispose();
-            throw;
+            using IOverridableTxProcessingScope scope = _env.BuildAndOverride(block.Header, options.StateOverrides);
+            IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
+            try
+            {
+                _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+                return tracer.BuildResult();
+            }
+            catch
+            {
+                tracer.TryDispose();
+                throw;
+            }
         }
     }
 
