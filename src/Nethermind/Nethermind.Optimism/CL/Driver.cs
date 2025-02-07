@@ -66,7 +66,7 @@ public class Driver : IDisposable
     private void OnL2BlocksDerived(OptimismPayloadAttributes[] payloadAttributes, ulong l2ParentNumber)
     {
         _logger.Error($"CHECKING PAYLOAD ATTRIBUTES");
-        for (int i = 0; i < payloadAttributes.Length; i++)
+        for (int i = 0; i < 1; i++)
         {
             var block = _l2EthRpc.eth_getBlockByNumber(new((long)l2ParentNumber + 1 + i), true).Data;
             var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
@@ -141,21 +141,23 @@ public class Driver : IDisposable
             _logger.Error($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
         }
         //
-        for (int i = 0; i < 1; i++)
+        for (int i = 1; i < 2; i++)
         {
+            _logger.Error("HERE0");
             if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
             {
-                // _logger.Error($"HERE");
+                _logger.Error("HERE");
                 // Transaction expectedTransaction =
-                //     decoder.Decode(expected.Transactions[i], new(expected.Transactions[i]), RlpBehaviors.SkipTypedWrapping)!;
+                //     Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
                 //
-                // _logger.Error($"HERE2");
-                // Transaction actualTransaction =
-                //     decoder.Decode(actual.Transactions[i], new(actual.Transactions[i]), RlpBehaviors.SkipTypedWrapping)!;;
+
+                Transaction actualTransaction =
+                    Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
+                _logger.Error("HERE2");
                 _logger.Error($"Invalid Transaction {i}. Expected:\n{
                     BitConverter.ToString(expected.Transactions[i]).ToLower().Replace("-", "")}, Actual:\n{
                         BitConverter.ToString(actual.Transactions[i]).ToLower().Replace("-", "")}");
-                // _logger.Error($"Invalid Transaction. Expected:\n{expectedTransaction}, Actual:\n{actualTransaction}");
+                _logger.Error($"Invalid Transaction. Expected:\n, Actual:\n{actualTransaction}");
             }
         }
         _logger.Error($"CHECKED");

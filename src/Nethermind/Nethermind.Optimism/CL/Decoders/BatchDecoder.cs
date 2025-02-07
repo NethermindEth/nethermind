@@ -154,9 +154,7 @@ public class BatchDecoder
         else
         {
             n += rlpStream.PeekNextRlpLength();
-            byte[] result = rlpStream.PeekNextItem().ToArray();
-            data.TakeAndMove(n);
-            return (result, (TxType)type);
+            return (data.TakeAndMove(n).ToArray(), (TxType)type);
         }
     }
 

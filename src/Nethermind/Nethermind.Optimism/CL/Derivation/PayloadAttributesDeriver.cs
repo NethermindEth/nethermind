@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Optimism.CL;
 
@@ -105,7 +107,6 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
             new(decoder.GetLength(systemTx, RlpBehaviors.SkipTypedWrapping, true, true, _chainId));
         decoder.Encode(systemTx, systemTxStream, RlpBehaviors.SkipTypedWrapping, true, true, _chainId);
 
-
         OptimismPayloadAttributes payload = new()
         {
             GasLimit = (long)systemConfig.GasLimit,
@@ -128,18 +129,77 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         for (ulong i = 0; i < txCount; i++)
         {
             ulong txIdx = from + i;
-            userTransactions[i] = new Transaction
+            var tx = new Transaction
             {
                 ChainId = _chainId,
-                Data = batch.Txs.Datas[txIdx],
                 Type = batch.Txs.Types[txIdx],
                 Signature = batch.Txs.Signatures[txIdx],
                 To = batch.Txs.Tos[txIdx],
                 Nonce = batch.Txs.Nonces[txIdx],
                 GasLimit = (long)batch.Txs.Gases[txIdx],
             };
+            switch (batch.Txs.Types[txIdx])
+            {
+                case TxType.Legacy:
+                {
+                    (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(batch.Txs.Datas[txIdx]);
+                    break;
+                }
+                case TxType.AccessList:
+                {
+                    (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(batch.Txs.Datas[txIdx]);
+                    break;
+                }
+                case TxType.EIP1559:
+                {
+                    (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) = DecodeEip1559Transaction(batch.Txs.Datas[txIdx]);
+                    break;
+                }
+            }
+            userTransactions[i] = tx;
+
         }
 
         return userTransactions;
+    }
+
+    private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(byte[] encoded)
+    {
+        // rlp_encode(value, gasPrice, data)
+        RlpStream stream = new(encoded);
+        int length = stream.ReadSequenceLength();
+        UInt256 value = stream.DecodeUInt256();
+        UInt256 gasPrice = stream.DecodeUInt256();
+        byte[] data = stream.DecodeByteArray();
+        return (value, gasPrice, data);
+    }
+
+    private (UInt256 Value, UInt256 GasPrice, byte[] Data, AccessList? AccessList)
+        DecodeAccessListTransaction(byte[] encoded)
+    {
+        // 0x01 ++ rlp_encode(value, gasPrice, data, accessList)
+        RlpStream stream = new(encoded);
+        stream.ReadByte(); // type
+        int length = stream.ReadSequenceLength();
+        UInt256 value = stream.DecodeUInt256();
+        UInt256 gasPrice = stream.DecodeUInt256();
+        byte[] data = stream.DecodeByteArray();
+        AccessList? accessList = AccessListDecoder.Instance.Decode(stream);
+        return (value, gasPrice, data, accessList);
+    }
+
+    private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList)
+        DecodeEip1559Transaction(byte[] encoded)
+    {
+        // 0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)
+        RlpStream stream = new(encoded);
+        byte type = stream.ReadByte(); // type
+        int length = stream.ReadSequenceLength();
+        UInt256 value = stream.DecodeUInt256();
+        UInt256 maxPriorityFeePerGas = stream.DecodeUInt256();
+        UInt256 maxFeePerGas = stream.DecodeUInt256();
+        byte[] data = stream.DecodeByteArray();
+        AccessList? accessList = AccessListDecoder.Instance.Decode(stream);
+        return (value, maxPriorityFeePerGas, maxFeePerGas, data, accessList);
     }
 }
