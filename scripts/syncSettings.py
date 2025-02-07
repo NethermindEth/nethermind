@@ -3,16 +3,11 @@
 
 import argparse
 import json
-import subprocess
 import emoji
 import requests
 
-configsPath = './src/Nethermind/Nethermind.Runner/configs'
-
-headers = {
-    'Content-type': 'application/json',
-}
-
+CONFIGS_PATH = './src/Nethermind/Nethermind.Runner/configs'
+APPLICATION_JSON = { 'Content-type': 'application/json' }
 SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "base-mainnet", "base-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
 
 configs = {
@@ -123,22 +118,33 @@ configs = {
 
 def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement, isPoS):
     if "etherscan" in apiUrl:
-        latestBlock = int(json.loads(subprocess.getoutput(
-            f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_blockNumber&apikey={key}"'))['result'], 16)
+        params = {
+            'module': 'proxy',
+            'action': 'eth_blockNumber',
+            'apikey': key,
+        }
+        response = requests.get(f'https://{apiUrl}/api', params=params)
+        latestBlock = int(json.loads(response.text)['result'], 16)
     else:
         data_req = '{"id":0,"jsonrpc":"2.0","method": "eth_blockNumber","params": []}'
-        response = requests.post(apiUrl, headers=headers, data=data_req).text
+        response = requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req).text
         latestBlock = int(json.loads(response)['result'], 16)
 
     baseBlock = latestBlock - blockReduced
     baseBlock = baseBlock - baseBlock % multiplierRequirement
 
     if "etherscan" in apiUrl:
-        pivot = json.loads(subprocess.getoutput(
-            f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_getBlockByNumber&tag={hex(baseBlock)}&boolean=true&apikey={key}"'))
+        params = {
+            'module': 'proxy',
+            'action': 'eth_getBlockByNumber',
+            'tag': f'{hex(baseBlock)}',
+            'boolean': 'true',
+            'apikey': key,
+        }
+        pivot = json.loads(requests.get(f'https://{apiUrl}/api', params=params))
     else:
-        data_req = '{"id":0,"jsonrpc":"2.0","method": "eth_getBlockByNumber","params": ["' + str(hex(baseBlock)) + '", false]}'
-        pivot = json.loads(requests.post(apiUrl, headers=headers, data=data_req).text)
+        data_req = f'{{"id":0,"jsonrpc":"2.0","method": "eth_getBlockByNumber","params": ["{hex(baseBlock)}", false]}}'
+        pivot = json.loads(requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req).text)
 
     pivotHash = pivot['result']['hash']
     pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)
@@ -149,7 +155,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     if not isPoS:
       print(configuration + ' PivotTotalDifficulty: ' + str(pivotTotalDifficulty))
 
-    with open(f'{configsPath}/{configuration}.json', 'r') as mainnetCfg:
+    with open(f'{CONFIGS_PATH}/{configuration}.json', 'r') as mainnetCfg:
         data = json.load(mainnetCfg)
 
     data['Sync']['PivotNumber'] = baseBlock
@@ -158,7 +164,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     if not isPoS:
         data['Sync']['PivotTotalDifficulty'] = str(pivotTotalDifficulty)
 
-    with open(f'{configsPath}/{configuration}.json', 'w') as mainnetCfgChanged:
+    with open(f'{CONFIGS_PATH}/{configuration}.json', 'w') as mainnetCfgChanged:
         json.dump(data, mainnetCfgChanged, indent=2)
 
 if __name__ == "__main__":
