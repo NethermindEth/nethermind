@@ -112,6 +112,24 @@ namespace Nethermind.Api
             );
         }
 
+        private IBlockchainBridge? _blockchainBridge;
+
+        public IBlockchainBridge? BlockchainBridge
+        {
+            get
+            {
+                if (_blockchainBridge == null)
+                {
+                    _blockchainBridge = CreateBlockchainBridge();
+                }
+                return _blockchainBridge;
+            }
+            set
+            {
+                _blockchainBridge = value;
+            }
+        }
+
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlobTxStorage? BlobTxStorage { get; set; }
         public IBlockchainProcessor? BlockchainProcessor { get; set; }

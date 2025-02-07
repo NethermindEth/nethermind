@@ -19,6 +19,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Facade;
 
 namespace Nethermind.Api
 {
@@ -56,6 +57,7 @@ namespace Nethermind.Api
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 
         IContainer? ApiWithNetworkServiceContainer { get; set; }
+        IBlockchainBridge? BlockchainBridge { get; set; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
         {

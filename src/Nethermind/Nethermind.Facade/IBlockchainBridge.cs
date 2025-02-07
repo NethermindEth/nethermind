@@ -53,5 +53,6 @@ namespace Nethermind.Facade
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot);
         bool HasStateForRoot(Hash256 stateRoot);
+        Block? GetBlock(Hash256 blockHash);
     }
 }
