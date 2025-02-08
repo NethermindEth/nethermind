@@ -185,7 +185,7 @@ internal static partial class EvmInstructions
             vm.EvmState.AccessTracker.WarmUp(contractAddress);
         }
 
-        // Special case: if EoF (End-of-File) code format is enabled and the init code starts with the EOF marker,
+        // Special case: if EOF code format is enabled and the init code starts with the EOF marker,
         // the creation is not executed. This ensures that a special marker is not mistakenly executed as code.
         if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
         {

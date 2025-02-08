@@ -11,7 +11,6 @@ public static class CodeInfoFactory
 {
     public static ICodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExractHeader)
     {
-        CodeInfo codeInfo = new(code);
         if (spec.IsEofEnabled && code.Span.StartsWith(EofValidator.MAGIC))
         {
             if (EofValidator.IsValidEof(code, validationRules, out EofContainer? container))
@@ -19,6 +18,7 @@ public static class CodeInfoFactory
                 return new EofCodeInfo(container.Value);
             }
         }
+        CodeInfo codeInfo = new(code);
         codeInfo.AnalyzeInBackgroundIfRequired();
         return codeInfo;
     }
