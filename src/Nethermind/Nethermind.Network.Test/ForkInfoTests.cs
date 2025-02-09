@@ -107,10 +107,10 @@ public class ForkInfoTests
     [TestCase(1, 1_696_000_703ul, "0xc61a6098", 1_696_000_704ul, "Last genesis spec block")]
     [TestCase(2, 1_696_000_704ul, "0xfd4f016b", 1_707_305_664ul, "First Shanghai block")]
     [TestCase(3, 1_707_305_663ul, "0xfd4f016b", 1_707_305_664ul, "Future Shanghai timestamp")]
-    [TestCase(4, 1_707_305_664ul, "0x9b192ad0", 1_739_352_768ul, "First Cancun timestamp")]
-    [TestCase(5, 1_717_305_664ul, "0x9b192ad0", 1_739_352_768ul, "Future Cancun timestamp")]
-    [TestCase(5, 1_739_352_768ul, "0xf818a0d6", 0ul, "First Prague timestamp")]
-    [TestCase(5, 1_759_352_768ul, "0xf818a0d6", 0ul, "Future Prague timestamp")]
+    [TestCase(4, 1_707_305_664ul, "0x9b192ad0", 1_740_434_112ul, "First Cancun timestamp")]
+    [TestCase(5, 1_717_305_664ul, "0x9b192ad0", 1_740_434_112ul, "Future Cancun timestamp")]
+    [TestCase(5, 1_740_434_112ul, "0xdfbd9bed", 0ul, "First Prague timestamp")]
+    [TestCase(5, 1_760_434_112ul, "0xdfbd9bed", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected_on_holesky(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.HoleskyGenesis, forkHashHex, next, description, HoleskySpecProvider.Instance, "holesky.json");
@@ -121,8 +121,10 @@ public class ForkInfoTests
     [TestCase(1735371, 0ul, "0xb96cbd13", 1_677_557_088ul, "First block - Sepolia MergeForkIdTransition")]
     [TestCase(1735372, 1_677_557_088ul, "0xf7f9bc08", 1_706_655_072ul, "Shanghai")]
     [TestCase(1735372, 1_706_655_071ul, "0xf7f9bc08", 1_706_655_072ul, "Future Shanghai")]
-    [TestCase(1735373, 1_706_655_072ul, "0x88cf81d9", 0ul, "First Cancun timestamp")]
-    [TestCase(1735374, 1_716_655_072ul, "0x88cf81d9", 0ul, "Future Cancun timestamp")]
+    [TestCase(1735373, 1_706_655_072ul, "0x88cf81d9", 1_741_159_776ul, "First Cancun timestamp")]
+    [TestCase(1735374, 1_716_655_072ul, "0x88cf81d9", 1_741_159_776ul, "Future Cancun timestamp")]
+    [TestCase(1735373, 1_741_159_776ul, "0xed88b5fd", 0ul, "First Prague timestamp")]
+    [TestCase(1735374, 1_761_159_776ul, "0xed88b5fd", 0ul, "Future Prague timestamp")]
     public void Fork_id_and_hash_as_expected_on_sepolia(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
