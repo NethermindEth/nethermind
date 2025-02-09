@@ -204,7 +204,7 @@ public class NodeStatsLight : INodeStats
     {
         return (long?)(transferSpeedType switch
         {
-            TransferSpeedType.Latency => _averageLatency,
+            TransferSpeedType.Latency => _averageLatency ?? int.MaxValue,
             TransferSpeedType.NodeData => _averageNodesTransferSpeed,
             TransferSpeedType.Headers => _averageHeadersTransferSpeed,
             TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
