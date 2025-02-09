@@ -13,6 +13,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Rlpx;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
@@ -91,13 +92,14 @@ public static class SubscriptionFactoryExtensions
     public static void RegisterPeerEventsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         ILogManager? logManager,
-        IPeerPool? peerPool
+        IPeerPool? peerPool,
+        IRlpxHost? rlpxHost
         )
     {
         subscriptionFactory.RegisterSubscriptionType(
             SubscriptionType.AdminSubscription.PeerEvents,
             (jsonRpcDuplexClient) =>
-            new PeerEventsSubscription(jsonRpcDuplexClient, logManager, peerPool)
+            new PeerEventsSubscription(jsonRpcDuplexClient, logManager, peerPool, rlpxHost)
             );
     }
 
@@ -110,7 +112,8 @@ public static class SubscriptionFactoryExtensions
         IFilterStore? filterStore,
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo,
-        IPeerPool? peerPool
+        IPeerPool? peerPool,
+        IRlpxHost? rlpxHost
         )
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
@@ -118,7 +121,7 @@ public static class SubscriptionFactoryExtensions
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
-        subscriptionFactory.RegisterPeerEventsSubscription(logManager, peerPool);
+        subscriptionFactory.RegisterPeerEventsSubscription(logManager, peerPool, rlpxHost);
     }
 
     public static void RegisterStandardEthSubscriptions(

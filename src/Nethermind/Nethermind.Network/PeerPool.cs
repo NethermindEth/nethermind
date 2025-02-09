@@ -95,7 +95,7 @@ namespace Nethermind.Network
                 arg.Statics.TryAdd(arg.Node.Id, peer);
             }
 
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer.Node));
+            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
         }
 
@@ -104,7 +104,7 @@ namespace Nethermind.Network
             Node node = new(arg.Node);
             Peer peer = new(node, _stats.GetOrAdd(node));
 
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer.Node));
+            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
         }
 
@@ -122,7 +122,7 @@ namespace Nethermind.Network
                 peer.OutSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
                 peer.OutSession = null;
-                PeerRemoved?.Invoke(this, new PeerEventArgs(peer.Node));
+                PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
                 return true;
             }
 

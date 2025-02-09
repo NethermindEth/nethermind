@@ -10,29 +10,25 @@ namespace Nethermind.Network;
 
 public class PeerEventArgs : EventArgs
 {
-    public PeerEventArgs(Node remoteNode)
+    public PeerEventArgs(Peer peer)
     {
-        node = remoteNode;
+        Peer = peer;
+        Node = peer.Node;
     }
     public PeerEventArgs(Node remoteNode, string msgProtocol, int msgPacketType, int msgSize)
     {
-        node = remoteNode;
-        messageInfo = new MessageInfo(msgProtocol, msgPacketType, msgSize);
+        Node = remoteNode;
+        MessageInfo = new MessageInfoModel(msgProtocol, msgPacketType, msgSize);
     }
 
-    public Node node { get; set; }
-    public MessageInfo messageInfo { get; set; }
+    public Peer Peer { get; set;}
+    public Node Node { get; set; }
+    public MessageInfoModel MessageInfo { get; set; }
 
-    public class MessageInfo
+    public class MessageInfoModel(string msgProtocol, int msgPacketType, int msgSize)
     {
-        public MessageInfo(string msgProtocol, int msgPacketType, int msgSize)
-        {
-            protocol = msgProtocol;
-            packetType = msgPacketType;
-            size = msgSize;
-        }
-        public string protocol { get; set; }
-        public int packetType { get; set; }
-        public int size { get; set; }
+        public string Protocol { get; set; } = msgProtocol;
+        public int PacketType { get; set; } = msgPacketType;
+        public int Size { get; set; } = msgSize;
     }
 }

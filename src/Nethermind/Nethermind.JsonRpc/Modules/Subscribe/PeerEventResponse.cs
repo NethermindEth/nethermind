@@ -11,12 +11,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 public class PeerEventResponse
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string Type { get; set; }
-    public string Peer { get; set; }
-    public string protocal {  get; set; }
-    public int MsgPacketType { get; set; }
-    public int MsgSize { get; set; }
-    public string Local { get; set; }
-    public string Remote { get; set; }
+    public string? Type { get; set; }
+    public string? Peer { get; set; }
+    public string? Protocol {  get; set; }
+    public int? MsgPacketType { get; set; }
+    public int? MsgSize { get; set; }
+    public string? Local { get; set; }
+    public string? Remote { get; set; }
     public string? Error { get; set; }
 }

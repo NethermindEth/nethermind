@@ -9,14 +9,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+// using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
+// using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+// using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Era1;
 using Nethermind.JsonRpc.Modules;
@@ -25,17 +25,23 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
+// using Nethermind.Synchronization;
+// using Nethermind.Synchronization.FastSync;
+// using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
+// using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Network.P2P;
+// using Nethermind.Crypto;
+// using Nethermind.Network.Rlpx.Handshake;
+// using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -49,11 +55,11 @@ public class AdminModuleTests
     private ILogManager _logManager = null!;
     private ITxPool _txPool = null!;
     private IReceiptStorage _receiptStorage = null!;
-    private IFilterStore _filterStore = null!;
-    private ISyncConfig _syncConfig = null!;
+    // private IFilterStore _filterStore = null!;
+    // private ISyncConfig _syncConfig = null!;
     private IReceiptMonitor _receiptCanonicalityMonitor = null!;
-    private ISyncProgressResolver _syncProgressResolver = null!;
-    private ISpecProvider _specProvider = null!;
+    // private ISyncProgressResolver _syncProgressResolver = null!;
+    // private ISpecProvider _specProvider = null!;
     private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
     private IJsonSerializer _jsonSerializer = null!;
     private IBlockTree _blockTree = null!;
@@ -63,6 +69,17 @@ public class AdminModuleTests
     private const string _exampleDataDir = "/example/dbdir";
     private ISubscriptionManager _subscriptionManager = null!;
     private IPeerPool _peerPool = null!;
+    private IRlpxHost _rlpxPeer = null!;
+    private ISession _existingSession1 = null!;
+    private ISession _existingSession2 = null!;
+    private ISession _newSession1 = null!;
+    // private IMessageSerializationService _serializationService = null!;
+    // private IProtectedPrivateKey _nodeKey = null!;
+    // private IHandshakeService _handshakeService = null!;
+    // private ISessionMonitor _sessionMonitor = null!;
+    // private IDisconnectsAnalyzer _disconnectsAnalyzer = null!;
+    // private IChannelFactory _channelFactory = null!;
+
 
     [SetUp]
     public void Setup()
@@ -71,10 +88,10 @@ public class AdminModuleTests
         _txPool = Substitute.For<ITxPool>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
-        _filterStore = new FilterStore();
-        _syncConfig = new SyncConfig();
-        _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-        _specProvider = Substitute.For<ISpecProvider>();
+        // _filterStore = new FilterStore();
+        // _syncConfig = new SyncConfig();
+        // _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+        // _specProvider = Substitute.For<ISpecProvider>();
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _jsonSerializer = new EthereumJsonSerializer();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
@@ -87,6 +104,22 @@ public class AdminModuleTests
         peerPool.ActivePeers.Returns(dict);
         IAdminEraService eraService = Substitute.For<IAdminEraService>();
         _peerPool = peerPool;
+        // _serializationService = Substitute.For<IMessageSerializationService>();
+        // _nodeKey = Substitute.For<IProtectedPrivateKey>();
+        // _handshakeService = Substitute.For<IHandshakeService>();
+        // _sessionMonitor = Substitute.For<ISessionMonitor>();
+        // _disconnectsAnalyzer = Substitute.For<IDisconnectsAnalyzer>();
+        // _channelFactory = Substitute.For<IChannelFactory>();
+        _existingSession1 = Substitute.For<ISession>();
+        _existingSession2 = Substitute.For<ISession>();
+        _newSession1 = Substitute.For<ISession>();
+        ConcurrentDictionary<Guid, ISession> existingSessions = new();
+        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abc"), _existingSession1);     
+        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abd"), _existingSession2);     
+
+        // _rlpxPeer = new RlpxHost(_serializationService, _nodeKey, _handshakeService, _sessionMonitor, _disconnectsAnalyzer, _networkConfig, _logManager, _channelFactory);
+        _rlpxPeer = Substitute.For<IRlpxHost>();
+        _rlpxPeer.SessionMonitor.Sessions.Returns(existingSessions); // return array of sessions
 
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
@@ -98,7 +131,7 @@ public class AdminModuleTests
 
         SubscriptionFactory subscriptionFactory = new();
 
-        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, peerPool);
+        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
 
         _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -127,11 +160,14 @@ public class AdminModuleTests
     {
         _jsonRpcDuplexClient?.Dispose();
         _receiptCanonicalityMonitor?.Dispose();
+        _existingSession1?.Dispose();
+        _existingSession2?.Dispose();
+        _newSession1?.Dispose();
     }
 
     private JsonRpcResult GetPeerEventsAddResult(PeerEventArgs peerEventArgs, out string subscriptionId, bool shouldReceiveResult = true)
     {
-        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool);
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
         JsonRpcResult jsonRpcResult = new();
         ManualResetEvent manualResetEvent = new(false);
         peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -146,7 +182,7 @@ public class AdminModuleTests
     }
     private JsonRpcResult GetPeerEventsRemovedResult(PeerEventArgs peerEventArgs, out string subscriptionId, bool shouldReceiveResult = true)
     {
-        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool);
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
         JsonRpcResult jsonRpcResult = new();
         ManualResetEvent manualResetEvent = new(false);
         peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -155,6 +191,76 @@ public class AdminModuleTests
             manualResetEvent.Set();
         }));
         _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
+        manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+        subscriptionId = peerEventsSubscription.Id;
+        return jsonRpcResult;
+    }
+
+    private JsonRpcResult GetPeerEventsMsgReceivedResult(PeerEventArgs peerEventArgs, out string subscriptionId, ISession _session, bool shouldReceiveResult = true)
+    {
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+        JsonRpcResult jsonRpcResult = new();
+        ManualResetEvent manualResetEvent = new(false);
+        peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+        {
+            jsonRpcResult = j;
+            manualResetEvent.Set();
+        }));
+        _session.MsgReceived += Raise.EventWith(new object(), peerEventArgs);
+        manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+        subscriptionId = peerEventsSubscription.Id;
+        return jsonRpcResult;
+    }
+
+    private JsonRpcResult GetPeerEventsMsgReceivedResultNewSession(PeerEventArgs peerEventArgs, out string subscriptionId, ISession _session, bool shouldReceiveResult = true)
+    {
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+        JsonRpcResult jsonRpcResult = new();
+        ManualResetEvent manualResetEvent = new(false);
+        peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+        {
+            jsonRpcResult = j;
+            manualResetEvent.Set();
+        }));
+        SessionEventArgs sessionEventArgs = new(_session);
+        _rlpxPeer.SessionCreated += Raise.EventWith(_rlpxPeer, sessionEventArgs);
+
+        _session.MsgReceived += Raise.EventWith(new object(), peerEventArgs);
+        manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+        subscriptionId = peerEventsSubscription.Id;
+        return jsonRpcResult;
+    }
+
+    private JsonRpcResult GetPeerEventsMsgDeliveredResult(PeerEventArgs peerEventArgs, out string subscriptionId, ISession _session, bool shouldReceiveResult = true)
+    {
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+        JsonRpcResult jsonRpcResult = new();
+        ManualResetEvent manualResetEvent = new(false);
+        peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+        {
+            jsonRpcResult = j;
+            manualResetEvent.Set();
+        }));
+        _session.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
+        manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+        subscriptionId = peerEventsSubscription.Id;
+        return jsonRpcResult;
+    }
+
+    private JsonRpcResult GetPeerEventsMsgDeliveredResultNewSession(PeerEventArgs peerEventArgs, out string subscriptionId, ISession _session, bool shouldReceiveResult = true)
+    {
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+        JsonRpcResult jsonRpcResult = new();
+        ManualResetEvent manualResetEvent = new(false);
+        peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+        {
+            jsonRpcResult = j;
+            manualResetEvent.Set();
+        }));
+        SessionEventArgs sessionEventArgs = new(_session);
+        _rlpxPeer.SessionCreated += Raise.EventWith(_rlpxPeer, sessionEventArgs);
+
+        _session.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
         manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
         subscriptionId = peerEventsSubscription.Id;
         return jsonRpcResult;
@@ -292,7 +398,7 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult = GetPeerEventsAddResult(new PeerEventArgs(new Peer(node)), out string subscriptionId);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"Add\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"add\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
     }
     [Test]
@@ -302,7 +408,107 @@ public class AdminModuleTests
         JsonRpcResult jsonRpcResult = GetPeerEventsRemovedResult(new PeerEventArgs(new Peer(node)), out string subscriptionId);
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"Drop\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"drop\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
         expectedResult.Should().Be(serialized);
+    }
+
+    [Test]
+    public void Admin_subscription_on_MsgReceived_event()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        JsonRpcResult jsonRpcResult = GetPeerEventsMsgReceivedResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, _existingSession1);
+        jsonRpcResult.Response.Should().NotBeNull();
+        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult.Should().Be(serialized);
+    }
+
+    [Test]
+    public void Admin_subscription_on_MsgDelivered_event()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        JsonRpcResult jsonRpcResult = GetPeerEventsMsgDeliveredResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, _existingSession1);
+        jsonRpcResult.Response.Should().NotBeNull();
+        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult.Should().Be(serialized);
+    }
+
+    [Test]
+    public void MsgReceived_event_on_all_existing_session()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        JsonRpcResult jsonRpcResult1 = GetPeerEventsMsgReceivedResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId1, _existingSession1);
+        jsonRpcResult1.Response.Should().NotBeNull();
+        string serialized1 = _jsonSerializer.Serialize(jsonRpcResult1.Response);
+        var expectedResult1 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId1, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult1.Should().Be(serialized1);
+
+        JsonRpcResult jsonRpcResult2 = GetPeerEventsMsgReceivedResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId2, _existingSession2);
+        jsonRpcResult2.Response.Should().NotBeNull();
+        string serialized2 = _jsonSerializer.Serialize(jsonRpcResult2.Response);
+        var expectedResult2 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId2, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult2.Should().Be(serialized2);
+    }
+
+    [Test]
+    public void MsgDelivered_event_on_all_existing_session()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        JsonRpcResult jsonRpcResult1 = GetPeerEventsMsgDeliveredResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId1, _existingSession1);
+        jsonRpcResult1.Response.Should().NotBeNull();
+        string serialized1 = _jsonSerializer.Serialize(jsonRpcResult1.Response);
+        var expectedResult1 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId1, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult1.Should().Be(serialized1);
+
+        JsonRpcResult jsonRpcResult2 = GetPeerEventsMsgDeliveredResult(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId2, _existingSession2);
+        jsonRpcResult2.Response.Should().NotBeNull();
+        string serialized2 = _jsonSerializer.Serialize(jsonRpcResult2.Response);
+        var expectedResult2 = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId2, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult2.Should().Be(serialized2);
+    }
+
+    [Test]
+    public void MsgReceived_event_on_new_session()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        JsonRpcResult jsonRpcResult = GetPeerEventsMsgReceivedResultNewSession(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, _newSession1);
+        // (JsonRpcResult jsonRpcResult, String subscriptionId) = await GetPeerEventsMsgReceivedResultNewSession(new PeerEventArgs(node, "BitTorrent", 1, 2), _newSession1, node);
+        jsonRpcResult.Response.Should().NotBeNull();
+        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgrecv\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult.Should().Be(serialized);
+    }
+
+    [Test]
+    public void MsgDelivered_event_on_new_session()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        JsonRpcResult jsonRpcResult = GetPeerEventsMsgDeliveredResultNewSession(new PeerEventArgs(node, "BitTorrent", 1, 2), out string subscriptionId, _newSession1);
+        jsonRpcResult.Response.Should().NotBeNull();
+        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"admin_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"type\":\"msgsend\",\"peer\":\"", TestItem.PublicKeyA.Hash.ToString(false), "\",\"protocol\":\"BitTorrent\",\"msgPacketType\":1,\"msgSize\":2,\"local\":\"192.168.1.18\",\"remote\":\"192.168.1.18:8000\"}}}");
+        expectedResult.Should().Be(serialized);
+    }
+
+    [Test]
+    public void MsgDelivered_after_session_closed()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        DisconnectEventArgs disconnectEventArgs = new(new DisconnectReason(), new DisconnectType(), "");
+        PeerEventArgs peerEventArgs = new PeerEventArgs(node, "BitTorrent", 1, 2);
+        PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+        JsonRpcResult jsonRpcResult = new();
+        ManualResetEvent manualResetEvent = new(false);
+        peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+        {
+            jsonRpcResult = j;
+            manualResetEvent.Set();
+        }));
+        
+        _existingSession1.Disconnected += Raise.EventWith(_existingSession1, disconnectEventArgs);
+        _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
+
+        manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(false);
     }
 }

@@ -231,7 +231,7 @@ namespace Nethermind.Network.P2P
                 message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
                 int size = _packetSender.Enqueue(message);
 
-                MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size)); // What arguments to pass?
+                MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
 
                 RecordOutgoingMessageMetric(message, size);
 

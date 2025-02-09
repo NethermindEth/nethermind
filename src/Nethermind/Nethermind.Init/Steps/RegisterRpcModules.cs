@@ -131,7 +131,7 @@ public class RegisterRpcModules : IStep
         SubscriptionFactory subscriptionFactory = new();
 
         // Register the standard subscription types in the dictionary
-        subscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool);
+        subscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool, _api.RlpxPeer);
 
         _api.SubscriptionFactory = subscriptionFactory;
 

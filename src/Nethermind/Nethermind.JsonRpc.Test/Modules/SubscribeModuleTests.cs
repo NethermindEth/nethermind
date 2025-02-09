@@ -39,6 +39,7 @@ using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -61,6 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private ISyncProgressResolver _syncProgressResolver = null!;
         private EthSyncingInfo _ethSyncingInfo;
         private IPeerPool _peerPool;
+        private IRlpxHost _rlpxPeer;
 
         [SetUp]
         public void Setup()
@@ -79,6 +81,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
                 new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
             _peerPool = Substitute.For<IPeerPool>();
+            _rlpxPeer = Substitute.For<IRlpxHost>();
 
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
@@ -226,7 +229,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetPeerEventsAddResult(PeerEventArgs peerEventArgs, out string subscriptionId, bool shouldReceiveResult = true)
         {
-            PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool);
+            PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
             JsonRpcResult jsonRpcResult = new();
             ManualResetEvent manualResetEvent = new(false);
             peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -241,7 +244,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         private JsonRpcResult GetPeerEventsRemovedResult(PeerEventArgs peerEventArgs, out string subscriptionId, bool shouldReceiveResult = true)
         {
-            PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool);
+            PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
             JsonRpcResult jsonRpcResult = new();
             ManualResetEvent manualResetEvent = new(false);
             peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
