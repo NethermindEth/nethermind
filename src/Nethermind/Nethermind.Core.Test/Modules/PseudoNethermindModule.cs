@@ -55,6 +55,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
                 initConfig.BackgroundTaskConcurrency,
+                initConfig.BackgroundTaskMaxNumber,
                 logManager))
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
