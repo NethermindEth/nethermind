@@ -504,7 +504,6 @@ public class AdminModuleTests
             jsonRpcResult = j;
             manualResetEvent.Set();
         }));
-        
         _existingSession1.Disconnected += Raise.EventWith(_existingSession1, disconnectEventArgs);
         _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
 
