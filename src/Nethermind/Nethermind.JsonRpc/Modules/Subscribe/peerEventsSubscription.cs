@@ -44,7 +44,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }
             }
             _rlpxHost.SessionCreated += OnSessionCreated;
-            
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded, PeerRemoved, MsgDelivered and MsgReceived.");
         }
 
@@ -54,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             var response = new PeerEventResponse
             {
                 Type = PeerEventType.Add,
-                Peer =  peerInfo.Id,
+                Peer = peerInfo.Id,
                 Local = peerInfo.Host,
                 Remote = peerInfo.Address,
             };
@@ -156,11 +155,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _peerPool.PeerAdded -= OnPeerAdded;
             _peerPool.PeerRemoved -= OnPeerRemoved;
             foreach (ISession session in _sessionMonitor.Sessions.Values)
-                {
-                    session.MsgDelivered -= OnMsgDelivered;
-                    session.MsgReceived -= OnMsgReceived;
-                    session.Disconnected -= OnSessionDisconnected;
-                }
+            {
+                session.MsgDelivered -= OnMsgDelivered;
+                session.MsgReceived -= OnMsgReceived;
+                session.Disconnected -= OnSessionDisconnected;
+            }
             _rlpxHost.SessionCreated -= OnSessionCreated;
             base.Dispose();
             if (_logger.IsTrace) _logger.Trace($"admin_subscription.peerEvent {Id} is no longer subscribed.");

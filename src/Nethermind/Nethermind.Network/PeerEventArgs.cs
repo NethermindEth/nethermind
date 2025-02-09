@@ -21,7 +21,7 @@ public class PeerEventArgs : EventArgs
         MessageInfo = new MessageInfoModel(msgProtocol, msgPacketType, msgSize);
     }
 
-    public Peer Peer { get; set;}
+    public Peer Peer { get; set; }
     public Node Node { get; set; }
     public MessageInfoModel MessageInfo { get; set; }
 

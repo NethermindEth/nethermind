@@ -549,7 +549,7 @@ namespace Nethermind.Network.P2P
         public event EventHandler<DisconnectEventArgs> Disconnected;
         public event EventHandler<EventArgs> HandshakeComplete;
         public event EventHandler<EventArgs> Initialized;
-        public event EventHandler<PeerEventArgs> MsgReceived;  
+        public event EventHandler<PeerEventArgs> MsgReceived;
         public event EventHandler<PeerEventArgs> MsgDelivered;
 
         public void Dispose()

@@ -114,12 +114,11 @@ public class AdminModuleTests
         _existingSession2 = Substitute.For<ISession>();
         _newSession1 = Substitute.For<ISession>();
         ConcurrentDictionary<Guid, ISession> existingSessions = new();
-        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abc"), _existingSession1);     
-        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abd"), _existingSession2);     
+        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abc"), _existingSession1);
+        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abd"), _existingSession2);
 
-        // _rlpxPeer = new RlpxHost(_serializationService, _nodeKey, _handshakeService, _sessionMonitor, _disconnectsAnalyzer, _networkConfig, _logManager, _channelFactory);
         _rlpxPeer = Substitute.For<IRlpxHost>();
-        _rlpxPeer.SessionMonitor.Sessions.Returns(existingSessions); // return array of sessions
+        _rlpxPeer.SessionMonitor.Sessions.Returns(existingSessions);
 
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
