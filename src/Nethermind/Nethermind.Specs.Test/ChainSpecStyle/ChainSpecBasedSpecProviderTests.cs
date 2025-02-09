@@ -139,8 +139,8 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp)) { TestName = "First Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 100000000)) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp)) { TestName = "First Prague" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp + 100000000)) { TestName = "Prague" };
-
         }
     }
 
@@ -163,7 +163,6 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
 
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
-        // TODO: add VerifyPragueSpecifics
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -198,7 +197,6 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
-        // TODO: add VerifyPragueSpecifics
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
