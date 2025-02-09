@@ -40,10 +40,12 @@ public partial class BlockTree
     {
         if (!(_historyConfig.HistoryPruneEpochs is not null || _historyConfig.DropPreMerge))
         {
+            if (_logger.IsInfo) _logger.Info($"(tmp) not PruneHistory, disabled");
             return false;
         }
 
         ulong cutoffTimestamp = CalculateCutoffTimestamp();
+        if (_logger.IsInfo) _logger.Info($"(tmp) PruneHistory, cutoffTimestamp: {cutoffTimestamp}, _lastPrunedTimestamp: {_lastPrunedTimestamp}");
         return cutoffTimestamp > _lastPrunedTimestamp;
     }
 
@@ -57,11 +59,11 @@ public partial class BlockTree
 
         ulong cutoffTimestamp = CalculateCutoffTimestamp();
         
-        if (cutoffTimestamp <= _lastPrunedTimestamp)
-        {
-            if (_logger.IsInfo) _logger.Info($"(tmp) not Pruning, same as last pruned timestamp {_lastPrunedTimestamp}");
-            return;
-        }
+        // if (cutoffTimestamp <= _lastPrunedTimestamp)
+        // {
+        //     if (_logger.IsInfo) _logger.Info($"(tmp) not Pruning, same as last pruned timestamp {_lastPrunedTimestamp}");
+        //     return;
+        // }
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
