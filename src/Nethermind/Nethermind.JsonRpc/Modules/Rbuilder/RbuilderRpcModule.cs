@@ -112,8 +112,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
                 }
             }
 
-            //worldState.Commit(releaseSpec);
-            worldState.CommitTree(blockHeader.Number + 1);
+            worldState.Commit(releaseSpec);
+           // worldState.CommitTree(blockHeader.Number + 1);
             worldState.RecalculateStateRoot();
             stopwatch.Stop();
            // Console.WriteLine($"Rbuilder calculation took {stopwatch.ElapsedMicroseconds()}");
