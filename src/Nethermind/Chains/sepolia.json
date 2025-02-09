@@ -72,8 +72,8 @@
     "eip6110TransitionTimestamp": "0x67C7FD60",
     "eip7002TransitionTimestamp": "0x67C7FD60",
     "eip7251TransitionTimestamp": "0x67C7FD60",
-    "eip7702TransitionTimestamp": "0x67C7FD60",
     "eip7623TransitionTimestamp": "0x67C7FD60",
+    "eip7702TransitionTimestamp": "0x67C7FD60",
     "blobSchedule": {
       "cancun": {
         "target": 3,
