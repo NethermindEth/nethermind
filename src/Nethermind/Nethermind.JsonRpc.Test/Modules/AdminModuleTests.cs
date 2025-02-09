@@ -208,6 +208,7 @@ public class AdminModuleTests
         _session.MsgReceived += Raise.EventWith(new object(), peerEventArgs);
         manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
         subscriptionId = peerEventsSubscription.Id;
+        peerEventsSubscription.Dispose();
         return jsonRpcResult;
     }
 
@@ -243,6 +244,7 @@ public class AdminModuleTests
         _session.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
         manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
         subscriptionId = peerEventsSubscription.Id;
+        peerEventsSubscription.Dispose();
         return jsonRpcResult;
     }
 
