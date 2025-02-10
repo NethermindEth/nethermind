@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);NUnit1032</NoWarn>
   </PropertyGroup>
 
