@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Utils;
 
 namespace Nethermind.Core.Extensions
 {
@@ -43,6 +45,23 @@ namespace Nethermind.Core.Extensions
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// DSL for `CancelAfter`.
+        /// </summary>
+        public static CancellationTokenSource ThatCancelAfter(this CancellationTokenSource cts, TimeSpan delay)
+        {
+            cts.CancelAfter(delay);
+            return cts;
+        }
+
+        public static AutoCancelTokenSource CreateChildTokenSource(this CancellationToken parentToken, TimeSpan delay = default)
+        {
+            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
+            if (delay != TimeSpan.Zero) cts.CancelAfter(delay);
+
+            return new AutoCancelTokenSource(cts);
         }
     }
 }

@@ -66,7 +66,26 @@
     "eip4788TransitionTimestamp": "0x65B97D60",
     "eip4844TransitionTimestamp": "0x65B97D60",
     "eip5656TransitionTimestamp": "0x65B97D60",
-    "eip6780TransitionTimestamp": "0x65B97D60"
+    "eip6780TransitionTimestamp": "0x65B97D60",
+    "eip2537TransitionTimestamp": "0x67C7FD60",
+    "eip2935TransitionTimestamp": "0x67C7FD60",
+    "eip6110TransitionTimestamp": "0x67C7FD60",
+    "eip7002TransitionTimestamp": "0x67C7FD60",
+    "eip7251TransitionTimestamp": "0x67C7FD60",
+    "eip7623TransitionTimestamp": "0x67C7FD60",
+    "eip7702TransitionTimestamp": "0x67C7FD60",
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": "0x32f0ed"
+      },
+      "prague": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction":  "0x4c6964"
+      }
+    }
   },
   "genesis": {
     "seal": {

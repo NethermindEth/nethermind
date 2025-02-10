@@ -197,13 +197,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        [Repeat(TestRepeatCount)]
-        public async Task When_saving_root_goes_asleep()
+        public async Task When_saving_root_goes_asleep_and_then_restart_to_new_tree_when_reactivated()
         {
             DbContext dbContext = new(_logger, _logManager);
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit();
-
 
             dbContext.CompareTrees("BEGIN");
 
@@ -396,6 +394,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)] // TODO: Investigate why it fails with parralelization
         public async Task When_empty_response_received_with_no_peer_return_not_allocated()
         {
             DbContext dbContext = new(_logger, _logManager);

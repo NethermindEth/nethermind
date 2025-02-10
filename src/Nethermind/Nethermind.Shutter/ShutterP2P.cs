@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
 using Nethermind.Network.Discovery;
 using System;
 using System.Threading.Tasks;
@@ -20,8 +22,7 @@ using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using System.Net;
 using Microsoft.Extensions.Logging;
-using Nethermind.Libp2p;
-using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
+using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
@@ -56,7 +57,7 @@ public class ShutterP2P : IShutterP2P
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = _cfg.P2PProtocolVersion,
-                AgentVersion = _cfg.P2PAgentVersion
+                AgentVersion = ProductInfo.ClientId
             })
             .AddSingleton(new PubsubSettings()
             {

@@ -19,6 +19,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp.TxDecoders;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -37,7 +38,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
         await base.InitBlockchain();
 
-        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
 
@@ -46,11 +47,11 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.L1CostHelper is null) throw new StepDependencyException(nameof(api.L1CostHelper));
-        if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
+        if (api.WorldStateManager is null) throw new StepDependencyException(nameof(api.WorldStateManager));
 
         return new OptimismTransactionProcessor(
             api.SpecProvider,
-            api.WorldState,
+            api.WorldStateManager.GlobalWorldState,
             virtualMachine,
             api.LogManager,
             api.L1CostHelper,
@@ -93,20 +94,21 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-        if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
+        if (api.WorldStateManager is null) throw new StepDependencyException(nameof(api.WorldStateManager));
 
+        IWorldState? worldState = api.WorldStateManager.GlobalWorldState;
         Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
 
         return new OptimismBlockProcessor(
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, api.WorldState),
-            api.WorldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            worldState,
             api.ReceiptStorage,
             transactionProcessor,
-            new BlockhashStore(api.SpecProvider, api.WorldState),
-            new BeaconBlockRootHandler(transactionProcessor, api.WorldState),
+            new BlockhashStore(api.SpecProvider, worldState),
+            new BeaconBlockRootHandler(transactionProcessor, worldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,

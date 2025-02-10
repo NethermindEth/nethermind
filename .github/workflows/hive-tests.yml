@@ -16,7 +16,7 @@ on:
           - ethereum/consensus
           - ethereum/engine
           - ethereum/graphql
-          - ethereum/pyspec
+          - ethereum/eest
           - ethereum/rpc
           - ethereum/rpc-compat
           - ethereum/sync
@@ -40,6 +40,15 @@ on:
         required: false
         default: master
         type: string
+      buildarg:
+        description: Simulator build argument (e.g. fixtures URL)
+        required: false
+        type: string
+      enable_buildarg:
+        description: Enable buildarg flag
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   test:
@@ -53,6 +62,8 @@ jobs:
           echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
           echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
+          echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
+          echo "ENABLE_BUILDARG=${{ github.event.inputs.enable_buildarg || false }}" >> $GITHUB_ENV
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
         with:
@@ -80,15 +91,22 @@ jobs:
       - name: Load Docker image
         run: docker load --input /tmp/image.tar
       - name: Run Hive
-        if: env.LIMIT == ''
         continue-on-error: true
         working-directory: hive
-        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL
-      - name: Run Hive with limit
-        if: env.LIMIT != ''
-        continue-on-error: true
-        working-directory: hive
-        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL --sim.limit $LIMIT
+        run: |
+          HIVE_ARGS="--client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL"
+          
+          # Add optional arguments based on conditions
+          if [ -n "$LIMIT" ]; then
+            HIVE_ARGS="$HIVE_ARGS --sim.limit $LIMIT"
+          fi
+          
+          if [ "$ENABLE_BUILDARG" = "true" ] && [ -n "$BUILDARG" ]; then
+            HIVE_ARGS="$HIVE_ARGS --sim.buildarg \"$BUILDARG\""
+          fi
+          
+          # Execute hive with constructed arguments
+          eval "./hive $HIVE_ARGS"
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
