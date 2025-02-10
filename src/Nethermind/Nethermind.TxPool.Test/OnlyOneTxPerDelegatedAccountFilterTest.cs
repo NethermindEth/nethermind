@@ -59,7 +59,7 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new();
+        TxFilteringState state = new(transaction, stateProvider);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -85,7 +85,7 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new();
+        TxFilteringState state = new(transaction, stateProvider);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -110,8 +110,8 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
-        Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new();
+        Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;        
+        TxFilteringState state = new(transaction, stateProvider);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -142,7 +142,7 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         codeInfoRepository.InsertCode(stateProvider, code, TestItem.AddressA, Prague.Instance);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, codeInfoRepository, new DelegationCache());
         Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new();
+        TxFilteringState state = new(transaction, stateProvider);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
