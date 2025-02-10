@@ -45,6 +45,8 @@ namespace Nethermind.Init.Steps
             {
                 Task current = await Task.WhenAny(allRequiredSteps);
                 ReviewFailedAndThrow(current);
+                if (current.IsCanceled)
+                    if (_logger.IsWarn) _logger.Warn($"A required step was cancelled!");
                 allRequiredSteps.Remove(current);
             } while (allRequiredSteps.Any(s => !s.IsCompleted));
         }
@@ -52,7 +54,8 @@ namespace Nethermind.Init.Steps
 
         private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
-            Dictionary<Type, StepWrapper> createdSteps = [];
+            Dictionary<Type, List<StepWrapper>> stepBaseTypeMap = [];
+            Dictionary<Type, StepInfo> stepInfoMap = []; 
 
             foreach (StepInfo stepInfo in _allSteps)
             {
@@ -60,43 +63,49 @@ namespace Nethermind.Init.Steps
 
                 IStep? step = CreateStepInstance(stepInfo);
                 if (step is null)
+                    throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.");
+                stepInfoMap.Add(step.GetType(), stepInfo);
+                if (stepBaseTypeMap.ContainsKey(stepInfo.StepBaseType))
                 {
-                    if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step {stepInfo}");
-                    continue;
+                    stepBaseTypeMap[stepInfo.StepBaseType].Add(new StepWrapper(step));
                 }
-                createdSteps.Add(step.GetType(), new StepWrapper(step));
+                else
+                {
+                    stepBaseTypeMap.Add(stepInfo.StepBaseType, new List<StepWrapper>() { new StepWrapper(step) });
+                }
             }
             List<Task> allRequiredSteps = new();
-            foreach (StepInfo stepInfo in _allSteps)
+            foreach (List<StepWrapper> steps in stepBaseTypeMap.Values)
             {
-                if (!createdSteps.ContainsKey(stepInfo.StepType))
+                foreach (StepWrapper stepWrapper in steps)
                 {
-                    throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.");
-                }
-                StepWrapper stepWrapper = createdSteps[stepInfo.StepType];
+                    StepInfo stepInfo = stepInfoMap[stepWrapper.Step.GetType()];
+                    Task task = ExecuteStep(stepWrapper, stepInfo, stepBaseTypeMap, cancellationToken);
+                    if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
 
-                Task task = ExecuteStep(stepWrapper, stepInfo, createdSteps, cancellationToken);
-                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-
-                if (stepWrapper.Step.MustInitialize)
-                {
-                    allRequiredSteps.Add(task);
+                    if (stepWrapper.Step.MustInitialize)
+                    {
+                        allRequiredSteps.Add(task);
+                    }
                 }
             }
             return allRequiredSteps;
         }
 
-        private async Task ExecuteStep(StepWrapper stepWrapper, StepInfo stepInfo, Dictionary<Type, StepWrapper> steps, CancellationToken cancellationToken)
+        private async Task ExecuteStep(StepWrapper stepWrapper, StepInfo stepInfo, Dictionary<Type, List<StepWrapper>> stepBaseTypeMap, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                IEnumerable<StepWrapper> dependencies = [];
+                List<StepWrapper> dependencies = [];
                 foreach (Type type in stepInfo.Dependencies)
                 {
-                    if (!steps.ContainsKey(type))
+                    if (!stepBaseTypeMap.ContainsKey(type))
                         throw new StepDependencyException($"The dependent step {type.Name} for {stepInfo.StepType.Name} was not created.");
-                    dependencies = stepInfo.Dependencies.Select(t => steps[t]);
+                    foreach (Type dependency in stepInfo.Dependencies)
+                    {
+                        dependencies.AddRange(stepBaseTypeMap[dependency]);
+                    }
                 }
                 await stepWrapper.StartExecute(dependencies, cancellationToken);
 
@@ -145,7 +154,7 @@ namespace Nethermind.Init.Steps
         private void ReviewFailedAndThrow(Task task)
         {
             if (task?.IsFaulted == true && task?.Exception is not null)
-                ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
+                ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();         
         }
 
         private class StepWrapper(IStep step)
@@ -167,6 +176,7 @@ namespace Nethermind.Init.Steps
                 }
                 catch
                 {
+                    //TaskCompletionSource is transitioned to cancelled state to prevent a cascade effect of log statements
                     _taskCompletedSource.TrySetCanceled();
                     throw;
                 }
