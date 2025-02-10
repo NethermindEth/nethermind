@@ -432,15 +432,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.BlocksToProcess,
                     options,
                     blockTracer);
+                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, _logger);
             }
             catch (InvalidBlockException ex)
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
-                Metrics.BadBlocks++;
-                if (ex.InvalidBlock.IsByNethermindNode())
-                {
-                    Metrics.BadBlocksByNethermindNodes++;
-                }
             }
             catch (Exception ex)
             {
@@ -484,6 +480,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
+                Metrics.BadBlocks++;
+                if (ex.InvalidBlock.IsByNethermindNode())
+                {
+                    Metrics.BadBlocksByNethermindNodes++;
+                }
                 InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
