@@ -210,6 +210,8 @@ internal class TrieStoreDirtyNodesCache
         {
             foreach ((Key key, TrieNode node) in AllNodes)
             {
+                // If its persisted and has last seen meaning it was recommitted,
+                // we keep it to prevent key removal from removing it from DB.
                 if (node.IsPersisted && node.LastSeen == -1)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
@@ -243,14 +245,21 @@ internal class TrieStoreDirtyNodesCache
                         throw new InvalidOperationException($"Removed {node}");
                     }
 
-                    if (node.IsPersisted && shouldTrackPersistedNode)
+                    if (node.IsPersisted)
                     {
-                        TrackPersistedNode(key, node);
+                        if (shouldTrackPersistedNode)
+                        {
+                            TrackPersistedNode(key, node);
+                        }
+
+                        Metrics.PrunedPersistedNodesCount++;
+                    }
+                    else
+                    {
+                        Metrics.PrunedTransientNodesCount++;
                     }
 
                     Remove(key);
-
-                    Metrics.PrunedTransientNodesCount++;
                 }
                 else if (!skipRecalculateMemory)
                 {
@@ -285,11 +294,7 @@ internal class TrieStoreDirtyNodesCache
 
             // We have it in cache and it is still needed.
             if (TryGetValue(new Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
-                !_trieStore.IsNoLongerNeeded(node))
-            {
-                Console.Error.WriteLine($"{address} {fullPath} is still needed {node}.");
-                return false;
-            }
+                !_trieStore.IsNoLongerNeeded(node)) return false;
 
             return true;
         }
