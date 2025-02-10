@@ -34,8 +34,6 @@ public class PaprikaStateFactory : IStateFactory
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
     private readonly IReadOnlyWorldStateAccessor _accessor;
-    private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
-    private uint _lastFinalized;
     private readonly ReaderWriterLockSlim _commitLock = new();
 
     public PaprikaStateFactory()
@@ -172,8 +170,10 @@ public class PaprikaStateFactory : IStateFactory
 
     public void Finalize(Hash256 finalizedStateRoot, long finalizedNumber)
     {
-        // TODO: more
-        // _blockchain.Finalize(Convert(finalizedStateRoot));
+        if (_blockchain.TryFinalize(Convert(finalizedStateRoot)) == false)
+        {
+            _logger.Info($"Did not find the state root to finalize {finalizedStateRoot} at block {finalizedNumber}");
+        }
     }
 
     private static bool ConvertPaprikaAccount(in PaprikaAccount retrieved, out AccountStruct account)
@@ -350,7 +350,6 @@ public class PaprikaStateFactory : IStateFactory
         public void Commit(long blockNumber)
         {
             _wrapped.Commit((uint)blockNumber);
-            _factory.Committed(_wrapped);
         }
 
         public void Reset() => _wrapped.Reset();
@@ -589,30 +588,6 @@ public class PaprikaStateFactory : IStateFactory
         public Hash256 StateRoot => Convert(_wrapped.Hash);
 
         public void Dispose() => _wrapped.Dispose();
-    }
-
-    private void Committed(IWorldState block)
-    {
-        const int poorManFinality = 16;
-
-        lock (_poorManFinalizationQueue)
-        {
-            // Find all the ancestors that are after last finalized.
-            (uint blockNumber, PaprikaKeccak hash)[] beyondFinalized =
-                block.Stats.Ancestors.Where(ancestor => ancestor.blockNumber > _lastFinalized).ToArray();
-
-            if (beyondFinalized.Length < poorManFinality)
-            {
-                // There number of ancestors is not as big as needed.
-                return;
-            }
-
-            // If there's more than poorManFinality, finalize the oldest and memoize its number
-            (uint blockNumber, PaprikaKeccak hash) oldest = beyondFinalized.Min(blockNo => blockNo);
-
-            _lastFinalized = oldest.blockNumber;
-            _blockchain.Finalize(oldest.hash);
-        }
     }
 }
 

@@ -44,7 +44,7 @@ public class ShardBlobBlockValidatorTests
                 .WithBlobGasUsed(blobGasUsed)
                 .WithExcessBlobGas(0)
                 .WithTransactions(Enumerable.Range(0, (int)(blobGasUsed / Eip4844Constants.GasPerBlob))
-                    .Select(i => Build.A.Transaction
+                    .Select(static i => Build.A.Transaction
                         .WithType(TxType.Blob)
                         .WithMaxFeePerBlobGas(ulong.MaxValue)
                         .WithBlobVersionedHashes(1).TestObject).ToArray())

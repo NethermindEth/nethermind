@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         public static IEnumerable<(Transaction, string)> TestCaseSource()
-            => TestObjectsSource().Select(tos => (tos.Item1.TestObject, tos.Item2));
+            => TestObjectsSource().Select(static tos => (tos.Item1.TestObject, tos.Item2));
 
         [TestCaseSource(nameof(TestCaseSource))]
         [Repeat(10)] // Might wanna increase this to double check when changing logic as on lower value, it does not reproduce.

@@ -42,4 +42,3 @@
 //         remove => overlayTrieStore.ReorgBoundaryReached -= value;
 //     }
 // }
-// >>>>>>> master

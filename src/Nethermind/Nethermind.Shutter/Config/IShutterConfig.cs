@@ -83,6 +83,10 @@ public interface IShutterConfig : IConfig
         DefaultValue = "60000", HiddenFromDocs = true)]
     uint DisconnectionLogInterval { get; set; }
 
+    [ConfigItem(Description = "How many milliseconds until a block is considered outdated.",
+        DefaultValue = "20000", HiddenFromDocs = true)]
+    uint BlockUpToDateCutoff { get; set; }
+
     [ConfigItem(Description = "Whether to output libp2p logs.",
         DefaultValue = "false", HiddenFromDocs = true)]
     bool P2PLogsEnabled { get; set; }
@@ -141,7 +145,7 @@ public interface IShutterConfig : IConfig
 
         try
         {
-            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(addr => Multiaddress.Decode(addr)).ToArray();
+            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(static addr => Multiaddress.Decode(addr)).ToArray();
         }
         catch (NotSupportedException e)
         {

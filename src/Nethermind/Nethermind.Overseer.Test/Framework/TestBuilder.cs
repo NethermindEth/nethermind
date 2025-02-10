@@ -20,7 +20,7 @@ public class TestBuilder
     [TearDown]
     public void TearDown()
     {
-        var passedCount = _results.Count(r => r.Passed);
+        var passedCount = _results.Count(static r => r.Passed);
         var failedCount = _results.Count - passedCount;
 
         TestContext.Out.WriteLine("=========================== TESTS RESULTS ===========================");

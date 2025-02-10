@@ -84,7 +84,7 @@ public class ShutterKeyValidator(
 
         if (decryptionKeys.Keys.Count == 0)
         {
-            if (_logger.IsDebug) _logger.Error("Invalid Shutter decryption keys received: expected placeholder key.");
+            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Invalid Shutter decryption keys received: expected placeholder key.");
             return false;
         }
 
@@ -102,7 +102,7 @@ public class ShutterKeyValidator(
             }
             catch (Bls.BlsException e)
             {
-                if (_logger.IsDebug) _logger.Error("Invalid Shutter decryption keys received.", e);
+                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Invalid Shutter decryption keys received.", e);
                 return false;
             }
 
@@ -134,7 +134,7 @@ public class ShutterKeyValidator(
             return false;
         }
 
-        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = decryptionKeys.Keys.Select(key => key.Identity.Memory);
+        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = decryptionKeys.Keys.Select(static key => key.Identity.Memory);
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
@@ -152,5 +152,5 @@ public class ShutterKeyValidator(
 
     private static EnumerableWithCount<(ReadOnlyMemory<byte>, ReadOnlyMemory<byte>)> ExtractKeys(in Dto.DecryptionKeys decryptionKeys)
         // remove placeholder
-        => new(decryptionKeys.Keys.Skip(1).Select(x => (x.Identity.Memory, x.Key_.Memory)), decryptionKeys.Keys.Count - 1);
+        => new(decryptionKeys.Keys.Skip(1).Select(static x => (x.Identity.Memory, x.Key_.Memory)), decryptionKeys.Keys.Count - 1);
 }

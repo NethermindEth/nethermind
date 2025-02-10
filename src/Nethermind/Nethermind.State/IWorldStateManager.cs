@@ -10,6 +10,8 @@ public interface IWorldStateManager : IResettableWorldStateManager
 {
     IWorldState GlobalWorldState { get; }
 
+    bool SupportHashLookup => false;
+
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 }
 

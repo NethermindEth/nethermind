@@ -191,7 +191,7 @@ public class TestBlockchain : IDisposable
         NonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
 
         _watcher = new BoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-
+        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
@@ -253,7 +253,7 @@ public class TestBlockchain : IDisposable
     {
         return specProvider is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
-            : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+            : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
     private void BlockAddedToMain(object? sender, BlockEventArgs e)

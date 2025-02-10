@@ -14,14 +14,12 @@ public class TaikoReadOnlyTxProcessingEnv(
   OverridableWorldStateManager worldStateManager,
   IReadOnlyBlockTree readOnlyBlockTree,
   ISpecProvider specProvider,
-  ILogManager logManager,
-  IWorldState? worldStateToWarmUp = null) : OverridableTxProcessingEnv(
+  ILogManager logManager) : OverridableTxProcessingEnv(
   worldStateManager,
   readOnlyBlockTree,
   specProvider,
-  logManager,
-  worldStateToWarmUp
- )
+  logManager
+)
 {
     protected override ITransactionProcessor CreateTransactionProcessor() =>
         new TaikoTransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
