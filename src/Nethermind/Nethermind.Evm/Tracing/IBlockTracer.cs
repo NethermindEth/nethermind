@@ -59,6 +59,6 @@ namespace Nethermind.Evm.Tracing
 
     public interface IBlockTracer<out TTrace> : IBlockTracer
     {
-        IReadOnlyCollection<TTrace> BuildResult();
+        IReadOnlyList<TTrace> BuildResult();
     }
 }

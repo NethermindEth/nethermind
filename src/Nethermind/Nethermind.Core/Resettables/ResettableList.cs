@@ -7,7 +7,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Resettables;
 
-public class ResettableList<T> : IList<T>, IReadOnlyCollection<T>
+public class ResettableList<T> : IList<T>, IReadOnlyList<T>
 {
     private readonly List<T> _wrapped;
     private readonly int _startCapacity;

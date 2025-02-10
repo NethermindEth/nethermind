@@ -95,7 +95,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             TraceTransfers = true
         };
 
-        SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(
+        SimulateOutput<SimulateBlockResult<SimulateCallResult>> result = chain.Bridge.Simulate(
             chain.BlockFinder.Head?.Header!,
             payload,
             CancellationToken.None,

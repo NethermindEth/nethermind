@@ -175,7 +175,7 @@ namespace Nethermind.Facade
             ITracerFactory<TTracer, TTrace> tracerFactory)
             where TTracer : class, IBlockTracer<TTrace>
         {
-            var tracer = tracerFactory.CreateTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            TTracer tracer = tracerFactory.CreateTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(tracer);
 
@@ -188,11 +188,11 @@ namespace Nethermind.Facade
                 //     throw new InvalidOperationException($"Unsupported tracer type: {typeof(TTracer).Name}");
                 // }
 
-                if (!_simulateBridgeHelper.TrySimulate<TTracer, TTrace>(
+                if (!_simulateBridgeHelper.TrySimulate<TTracer>(
                         header,
                         payload,
                         tracer,
-                        (IBlockTracer<TTrace>) new CancellationBlockTracer(receiptsTracer, cancellationToken),
+                        new CancellationBlockTracer(receiptsTracer, cancellationToken),
                         out string error))
                 {
                     result.Error = error;
@@ -207,16 +207,7 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            // if (tracer is SimulateBlockTracer<TTrace> simulateTracer)
-            // {
-            //     result.Items = simulateTracer.Results as IReadOnlyList<SimulateBlockResult<TTrace>>;
-            // }
-            // else
-            // {
-            //     throw new InvalidOperationException($"Tracer type {typeof(TTracer).Name} does not support 'Results'");
-            // }
-
-            return result;
+            return new SimulateOutput<TTrace> { Items = tracer.BuildResult() };
         }
 
 
@@ -462,7 +453,7 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        public class SimulateBlockTracerFactory : ITracerFactory<SimulateBlockTracer, SimulateCallResult>
+        public class SimulateBlockTracerFactory : ITracerFactory<SimulateBlockTracer, SimulateBlockResult<SimulateCallResult>>
         {
             public SimulateBlockTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
             {
@@ -470,33 +461,57 @@ namespace Nethermind.Facade
             }
         }
 
-        public class GethLikeBlockMemoryTracerFactory : ITracerFactory<GethLikeBlockMemoryTracer, GethLikeTxTrace>
+        public class GethLikeBlockMemoryTracerFactory(GethTraceOptions options)
+            : ITracerFactory<TraceSimulateTracer<GethLikeTxTrace>, SimulateBlockResult<GethLikeTxTrace>>
         {
-            private readonly GethTraceOptions _options;
-
-            public GethLikeBlockMemoryTracerFactory(GethTraceOptions options)
+            public TraceSimulateTracer<GethLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
             {
-                _options = options;
-            }
-
-            public GethLikeBlockMemoryTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
-            {
-                return new GethLikeBlockMemoryTracer(_options);
+                return new TraceSimulateTracer<GethLikeTxTrace>(new GethLikeBlockMemoryTracer(options), specProvider);
             }
         }
 
-        public class ParityLikeBlockTracerFactory : ITracerFactory<ParityLikeBlockTracer, ParityLikeTxTrace>
+        public class ParityLikeBlockTracerFactory(ParityTraceTypes types) : ITracerFactory<TraceSimulateTracer<ParityLikeTxTrace>, SimulateBlockResult<ParityLikeTxTrace>>
         {
-            private readonly ParityTraceTypes _types;
-
-            public ParityLikeBlockTracerFactory(ParityTraceTypes types)
+            public TraceSimulateTracer<ParityLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
             {
-                _types = types;
+                return new TraceSimulateTracer<ParityLikeTxTrace>(new ParityLikeBlockTracer(types), specProvider);
+            }
+        }
+
+        public class TraceSimulateTracer<TTrace>(IBlockTracer<TTrace> inner, ISpecProvider specProvider) : IBlockTracer<SimulateBlockResult<TTrace>>
+        {
+            private readonly List<SimulateBlockResult<TTrace>> _results = new();
+            private Block _currentBlock;
+
+            public IReadOnlyList<SimulateBlockResult<TTrace>> BuildResult() => _results;
+
+            public bool IsTracingRewards => inner.IsTracingRewards;
+
+            public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+            {
+                inner.ReportReward(author, rewardType, rewardValue);
             }
 
-            public ParityLikeBlockTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            public void StartNewBlockTrace(Block block)
             {
-                return new ParityLikeBlockTracer(_types);
+                _currentBlock = block;
+                inner.StartNewBlockTrace(block);
+            }
+
+            public ITxTracer StartNewTxTrace(Transaction? tx)
+            {
+                return inner.StartNewTxTrace(tx);
+            }
+
+            public void EndTxTrace()
+            {
+                inner.EndTxTrace();
+            }
+
+            public void EndBlockTrace()
+            {
+                inner.EndBlockTrace();
+                _results.Add(new SimulateBlockResult<TTrace>(_currentBlock, false, specProvider) { Calls = inner.BuildResult() });
             }
         }
 

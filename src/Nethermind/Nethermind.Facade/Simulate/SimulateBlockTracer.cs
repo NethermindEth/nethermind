@@ -11,11 +11,13 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISpecProvider spec)
-    : BlockTracer, IBlockTracer<SimulateCallResult>
+    : BlockTracer, IBlockTracer<SimulateBlockResult<SimulateCallResult>>
 {
     private readonly List<SimulateTxMutatorTracer> _txTracers = new();
     private Block _currentBlock = null!;
-    public List<SimulateBlockResult<SimulateCallResult>> Results { get; } = new();
+    private List<SimulateBlockResult<SimulateCallResult>> Results { get; } = new();
+
+    public IReadOnlyList<SimulateBlockResult<SimulateCallResult>> BuildResult() => Results;
 
     public override void StartNewBlockTrace(Block block)
     {
@@ -43,13 +45,5 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
         };
         Results.Add(result);
-    }
-
-    public IReadOnlyList<SimulateBlockResult<SimulateCallResult>> GetResults() => Results;
-
-    // ✅ Implement BuildResult()
-    public SimulateCallResult BuildResult()
-    {
-        return new SimulateCallResult(); // Replace with actual result construction
     }
 }

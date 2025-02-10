@@ -56,22 +56,22 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate<TTracer, TTrace>(
+    public bool TrySimulate<TTracer>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         TTracer tracer,
-        IBlockTracer<TTrace> blockTracer,
+        IBlockTracer blockTracer,
         [NotNullWhen(false)] out string? error)
         where TTracer : class
     {
         return TrySimulate(parent, payload, tracer, blockTracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
     }
 
-    private bool TrySimulate<TTracer, TTrace>(
+    private bool TrySimulate<TTracer>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         TTracer tracer,
-        IBlockTracer<TTrace> blockTracer,
+        IBlockTracer blockTracer,
         SimulateReadOnlyBlocksProcessingEnv env,
         [NotNullWhen(false)] out string? error)
         where TTracer : class
@@ -125,18 +125,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
         error = null;
         return true;
-    }
-
-    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
-    {
-        SimulateBlockResult<SimulateCallResult> current = simulateOutputTracer.Results.Last();
-        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-        current.TransactionsRoot = processedBlock.Header.TxRoot;
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
-        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-        current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.Author = null;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)

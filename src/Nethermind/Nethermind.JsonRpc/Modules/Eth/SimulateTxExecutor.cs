@@ -216,7 +216,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> Execute(BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
     {
-        SimulateOutput<SimulateCallResult> results = _blockchainBridge.Simulate<SimulateBlockTracer, SimulateCallResult>(
+        SimulateOutput<SimulateBlockResult<SimulateCallResult>>? results = _blockchainBridge.Simulate<SimulateBlockTracer, SimulateBlockResult<SimulateCallResult>>(
             header, tx, token, new BlockchainBridge.SimulateBlockTracerFactory()
         );
 
