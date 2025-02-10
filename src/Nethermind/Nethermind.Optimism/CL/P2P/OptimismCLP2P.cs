@@ -62,7 +62,7 @@ public class OptimismCLP2P : IDisposable
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
-            .AddLibp2p(builder => builder)
+            .AddLibp2p(builder => builder.WithPubsub())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
