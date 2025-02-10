@@ -20,6 +20,30 @@ public class ConfigProvider : IConfigProvider
 
     private readonly Dictionary<Type, Type> _implementations = [];
 
+    public ConfigProvider()
+    {
+    }
+
+    public ConfigProvider(params IConfig[] existingConfigs)
+    {
+        foreach (IConfig existingConfig in existingConfigs)
+        {
+            Type type = existingConfig.GetType();
+            if (!type.IsInterface)
+            {
+                // Try to get the interface type of the config
+                foreach (Type @interface in type.GetInterfaces())
+                {
+                    if (@interface.Name == $"I{type.Name}")
+                    {
+                        type = @interface;
+                    }
+                }
+            }
+            _instances[type] = existingConfig;
+        }
+    }
+
     public T GetConfig<T>() where T : IConfig
     {
         return (T)GetConfig(typeof(T));
@@ -70,6 +94,7 @@ public class ConfigProvider : IConfigProvider
         foreach (Type @interface in interfaces)
         {
             Type directImplementation = @interface.GetDirectInterfaceImplementation();
+            if (_instances.ContainsKey(@interface)) continue;
 
             if (directImplementation is not null)
             {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,9 +17,9 @@ public class HealingStorageTree : StorageTree
 {
     private readonly Address _address;
     private readonly Hash256 _stateRoot;
-    private readonly ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
+    private readonly IPathRecovery? _recovery;
 
-    public HealingStorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
+    public HealingStorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, IPathRecovery? recovery)
         : base(trieStore, rootHash, logManager)
     {
         _address = address;
@@ -34,7 +35,8 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
+            Hash256 fullPath = new Hash256(rawKey);
+            if (Recover(e.Path, e.Hash, fullPath))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -51,7 +53,8 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
+            Hash256 fullPath = new Hash256(rawKey);
+            if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);
             }
@@ -62,27 +65,18 @@ public class HealingStorageTree : StorageTree
         }
     }
 
-    private bool Recover(in ValueHash256 rlpHash, ReadOnlySpan<byte> pathPart)
+    private bool Recover(in TreePath missingNodePath, in ValueHash256 hash, Hash256 fullPath)
     {
-        if (_recovery?.CanRecover == true)
+        if (_recovery is not null)
         {
-            GetTrieNodesRequest request = new()
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(_stateRoot, ValueKeccak.Compute(_address.Bytes), missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
+            if (rlps is not null)
             {
-                RootHash = _stateRoot,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
+                foreach ((TreePath, byte[]) kv in rlps)
                 {
-                    new()
-                    {
-                        Group = [ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart)]
-                    }
+                    ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
+                    TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
                 }
-            };
-
-            byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
-            if (rlp is not null)
-            {
-                TreePath path = TreePath.FromNibble(pathPart);
-                TrieStore.Set(path, rlpHash, rlp);
                 return true;
             }
         }
