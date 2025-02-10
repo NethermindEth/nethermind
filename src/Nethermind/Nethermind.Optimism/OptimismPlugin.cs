@@ -153,7 +153,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
+        _beaconPivot = new BeaconPivot(_api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
@@ -185,7 +185,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _syncConfig,
             _blockCacheService,
             _beaconSync,
-            _api.DbProvider.MetadataDb,
             _api.LogManager);
 
         return Task.CompletedTask;
@@ -241,7 +240,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 _api.PoSSwitcher,
                 _beaconSync,
                 _beaconPivot,

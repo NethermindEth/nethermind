@@ -20,7 +20,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -96,6 +95,10 @@ namespace Nethermind.Blockchain
 
         public long BestKnownBeaconNumber { get; private set; }
 
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; private set; }
+        public long AncientBodiesBarrier => Math.Max(1, Math.Min(SyncPivot.BlockNumber, _syncConfig.AncientBodiesBarrier));
+        public long AncientReceiptsBarrier => Math.Max(1, Math.Min(SyncPivot.BlockNumber, Math.Max(AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier)));
+
         public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;
@@ -128,6 +131,8 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+
+            LoadSyncPivot();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
@@ -1557,6 +1562,22 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+        }
+
+        public bool TryUpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot, IBlockTree.SyncPivotUpdateReason reason)
+        {
+            if (reason == IBlockTree.SyncPivotUpdateReason.InitialSync)
+            {
+                RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+                pivotData.Encode(syncPivot.blockNumber);
+                pivotData.Encode(syncPivot.blockHash);
+                _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+
+                SyncPivot = (syncPivot.blockNumber, syncPivot.blockHash);
+                return true;
+            }
+
+            return false;
         }
     }
 }

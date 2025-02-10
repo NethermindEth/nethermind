@@ -9,6 +9,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -292,6 +293,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         builder
             .AddSingleton<ISynchronizer, Synchronizer>()
 
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
             .AddSingleton<ISyncModeSelector, MultiSyncModeSelector>()
             .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
             .AddSingleton<ISyncReport, SyncReport>()

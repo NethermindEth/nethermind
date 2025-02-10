@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _pivotNumber = config.PivotNumberParsed;
+            _pivotNumber = blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
@@ -88,8 +88,13 @@ namespace Nethermind.Synchronization
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
+
+        /// Used for StatusMessage and forkinfo generation.
+        /// TODO: It only need the hash.
         public BlockHeader Genesis => _blockTree.Genesis;
 
+        /// Used for StatusMessage.
+        /// TODO: It only need the block number.
         public BlockHeader? Head
         {
             get

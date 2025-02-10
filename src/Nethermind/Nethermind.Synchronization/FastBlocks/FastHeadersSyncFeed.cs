@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -34,7 +35,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
-
+        private readonly IPoSSwitcher _posSwitcher;
         private readonly Lock _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
@@ -82,7 +83,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) <= 1;
 
-        protected virtual long TotalBlocks => _syncConfig.PivotNumberParsed;
+        protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
@@ -150,6 +151,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
+            IPoSSwitcher poSSwitcher,
             ILogManager? logManager,
             ITotalDifficultyStrategy? totalDifficultyStrategy = null,
             bool alwaysStartHeaderSync = false)
@@ -158,6 +160,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _posSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
@@ -192,10 +195,48 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual void ResetPivot()
         {
-            _pivotNumber = _syncConfig.PivotNumberParsed;
+            (long pivotNumber, Hash256 nextHeaderHash) = _blockTree.SyncPivot;
+
+            UInt256 nextTotalDifficulty = UInt256.Zero;
+
+            // Only `FastHeaderSyncFeed` need pivot total difficulty. Sounds weird, what about the forward sync
+            // and its peer allocation strategy? nope: they use BestSuggestedHeader, and FastHeader insert the
+            // BestSuggestedHeader. So confusingly, only this part of the code really need the pivot TTD.
+            if (pivotNumber == 0)
+            {
+                // Well... this should not happen at all.
+                if (_logger.IsWarn) _logger.Warn($"Attempted to run fast header without pivot specified.");
+            }
+            else if (!string.IsNullOrEmpty(_syncConfig.PivotHash) && new Hash256(_syncConfig.PivotHash) == nextHeaderHash)
+            {
+                // Still using the total difficulty from sync config, so we use the TTD from sync config.
+                nextTotalDifficulty = UInt256.Parse(_syncConfig.PivotTotalDifficulty ?? "0");
+                if (_logger.IsDebug) _logger.Debug($"TTD for pivot resolved from config is {nextTotalDifficulty}");
+            }
+            else if (_blockTree.FindHeader(nextHeaderHash, BlockTreeLookupOptions.RequireCanonical) is { } pivotHeader && pivotHeader.TotalDifficulty is not null)
+            {
+                // Probably a saved pivot.
+                nextTotalDifficulty = pivotHeader.TotalDifficulty.Value;
+                if (_logger.IsDebug) _logger.Debug($"TTD for pivot resolved from stored header is {nextTotalDifficulty}");
+            }
+            else if (_posSwitcher.FinalTotalDifficulty is not null)
+            {
+                // So its PoS
+                nextTotalDifficulty = _posSwitcher.FinalTotalDifficulty.Value;
+                if (_logger.IsDebug) _logger.Debug($"TTD for pivot resolved from PosSwitcher is {nextTotalDifficulty}");
+            }
+            else
+            {
+                // Ah great.
+                // In theory, we could just make fast sync work normally its just that forward sync cannot
+                // proceed without completing fast header.
+                // Anyway, just log it so that we know this is happening.
+                if (_logger.IsWarn) _logger.Warn($"Unable to determine TTD for pivot {pivotNumber}:{nextHeaderHash}");
+            }
+
+            (_pivotNumber, _nextHeaderHash, _nextHeaderTotalDifficulty) = (pivotNumber, nextHeaderHash, nextTotalDifficulty);
+
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _nextHeaderHash = _syncConfig.PivotHashParsed;
-            _nextHeaderTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
@@ -813,6 +854,7 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         private bool _disposed = false;
+
         public override void Dispose()
         {
             if (!_disposed)

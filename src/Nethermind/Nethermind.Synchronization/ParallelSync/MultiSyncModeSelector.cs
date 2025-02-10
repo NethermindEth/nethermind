@@ -7,6 +7,7 @@ using System.Linq;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -67,6 +68,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private int TotalSyncLag => FastSyncLag + _syncConfig.HeaderStateDistance;
 
         private readonly CancellationTokenSource _cancellation = new();
+        private readonly IBlockTree _blockTree;
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
@@ -80,6 +82,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBetterPeerStrategy betterPeerStrategy,
+            IBlockTree blockTree,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -89,6 +92,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
             {
@@ -131,7 +135,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
-            _pivotNumber = _syncConfig.PivotNumberParsed;
+            _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
 
             SyncMode newModes;
@@ -447,7 +451,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
             bool stateSyncFinished = best.State > 0
-                                     || _syncConfig.PivotNumberParsed == 0; // if pivot = 0 we can have state = 0 (we can't use best.State>0) and switch to full sync, this case is used by unit tests and shouldn't happen in any existing network
+                                     || _blockTree.SyncPivot.BlockNumber == 0; // if pivot = 0 we can have state = 0 (we can't use best.State>0) and switch to full sync, this case is used by unit tests and shouldn't happen in any existing network
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
             bool result = notInUpdatingPivot &&
@@ -670,7 +674,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyDesiredPeerKnown(Snapshot best) => _betterPeerStrategy.IsDesiredPeer(best.Peer, (best.ChainDifficulty, best.Header));
 
-        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
+        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _blockTree.SyncPivot.BlockNumber;
 
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {

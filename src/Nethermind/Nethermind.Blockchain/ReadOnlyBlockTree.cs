@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -52,6 +53,16 @@ namespace Nethermind.Blockchain
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot => _wrapped.SyncPivot;
+        public long AncientBodiesBarrier => _wrapped.AncientBodiesBarrier;
+        public long AncientReceiptsBarrier => _wrapped.AncientReceiptsBarrier;
+
+        public bool TryUpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot,
+            IBlockTree.SyncPivotUpdateReason reason)
+        {
+            return false;
+        }
+
         public Block Head => _wrapped.Head;
         public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);

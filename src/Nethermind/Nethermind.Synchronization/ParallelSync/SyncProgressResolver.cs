@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
 
-        private bool IsFastBlocks() => _syncConfig.FastSync && _syncConfig.PivotNumberParsed != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
+        private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
 
 
     }

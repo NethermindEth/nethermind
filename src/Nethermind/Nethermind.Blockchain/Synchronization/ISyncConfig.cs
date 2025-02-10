@@ -53,14 +53,16 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
 
+    /**
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-    UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
-
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
     Hash256? PivotHashParsed => PivotHash is null ? null : new Hash256(Bytes.FromHexString(PivotHash));
+    */
+
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
+    UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
     int MaxAttemptsToUpdatePivot { get; set; }
@@ -76,9 +78,6 @@ public interface ISyncConfig : IConfig
         DefaultValue = "0")]
     public long AncientBodiesBarrier { get; set; }
 
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
-
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
@@ -90,8 +89,10 @@ public interface ISyncConfig : IConfig
         DefaultValue = "0")]
     public long AncientReceiptsBarrier { get; set; }
 
+    /*
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
     public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    */
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }

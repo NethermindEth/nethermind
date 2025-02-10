@@ -98,12 +98,14 @@ public class ReceiptsSyncFeedTests
     {
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _syncPointers = new MemorySyncPointers();
-        _blockTree = Substitute.For<IBlockTree>();
         _metadataDb = new TestMemDb();
 
         _syncConfig = new TestSyncConfig { FastSync = true };
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = Keccak.Zero.ToString();
+
+        _blockTree = Substitute.For<IBlockTree>();
+        _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
@@ -275,6 +277,8 @@ public class ReceiptsSyncFeedTests
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
+        _blockTree.AncientReceiptsBarrier.Returns(AncientBarrierInConfig);
+        _blockTree.AncientBodiesBarrier.Returns(AncientBarrierInConfig);
         _pivotNumber = AncientBarrierInConfig + 1_000_000;
         _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
         if (previousBarrierInDb is not null)
@@ -295,6 +299,16 @@ public class ReceiptsSyncFeedTests
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
         _syncPointers = Substitute.For<ISyncPointers>();
+
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash));
+        if (_syncConfig.AncientReceiptsBarrier == 0)
+        {
+            _blockTree.AncientReceiptsBarrier.Returns(1);
+        }
+        else
+        {
+            _blockTree.AncientReceiptsBarrier.Returns(_syncConfig.AncientReceiptsBarrier);
+        }
 
         _feed = new ReceiptsSyncFeed(
             _specProvider,
@@ -442,6 +456,7 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+        _blockTree.AncientReceiptsBarrier.Returns(1);
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
 

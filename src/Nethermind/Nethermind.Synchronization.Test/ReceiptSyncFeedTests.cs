@@ -44,18 +44,8 @@ public class ReceiptSyncFeedTests
             .TestObject;
 
         _receiptStorage = Substitute.For<IReceiptStorage>();
-        _syncingToBlockTree = Build.A.BlockTree()
-            .TestObject;
-
-        for (int i = 1; i < 100; i++)
-        {
-            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
-            _syncingToBlockTree.Insert(block.Header);
-            _syncingToBlockTree.Insert(block);
-        }
 
         _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
-
         _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
@@ -64,6 +54,17 @@ public class ReceiptSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
+
+        _syncingToBlockTree = Build.A.BlockTree()
+            .WithSyncConfig(_syncConfig)
+            .TestObject;
+
+        for (int i = 1; i < 100; i++)
+        {
+            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+            _syncingToBlockTree.Insert(block.Header);
+            _syncingToBlockTree.Insert(block);
+        }
 
         _feed = new ReceiptsSyncFeed(
             MainnetSpecProvider.Instance,

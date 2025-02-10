@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -618,7 +619,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncConfig.FastSync = true;
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, Substitute.For<IBlockTree>(), LimboLogs.Instance);
             selector.Stop();
             syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
             selector.Update();

@@ -4,16 +4,16 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -30,7 +30,6 @@ public class PivotUpdator
     private readonly ISyncConfig _syncConfig;
     protected readonly IBlockCacheService _blockCacheService;
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
-    private readonly IDb _metadataDb;
     protected readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
@@ -46,7 +45,6 @@ public class PivotUpdator
         ISyncConfig syncConfig,
         IBlockCacheService blockCacheService,
         IBeaconSyncStrategy beaconSyncStrategy,
-        [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -55,45 +53,21 @@ public class PivotUpdator
         _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
-        _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
 
-        if (!TryUpdateSyncConfigUsingDataFromDb())
+        // If its exactly the same then the pivot never moved at all, so pivot updater can work.
+        if (blockTree.SyncPivot.BlockNumber == LongConverter.FromString(string.IsNullOrEmpty(_syncConfig.PivotNumber) ? "0" : _syncConfig.PivotNumber))
         {
             _syncModeSelector.Changed += OnSyncModeChanged;
         }
-    }
-
-    private bool TryUpdateSyncConfigUsingDataFromDb()
-    {
-        try
+        else
         {
-            if (_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotData))
-            {
-                byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
-                RlpStream pivotStream = new(pivotFromDb!);
-                long updatedPivotBlockNumber = pivotStream.DecodeLong();
-                Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
-
-                if (updatedPivotBlockHash.IsZero)
-                {
-                    return false;
-                }
-                UpdateConfigValues(updatedPivotBlockHash, updatedPivotBlockNumber);
-
-                if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
-                return true;
-            }
+            _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            _beaconSyncStrategy.AllowBeaconHeaderSync();
         }
-        catch (RlpException)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Cannot decode pivot block number or hash");
-        }
-
-        return false;
     }
 
     private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
@@ -237,16 +211,15 @@ public class PivotUpdator
     {
         long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
         bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
-        bool newPivotHigherThanOld = potentialPivotBlockNumber > _syncConfig.PivotNumberParsed;
+        bool newPivotHigherThanOld = potentialPivotBlockNumber > _blockTree.SyncPivot.BlockNumber;
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            UpdateConfigValues(potentialPivotBlockHash, potentialPivotBlockNumber);
-
-            RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-            pivotData.Encode(potentialPivotBlockNumber);
-            pivotData.Encode(potentialPivotBlockHash);
-            _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+            if (_blockTree.TryUpdateSyncPivot((potentialPivotBlockNumber, potentialPivotBlockHash), IBlockTree.SyncPivotUpdateReason.InitialSync))
+            {
+                _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                _beaconSyncStrategy.AllowBeaconHeaderSync();
+            }
 
             if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {potentialPivotBlockNumber}, hash: {potentialPivotBlockHash}");
             return true;
@@ -255,14 +228,6 @@ public class PivotUpdator
         if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {potentialPivotBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - potentialPivotBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
         if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {potentialPivotBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
-    }
-
-    private void UpdateConfigValues(Hash256 finalizedBlockHash, long finalizedBlockNumber)
-    {
-        _syncConfig.PivotHash = finalizedBlockHash.ToString();
-        _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
-        _syncConfig.MaxAttemptsToUpdatePivot = 0;
-        _beaconSyncStrategy.AllowBeaconHeaderSync();
     }
 
     protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)

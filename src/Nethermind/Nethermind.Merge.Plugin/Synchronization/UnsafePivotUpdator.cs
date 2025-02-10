@@ -9,7 +9,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
@@ -25,10 +24,9 @@ public class UnsafePivotUpdator(
     ISyncConfig syncConfig,
     IBlockCacheService blockCacheService,
     IBeaconSyncStrategy beaconSyncStrategy,
-    IDb metadataDb,
     ILogManager logManager)
     : PivotUpdator(blockTree, syncModeSelector, syncPeerPool, syncConfig,
-        blockCacheService, beaconSyncStrategy, metadataDb, logManager)
+        blockCacheService, beaconSyncStrategy, logManager)
 {
     protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {

@@ -38,7 +38,7 @@ namespace Nethermind.Init.Steps.Migrations
             if (syncConfig.FixReceipts && _api.BlockTree is not null)
             {
                 MissingReceiptsFixVisitor visitor = new(
-                    syncConfig.AncientReceiptsBarrierCalc,
+                    _api.BlockTree.AncientReceiptsBarrier,
                     _api.BlockTree.Head?.Number - 2 ?? 0,
                     _api.ReceiptStorage!,
                     _api.LogManager,

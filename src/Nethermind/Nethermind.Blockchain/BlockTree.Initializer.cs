@@ -5,7 +5,10 @@ using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
@@ -13,6 +16,36 @@ namespace Nethermind.Blockchain;
 public partial class BlockTree
 {
     private bool _tryToRecoverFromHeaderBelowBodyCorruption = false;
+
+    private void LoadSyncPivot()
+    {
+        try
+        {
+            if (_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotData))
+            {
+                byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
+                RlpStream pivotStream = new(pivotFromDb!);
+                long updatedPivotBlockNumber = pivotStream.DecodeLong();
+                Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+
+                if (!updatedPivotBlockHash.IsZero)
+                {
+                    SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
+                    if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
+                    return;
+                }
+            }
+        }
+        catch (RlpException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot decode pivot block number or hash");
+        }
+
+        SyncPivot = (
+            LongConverter.FromString(_syncConfig.PivotNumber),
+            _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+    }
+
 
     public void RecalculateTreeLevels()
     {
@@ -136,7 +169,7 @@ public partial class BlockTree
         {
             // Old style binary search.
             long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
+            long right = SyncPivot.BlockNumber;
 
             LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
         }
@@ -147,7 +180,7 @@ public partial class BlockTree
     private void LoadBestKnown()
     {
         long left = (Head?.Number ?? 0) == 0
-            ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
+            ? Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0) - 1
             : Head.Number;
 
         long right = Math.Max(0, left) + BestKnownSearchLimit;

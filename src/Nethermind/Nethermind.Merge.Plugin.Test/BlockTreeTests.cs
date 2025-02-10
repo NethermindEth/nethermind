@@ -286,7 +286,7 @@ public partial class BlockTreeTests
                     SyncedTree = _syncedTreeBuilder.TestObject;
                 }
 
-                _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, AlwaysPoS.Instance, LimboLogs.Instance);
+                _beaconPivot = new BeaconPivot(new MemDb(), SyncedTree, AlwaysPoS.Instance, LimboLogs.Instance);
 
                 _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 if (moveBlocksToMainChain)

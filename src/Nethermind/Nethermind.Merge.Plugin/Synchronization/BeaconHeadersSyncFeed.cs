@@ -26,8 +26,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly IPivot _pivot;
-    private readonly IMergeConfig _mergeConfig;
+    private readonly IBeaconPivot _pivot;
+
     private readonly ILogger _logger;
     private bool _chainMerged;
 
@@ -56,15 +56,13 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncPeerPool? syncPeerPool,
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
-        IPivot? pivot,
-        IMergeConfig? mergeConfig,
+        IBeaconPivot? pivot,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
-        : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
+        : base(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-        _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _invalidChainTracker = invalidChainTracker;
         _logger = logManager.GetClassLogger();
     }

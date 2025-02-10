@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -178,5 +179,28 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+
+        /// <summary>
+        /// Sync pivot is the point at which forward sync start. That was the original start point.
+        /// But this is more like a delayed finalized block where the block tree initialization was checked.
+        /// </summary>
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
+
+        public long AncientBodiesBarrier { get; }
+        public long AncientReceiptsBarrier { get; }
+
+        /// For sync pivot to be moved, there are two case:
+        /// 1. Initial setting of SyncPivot. There is one restriction for this case:
+        ///     1. the node is not synced yet.
+        /// 2. Moving of SyncPivot when a finialized block was reached. This has some restruction:
+        ///     1. All block between current sync pivot and new sync pivot must be processed.
+        ///     2. Last persisted state (which is also the starting HEAD) must be after the current sync pivot
+        ///        and the new sync pivot.
+        bool TryUpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot, SyncPivotUpdateReason reason);
+
+        enum SyncPivotUpdateReason
+        {
+            InitialSync
+        }
     }
 }

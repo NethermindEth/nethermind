@@ -31,9 +31,9 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => _syncConfig.AncientReceiptsBarrierCalc;
+        protected override long SyncConfigBarrierCalc => _blockTree.AncientReceiptsBarrier;
         protected override Func<bool> HasPivot =>
-            () => _receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed);
+            () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
@@ -81,16 +81,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _blockTree.AncientReceiptsBarrier)
             {
-                _pivotNumber = _syncConfig.PivotNumberParsed;
-                _barrier = _syncConfig.AncientReceiptsBarrierCalc;
+                _pivotNumber = _blockTree.SyncPivot.BlockNumber;
+                _barrier = _blockTree.AncientReceiptsBarrier;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncConfig.AncientReceiptsBarrierCalc);
+            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _blockTree.AncientReceiptsBarrier);
         }
 
         private void ResetSyncStatusList()
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedReceiptBlockNumber,
-                _syncConfig.AncientReceiptsBarrier);
+                _blockTree.AncientReceiptsBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; }

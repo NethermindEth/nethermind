@@ -6,6 +6,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Synchronization
 {
+    // Used by `SyncReport` for the `BeaconHeader` part.
     public interface IPivot
     {
         long PivotNumber { get; }
@@ -13,8 +14,6 @@ namespace Nethermind.Synchronization
         Hash256? PivotHash { get; }
 
         Hash256? PivotParentHash { get; }
-
-        UInt256? PivotTotalDifficulty { get; }
 
         long PivotDestinationNumber { get; }
     }

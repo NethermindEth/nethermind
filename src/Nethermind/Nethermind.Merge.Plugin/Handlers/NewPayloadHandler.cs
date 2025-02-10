@@ -34,7 +34,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 {
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IBeaconPivot _beaconPivot;
@@ -53,7 +52,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     public NewPayloadHandler(
         IBlockValidator blockValidator,
         IBlockTree blockTree,
-        ISyncConfig syncConfig,
         IPoSSwitcher poSSwitcher,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBeaconPivot beaconPivot,
@@ -68,7 +66,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
-        _syncConfig = syncConfig;
         _poSSwitcher = poSSwitcher;
         _beaconSyncStrategy = beaconSyncStrategy;
         _beaconPivot = beaconPivot;
@@ -132,9 +129,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Now user download new Nethermind release with sync pivot X+100 and start the node.
         // Without hasNeverBeenInSync check user won't be able to catch up with the chain,
         // because blocks would be ignored with this check:
-        // block.Header.Number <= _syncConfig.PivotNumberParsed
+        // block.Header.Number <= _blockTree.SyncPivot.BlockNumber
         bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
-        if (hasNeverBeenInSync && block.Header.Number <= _syncConfig.PivotNumberParsed)
+        if (hasNeverBeenInSync && block.Header.Number <= _blockTree.SyncPivot.BlockNumber)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;

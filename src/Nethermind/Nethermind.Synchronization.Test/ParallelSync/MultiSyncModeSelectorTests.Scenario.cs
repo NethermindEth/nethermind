@@ -476,7 +476,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(currentBlock);
                             SyncProgressResolver.FindBestFullBlock().Returns(0); //no full blocks available
-                            SyncProgressResolver.FindBestFullState().Returns(currentBlock - 4); //pivot is set to header, but then header follows the head of the chain 
+                            SyncProgressResolver.FindBestFullState().Returns(currentBlock - 4); //pivot is set to header, but then header follows the head of the chain
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
@@ -836,7 +836,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         }
 
                         TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, Build.A.BlockTree().WithSyncConfig(SyncConfig).TestObject, LimboLogs.Instance);
                         selector.Stop();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);

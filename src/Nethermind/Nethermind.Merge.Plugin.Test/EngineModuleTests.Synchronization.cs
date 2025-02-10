@@ -889,6 +889,10 @@ public partial class EngineModuleTests
             PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
             PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
         };
+
+        chain.BlockTree.TryUpdateSyncPivot(
+            (syncedBlockTree.Head!.Number, syncedBlockTree.Head!.Hash!),
+            IBlockTree.SyncPivotUpdateReason.InitialSync);
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
         // create block gap from fast sync pivot
         int gap = 7;
@@ -1038,7 +1042,7 @@ public partial class EngineModuleTests
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,
-            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);
+            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), chain.BlockTree, LimboLogs.Instance);
         multiSyncModeSelector.Update();
         return multiSyncModeSelector;
     }
@@ -1060,7 +1064,6 @@ public partial class EngineModuleTests
         beaconPivot.BeaconPivotExists().Should().BeTrue();
         beaconPivot.PivotNumber.Should().Be(blockHeader.Number);
         beaconPivot.PivotHash.Should().Be(blockHeader.Hash ?? blockHeader.CalculateHash());
-        beaconPivot.PivotTotalDifficulty.Should().Be((UInt256)0);
     }
 
     private class BlockTreePointers
