@@ -15,15 +15,23 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
 
     protected readonly TStream _stream;
     protected readonly IJsonSerializer _jsonSerializer;
+    private readonly int _maxRequestSize;
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
     public string ClientName { get; }
 
-    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer)
+    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer):
+        // Optional maxRequestSize break some tests.
+        this(clientName, stream, jsonSerializer, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
+    {
+    }
+
+    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer, int maxRequestSize)
     {
         ClientName = clientName;
         _stream = stream;
         _jsonSerializer = jsonSerializer;
+        _maxRequestSize = maxRequestSize;
     }
 
     public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
@@ -55,7 +63,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
             {
                 currentMessageLength += result.Read;
 
-                if (currentMessageLength >= MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
+                if (currentMessageLength >= _maxRequestSize)
                 {
                     throw new InvalidOperationException("Message too long");
                 }
