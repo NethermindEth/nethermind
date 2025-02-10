@@ -26,7 +26,7 @@ namespace Nethermind.TxPool.Filters
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
-            if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
+            if (pendingDelegations.HasPending(tx.SenderAddress!))
             {
                 //Check if the sender has a self-sponsored SetCode transaction with same nonce.
                 //If he does then this is a replacement tx and should be accepted
