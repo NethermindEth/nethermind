@@ -58,8 +58,8 @@ namespace Nethermind.TxPool.Filters
                 {
                     continue;
                 }
-                if (standardPool.ContainsBucket(authorization.Authority!)
-                    || blobPool.ContainsBucket(authorization.Authority!))
+                if (standardPool.ContainsBucket(authorization.Authority)
+                    || blobPool.ContainsBucket(authorization.Authority))
                 {
                     return true;
                 }
