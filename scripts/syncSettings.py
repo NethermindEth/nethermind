@@ -55,12 +55,6 @@ configs = {
         "multiplierRequirement": 10000,
         "isPoS": False
     },
-    "exosama": {
-        "url": "https://rpc.exosama.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
-    },
     "joc-mainnet": {
         "url": "https://rpc-1.japanopenchain.org:8545",
         "blockReduced": 8192,
