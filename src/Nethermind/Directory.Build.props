@@ -21,6 +21,7 @@
 
   <PropertyGroup Label="Tests">
     <EnableNUnitRunner>true</EnableNUnitRunner>
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
