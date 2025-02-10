@@ -19,6 +19,11 @@
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
+  <PropertyGroup Label="Tests">
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
   <ItemGroup Label="AssemblyCustomMetadata">
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>BuildTimestamp</_Parameter1>
