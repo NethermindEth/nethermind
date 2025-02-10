@@ -22,7 +22,7 @@ public class McsPriorityLock
     private uint _queueId;
 
 
-    public McsPriorityLock(): this(HalfCores)
+    public McsPriorityLock() : this(HalfCores)
     {
 
     }

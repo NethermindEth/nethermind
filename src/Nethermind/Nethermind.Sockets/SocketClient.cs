@@ -20,7 +20,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
     public string Id { get; } = Guid.NewGuid().ToString("N");
     public string ClientName { get; }
 
-    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer):
+    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer) :
         // Optional maxRequestSize break some tests.
         this(clientName, stream, jsonSerializer, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
     {
