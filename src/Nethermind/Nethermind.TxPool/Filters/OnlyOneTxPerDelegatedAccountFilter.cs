@@ -9,7 +9,7 @@ using System.Linq;
 
 namespace Nethermind.TxPool.Filters
 {
-    internal sealed class OnlyOneTxPerDelegatedAccountFilter(
+    internal sealed class DelegatedAccountFilter(
         IChainHeadSpecProvider specProvider,
         TxDistinctSortedPool standardPool,
         TxDistinctSortedPool blobPool,
