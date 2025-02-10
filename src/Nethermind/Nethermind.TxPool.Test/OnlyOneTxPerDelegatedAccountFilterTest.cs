@@ -222,7 +222,7 @@ internal class DelegatedAccountFilterTest
         Transaction transaction = Build.A.Transaction
             .WithNonce(1)
             .SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
-        standardPool.TryInsert(transaction.Hash,transaction);
+        standardPool.TryInsert(transaction.Hash, transaction);
         Transaction setCodeTransaction = Build.A.Transaction
             .WithNonce(0)
             .WithType(TxType.SetCode)
