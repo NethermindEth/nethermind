@@ -28,25 +28,23 @@ namespace Nethermind.TxPool.Filters
 
             if (pendingDelegations.HasPending(tx.SenderAddress!, tx.Nonce))
             {
-                Transaction[] userTxs = standardPool.GetSnapshot();
                 //Check if the sender has a self-sponsored SetCode transaction with same nonce.
                 //If he does then this is a replacement tx and should be accepted
-                if (userTxs.Any(t => t.Nonce == tx.Nonce
-                && t.HasAuthorizationList
-                && t.AuthorizationList.Any(tuple => tuple.Authority == tx.SenderAddress)))
+                if (!standardPool.BucketAny(tx.SenderAddress!,
+                    t => t.Nonce == tx.Nonce
+                    && t.HasAuthorizationList
+                    && t.AuthorizationList.Any(tuple => tuple.Authority == tx.SenderAddress)))
                 {
-                    return AcceptTxResult.Accepted;
+                    return AcceptTxResult.PendingDelegation;
                 }
-                return AcceptTxResult.PendingDelegation;
             }
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 return AcceptTxResult.Accepted;
-            //Transactions from the same source can only be either blob transactions or other type 
-            if (tx.SupportsBlobs ? !blobPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce)
-                : !standardPool.BucketEmptyExcept(tx.SenderAddress!, (t) => t.Nonce == tx.Nonce))
+            //If the account is delegated we only accept the next transaction nonce 
+            if (state.SenderAccount.Nonce != tx.Nonce)
             {
-                return AcceptTxResult.MoreThanOneTxPerDelegatedAccount;
+                return AcceptTxResult.OnlyExactNonceForDelegatedAccount;
             }
             return AcceptTxResult.Accepted;
         }
@@ -55,7 +53,7 @@ namespace Nethermind.TxPool.Filters
         {
             foreach (AuthorizationTuple authorization in authorizations)
             {
-                //RecoverAuthorityFilter runs before so if a signature is null, it must be bad
+                //RecoverAuthorityFilter runs before this, so if a signature is null, we assume it is bad
                 if (authorization.Authority is null)
                 {
                     continue;

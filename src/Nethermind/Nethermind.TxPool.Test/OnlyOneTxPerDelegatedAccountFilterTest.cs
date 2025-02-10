@@ -115,12 +115,12 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.MoreThanOneTxPerDelegatedAccount));
+        Assert.That(result, Is.EqualTo(AcceptTxResult.OnlyExactNonceForDelegatedAccount));
     }
 
     private static object[] EipActiveCases =
     {
-        new object[]{ true, AcceptTxResult.MoreThanOneTxPerDelegatedAccount },
+        new object[]{ true, AcceptTxResult.OnlyExactNonceForDelegatedAccount },
         new object[]{ false, AcceptTxResult.Accepted},
     };
     [TestCaseSource(nameof(EipActiveCases))]

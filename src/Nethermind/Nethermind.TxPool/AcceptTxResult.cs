@@ -98,7 +98,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Only one tx is allowed per delegated account. 
         /// </summary>
-        public static readonly AcceptTxResult MoreThanOneTxPerDelegatedAccount = new(17, nameof(MoreThanOneTxPerDelegatedAccount));
+        public static readonly AcceptTxResult OnlyExactNonceForDelegatedAccount = new(17, nameof(OnlyExactNonceForDelegatedAccount));
 
         /// <summary>
         /// There is a pending delegation in the tx pool already

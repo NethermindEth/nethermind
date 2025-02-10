@@ -530,12 +530,12 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        public bool BucketEmptyExcept(TGroupKey groupKey, Func<TValue, bool> predicate)
+        public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
         {
             using var lockRelease = Lock.Acquire();
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket) && bucket.Count > 0)
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
                 return bucket.Any(predicate);
-            return true;
+            return false;
         }
 
         protected void EnsureCapacity(int? expectedCapacity = null)

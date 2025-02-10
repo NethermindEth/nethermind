@@ -1770,8 +1770,16 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(testCase.expected);
         }
 
-        [Test]
-        public void Delegated_account_can_only_have_one_tx()
+        private static IEnumerable<object> DifferentOrderNonces()
+        {
+            yield return new object[] {0, 1, AcceptTxResult.Accepted, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
+            yield return new object[] {2, 5, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
+            yield return new object[] {1, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
+            yield return new object[] {5, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
+        }
+
+        [TestCaseSource(nameof(DifferentOrderNonces))]
+        public void Delegated_account_can_only_have_one_tx_with_current_account_nonce(int firstNonce, int secondNonce, AcceptTxResult firstExpectation, AcceptTxResult secondExpectation)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
@@ -1783,7 +1791,7 @@ namespace Nethermind.TxPool.Test
             _stateProvider.InsertCode(signer.Address, delegation.AsMemory(), Prague.Instance);
 
             Transaction firstTx = Build.A.Transaction
-                .WithNonce(0)
+                .WithNonce((UInt256)firstNonce)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(9.GWei())
                 .WithMaxPriorityFeePerGas(9.GWei())
@@ -1792,10 +1800,10 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(AcceptTxResult.Accepted);
+            result.Should().Be(firstExpectation);
 
             Transaction secondTx = Build.A.Transaction
-                .WithNonce(1)
+                .WithNonce((UInt256)secondNonce)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(9.GWei())
                 .WithMaxPriorityFeePerGas(9.GWei())
@@ -1805,7 +1813,7 @@ namespace Nethermind.TxPool.Test
 
             result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
-            result.Should().Be(AcceptTxResult.MoreThanOneTxPerDelegatedAccount);
+            result.Should().Be(secondExpectation);
         }
 
         [TestCase(true)]
@@ -1817,7 +1825,9 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, specProvider);
 
             PrivateKey signer = TestItem.PrivateKeyA;
+            PrivateKey sponsor = TestItem.PrivateKeyB;
             _stateProvider.CreateAccount(signer.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsor.Address, UInt256.MaxValue);
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
 
@@ -1829,7 +1839,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
@@ -1837,8 +1847,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(9.GWei())
-                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithMaxFeePerGas(12.GWei())
+                .WithMaxPriorityFeePerGas(12.GWei())
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
@@ -1910,16 +1920,40 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase]
-        public void SetCode_tx_replament_can_replace_itself_and_remove_pending_delegation_restriction()
+        private static IEnumerable<object[]> SelfsponsoredSetCodeTxCases()
+        {
+            yield return new object[]
+            {
+                (IWorldState state, Address account, IReleaseSpec spec) =>
+                {
+                    state.CreateAccount(account, UInt256.MaxValue);
+                },
+                AcceptTxResult.Accepted
+            };
+            yield return new object[]
+            {
+                //Account is delegated so the last transaction should not be accepted
+                (IWorldState state, Address account, IReleaseSpec spec) =>
+                {
+                    state.CreateAccount(account, UInt256.MaxValue);
+                    byte[] delegation = [..Eip7702Constants.DelegationHeader, ..TestItem.AddressB.Bytes];
+                    state.InsertCode(account, delegation, spec);
+                },
+                AcceptTxResult.OnlyExactNonceForDelegatedAccount
+            };
+        }
+
+
+        [TestCaseSource(nameof(SelfsponsoredSetCodeTxCases))]
+        public void Selfsponsored_SetCode_tx_replacement_can_replace_itself_and_remove_pending_delegation_restriction(Action<IWorldState, Address, IReleaseSpec> accountSetup, AcceptTxResult lastExpectation)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
 
             PrivateKey signer = TestItem.PrivateKeyA;
-            _stateProvider.CreateAccount(signer.Address, UInt256.MaxValue);
-
+            accountSetup(_stateProvider, signer.Address, Prague.Instance);
+            
             EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
 
             Transaction firstSetcodeTx = Build.A.Transaction
@@ -1954,12 +1988,12 @@ namespace Nethermind.TxPool.Test
             .WithMaxFeePerGas(9.GWei())
             .WithMaxPriorityFeePerGas(9.GWei())
             .WithGasLimit(GasCostOf.Transaction)
-            .WithTo(TestItem.AddressB)
+            .WithTo(TestItem.AddressB) 
             .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
 
             result = _txPool.SubmitTx(thirdTx, TxHandlingOptions.PersistentBroadcast);
 
-            result.Should().Be(AcceptTxResult.Accepted);
+            result.Should().Be(lastExpectation);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
