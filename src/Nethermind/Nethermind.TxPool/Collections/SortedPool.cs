@@ -533,9 +533,8 @@ namespace Nethermind.TxPool.Collections
         public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
         {
             using var lockRelease = Lock.Acquire();
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
-                return bucket.Any(predicate);
-            return false;
+            return _buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket)
+                && bucket.Any(predicate);
         }
 
         protected void EnsureCapacity(int? expectedCapacity = null)

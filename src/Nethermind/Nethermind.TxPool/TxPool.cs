@@ -515,7 +515,7 @@ namespace Nethermind.TxPool
             if (!inserted)
             {
                 // it means it failed on adding to the pool - it is possible when new tx has the same sender
-                // and nonce as already eqxistent tx and is not good enough to replace it
+                // and nonce as already existent tx and is not good enough to replace it
                 Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
                 return AcceptTxResult.ReplacementNotAllowed;
             }

@@ -1920,10 +1920,23 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private static IEnumerable<object[]> SelfsponsoredSetCodeTxCases()
+        private static IEnumerable<object[]> SetCodeReplacedTxCases()
         {
             yield return new object[]
             {
+                //Not self sponsored
+                TestItem.PrivateKeyB,
+                (IWorldState state, Address account, IReleaseSpec spec) =>
+                {
+                    state.CreateAccount(account, UInt256.MaxValue);
+                    state.CreateAccount(TestItem.AddressB, UInt256.MaxValue);
+                },
+                AcceptTxResult.Accepted
+            };
+            yield return new object[]
+            {
+                //Self sponsored
+                TestItem.PrivateKeyA,
                 (IWorldState state, Address account, IReleaseSpec spec) =>
                 {
                     state.CreateAccount(account, UInt256.MaxValue);
@@ -1932,6 +1945,8 @@ namespace Nethermind.TxPool.Test
             };
             yield return new object[]
             {
+                //Self sponsored
+                TestItem.PrivateKeyA,
                 //Account is delegated so the last transaction should not be accepted
                 (IWorldState state, Address account, IReleaseSpec spec) =>
                 {
@@ -1943,9 +1958,9 @@ namespace Nethermind.TxPool.Test
             };
         }
 
-
-        [TestCaseSource(nameof(SelfsponsoredSetCodeTxCases))]
-        public void Selfsponsored_SetCode_tx_replacement_can_replace_itself_and_remove_pending_delegation_restriction(Action<IWorldState, Address, IReleaseSpec> accountSetup, AcceptTxResult lastExpectation)
+        [TestCaseSource(nameof(SetCodeReplacedTxCases))]
+        public void SetCode_tx_can_be_replaced_itself_and_remove_pending_delegation_restriction(
+            PrivateKey sponsor, Action<IWorldState, Address, IReleaseSpec> accountSetup, AcceptTxResult lastExpectation)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
@@ -1964,7 +1979,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(firstSetcodeTx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
@@ -1976,7 +1991,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(12.GWei())
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
 
             result = _txPool.SubmitTx(replacementTx, TxHandlingOptions.PersistentBroadcast);
 
