@@ -88,6 +88,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
+        var tmp = payloadAttributes is null ? "null" : "not null";
+        if (_logger.IsInfo) _logger.Info($"(tmp) forkchoice updated handler, could Prune? payloadAttributes: {tmp}");
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)

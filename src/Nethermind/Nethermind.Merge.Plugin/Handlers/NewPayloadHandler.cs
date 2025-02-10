@@ -226,6 +226,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
         // Only try pruning if enough time has passed since last attempt
+        if (_logger.IsInfo) _logger.Info($"(tmp) new payload handler, maybe Pruning? {DateTime.UtcNow - _lastPruneAttempt > _minPruneInterval}. last: {_lastPruneAttempt}, now: {DateTime.UtcNow}");
         if (DateTime.UtcNow - _lastPruneAttempt > _minPruneInterval)
         {
             _lastPruneAttempt = DateTime.UtcNow;
