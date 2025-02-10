@@ -157,7 +157,7 @@ internal class OnlyOneTxPerDelegatedAccountFilterTest
         TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegationCache pendingDelegations = new();
-        pendingDelegations.IncrementDelegationCount(TestItem.AddressA, 0);
+        pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
         OnlyOneTxPerDelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new CodeInfoRepository(), pendingDelegations);
         Transaction transaction = Build.A.Transaction.WithNonce(0).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         TxFilteringState state = new();
