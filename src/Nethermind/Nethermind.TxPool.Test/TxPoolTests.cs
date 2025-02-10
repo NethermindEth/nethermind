@@ -1772,10 +1772,10 @@ namespace Nethermind.TxPool.Test
 
         private static IEnumerable<object> DifferentOrderNonces()
         {
-            yield return new object[] { 0, 1, AcceptTxResult.Accepted, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
-            yield return new object[] { 2, 5, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
-            yield return new object[] { 1, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
-            yield return new object[] { 5, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
+            yield return new object[] { 0, 1, AcceptTxResult.Accepted, AcceptTxResult.FutureNonceForDelegatedAccount };
+            yield return new object[] { 2, 5, AcceptTxResult.FutureNonceForDelegatedAccount, AcceptTxResult.FutureNonceForDelegatedAccount };
+            yield return new object[] { 1, 0, AcceptTxResult.FutureNonceForDelegatedAccount, AcceptTxResult.Accepted };
+            yield return new object[] { 5, 0, AcceptTxResult.FutureNonceForDelegatedAccount, AcceptTxResult.Accepted };
         }
 
         [TestCaseSource(nameof(DifferentOrderNonces))]
@@ -1954,7 +1954,7 @@ namespace Nethermind.TxPool.Test
                     byte[] delegation = [..Eip7702Constants.DelegationHeader, ..TestItem.AddressB.Bytes];
                     state.InsertCode(account, delegation, spec);
                 },
-                AcceptTxResult.OnlyExactNonceForDelegatedAccount
+                AcceptTxResult.FutureNonceForDelegatedAccount
             };
         }
 

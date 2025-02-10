@@ -96,9 +96,9 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
 
         /// <summary>
-        /// Only one tx is allowed per delegated account. 
+        /// Only one tx with current state matching nonce is allowed per delegated account. 
         /// </summary>
-        public static readonly AcceptTxResult OnlyExactNonceForDelegatedAccount = new(17, nameof(OnlyExactNonceForDelegatedAccount));
+        public static readonly AcceptTxResult FutureNonceForDelegatedAccount = new(17, nameof(FutureNonceForDelegatedAccount));
 
         /// <summary>
         /// There is a pending delegation in the tx pool already

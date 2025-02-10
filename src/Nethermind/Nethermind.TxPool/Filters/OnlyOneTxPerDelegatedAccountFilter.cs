@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Filters
             //If the account is delegated we only accept the next transaction nonce 
             if (state.SenderAccount.Nonce != tx.Nonce)
             {
-                return AcceptTxResult.OnlyExactNonceForDelegatedAccount;
+                return AcceptTxResult.FutureNonceForDelegatedAccount;
             }
             return AcceptTxResult.Accepted;
         }
