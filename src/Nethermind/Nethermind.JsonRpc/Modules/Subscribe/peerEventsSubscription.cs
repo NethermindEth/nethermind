@@ -34,14 +34,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _peerPool.PeerRemoved += OnPeerRemoved;
 
             _sessionMonitor = _rlpxHost.SessionMonitor;
-            if (_sessionMonitor?.Sessions != null)
+            foreach (ISession session in _sessionMonitor.Sessions)
             {
-                foreach (ISession session in _sessionMonitor.Sessions)
-                {
-                    session.MsgDelivered += OnMsgDelivered;
-                    session.MsgReceived += OnMsgReceived;
-                    session.Disconnected += OnSessionDisconnected;
-                }
+                session.MsgDelivered += OnMsgDelivered;
+                session.MsgReceived += OnMsgReceived;
+                session.Disconnected += OnSessionDisconnected;
             }
             _rlpxHost.SessionCreated += OnSessionCreated;
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded, PeerRemoved, MsgDelivered and MsgReceived.");

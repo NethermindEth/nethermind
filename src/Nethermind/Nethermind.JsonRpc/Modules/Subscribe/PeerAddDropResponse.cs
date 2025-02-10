@@ -9,11 +9,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 
 public class PeerAddDropResponse
 {
-    protected PeerAddDropResponse()
-    {
-
-    }
-
     public PeerAddDropResponse(PeerInfo peerInfo, string subscripionType, string? e)
     {
         Type = subscripionType;
