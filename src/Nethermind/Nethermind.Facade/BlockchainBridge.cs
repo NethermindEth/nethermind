@@ -168,31 +168,31 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput<T> Simulate<T>(
+        public SimulateOutput<TTrace> Simulate<TTracer, TTrace>(
             BlockHeader header,
             SimulatePayload<TransactionWithSourceDetails> payload,
             CancellationToken cancellationToken,
-            ITracerFactory<T> tracerFactory)
-            where T : class
+            ITracerFactory<TTracer, TTrace> tracerFactory)
+            where TTracer : class, IBlockTracer<TTrace>
         {
             var tracer = tracerFactory.CreateTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(tracer);
 
-            SimulateOutput<T> result = new();
+            SimulateOutput<TTrace> result = new();
 
             try
             {
-                if (tracer is not SimulateBlockTracer validatedTracer)
-                {
-                    throw new InvalidOperationException($"Unsupported tracer type: {typeof(T).Name}");
-                }
+                // if (tracer is not SimulateBlockTracer<TTrace> validatedTracer)
+                // {
+                //     throw new InvalidOperationException($"Unsupported tracer type: {typeof(TTracer).Name}");
+                // }
 
-                if (!_simulateBridgeHelper.TrySimulate(
+                if (!_simulateBridgeHelper.TrySimulate<TTracer, TTrace>(
                         header,
                         payload,
-                        validatedTracer,
-                        new CancellationBlockTracer(receiptsTracer, cancellationToken),
+                        tracer,
+                        (IBlockTracer<TTrace>) new CancellationBlockTracer(receiptsTracer, cancellationToken),
                         out string error))
                 {
                     result.Error = error;
@@ -207,14 +207,14 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            if (tracer is SimulateBlockTracer simulateTracer)
-            {
-                result.Items = simulateTracer.Results as IReadOnlyList<SimulateBlockResult<T>>;
-            }
-            else
-            {
-                throw new InvalidOperationException($"Tracer type {typeof(T).Name} does not support 'Results'");
-            }
+            // if (tracer is SimulateBlockTracer<TTrace> simulateTracer)
+            // {
+            //     result.Items = simulateTracer.Results as IReadOnlyList<SimulateBlockResult<TTrace>>;
+            // }
+            // else
+            // {
+            //     throw new InvalidOperationException($"Tracer type {typeof(TTracer).Name} does not support 'Results'");
+            // }
 
             return result;
         }
@@ -462,15 +462,15 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        public class SimulateBlockTracerFactory : ITracerFactory<SimulateCallResult>
+        public class SimulateBlockTracerFactory : ITracerFactory<SimulateBlockTracer, SimulateCallResult>
         {
-            public IBlockTracer<SimulateCallResult> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            public SimulateBlockTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
             {
-                return (IBlockTracer<SimulateCallResult>)new SimulateBlockTracer(traceTransfers, returnFullTransactionObjects, specProvider);
+                return new SimulateBlockTracer(traceTransfers, returnFullTransactionObjects, specProvider);
             }
         }
 
-        public class GethLikeBlockMemoryTracerFactory : ITracerFactory<GethLikeTxTrace>
+        public class GethLikeBlockMemoryTracerFactory : ITracerFactory<GethLikeBlockMemoryTracer, GethLikeTxTrace>
         {
             private readonly GethTraceOptions _options;
 
@@ -479,13 +479,13 @@ namespace Nethermind.Facade
                 _options = options;
             }
 
-            public IBlockTracer<GethLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            public GethLikeBlockMemoryTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
             {
                 return new GethLikeBlockMemoryTracer(_options);
             }
         }
 
-        public class ParityLikeBlockTracerFactory : ITracerFactory<ParityLikeTxTrace>
+        public class ParityLikeBlockTracerFactory : ITracerFactory<ParityLikeBlockTracer, ParityLikeTxTrace>
         {
             private readonly ParityTraceTypes _types;
 
@@ -494,7 +494,7 @@ namespace Nethermind.Facade
                 _types = types;
             }
 
-            public IBlockTracer<ParityLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            public ParityLikeBlockTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
             {
                 return new ParityLikeBlockTracer(_types);
             }

@@ -3,8 +3,8 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Facade.Tracing
 {
-    public interface ITracerFactory<T>
+    public interface ITracerFactory<TTracer, TTrace>
     {
-        IBlockTracer<T> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider);
+        TTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider);
     }
 }

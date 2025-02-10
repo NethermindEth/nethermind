@@ -10,10 +10,10 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISpecProvider spec) : BlockTracer
+public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISpecProvider spec)
+    : BlockTracer, IBlockTracer<SimulateCallResult>
 {
     private readonly List<SimulateTxMutatorTracer> _txTracers = new();
-
     private Block _currentBlock = null!;
     public List<SimulateBlockResult<SimulateCallResult>> Results { get; } = new();
 
@@ -25,7 +25,6 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
 
     public override ITxTracer StartNewTxTrace(Transaction? tx)
     {
-
         if (tx?.Hash is not null)
         {
             ulong txIndex = (ulong)_txTracers.Count;
@@ -34,17 +33,23 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
             _txTracers.Add(result);
             return result;
         }
-
         return NullTxTracer.Instance;
     }
 
     public override void EndBlockTrace()
     {
-        SimulateBlockResult<SimulateCallResult>? result = new(_currentBlock, includeFullTxData, spec)
+        SimulateBlockResult<SimulateCallResult> result = new(_currentBlock, includeFullTxData, spec)
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
         };
-
         Results.Add(result);
+    }
+
+    public IReadOnlyList<SimulateBlockResult<SimulateCallResult>> GetResults() => Results;
+
+    // ✅ Implement BuildResult()
+    public SimulateCallResult BuildResult()
+    {
+        return new SimulateCallResult(); // Replace with actual result construction
     }
 }
