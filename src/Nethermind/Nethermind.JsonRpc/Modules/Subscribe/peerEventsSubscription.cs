@@ -34,9 +34,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _peerPool.PeerRemoved += OnPeerRemoved;
 
             _sessionMonitor = _rlpxHost.SessionMonitor;
-            if (_sessionMonitor?.Sessions?.Values != null)
+            if (_sessionMonitor?.Sessions != null)
             {
-                foreach (ISession session in _sessionMonitor.Sessions.Values)
+                foreach (ISession session in _sessionMonitor.Sessions)
                 {
                     session.MsgDelivered += OnMsgDelivered;
                     session.MsgReceived += OnMsgReceived;
@@ -154,7 +154,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _peerPool.PeerAdded -= OnPeerAdded;
             _peerPool.PeerRemoved -= OnPeerRemoved;
-            foreach (ISession session in _sessionMonitor.Sessions.Values)
+            foreach (ISession session in _sessionMonitor.Sessions)
             {
                 session.MsgDelivered -= OnMsgDelivered;
                 session.MsgReceived -= OnMsgReceived;

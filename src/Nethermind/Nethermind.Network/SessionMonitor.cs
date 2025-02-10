@@ -47,8 +47,7 @@ namespace Nethermind.Network
         }
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-
-        public ConcurrentDictionary<Guid, ISession> Sessions => _sessions;
+        public IEnumerable<ISession> Sessions => _sessions.Values;
 
         public void AddSession(ISession session)
         {

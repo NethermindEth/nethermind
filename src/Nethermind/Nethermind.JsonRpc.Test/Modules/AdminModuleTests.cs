@@ -9,14 +9,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-// using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
-// using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-// using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Era1;
 using Nethermind.JsonRpc.Modules;
@@ -30,17 +27,10 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats.Model;
-// using Nethermind.Synchronization;
-// using Nethermind.Synchronization.FastSync;
-// using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-// using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Network.P2P;
-// using Nethermind.Crypto;
-// using Nethermind.Network.Rlpx.Handshake;
-// using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -55,11 +45,7 @@ public class AdminModuleTests
     private ILogManager _logManager = null!;
     private ITxPool _txPool = null!;
     private IReceiptStorage _receiptStorage = null!;
-    // private IFilterStore _filterStore = null!;
-    // private ISyncConfig _syncConfig = null!;
     private IReceiptMonitor _receiptCanonicalityMonitor = null!;
-    // private ISyncProgressResolver _syncProgressResolver = null!;
-    // private ISpecProvider _specProvider = null!;
     private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
     private IJsonSerializer _jsonSerializer = null!;
     private IBlockTree _blockTree = null!;
@@ -73,13 +59,6 @@ public class AdminModuleTests
     private ISession _existingSession1 = null!;
     private ISession _existingSession2 = null!;
     private ISession _newSession1 = null!;
-    // private IMessageSerializationService _serializationService = null!;
-    // private IProtectedPrivateKey _nodeKey = null!;
-    // private IHandshakeService _handshakeService = null!;
-    // private ISessionMonitor _sessionMonitor = null!;
-    // private IDisconnectsAnalyzer _disconnectsAnalyzer = null!;
-    // private IChannelFactory _channelFactory = null!;
-
 
     [SetUp]
     public void Setup()
@@ -88,10 +67,6 @@ public class AdminModuleTests
         _txPool = Substitute.For<ITxPool>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
-        // _filterStore = new FilterStore();
-        // _syncConfig = new SyncConfig();
-        // _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-        // _specProvider = Substitute.For<ISpecProvider>();
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _jsonSerializer = new EthereumJsonSerializer();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
@@ -104,18 +79,11 @@ public class AdminModuleTests
         peerPool.ActivePeers.Returns(dict);
         IAdminEraService eraService = Substitute.For<IAdminEraService>();
         _peerPool = peerPool;
-        // _serializationService = Substitute.For<IMessageSerializationService>();
-        // _nodeKey = Substitute.For<IProtectedPrivateKey>();
-        // _handshakeService = Substitute.For<IHandshakeService>();
-        // _sessionMonitor = Substitute.For<ISessionMonitor>();
-        // _disconnectsAnalyzer = Substitute.For<IDisconnectsAnalyzer>();
-        // _channelFactory = Substitute.For<IChannelFactory>();
         _existingSession1 = Substitute.For<ISession>();
         _existingSession2 = Substitute.For<ISession>();
         _newSession1 = Substitute.For<ISession>();
-        ConcurrentDictionary<Guid, ISession> existingSessions = new();
-        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abc"), _existingSession1);
-        existingSessions.TryAdd(new Guid("12345678-1234-1234-1234-123456789abd"), _existingSession2);
+        List<ISession> existingSessionsList = new() {_existingSession1, _existingSession2};
+        IEnumerable<ISession> existingSessions = existingSessionsList;
 
         _rlpxPeer = Substitute.For<IRlpxHost>();
         _rlpxPeer.SessionMonitor.Sessions.Returns(existingSessions);
