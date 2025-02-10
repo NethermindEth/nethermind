@@ -1772,10 +1772,10 @@ namespace Nethermind.TxPool.Test
 
         private static IEnumerable<object> DifferentOrderNonces()
         {
-            yield return new object[] {0, 1, AcceptTxResult.Accepted, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
-            yield return new object[] {2, 5, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
-            yield return new object[] {1, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
-            yield return new object[] {5, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
+            yield return new object[] { 0, 1, AcceptTxResult.Accepted, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
+            yield return new object[] { 2, 5, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.OnlyExactNonceForDelegatedAccount };
+            yield return new object[] { 1, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
+            yield return new object[] { 5, 0, AcceptTxResult.OnlyExactNonceForDelegatedAccount, AcceptTxResult.Accepted };
         }
 
         [TestCaseSource(nameof(DifferentOrderNonces))]
@@ -1953,7 +1953,7 @@ namespace Nethermind.TxPool.Test
 
             PrivateKey signer = TestItem.PrivateKeyA;
             accountSetup(_stateProvider, signer.Address, Prague.Instance);
-            
+
             EthereumEcdsa ecdsa = new EthereumEcdsa(_specProvider.ChainId);
 
             Transaction firstSetcodeTx = Build.A.Transaction
@@ -1988,7 +1988,7 @@ namespace Nethermind.TxPool.Test
             .WithMaxFeePerGas(9.GWei())
             .WithMaxPriorityFeePerGas(9.GWei())
             .WithGasLimit(GasCostOf.Transaction)
-            .WithTo(TestItem.AddressB) 
+            .WithTo(TestItem.AddressB)
             .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
 
             result = _txPool.SubmitTx(thirdTx, TxHandlingOptions.PersistentBroadcast);
