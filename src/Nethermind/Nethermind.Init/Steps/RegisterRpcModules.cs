@@ -50,12 +50,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
         StepDependencyException.ThrowIfNull(_api.BloomStorage);
         StepDependencyException.ThrowIfNull(_api.LogManager);
-
-        if (!_jsonRpcConfig.Enabled)
-        {
-            return;
-        }
-
         StepDependencyException.ThrowIfNull(_api.FileSystem);
         StepDependencyException.ThrowIfNull(_api.TxPool);
         StepDependencyException.ThrowIfNull(_api.Wallet);
@@ -65,6 +59,28 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.PeerManager);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
+        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
+        StepDependencyException.ThrowIfNull(_api.BlockValidator);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.KeyStore);
+        StepDependencyException.ThrowIfNull(_api.PeerPool);
+        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
+        StepDependencyException.ThrowIfNull(_api.PeerManager);
+        StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
+        StepDependencyException.ThrowIfNull(_api.Enode);
+        StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
+        StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
+        StepDependencyException.ThrowIfNull(_api.SyncServer);
+        StepDependencyException.ThrowIfNull(_api.EngineSignerStore);
+        StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+
+        if (!_jsonRpcConfig.Enabled)
+        {
+            return;
+        }
 
         // Used only by rpc
         _api.EthSyncingInfo = new EthSyncingInfo(
@@ -84,24 +100,12 @@ public class RegisterRpcModules : IStep
         IInitConfig initConfig = _api.Config<IInitConfig>();
         INetworkConfig networkConfig = _api.Config<INetworkConfig>();
 
-
         // lets add threads to support parallel eth_getLogs
         ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
         ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-
         RpcLimits.Init(_jsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.KeyStore);
-        StepDependencyException.ThrowIfNull(_api.PeerPool);
-        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
 
         ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, _jsonRpcConfig.Timeout);
@@ -110,21 +114,20 @@ public class RegisterRpcModules : IStep
 
         RegisterTraceRpcModule(rpcModuleProvider);
 
-        StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
-
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,
             _api.Wallet,
             _api.KeyStore);
         rpcModuleProvider.RegisterSingle<IPersonalRpcModule>(personalRpcModule);
 
-        StepDependencyException.ThrowIfNull(_api.PeerManager);
-        StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
-        StepDependencyException.ThrowIfNull(_api.Enode);
-
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger?.Add(pruningTrigger);
         (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
+
+        _api.SubscriptionFactory = new SubscriptionFactory();
+        // Register the standard subscription types in the dictionary
+        _api.SubscriptionFactory.RegisterStandardSubscriptions(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo, _api.PeerPool, _api.RlpxPeer);
+        SubscriptionManager subscriptionManager = new(_api.SubscriptionFactory, _api.LogManager);
 
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
@@ -137,16 +140,12 @@ public class RegisterRpcModules : IStep
             _api.AdminEraService,
             initConfig.BaseDbPath,
             pruningTrigger,
-            getFromApi.ChainSpec.Parameters);
+            getFromApi.ChainSpec.Parameters,
+            subscriptionManager);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
-
-        StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
 
         TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.SpecProvider);
         rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
-
-        StepDependencyException.ThrowIfNull(_api.SyncServer);
-        StepDependencyException.ThrowIfNull(_api.EngineSignerStore);
 
         NetRpcModule netRpcModule = new(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
         rpcModuleProvider.RegisterSingle<INetRpcModule>(netRpcModule);
@@ -163,23 +162,12 @@ public class RegisterRpcModules : IStep
             _api.PeerManager);
         rpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
 
-        StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
-
         JsonRpcLocalStats jsonRpcLocalStats = new(
             _api.Timestamper,
             _jsonRpcConfig,
             _api.LogManager);
 
         _api.JsonRpcLocalStats = jsonRpcLocalStats;
-
-        SubscriptionFactory subscriptionFactory = new();
-
-        // Register the standard subscription types in the dictionary
-        subscriptionFactory.RegisterStandardSubscription(_api.BlockTree, _api.LogManager, _api.SpecProvider, _api.ReceiptMonitor, _api.FilterStore, _api.TxPool, _api.EthSyncingInfo);
-
-        _api.SubscriptionFactory = subscriptionFactory;
-
-        SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
 
         SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
         rpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
