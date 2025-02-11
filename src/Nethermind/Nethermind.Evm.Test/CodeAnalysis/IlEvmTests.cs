@@ -228,8 +228,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = 4,
                 PartialAotThreshold = 256,
             };
-
-            CodeInfoRepository.ClearCache();
         }
 
         public static IEnumerable<(string, byte[])> GetPatBytecodesSamples()
