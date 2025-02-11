@@ -33,7 +33,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Trie;
 
 using static System.Runtime.CompilerServices.Unsafe;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
 using System.Reflection.Emit;
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -81,7 +80,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     internal class TestBlockChain : VirtualMachineTestsBase
     {
         protected IVMConfig config;
-        protected IlAnalyzer ilAnalyzer;
         public TestBlockChain(IVMConfig config)
         {
             this.config = config;
@@ -102,8 +100,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             _blockhashProvider = new TestBlockhashProvider(SpecProvider);
             Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, config);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
-
-            ilAnalyzer = new IlAnalyzer(SpecProvider, _blockhashProvider, CodeInfoRepository);
 
             var code = Prepare.EvmCode
                 .PushData(23)
@@ -179,17 +175,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             if (mode.HasFlag(ILMode.PATTERN_BASED_MODE))
             {
-                ilAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
             }
 
             if (mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
             {
-                ilAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             }
 
             if (mode.HasFlag(ILMode.FULL_AOT_MODE))
             {
-                ilAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
             }
         }
 

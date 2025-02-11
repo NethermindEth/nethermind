@@ -67,7 +67,7 @@ public class VirtualMachine : IVirtualMachine
 
     private readonly IVirtualMachine _evm;
 
-    private IVMConfig _config;
+    private IVMConfig _vmConfig;
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
@@ -76,14 +76,31 @@ public class VirtualMachine : IVirtualMachine
         IVMConfig vmConfig = null)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _config = vmConfig ?? new VMConfig();
+#if ILVM_DEBUG
+        _vmConfig = new VMConfig
+        {
+            IsPartialAotEnabled = false,
+            IsFullAotEnabled = true,
+            IsPatternMatchingEnabled = false,
+
+            AggressivePartialAotMode = true,
+            BakeInTracingInAotModes = true,
+
+            FullAotThreshold = 5,
+            PatternMatchingThreshold = int.MaxValue,
+            AnalysisQueueMaxSize = 8,
+            PartialAotThreshold = int.MaxValue,
+        };
+#else
+        _vmConfig = vmConfig ?? new VMConfig();
+#endif
         _evm = logger.IsTrace
-            ? _config.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger)
-            : _config.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _config, logger);
+            ? _vmConfig.IsVmOptimizationEnabled
+                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
+                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
+            : _vmConfig.IsVmOptimizationEnabled
+                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
+                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -166,8 +183,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     private ITxTracer _txTracer = NullTxTracer.Instance;
     private readonly IVMConfig _vmConfig;
 
-    private IlAnalyzer IlAnalyzer { get; }
-
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ICodeInfoRepository codeInfoRepository,
@@ -179,24 +194,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-
-        if(typeof(IsOptimizing) == typeof(TOptimizing))
-        {
-            IlAnalyzer = new IlAnalyzer(specProvider, _blockhashProvider, codeInfoRepository);
-        }
-#if ILVM_DEBUG
-        _vmConfig = new VMConfig
-        {
-            IsJitEnabled = true,
-            AggressiveJitMode = true,
-            IsPatternMatchingEnabled = false,
-            BakeInTracingInJitMode = false,
-            JittingThreshold = 1,
-            PatternMatchingThreshold = int.MaxValue
-        };
-#else
         _vmConfig = vmConfig;
-#endif
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -682,7 +680,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsEmpty)
             {
-                vmState.Env.CodeInfo.NoticeExecution(IlAnalyzer, _vmConfig, _logger);
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
         }
 
@@ -721,10 +719,13 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             if (env.CodeInfo.IlInfo.PrecompiledContract is not null)
             {
                 Metrics.AotPrecompiledCalls++;
-                IPrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
+                PrecompiledContract precompiledContract = env.CodeInfo.IlInfo.PrecompiledContract;
                 int programCounter = vmState.ProgramCounter;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                if (precompiledContract.MoveNext(vmState, _state, ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger, ref chunkExecutionState))
+                if (precompiledContract(
+                    env.CodeInfo.IlInfo.ContractMetadata, _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
+                    ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.As<byte, Word>(ref stack.HeadRef), ref _returnDataBuffer, _txTracer, _logger,
+                    ref chunkExecutionState))
                 {
                     UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
                     return new CallResult(chunkExecutionState.CallResult);

@@ -22,13 +22,13 @@ using static Nethermind.Evm.CodeAnalysis.IL.WordEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using static Nethermind.Evm.CodeAnalysis.IL.StackEmit;
 
-namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
+namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 
-internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
+internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 {
-    public PartialAotOpcodeEmitter()
+    public AotOpcodeEmitter()
     {
-        Instruction[] instructions = (Instruction[])Enum.GetValues(typeof(Instruction));
+        var instructions = (Instruction[])Enum.GetValues(typeof(Instruction));
 
         foreach (var instruction in instructions)
         {
@@ -150,9 +150,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             if (contractMetadata.EmbeddedData[opcodeMetadata.Arguments.Value].IsZero())
-                            {
                                 method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            }
                             else
                             {
                                 method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
@@ -189,9 +187,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             if (contractMetadata.EmbeddedData[opcodeMetadata.Arguments.Value].IsZero())
-                            {
                                 method.CleanWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
-                            }
                             else
                             {
                                 method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
@@ -890,7 +886,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            int count = (int)opcodeMetadata.Operation - (int)Instruction.DUP1 + 1;
+                            var count = (int)opcodeMetadata.Operation - (int)Instruction.DUP1 + 1;
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 0);
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], count);
                             method.LoadObject(typeof(Word));
@@ -917,7 +913,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            int count = (int)opcodeMetadata.Operation - (int)Instruction.SWAP1 + 1;
+                            var count = (int)opcodeMetadata.Operation - (int)Instruction.SWAP1 + 1;
 
                             method.LoadLocalAddress(locals.uint256R);
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
@@ -1539,7 +1535,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             envLoader.LoadReturnDataBuffer(method, locals, false);
                             method.LoadLocalAddress(locals.uint256B);
                             method.LoadLocalAddress(locals.uint256C);
-                            method.Call(MethodInfo<UInt256>("op_Explicit", typeof(Int32), new[] { typeof(UInt256).MakeByRefType() }));
+                            method.Call(MethodInfo<UInt256>("op_Explicit", typeof(int), new[] { typeof(UInt256).MakeByRefType() }));
                             method.LoadConstant((int)PadDirection.Right);
                             method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                             method.StoreLocal(locals.localZeroPaddedSpan);
@@ -1679,7 +1675,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.LoadLocal(locals.uint256A);
                             method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
                             method.Convert<int>();
-                            method.LoadElement<Byte[]>();
+                            method.LoadElement<byte[]>();
                             method.StoreLocal(locals.localArray);
 
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
@@ -1768,7 +1764,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                             method.LoadItemFromSpan<TDelegateType, byte>(wordSpan, locals.uint32A);
                             method.LoadIndirect<byte>();
                             method.Convert<sbyte>();
-                            method.LoadConstant((sbyte)0);
+                            method.LoadConstant(0);
                             method.BranchIfLess(signIsNegative);
 
                             method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32), BindingFlags.Static | BindingFlags.Public));
@@ -1802,7 +1798,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            sbyte topicsCount = (sbyte)(opcodeMetadata.Operation - Instruction.LOG0);
+                            var topicsCount = (sbyte)(opcodeMetadata.Operation - Instruction.LOG0);
 
                             envLoader.LoadVmState(method, locals, false);
 
@@ -1870,7 +1866,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
 
                             method.LoadConstant(topicsCount);
                             method.NewArray<Hash256>();
-                            for (int k = 0; k < topicsCount; k++)
+                            for (var k = 0; k < topicsCount; k++)
                             {
                                 method.Duplicate();
                                 method.LoadConstant(k);
@@ -1990,9 +1986,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                                         .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
                             if (!ilCompilerConfig.BakeInTracingInAotModes)
-                            {
                                 method.Call(nonTracingSStoreMethod);
-                            }
                             else
                             {
                                 Label callNonTracingMode = method.DefineLabel();
@@ -2376,9 +2370,7 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         envLoader.LoadSpec(method, locals, false);
                         envLoader.LoadTxTracer(method, locals, false);
                         if (ilCompilerConfig.BakeInTracingInAotModes)
-                        {
                             method.Call(selfDestructTracing);
-                        }
                         else
                         {
                             method.Call(selfDestructNotTracing);
@@ -2407,6 +2399,280 @@ internal class PartialAotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegat
                         method.LoadConstant((int)ContractState.Finished);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                         method.FakeBranch(escapeLabels.returnLabel);
+                    });
+                    break;
+                case Instruction.CALL:
+                case Instruction.CALLCODE:
+                case Instruction.DELEGATECALL:
+                case Instruction.STATICCALL:
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    {
+                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
+
+                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+
+                        using Local toPushToStack = method.DeclareLocal(typeof(UInt256?));
+                        using Local newStateToExe = method.DeclareLocal<object>();
+                        Label happyPath = method.DefineLabel();
+
+                        envLoader.LoadVmState(method, locals, false);
+                        envLoader.LoadWorldState(method, locals, false);
+                        method.LoadLocalAddress(locals.gasAvailable);
+                        envLoader.LoadSpec(method, locals, false);
+                        envLoader.LoadTxTracer(method, locals, false);
+                        envLoader.LoadLogger(method, locals, false);
+
+                        method.LoadConstant((int)instruction);
+
+                        var index = 1;
+                        // load gasLimit
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load codeSource
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetAddress);
+
+                        // load callvalue
+                        if (instruction is Instruction.CALL)
+                        {
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                            method.Call(Word.GetUInt256);
+                        }
+                        else
+                        {
+                            method.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
+                        }
+
+                        // load dataoffset
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load datalength
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load outputOffset
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load outputLength
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.Call(Word.GetUInt256);
+
+                        method.LoadLocalAddress(toPushToStack);
+
+                        envLoader.LoadReturnDataBuffer(method, locals, true);
+
+                        method.LoadLocalAddress(newStateToExe);
+
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                            method.Call(callMethodTracign);
+                        else
+                        {
+                            method.Call(callMethodNotTracing);
+                        }
+                        method.StoreLocal(locals.uint32A);
+
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                        }
+                        else
+                        {
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                        }
+
+                        method.LoadLocal(locals.uint32A);
+                        method.LoadConstant((int)EvmExceptionType.None);
+                        method.BranchIfEqual(happyPath);
+
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(locals.uint32A);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+                        method.LoadConstant((int)ContractState.Failed);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+                        envLoader.LoadGasAvailable(method, locals, true);
+                        method.LoadLocal(locals.gasAvailable);
+                        method.StoreIndirect<long>();
+                        method.FakeBranch(escapeLabels.exitLabel); ;
+
+                        method.MarkLabel(happyPath);
+
+                        Label skipStateMachineScheduling = method.DefineLabel();
+
+                        method.LoadLocal(newStateToExe);
+                        method.LoadNull();
+                        method.BranchIfEqual(skipStateMachineScheduling);
+
+                        method.LoadLocal(newStateToExe);
+                        method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
+                        method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
+                        method.BranchIfTrue(skipStateMachineScheduling);
+
+                        // cast object to CallResult and store it in 
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(newStateToExe);
+                        method.CastClass(typeof(EvmState));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+
+                        method.LoadConstant((int)ContractState.Halted);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+                        method.FakeBranch(escapeLabels.returnLabel);
+
+                        method.MarkLabel(skipStateMachineScheduling);
+                        Label hasNoItemsToPush = method.DefineLabel();
+
+                        method.LoadLocalAddress(toPushToStack);
+                        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
+                        method.BranchIfTrue(hasNoItemsToPush);
+
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.LoadLocalAddress(toPushToStack);
+                        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
+                        method.Call(Word.SetUInt256);
+
+                        method.MarkLabel(hasNoItemsToPush);
+                    });
+                    break;
+                case Instruction.CREATE:
+                case Instruction.CREATE2:
+                    AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
+                    {
+                        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing));
+
+                        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>)
+                            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsOptimizing>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+                            .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
+
+                        using Local toPushToStack = method.DeclareLocal(typeof(UInt256?));
+                        using Local newStateToExe = method.DeclareLocal<object>();
+                        Label happyPath = method.DefineLabel();
+
+                        envLoader.LoadVmState(method, locals, false);
+
+                        envLoader.LoadWorldState(method, locals, false);
+                        method.LoadLocalAddress(locals.gasAvailable);
+                        envLoader.LoadSpec(method, locals, false);
+                        envLoader.LoadTxTracer(method, locals, false);
+                        envLoader.LoadLogger(method, locals, false);
+
+                        method.LoadConstant((int)instruction);
+
+                        var index = 1;
+
+                        // load value
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load memory offset
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load initcode len
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                        method.Call(Word.GetUInt256);
+
+                        // load callvalue
+                        if (instruction is Instruction.CREATE2)
+                        {
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                            method.Call(Word.GetMutableSpan);
+                        }
+                        else
+                        {
+                            // load empty span
+                            method.Call(typeof(Span<byte>).GetProperty(nameof(Span<byte>.Empty), BindingFlags.Static | BindingFlags.Public).GetGetMethod());
+                        }
+
+                        method.LoadLocalAddress(toPushToStack);
+
+                        envLoader.LoadReturnDataBuffer(method, locals, true);
+
+                        method.LoadLocalAddress(newStateToExe);
+
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                            method.Call(callMethodTracign);
+                        else
+                        {
+                            method.Call(callMethodNotTracing);
+                        }
+                        method.StoreLocal(locals.uint32A);
+
+
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                        }
+                        else
+                        {
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                        }
+
+                        method.LoadLocal(locals.uint32A);
+                        method.LoadConstant((int)EvmExceptionType.None);
+                        method.BranchIfEqual(happyPath);
+
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(locals.uint32A);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
+                        method.LoadConstant((int)ContractState.Failed);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+                        envLoader.LoadGasAvailable(method, locals, true);
+                        method.LoadLocal(locals.gasAvailable);
+                        method.StoreIndirect<long>();
+                        method.FakeBranch(escapeLabels.exitLabel);
+
+                        method.MarkLabel(happyPath);
+
+                        Label skipStateMachineScheduling = method.DefineLabel();
+
+                        method.LoadLocal(newStateToExe);
+                        method.LoadNull();
+                        method.BranchIfEqual(skipStateMachineScheduling);
+
+                        method.LoadLocal(newStateToExe);
+                        method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
+                        method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
+                        method.BranchIfTrue(skipStateMachineScheduling);
+
+                        // cast object to CallResult and store it in 
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(newStateToExe);
+                        method.CastClass(typeof(EvmState));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+
+                        method.LoadConstant((int)ContractState.Halted);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+                        method.Branch(escapeLabels.returnLabel);
+
+                        method.MarkLabel(skipStateMachineScheduling);
+                        Label hasNoItemsToPush = method.DefineLabel();
+
+                        method.LoadLocalAddress(toPushToStack);
+                        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
+                        method.BranchIfTrue(hasNoItemsToPush);
+
+                        method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
+                        method.LoadLocalAddress(toPushToStack);
+                        method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
+                        method.Call(Word.SetUInt256);
+
+                        method.MarkLabel(hasNoItemsToPush);
                     });
                     break;
                 default:

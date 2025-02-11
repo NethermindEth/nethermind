@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -14,7 +14,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class PrecompiledChunk : InstructionChunk
 {
     public string Name => PrecompiledSegment.Method.Name;
-    internal PartialAOT.ExecuteSegment PrecompiledSegment;
+    internal ExecuteSegment PrecompiledSegment;
     internal byte[][] Data;
 
     public void Invoke<T>(EvmState vmState,

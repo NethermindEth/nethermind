@@ -50,9 +50,8 @@ internal class IlInfo
     // assumes small number of ILed
     public InstructionChunk[]? IlevmChunks { get; set; }
 
-    public Type? DynamicContractType { get; set; }
     public ContractMetadata? ContractMetadata { get; set; }
-    public IPrecompiledContract? PrecompiledContract { get; set; }
+    public PrecompiledContract? PrecompiledContract { get; set; }
 
     private byte[] _Mapping = null;
 

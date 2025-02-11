@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
+using Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -25,7 +24,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
 /// Provides
 /// </summary>
-public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepo)
+public static class IlAnalyzer
 {
     public class AnalysisWork(CodeInfo codeInfo, IlevmMode mode)
     {
@@ -34,7 +33,7 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
     }
     private static readonly ConcurrentQueue<AnalysisWork> _queue = new();
 
-    public void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
+    public static void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
     {
         _queue.Enqueue(new AnalysisWork(codeInfo, mode));
         if (config.AnalysisQueueMaxSize <= _queue.Count)
@@ -43,7 +42,7 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
         }
     }
 
-    private void AnalyzeQueue(IVMConfig config, ILogger logger)
+    private static void AnalyzeQueue(IVMConfig config, ILogger logger)
     {
         int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
@@ -119,7 +118,7 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    public void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
+    public static void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
     {
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
@@ -147,7 +146,7 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
         }
     }
 
-    internal void CheckPatterns(ContractMetadata contractMetadata, IlInfo ilinfo)
+    internal static void CheckPatterns(ContractMetadata contractMetadata, IlInfo ilinfo)
     {
         List<InstructionChunk> patternsFound = new();
         int offset = ilinfo.IlevmChunks?.Length ?? 0;
@@ -238,16 +237,15 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
         return contractMetadata;
     }
 
-    internal void CompileContract(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
+    internal static void CompileContract(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
     {
-        var contractType = FullAOT.CompileContract(contractMetadata, vmConfig);
+        var contractDelegate = Precompiler.CompileContract(codeInfo.Address?.ToString(), contractMetadata, vmConfig);
 
-        ilinfo.DynamicContractType = contractType;
-        ilinfo.PrecompiledContract = (IPrecompiledContract)Activator.CreateInstance(contractType, contractMetadata, specProvider, blockhashProvider, codeInfoRepo);
+        ilinfo.PrecompiledContract = contractDelegate;
         Interlocked.Or(ref ilinfo.Mode, ILMode.FULL_AOT_MODE);
     }
 
-    internal void CompileSegments(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
+    internal static void CompileSegments(CodeInfo codeInfo, ContractMetadata contractMetadata, IlInfo ilinfo, IVMConfig vmConfig)
     {
         List<InstructionChunk> segmentsFound = new();
         int offset = ilinfo.IlevmChunks?.Length ?? 0;
@@ -257,7 +255,7 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
         for (int i = 0; i < contractMetadata.Segments.Length; i++)
         {
             string segmentName = GenerateName(contractMetadata.Segments[i].Boundaries);
-            PrecompiledChunk segmentExecutionCtx = PartialAOT.CompileSegment(segmentName, contractMetadata, i, vmConfig, out var localJumpdests);
+            PrecompiledChunk segmentExecutionCtx = Precompiler.CompileSegment(segmentName, contractMetadata, i, vmConfig, out var localJumpdests);
             ilinfo.AddMapping(contractMetadata.Segments[i].Segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
             if (vmConfig.AggressivePartialAotMode)
             {

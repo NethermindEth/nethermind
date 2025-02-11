@@ -8,10 +8,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT.PartialAOT;
 
-namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
-internal class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
+namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
+public class PartialAotEnvLoader : EnvLoader<ExecuteSegment>
 {
     private const int CHAINID_INDEX = 0;
     private const int REF_VMSTATE_INDEX = 1;
