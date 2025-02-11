@@ -55,7 +55,7 @@ namespace Nethermind.Init.Steps
         private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
             Dictionary<Type, List<StepWrapper>> stepBaseTypeMap = [];
-            Dictionary<Type, StepInfo> stepInfoMap = []; 
+            Dictionary<Type, StepInfo> stepInfoMap = [];
 
             foreach (StepInfo stepInfo in _allSteps)
             {
@@ -154,7 +154,7 @@ namespace Nethermind.Init.Steps
         private void ReviewFailedAndThrow(Task task)
         {
             if (task?.IsFaulted == true && task?.Exception is not null)
-                ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();         
+                ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
         }
 
         private class StepWrapper(IStep step)
