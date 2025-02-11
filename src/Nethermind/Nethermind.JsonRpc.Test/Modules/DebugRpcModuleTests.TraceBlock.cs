@@ -83,41 +83,47 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> TraceBlockSource()
     {
-        var contract = Prepare.EvmCode
-            .PushData(0)
-            .PushData(32)
-            .Op(Instruction.SSTORE)
-            .Op(Instruction.STOP)
-            .Done;
-
-        var deployment = Prepare.EvmCode
-            .Create(contract, 0)
-            .Op(Instruction.STOP)
-            .Done;
-
-        var call = Prepare.EvmCode
-            .Call(TestItem.AddressB, 100000)
-            .Op(Instruction.STOP)
-            .Done;
-
         Func<TestRpcBlockchain, Transaction[]> transactions = b =>
-        [
-            Build.A.Transaction
-                .WithNonce(b.State.GetNonce(TestItem.AddressA))
-                .WithCode(deployment)
-                .To(TestItem.AddressB)
-                .WithGasLimit(100000)
-                .SignedAndResolved(TestItem.PrivateKeyA)
-                .TestObject,
+        {
+            var nonce = b.State.GetNonce(TestItem.AddressA);
+            var contract = Prepare.EvmCode
+                .PushData(0)
+                .PushData(32)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
 
-            Build.A.Transaction
-                .WithNonce(b.State.GetNonce(TestItem.AddressA) + 1)
-                .WithCode(call)
-                .To(TestItem.AddressB)
-                .WithGasLimit(100000)
-                .SignedAndResolved(TestItem.PrivateKeyA)
-                .TestObject,
-        ];
+            var salt = new byte[32];
+            var deployment = Prepare.EvmCode
+                .Create2(contract, salt, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
+            Address deploymentAddress = ContractAddress.From(deployingContractAddress, salt, contract);
+
+            var call = Prepare.EvmCode
+                .Call(deploymentAddress, 100000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            return
+            [
+                Build.A.Transaction
+                    .WithNonce(nonce)
+                    .WithCode(deployment)
+                    .WithGasLimit(100000)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject,
+
+                Build.A.Transaction
+                    .WithNonce(nonce + 1)
+                    .WithCode(call)
+                    .WithGasLimit(100000)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject,
+            ];
+        };
 
         yield return new TestCaseData(
             transactions,
@@ -128,21 +134,45 @@ public partial class DebugRpcModuleTests
                 "result": [
                     {
                         "result": {
-                            "gas": 21320,
+                            "gas": 87700,
                             "failed": false,
                             "returnValue": "",
-                            "structLogs": []
+                            "structLogs": [
+                                { "pc": 0, "op": "PUSH32", "gas": 46536,  "gasCost": 3, "depth": 1,  "error": null,  "stack": [], "storage": {} },
+                                { "pc": 33, "op": "PUSH1", "gas": 46533,  "gasCost": 3, "depth": 1,  "error": null, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000"], "storage": {} },
+                                { "pc": 35, "op": "MSTORE", "gas": 46530,  "gasCost": 6, "depth": 1,  "error": null, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000", "0x0"], "storage": {} },
+                                { "pc": 36, "op": "PUSH32", "gas": 46524,  "gasCost": 3, "depth": 1,  "error": null, "stack": [], "storage": {} },
+                                { "pc": 69, "op": "PUSH1", "gas": 46521,  "gasCost": 3, "depth": 1,  "error": null, "stack": ["0x0"], "storage": {} },
+                                { "pc": 71, "op": "PUSH1", "gas": 46518,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x6"], "storage": {} },
+                                { "pc": 73, "op": "PUSH1", "gas": 46515,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x6", "0x0"], "storage": {} },
+                                { "pc": 75, "op": "CREATE2", "gas": 46512,  "gasCost": 32006, "depth": 1,  "error": null,  "stack": ["0x0", "0x6", "0x0", "0x0"], "storage": {} },
+                                { "pc": 0, "op": "PUSH1", "gas": 14280,  "gasCost": 3, "depth": 2,  "error": null,  "stack": [], "storage": {} },
+                                { "pc": 2, "op": "PUSH1", "gas": 14277,  "gasCost": 3, "depth": 2,  "error": null,  "stack": ["0x0"], "storage": {} },
+                                { "pc": 4, "op": "SSTORE", "gas": 14274,  "gasCost": 2200, "depth": 2,  "error": null,  "stack": ["0x0", "0x20"], "storage": {} },
+                                { "pc": 5, "op": "STOP", "gas": 12074,  "gasCost": 0, "depth": 2,  "error": null,  "stack": [], "storage": {} },
+                                { "pc": 76, "op": "STOP", "gas": 12300,  "gasCost": 0, "depth": 1,  "error": null,  "stack": ["0x28156f6fdeeffd5667d51bb8d7d5069a920e0837"], "storage": {} }
+                            ]
                         },
-                        "txHash": "0x4a920824e30174e7868d25bd84903e5b6c8f323f02bd3b04a2b1bff26aa1697c"
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
                         "result": {
-                            "gas": 21520,
+                            "gas": 56141,
                             "failed": false,
                             "returnValue": "",
-                            "structLogs": []
+                            "structLogs": [
+                                { "pc": 0, "op": "PUSH1", "gas": 46480,  "gasCost": 3, "depth": 1,  "error": null,  "stack": [], "storage": {} },
+                                { "pc": 2, "op": "PUSH1", "gas": 46477,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0"], "storage": {} },
+                                { "pc": 4, "op": "PUSH1", "gas": 46474,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0"], "storage": {} },
+                                { "pc": 6, "op": "PUSH1", "gas": 46471,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0"], "storage": {} },
+                                { "pc": 8, "op": "PUSH1", "gas": 46468,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0"], "storage": {} },
+                                { "pc": 10, "op": "PUSH20", "gas": 46465,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0", "0x0"], "storage": {} },
+                                { "pc": 31, "op": "PUSH3", "gas": 46462,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0", "0x0", "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837"], "storage": {} },
+                                { "pc": 35, "op": "CALL", "gas": 46459,  "gasCost": 45774, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0", "0x0", "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837", "0x186a0"], "storage": {} },
+                                { "pc": 36, "op": "STOP", "gas": 43859,  "gasCost": 0, "depth": 1,  "error": null,  "stack": ["0x1"], "storage": {} }
+                            ]
                         },
-                        "txHash": "0xb1916d32b005a321b101996cd598f85562cfc6c53d035507d808ca38b6f04b36"
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
                 "id": 67
@@ -158,12 +188,12 @@ public partial class DebugRpcModuleTests
                 "jsonrpc": "2.0",
                 "result": [
                     {
-                        "result": [],
-                        "txHash": "0x4a920824e30174e7868d25bd84903e5b6c8f323f02bd3b04a2b1bff26aa1697c"
+                        "result": [46536,46533,46530,46524,46521,46518,46515,46512,14280,14277,14274,12074,12300],
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
-                        "result": [],
-                        "txHash": "0xb1916d32b005a321b101996cd598f85562cfc6c53d035507d808ca38b6f04b36"
+                        "result": [46480,46477,46474,46471,46468,46465,46462,46459,43859],
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
                 "id": 67
@@ -180,15 +210,15 @@ public partial class DebugRpcModuleTests
                 "result": [
                     {
                         "result": {
-                            "0x7f600060-40": 1
+                            "0x7f600060-73": 1
                         },
-                        "txHash": "0x4a920824e30174e7868d25bd84903e5b6c8f323f02bd3b04a2b1bff26aa1697c"
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
                         "result": {
                             "0x60006000-33": 1
                         },
-                        "txHash": "0xb1916d32b005a321b101996cd598f85562cfc6c53d035507d808ca38b6f04b36"
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
                 "id": 67
@@ -205,27 +235,49 @@ public partial class DebugRpcModuleTests
                 "result": [
                     {
                         "result": {
-                            "type": "CALL",
+                            "type": "CREATE",
                             "from": "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                            "to": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+                            "to": "0x0ffd3e46594919c04bcfd4e146203c8255670828",
                             "value": "0x1",
                             "gas": "0x186a0",
-                            "gasUsed": "0x5348",
-                            "input": "0x7f6000602055000000000000000000000000000000000000000000000000000000600052600660006000f000"
+                            "gasUsed": "0x15694",
+                            "input": "0x7f60006020550000000000000000000000000000000000000000000000000000006000527f0000000000000000000000000000000000000000000000000000000000000000600660006000f500",
+                            "calls": [
+                                {
+                                    "type": "CREATE2",
+                                    "from": "0x0ffd3e46594919c04bcfd4e146203c8255670828",
+                                    "to": "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837",
+                                    "value": "0x0",
+                                    "gas": "0x37c8",
+                                    "gasUsed": "0x89e",
+                                    "input": "0x600060205500"
+                                }
+                            ]
                         },
-                        "txHash": "0x4a920824e30174e7868d25bd84903e5b6c8f323f02bd3b04a2b1bff26aa1697c"
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
                         "result": {
-                            "type": "CALL",
+                            "type": "CREATE",
                             "from": "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                            "to": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+                            "to": "0x6b5887043de753ecfa6269f947129068263ffbe2",
                             "value": "0x1",
                             "gas": "0x186a0",
-                            "gasUsed": "0x5410",
-                            "input": "0x6000600060006000600073942921b14f1b1c385cd7e0cc2ef7abe5598c8358620186a0f100"
+                            "gasUsed": "0xdb4d",
+                            "input": "0x600060006000600060007328156f6fdeeffd5667d51bb8d7d5069a920e0837620186a0f100",
+                            "calls": [
+                                {
+                                    "type": "CALL",
+                                    "from": "0x6b5887043de753ecfa6269f947129068263ffbe2",
+                                    "to": "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837",
+                                    "value": "0x0",
+                                    "gas": "0xa8a6",
+                                    "gasUsed": "0x0",
+                                    "input": "0x"
+                                }
+                            ]
                         },
-                        "txHash": "0xb1916d32b005a321b101996cd598f85562cfc6c53d035507d808ca38b6f04b36"
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
                 "id": 67
@@ -247,30 +299,40 @@ public partial class DebugRpcModuleTests
                                 "nonce": 3,
                                 "code": "0xabcd"
                             },
-                            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-                                "balance": "0x3635c9adc5dea00003"
+                            "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
+                                "balance": "0x0"
                             },
                             "0x475674cb523a0a2736b7f7534390288fce16982c": {
                                 "balance": "0xf618"
+                            },
+                            "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837": {
+                                "balance": "0x0",
+                                "storage": {
+                                    "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                                }
                             }
                         },
-                        "txHash": "0x4a920824e30174e7868d25bd84903e5b6c8f323f02bd3b04a2b1bff26aa1697c"
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
                         "result": {
                             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-                                "balance": "0x3635c9adc5de9eb69c",
+                                "balance": "0x3635c9adc5de9db350",
                                 "nonce": 4,
                                 "code": "0xabcd"
                             },
-                            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-                                "balance": "0x3635c9adc5dea00004"
+                            "0x6b5887043de753ecfa6269f947129068263ffbe2": {
+                                "balance": "0x0"
                             },
                             "0x475674cb523a0a2736b7f7534390288fce16982c": {
-                                "balance": "0x14960"
+                                "balance": "0x24cac"
+                            },
+                            "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837": {
+                                "balance": "0x0",
+                                "nonce": 1
                             }
                         },
-                        "txHash": "0xb1916d32b005a321b101996cd598f85562cfc6c53d035507d808ca38b6f04b36"
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
                 "id": 67

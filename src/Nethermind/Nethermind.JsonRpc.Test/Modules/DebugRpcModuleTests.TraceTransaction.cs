@@ -190,7 +190,6 @@ public partial class DebugRpcModuleTests
         var contractTransaction = (TestRpcBlockchain b) => Build.A.Transaction
             .WithNonce(b.State.GetNonce(TestItem.AddressA))
             .WithCode(code)
-            .To(TestItem.AddressB)
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
@@ -198,13 +197,70 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions(),
-            """{"jsonrpc":"2.0","result":{"gas":21072,"failed":false,"returnValue":"","structLogs":[]},"id":67}"""
+            """
+            {
+                "jsonrpc": "2.0",
+                "result": {
+                    "gas": 55278,
+                    "failed": false,
+                    "returnValue": "",
+                    "structLogs": [
+                        {
+                            "pc": 0,
+                            "op": "PUSH1",
+                            "gas": 46928,
+                            "gasCost": 3,
+                            "depth": 1,
+                            "error": null,
+                            "stack": [],
+                            "storage": {}
+                        },
+                        {
+                            "pc": 2,
+                            "op": "PUSH1",
+                            "gas": 46925,
+                            "gasCost": 3,
+                            "depth": 1,
+                            "error": null,
+                            "stack": [
+                                "0x0"
+                            ],
+                            "storage": {}
+                        },
+                        {
+                            "pc": 4,
+                            "op": "SSTORE",
+                            "gas": 46922,
+                            "gasCost": 2200,
+                            "depth": 1,
+                            "error": null,
+                            "stack": [
+                                "0x0",
+                                "0x20"
+                            ],
+                            "storage": {}
+                        },
+                        {
+                            "pc": 5,
+                            "op": "STOP",
+                            "gas": 44722,
+                            "gasCost": 0,
+                            "depth": 1,
+                            "error": null,
+                            "stack": [],
+                            "storage": {}
+                        }
+                    ]
+                },
+                "id": 67
+            }
+            """
         ) { TestName = "Contract with blockMemoryTracer" };
 
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = "{gasUsed: [], step: function(log) { this.gasUsed.push(log.getGas()); }, result: function() { return this.gasUsed; }, fault: function(){}}" },
-            """{"jsonrpc":"2.0","result":[],"id":67}"""
+            """{"jsonrpc":"2.0","result":[46928,46925,46922,44722],"id":67}"""
         ) { TestName = "Contract with javaScriptTracer" };
 
         yield return new TestCaseData(
@@ -220,12 +276,12 @@ public partial class DebugRpcModuleTests
             {
                 "jsonrpc": "2.0",
                 "result": {
-                    "type": "CALL",
+                    "type": "CREATE",
                     "from": "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                    "to": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+                    "to": "0x0ffd3e46594919c04bcfd4e146203c8255670828",
                     "value": "0x1",
                     "gas": "0x186a0",
-                    "gasUsed": "0x5250",
+                    "gasUsed": "0xd7ee",
                     "input": "0x600060205500"
                 },
                 "id": 67
@@ -245,8 +301,11 @@ public partial class DebugRpcModuleTests
                         "nonce": 3,
                         "code": "0xabcd"
                     },
-                    "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-                        "balance": "0x3635c9adc5dea00003"
+                    "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
+                        "balance": "0x0",
+                        "storage": {
+                            "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        }
                     },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"
