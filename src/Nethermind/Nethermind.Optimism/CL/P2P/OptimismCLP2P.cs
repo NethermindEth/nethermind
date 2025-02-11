@@ -41,7 +41,7 @@ public class OptimismCLP2P : IDisposable
     private readonly P2PBlockValidator _blockValidator;
     private readonly Multiaddress[] _staticPeerList;
     private readonly ICLConfig _config;
-    private IPeer? _localPeer;
+    private ILocalPeer? _localPeer;
     private readonly Task _mainLoopTask;
 
     private readonly string _blocksV2TopicId;
@@ -253,7 +253,7 @@ public class OptimismCLP2P : IDisposable
         PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
         peerStore.Discover(_staticPeerList);
         PubsubPeerDiscoveryProtocol disc = new(_router, peerStore, new PubsubPeerDiscoverySettings(), _localPeer);
-        _ = disc.DiscoverAsync([Multiaddress.Decode(address)], _cancellationTokenSource.Token);
+        _ = disc.StartDiscoveryAsync([Multiaddress.Decode(address)], _cancellationTokenSource.Token);
 
         _mainLoopTask.Start();
 

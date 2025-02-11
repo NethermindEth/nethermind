@@ -34,7 +34,7 @@ public class ShutterP2P : IShutterP2P
     private readonly PubsubRouter _router;
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
-    private readonly IPeer _peer;
+    private readonly ILocalPeer _peer;
     private readonly string _address;
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
@@ -104,7 +104,7 @@ public class ShutterP2P : IShutterP2P
 
         await _peer.StartListenAsync([_address], _cts.Token);
         await _router.StartAsync(_peer, _cts.Token);
-        _ = _disc.DiscoverAsync([Multiaddress.Decode(_address)], _cts.Token);
+        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], _cts.Token);
         _peerStore.Discover(bootnodeP2PAddresses);
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_address}");
