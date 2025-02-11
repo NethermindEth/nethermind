@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -21,26 +20,16 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
-using Nethermind.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Merge.Plugin.Test;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -280,7 +269,7 @@ public class SynchronizerTests
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
         private readonly Dictionary<string, ISyncPeer> _peers = new();
-        private BlockTree BlockTree { get; }
+        private IBlockTree BlockTree => Container.Resolve<IBlockTree>();
 
         private ISyncServer SyncServer => Container.Resolve<ISyncServer>();
 
@@ -312,71 +301,25 @@ public class SynchronizerTests
             syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
             syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
 
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            IDb stateDb = new MemDb();
-            IDb codeDb = dbProvider.CodeDb;
-            IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
-            BlockTree = Build.A.BlockTree()
-                .WithSpecProvider(new TestSingleReleaseSpecProvider(Constantinople.Instance))
-                .WithBlockStore(blockStore)
-                .WithoutSettingHead
-                .TestObject;
-
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager stats = new(timerFactory, _logManager);
-
             MergeConfig mergeConfig = new();
             if (WithTTD(synchronizerType))
             {
+                mergeConfig.Enabled = true;
                 mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
             }
-            PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), new ChainSpec(), _logManager);
-            IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, poSSwitcher, _logManager);
-
-            IWorldStateManager worldStateManager = WorldStateManager.CreateForTest(dbProvider, LimboLogs.Instance);
-            TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
-            IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
-                ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
-                : totalDifficultyBetterPeerStrategy;
-
-            IStateReader reader = worldStateManager.GlobalStateReader;
-            INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
-
-            Pivot pivot = new(syncConfig);
-
-            IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
-
+            IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig);
             ContainerBuilder builder = new ContainerBuilder()
-                .AddModule(new DbModule())
-                .AddModule(new SynchronizerModule(syncConfig))
-                .AddSingleton<IReceiptConfig>(new ReceiptConfig())
-                .AddSingleton(dbProvider)
-                .AddSingleton(blockStore)
-                .AddSingleton(worldStateManager)
-                .AddSingleton(nodeStorage)
+                .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IBlockTree>(BlockTree)
                 .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton<INodeStatsManager>(stats)
-                .AddSingleton(syncConfig)
-                .AddSingleton<IPivot>(pivot)
-                .AddSingleton<IPoSSwitcher>(poSSwitcher)
-                .AddSingleton<IMergeConfig>(mergeConfig)
-                .AddSingleton(invalidChainTracker)
                 .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
-                .AddSingleton(new ChainSpec())
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton<IStateReader>(reader)
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton(beaconPivot)
-                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
                 .AddSingleton(_logManager);
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeSynchronizerModule());
+                builder.RegisterModule(new MergeModule(configProvider));
             }
 
             Container = builder.Build();

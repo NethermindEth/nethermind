@@ -16,7 +16,7 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
     private const int Bn256PairingMaxInputSizeGranite = 112687;
     private const int PairSize = 192;
 
-    public static Bn254PairingPrecompile Instance = new Bn254PairingPrecompile();
+    public static readonly Bn254PairingPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(8);
 
@@ -24,7 +24,7 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
 
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254PairingPrecompile++;
         if (releaseSpec.IsOpGraniteEnabled && inputData.Length > Bn256PairingMaxInputSizeGranite)

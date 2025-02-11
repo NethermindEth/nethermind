@@ -8,7 +8,7 @@ using Nethermind.Logging;
 namespace Nethermind.Synchronization.Blocks
 {
     [DebuggerDisplay("{Current}")]
-    public struct SyncBatchSize
+    public class SyncBatchSize
     {
         private readonly ILogger _logger;
 
@@ -22,9 +22,9 @@ namespace Nethermind.Synchronization.Blocks
 
         public int Current { get; private set; }
 
-        public readonly bool IsMin => Current == Min;
+        public bool IsMin => Current == Min;
 
-        public readonly bool IsMax => Current == Max;
+        public bool IsMax => Current == Max;
 
         public SyncBatchSize(ILogManager logManager)
         {

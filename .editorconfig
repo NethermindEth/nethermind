@@ -13,6 +13,8 @@ file_header_template = SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited\n
 
 [*.cs]
 indent_size = 4
+[*.py]
+indent_size = 4
 
 #### Naming styles ####
 

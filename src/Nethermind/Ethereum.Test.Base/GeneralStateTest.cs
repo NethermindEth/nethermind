@@ -36,6 +36,7 @@ namespace Ethereum.Test.Base
         public ulong? CurrentExcessBlobGas { get; set; }
         public UInt256? ParentBlobGasUsed { get; set; }
         public UInt256? ParentExcessBlobGas { get; set; }
+        public ulong ChainId { get; set; }
 
         public Hash256? RequestsHash { get; set; }
 

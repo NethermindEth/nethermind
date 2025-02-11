@@ -4,9 +4,17 @@
       "commandName": "Project",
       "commandLineArgs": "-i statetest1.json"
     },
+    "Gnosis State Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-g -i gnosisStateTest1.json"
+    },
     "Blockchain Test": {
       "commandName": "Project",
       "commandLineArgs": "-b -i blockchainTest1.json"
+    },
+    "Gnosis Blockchain Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-g -b -i gnosisBlockchainTest1.json"
     },
     "Regex State Test": {
       "commandName": "Project",

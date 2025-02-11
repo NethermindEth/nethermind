@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" />
     <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 

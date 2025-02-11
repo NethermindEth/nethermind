@@ -15,6 +15,7 @@ using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
 using Nethermind.KeyStore.Config;
+using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
 
@@ -73,7 +74,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
             if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 
-            Multiaddress[] bootnodeP2PAddresses;
+            IEnumerable<Multiaddress> bootnodeP2PAddresses;
             try
             {
                 _shutterConfig!.Validate(out bootnodeP2PAddresses);

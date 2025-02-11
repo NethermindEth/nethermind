@@ -217,8 +217,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("sepolia.json", true)]
     [TestCase("gnosis.json", true)]
     [TestCase("chiado.json", true)]
-    [TestCase("energyweb.json", false)]
-    [TestCase("volta.json", false)]
+    [TestCase("energyweb.json", true)]
+    [TestCase("volta.json", true)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
     {
         Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);

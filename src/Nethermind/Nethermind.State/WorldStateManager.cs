@@ -25,12 +25,14 @@ public class WorldStateManager : IWorldStateManager
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
+    private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
     public WorldStateManager(
         IWorldState worldState,
         ITrieStore trieStore,
         IDbProvider dbProvider,
-        ILogManager logManager
+        ILogManager logManager,
+        ILastNStateRootTracker lastNStateRootTracker = null
     )
     {
         _dbProvider = dbProvider;
@@ -43,6 +45,7 @@ public class WorldStateManager : IWorldStateManager
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
+        _lastNStateRootTracker = lastNStateRootTracker;
     }
 
     public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
@@ -63,22 +66,17 @@ public class WorldStateManager : IWorldStateManager
         remove => _trieStore.ReorgBoundaryReached -= value;
     }
 
-    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> hashRecovery, ITrieNodeRecovery<GetTrieNodesRequest> nodeRecovery)
+    public void InitializeNetwork(IPathRecovery pathRecovery)
     {
-        if (_trieStore is HealingTrieStore healingTrieStore)
-        {
-            healingTrieStore.InitializeNetwork(hashRecovery);
-        }
-
         if (_worldState is HealingWorldState healingWorldState)
         {
-            healingWorldState.InitializeNetwork(nodeRecovery);
+            healingWorldState.InitializeNetwork(pathRecovery);
         }
     }
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager);
+    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {

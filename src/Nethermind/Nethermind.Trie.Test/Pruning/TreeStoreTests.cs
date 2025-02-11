@@ -941,11 +941,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             if (_scheme == INodeStorage.KeyScheme.Hash)
             {
-                memDb.Count.Should().NotBe(1);
+                memDb.Count.Should().NotBe(2);
             }
             else
             {
-                memDb.Count.Should().Be(1);
+                memDb.Count.Should().Be(2);
             }
         }
 
@@ -1017,7 +1017,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 552 : 708);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 736 : 944);
         }
 
         [Test]

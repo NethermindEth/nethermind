@@ -36,7 +36,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public const int ItemSize = 160;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1MSMPrecompile++;
 
@@ -49,7 +49,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
     }
 
-    private (ReadOnlyMemory<byte>, bool) Mul(ReadOnlyMemory<byte> inputData)
+    private (byte[], bool) Mul(ReadOnlyMemory<byte> inputData)
     {
         G1 x = new(stackalloc long[G1.Sz]);
         if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
@@ -71,7 +71,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         return (res.EncodeRaw(), true);
     }
 
-    private (ReadOnlyMemory<byte>, bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    private (byte[], bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
     {
         using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);

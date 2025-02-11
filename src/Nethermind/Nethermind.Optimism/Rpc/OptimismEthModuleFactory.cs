@@ -82,7 +82,6 @@ public class OptimismEthModuleFactory(
             secondsPerSlot,
 
             sequencerRpcClient,
-            _accountStateProvider,
             _ecdsa,
             _sealer,
             _opSpecHelper

@@ -28,7 +28,7 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG2AddPrecompile++;
 
@@ -47,12 +47,12 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
         if (x.IsInf())
         {
-            return (inputData[BlsConst.LenG2..], true);
+            return (inputData[BlsConst.LenG2..].ToArray(), true);
         }
 
         if (y.IsInf())
         {
-            return (inputData[..BlsConst.LenG2], true);
+            return (inputData[..BlsConst.LenG2].ToArray(), true);
         }
 
         G2 res = x.Add(y);

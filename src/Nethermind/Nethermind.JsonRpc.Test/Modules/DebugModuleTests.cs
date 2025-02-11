@@ -392,7 +392,7 @@ public class DebugModuleTests
     [Test]
     public async Task Migrate_receipts()
     {
-        debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
+        debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);

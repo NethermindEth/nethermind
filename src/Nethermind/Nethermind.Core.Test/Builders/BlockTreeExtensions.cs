@@ -9,7 +9,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class BlockTreeExtensions
     {
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber)
+        public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber)
         {
             int splitVariant = 0;
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new();
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public static void UpdateMainChain(this BlockTree blockTree, Block block)
+        public static void UpdateMainChain(this IBlockTree blockTree, Block block)
         {
             blockTree.UpdateMainChain(new[] { block }, true);
         }

@@ -24,6 +24,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -116,7 +117,7 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 new NetworkConfig(),
-                Substitute.For<ISnapServer>(),
+                Substitute.For<IWorldStateManager>(),
                 LimboLogs.Instance);
 
             _serializer.Register(new HelloMessageSerializer());

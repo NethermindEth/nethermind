@@ -26,6 +26,25 @@ public class BlsG2AddPrecompileTests
         }
     }
 
+    // regression test for consensus issue
+    // precompile cache modified input causing add to zero to return wrong value
+    [Test]
+    public void Modifying_input_should_not_affect_output()
+    {
+        byte[] input = new byte[512];
+
+        G2AddPrecompile precompile = G2AddPrecompile.Instance;
+        (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
+
+        input[511] = 0xFF;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(output.ToArray(), Is.All.EqualTo(0));
+            Assert.That(success, Is.True);
+        });
+    }
+
     /// <summary>
     /// https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
     /// </summary>

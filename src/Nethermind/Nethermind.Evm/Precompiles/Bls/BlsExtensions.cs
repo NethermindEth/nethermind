@@ -82,7 +82,7 @@ public static class BlsExtensions
         return true;
     }
 
-    public static ReadOnlyMemory<byte> EncodeRaw(this G1 p)
+    public static byte[] EncodeRaw(this G1 p)
     {
         if (p.IsInf())
         {
@@ -96,7 +96,7 @@ public static class BlsExtensions
         return raw;
     }
 
-    public static ReadOnlyMemory<byte> EncodeRaw(this G2 p)
+    public static byte[] EncodeRaw(this G2 p)
     {
         if (p.IsInf())
         {

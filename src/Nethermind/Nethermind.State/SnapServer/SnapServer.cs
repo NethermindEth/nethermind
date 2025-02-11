@@ -45,15 +45,17 @@ public class SnapServer : ISnapServer
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
     private readonly AccountDecoder _decoder = new AccountDecoder();
+    private readonly ILastNStateRootTracker? _lastNStateRootTracker;
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, IStateReader stateReader, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, IStateReader stateReader, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _stateReader = stateReader;
+        _lastNStateRootTracker = lastNStateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
 
@@ -66,7 +68,7 @@ public class SnapServer : ISnapServer
 
     private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment());
+        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment()) || (_lastNStateRootTracker?.HasStateRoot(stateRoot) == false);
     }
 
     public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
