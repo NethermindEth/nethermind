@@ -213,6 +213,10 @@ namespace Nethermind.Stats.Model
             {
                 return NodeClientType.Reth;
             }
+            else if (clientId.Contains(nameof(NodeClientType.Nimbus), StringComparison.OrdinalIgnoreCase))
+            {
+                return NodeClientType.Nimbus;
+            }
             else if (clientId.Contains(nameof(NodeClientType.Parity), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Parity;
