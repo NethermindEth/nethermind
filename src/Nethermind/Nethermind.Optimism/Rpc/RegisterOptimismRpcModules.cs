@@ -83,6 +83,8 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             sealer,
             _api.SpecHelper);
 
+        _api.OptimismEthRpcModule = optimismEthModuleFactory.Create();
+
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
     }
