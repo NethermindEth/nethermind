@@ -129,7 +129,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             containerBuilder.RegisterBuildCallback((ctx) =>
             {
-                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
                 ctx.Resolve<ISyncPeerPool>().Start();
             });
 
@@ -149,6 +148,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }
             };
 
+            safeContext.StartDispatcher();
             safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
 
             await Task.WhenAny(
@@ -172,6 +172,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
                 blockTree.UpdateMainChain([newBlock], false, true);
+            }
+
+            public void StartDispatcher()
+            {
+                Task _ = container.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
             }
         }
 

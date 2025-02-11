@@ -20,6 +20,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
@@ -156,6 +157,18 @@ public partial class EngineModuleTests
         public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
 
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
+
+        public Task WaitForImprovedBlocck(Hash256? parentHash = null)
+        {
+            return Wait.ForEventCondition<BlockEventArgs>(default,
+                e => PayloadPreparationService!.BlockImproved += e,
+                e => PayloadPreparationService!.BlockImproved -= e,
+                b =>
+                {
+                    if (parentHash is null) return true;
+                    return b.Block.ParentHash == parentHash;
+                });
+        }
 
         public ISealValidator? SealValidator { get; set; }
 
