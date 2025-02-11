@@ -45,8 +45,8 @@ namespace Nethermind.Init.Steps
             {
                 Task current = await Task.WhenAny(allRequiredSteps);
                 ReviewFailedAndThrow(current);
-                if (current.IsCanceled)
-                    if (_logger.IsWarn) _logger.Warn($"A required step was cancelled!");
+                if (current.IsCanceled && _logger.IsDebug)
+                    _logger.Debug($"A required step was cancelled!");
                 allRequiredSteps.Remove(current);
             } while (allRequiredSteps.Any(s => !s.IsCompleted));
         }
