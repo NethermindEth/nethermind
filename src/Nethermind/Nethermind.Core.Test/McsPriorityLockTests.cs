@@ -11,18 +11,18 @@ namespace Nethermind.Core.Test;
 
 public class McsPriorityLockTests
 {
-    private McsPriorityLock mcsLock;
+    private McsPriorityLock _mcsLock;
 
     [SetUp]
     public void Setup()
     {
-        mcsLock = new McsPriorityLock();
+        _mcsLock = new McsPriorityLock();
     }
 
     [Test]
     public void SingleThreadAcquireRelease()
     {
-        using (var handle = mcsLock.Acquire())
+        using (var handle = _mcsLock.Acquire())
         {
             Thread.Sleep(10);
         }
@@ -41,7 +41,7 @@ public class McsPriorityLockTests
         {
             var thread = new Thread(() =>
             {
-                using var handle = mcsLock.Acquire();
+                using var handle = _mcsLock.Acquire();
 
                 counter++;
             });
@@ -69,7 +69,7 @@ public class McsPriorityLockTests
             int threadId = i;
             var thread = new Thread(() =>
             {
-                using var handle = mcsLock.Acquire();
+                using var handle = _mcsLock.Acquire();
                 executionOrder.Add(threadId);
                 Thread.Sleep(15); // Ensure the order is maintained
             });
@@ -92,6 +92,8 @@ public class McsPriorityLockTests
     public void PriorityQueueJumpingTest()
     {
         int numberOfThreads = 100;
+        int lowPrioritySlots = 10;
+        McsPriorityLock mcsLock = new McsPriorityLock(lowPrioritySlots);
         var threads = new List<Thread>();
         List<int> executionOrder = new();
         Dictionary<Thread, ThreadPriority> threadPriorities = new();
@@ -139,6 +141,6 @@ public class McsPriorityLockTests
         }
 
         // Some lower priority threads will acquire first; we are asserting that they mostly queue jump
-        Assert.That(lowPriorityFirst < (numberOfThreads / 8), Is.True, "High priority threads did not acquire the lock before lower priority ones.");
+        Assert.That(lowPriorityFirst <= lowPrioritySlots, Is.True, "High priority threads did not acquire the lock before lower priority ones.");
     }
 }

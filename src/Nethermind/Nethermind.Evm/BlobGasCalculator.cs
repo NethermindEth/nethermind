@@ -50,35 +50,40 @@ public static class BlobGasCalculator
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {
-            UInt256 output = UInt256.Zero;
-
-            if (UInt256.MultiplyOverflow(factor, denominator, out UInt256 numAccum))
+            UInt256 accumulator;
+            if (factor == UInt256.One)
+            {
+                // Skip expensive 256bit multiplication if factor is 1
+                accumulator = denominator;
+            }
+            else if (UInt256.MultiplyOverflow(factor, denominator, out accumulator))
             {
                 feePerBlobGas = UInt256.MaxValue;
                 return true;
             }
 
-            for (UInt256 i = 1; numAccum > 0; i++)
+            UInt256 output = default;
+            for (ulong i = 1; !accumulator.IsZero; i++)
             {
-                if (UInt256.AddOverflow(output, numAccum, out output))
+                if (UInt256.AddOverflow(output, accumulator, out output))
                 {
                     feePerBlobGas = UInt256.MaxValue;
                     return true;
                 }
 
-                if (UInt256.MultiplyOverflow(numAccum, num, out UInt256 updatedNumAccum))
+                if (UInt256.MultiplyOverflow(accumulator, num, out UInt256 updatedAccumulator))
                 {
                     feePerBlobGas = UInt256.MaxValue;
                     return true;
                 }
 
-                if (UInt256.MultiplyOverflow(i, denominator, out UInt256 multipliedDeniminator))
+                if (UInt256.MultiplyOverflow(i, denominator, out UInt256 multipliedDenominator))
                 {
                     feePerBlobGas = UInt256.MaxValue;
                     return true;
                 }
 
-                numAccum = updatedNumAccum / multipliedDeniminator;
+                accumulator = updatedAccumulator / multipliedDenominator;
             }
 
             feePerBlobGas = output / denominator;
