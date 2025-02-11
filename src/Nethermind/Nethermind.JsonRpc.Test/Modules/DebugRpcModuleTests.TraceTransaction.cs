@@ -119,19 +119,22 @@ public partial class DebugRpcModuleTests
             transferTransaction,
             new GethTraceOptions(),
             """{"jsonrpc":"2.0","result":{"gas":21000,"failed":false,"returnValue":"","structLogs":[]},"id":67}"""
-        ) { TestName = "Transfer with blockMemoryTracer" };
+        )
+        { TestName = "Transfer with blockMemoryTracer" };
 
         yield return new TestCaseData(
             transferTransaction,
             new GethTraceOptions { Tracer = "{gasUsed: [], step: function(log) { this.gasUsed.push(log.getGas()); }, result: function() { return this.gasUsed; }, fault: function(){}}" },
             """{"jsonrpc":"2.0","result":[],"id":67}"""
-        ) { TestName = "Transfer with javaScriptTracer" };
+        )
+        { TestName = "Transfer with javaScriptTracer" };
 
         yield return new TestCaseData(
             transferTransaction,
             new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer },
             """{"jsonrpc":"2.0","result":{},"id":67}"""
-        ) { TestName = "Transfer with " + Native4ByteTracer.FourByteTracer };
+        )
+        { TestName = "Transfer with " + Native4ByteTracer.FourByteTracer };
 
         yield return new TestCaseData(
             transferTransaction,
@@ -151,7 +154,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Transfer with " + NativeCallTracer.CallTracer };
+        )
+        { TestName = "Transfer with " + NativeCallTracer.CallTracer };
 
         yield return new TestCaseData(
             transferTransaction,
@@ -175,7 +179,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Transfer with " + NativePrestateTracer.PrestateTracer };
+        )
+        { TestName = "Transfer with " + NativePrestateTracer.PrestateTracer };
     }
 
     private static IEnumerable<TestCaseData> TraceTransactionContractSource()
@@ -255,19 +260,22 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with blockMemoryTracer" };
+        )
+        { TestName = "Contract with blockMemoryTracer" };
 
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = "{gasUsed: [], step: function(log) { this.gasUsed.push(log.getGas()); }, result: function() { return this.gasUsed; }, fault: function(){}}" },
             """{"jsonrpc":"2.0","result":[46928,46925,46922,44722],"id":67}"""
-        ) { TestName = "Contract with javaScriptTracer" };
+        )
+        { TestName = "Contract with javaScriptTracer" };
 
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer },
             """{"jsonrpc":"2.0","result":{"0x60006020-2":1},"id":67}"""
-        ) { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
+        )
+        { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
 
         yield return new TestCaseData(
             contractTransaction,
@@ -287,7 +295,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with " + NativeCallTracer.CallTracer };
+        )
+        { TestName = "Contract with " + NativeCallTracer.CallTracer };
 
         yield return new TestCaseData(
             contractTransaction,
@@ -314,6 +323,7 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with " + NativePrestateTracer.PrestateTracer };
+        )
+        { TestName = "Contract with " + NativePrestateTracer.PrestateTracer };
     }
 }

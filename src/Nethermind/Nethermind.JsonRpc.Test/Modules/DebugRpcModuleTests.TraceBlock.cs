@@ -178,7 +178,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with blockMemoryTracer" };
+        )
+        { TestName = "Contract with blockMemoryTracer" };
 
         yield return new TestCaseData(
             transactions,
@@ -199,7 +200,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with javaScriptTracer" };
+        )
+        { TestName = "Contract with javaScriptTracer" };
 
         yield return new TestCaseData(
             transactions,
@@ -224,7 +226,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
+        )
+        { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
 
         yield return new TestCaseData(
             transactions,
@@ -283,7 +286,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with " + NativeCallTracer.CallTracer };
+        )
+        { TestName = "Contract with " + NativeCallTracer.CallTracer };
 
         yield return new TestCaseData(
             transactions,
@@ -338,7 +342,8 @@ public partial class DebugRpcModuleTests
                 "id": 67
             }
             """
-        ) { TestName = "Contract with " + NativePrestateTracer.PrestateTracer };
+        )
+        { TestName = "Contract with " + NativePrestateTracer.PrestateTracer };
     }
 
 }
