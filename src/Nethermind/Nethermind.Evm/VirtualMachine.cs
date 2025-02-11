@@ -1948,6 +1948,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
                     {
+
+                        if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
+                            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled)
+                            goto InvalidInstruction;
+
                         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
 
                         Address codeSource = stack.PopAddress();

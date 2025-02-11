@@ -192,11 +192,6 @@ public class CodeInfoRepository : ICodeInfoRepository
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address).MachineCode.Span, out delegatedAddress);
 
-    public static void ClearCache()
-    {
-        _codeCache.Clear();
-    }
-
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
