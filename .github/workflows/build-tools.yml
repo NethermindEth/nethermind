@@ -17,12 +17,12 @@ jobs:
       matrix:
         config: [release]
         project:
-          - DocGen/DocGen.sln
-          - Evm/Evm.sln
-          - HiveCompare/HiveCompare.sln
+          - DocGen/DocGen.slnx
+          - Evm/Evm.slnx
+          - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.csproj
           - Nethermind.Tools.Kute/Nethermind.Tools.Kute.csproj
-          - SendBlobs/SendBlobs.sln
+          - SendBlobs/SendBlobs.slnx
           - TxParser/TxParser.csproj
     steps:
       - name: Check out repository

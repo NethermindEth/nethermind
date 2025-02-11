@@ -115,10 +115,10 @@ dotnet run -c release -- -c mainnet
 cd nethermind/src/Nethermind
 
 # Run Nethermind tests
-dotnet test Nethermind.sln -c release
+dotnet test Nethermind.slnx -c release
 
 # Run Ethereum Foundation tests
-dotnet test EthereumTests.sln -c release
+dotnet test EthereumTests.slnx -c release
 ```
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
