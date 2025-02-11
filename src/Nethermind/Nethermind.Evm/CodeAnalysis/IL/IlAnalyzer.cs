@@ -124,7 +124,13 @@ public class IlAnalyzer(ISpecProvider specProvider, IBlockhashProvider blockhash
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        codeInfo.IlInfo.ContractMetadata ??= AnalyseContract(codeInfo, StripByteCode(machineCode.Span), vmConfig) ?? throw new InvalidOperationException("Contract metadata is null");
+        ContractMetadata metadata;
+        if((metadata = AnalyseContract(codeInfo, StripByteCode(machineCode.Span), vmConfig)) is null)
+        {
+            return;
+        }
+
+        codeInfo.IlInfo.ContractMetadata ??= metadata;
 
         switch (mode)
         {
