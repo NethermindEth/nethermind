@@ -90,6 +90,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         var tmp = payloadAttributes is null ? "null" : "not null";
         if (_logger.IsInfo) _logger.Info($"(tmp) forkchoice updated handler, could Prune? payloadAttributes: {tmp}");
+        _blockTree.TryPruneHistory();
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
