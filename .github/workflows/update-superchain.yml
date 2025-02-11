@@ -28,13 +28,13 @@ jobs:
           pip install setuptools
           pip install emoji
       - name: Generate Chainspec and config files
-        run: python3 scripts/superchain.py -v
+        run: python3 scripts/superchain.py -v -o /tmp/superchain
       - name: Update fast sync settings
         run: python3 scripts/syncSettings.py --superchain
       - name: Copy generated files
         run:
-          cp output/chainspec/* ./src/Nethermind/Chains
-          cp output/runner/* ./src/Nethermind/Nethermind.Runner/configs
+          cp /tmp/superchain/chainspec/* ./src/Nethermind/Chains
+          cp /tmp/superchain/runner/* ./src/Nethermind/Nethermind.Runner/configs
       - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v1
