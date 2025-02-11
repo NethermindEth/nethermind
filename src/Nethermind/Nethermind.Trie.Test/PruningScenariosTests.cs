@@ -782,7 +782,7 @@ namespace Nethermind.Trie.Test
 
             for (int i = 0; i < 256; i++)
             {
-                ctx.VerifyNodeInCache(stateRoots[i], i >= 255 - maxDepth);
+                ctx.VerifyNodeInCache(stateRoots[i], i >= 255 - maxDepth - 1);
             }
         }
 
