@@ -16,6 +16,7 @@ namespace Nethermind.Optimism.CL.Derivation;
 // BuildChannel() - merges all frames together and returns compressed data
 public class FrameQueue : IFrameQueue
 {
+    // Make thread safe
     private UInt128? _channelId;
     private ushort? _numberOfFrames;
     private readonly Dictionary<ushort, Frame> _frames = new();

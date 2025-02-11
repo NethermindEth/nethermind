@@ -37,10 +37,12 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         _logger = logger;
     }
 
-    public OptimismPayloadAttributes[] DerivePayloadAttributes(BatchV1 batch, L2Block l2Parent, BlockForRpc[] l1Origins, ReceiptForRpc[][] l1Receipts)
+    public (OptimismPayloadAttributes[], SystemConfig[], L1BlockInfo[]) DerivePayloadAttributes(BatchV1 batch, L2Block l2Parent, BlockForRpc[] l1Origins, ReceiptForRpc[][] l1Receipts)
     {
         // TODO we need to check that data is consistent(l2 parent and l1 origin are correct)
         OptimismPayloadAttributes[] payloadAttributes = new OptimismPayloadAttributes[batch.BlockCount];
+        SystemConfig[] systemConfigs = new SystemConfig[batch.BlockCount];
+        L1BlockInfo[] l1BlockInfos = new L1BlockInfo[batch.BlockCount];
         ulong txIdx = 0;
         int originIdx = 0;
         ulong l2ParentTimestamp = l2Parent.Timestamp;
@@ -75,10 +77,12 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
                 payloadAttributes[i] = BuildRegularBlock(batch, l2ParentTimestamp, l1Origins[originIdx], currentSystemConfig, systemTransaction, i, txIdx);
             }
 
+            systemConfigs[i] = currentSystemConfig;
+            l1BlockInfos[i] = currentL1OriginBlockInfo;
             l2ParentTimestamp = payloadAttributes[i].Timestamp;
             txIdx += batch.BlockTxCounts[i];
         }
-        return payloadAttributes;
+        return (payloadAttributes, systemConfigs, l1BlockInfos);
     }
 
     private OptimismPayloadAttributes BuildFirstBlockInEpoch(BatchV1 batch, ulong l2ParentTimestamp,

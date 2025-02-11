@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Blockchain.Find;
@@ -28,11 +29,13 @@ public class OptimismCL : IDisposable
     private readonly IOptimismEthRpcModule _l2EthRpc;
     private readonly CLChainSpecEngineParameters _chainSpecEngineParameters;
     private readonly IL1Bridge _l1Bridge;
+    private readonly IL2BlockTree _l2BlockTree;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly Driver _driver;
 
     private readonly IBeaconApi _beaconApi;
     private readonly IEthApi _ethApi;
+    private readonly ISystemConfigDeriver _systemConfigDeriver;
 
     public OptimismCL(ISpecProvider specProvider, CLChainSpecEngineParameters engineParameters, ICLConfig config,
         IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ITimestamper timestamper, ILogManager logManager,
@@ -53,14 +56,16 @@ public class OptimismCL : IDisposable
         _beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa,
             _logger, _cancellationTokenSource.Token);
         _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _cancellationTokenSource.Token, logManager);
-        _driver = new Driver(_l1Bridge, _l2EthRpc, config, engineParameters, _logger);
+        _l2BlockTree = new L2BlockTree();
+        _driver = new Driver(_l1Bridge, _l2EthRpc, _l2BlockTree, config, engineParameters, _logger);
+        _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
     }
 
     public void Start()
     {
-        // _l1Bridge.Start();
+        SetupTest();
+        _l1Bridge.Start();
         _driver.Start();
-        TEST();
         // _p2p.Start();
     }
 
@@ -71,22 +76,24 @@ public class OptimismCL : IDisposable
         _driver.Dispose();
     }
 
-    private void TEST()
+    private void SetupTest()
     {
-        BlockForRpc block = _l2EthRpc.eth_getBlockByNumber(BlockParameter.Latest, true).Data;
-        var enumerator = block.Transactions.GetEnumerator();
-        enumerator.MoveNext();
-        DepositTransactionForRpc tx = (DepositTransactionForRpc)enumerator.Current;
-        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input, block.ExtraData);
-        _logger.Error($"DONE: {l1BlockInfo.Number}, {l1BlockInfo.BlockHash}, {l1BlockInfo.BatcherAddress}");
-        GetBatches();
-    }
-
-    private async void GetBatches()
-    {
-        // BlockForRpc? block = await _l1Bridge.GetBlock(21691682);
-        BeaconBlock? beaconBlock = await _beaconApi.GetBySlotNumber(10999170);
-        ReceiptForRpc[]? receitps = await _ethApi.GetReceiptsByHash(beaconBlock!.Value.ExecutionBlockHash);
-        _driver.OnNewL1Head(beaconBlock!.Value, receitps!);
+        var block = _l2EthRpc.eth_getBlockByNumber(new(9739163), true).Data;
+        DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
+        SystemConfig config =
+            _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input!, block.ExtraData);
+        ulong mainnetGenesisTime = 1606824023;
+        _l1Bridge.SetCurrentL1Head((l1BlockInfo.Timestamp - mainnetGenesisTime) / 12);
+        L2Block nativeBlock = new()
+        {
+            Hash = block.Hash,
+            Number = (ulong)block.Number!.Value,
+            Timestamp = block.Timestamp.ToUInt64(null),
+            ParentHash = block.ParentHash,
+            SystemConfig = config,
+            L1BlockInfo = l1BlockInfo,
+        };
+        _l2BlockTree.TryAddBlock(nativeBlock);
     }
 }

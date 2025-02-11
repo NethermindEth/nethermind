@@ -3,11 +3,13 @@
 
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL;
 
 public interface IPayloadAttributesDeriver
 {
-    OptimismPayloadAttributes[] DerivePayloadAttributes(BatchV1 batch, L2Block l2Parent, BlockForRpc[] l1Origins, ReceiptForRpc[][] l1Receipts);
+    // TODO: replace with l2block
+    (OptimismPayloadAttributes[], SystemConfig[], L1BlockInfo[]) DerivePayloadAttributes(BatchV1 batch, L2Block l2Parent, BlockForRpc[] l1Origins, ReceiptForRpc[][] l1Receipts);
 }

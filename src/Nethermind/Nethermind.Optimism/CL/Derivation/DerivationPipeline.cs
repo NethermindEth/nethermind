@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -29,16 +31,41 @@ public class DerivationPipeline : IDerivationPipeline
         _logger = logger;
     }
 
-    public async Task ConsumeV1Batches(BatchV1[] batches)
+    public async Task<(OptimismPayloadAttributes[], SystemConfig[], L1BlockInfo[])> ConsumeV1Batches(L2Block l2Parent, BatchV1[] batches)
     {
+        List<OptimismPayloadAttributes> payloadAttributes = new();
+        List<SystemConfig> systemConfigs = new();
+        List<L1BlockInfo> l1BlockInfos = new();
         foreach (BatchV1 batch in batches)
         {
-            await ProcessOneBatch(batch);
+            var oneBatchProcessingResult = await ProcessOneBatch(l2Parent, batch);
+            if (oneBatchProcessingResult is not null)
+            {
+                payloadAttributes.AddRange(oneBatchProcessingResult.Value.Item1);
+                systemConfigs.AddRange(oneBatchProcessingResult.Value.Item2);
+                l1BlockInfos.AddRange(oneBatchProcessingResult.Value.Item3);
+            }
         }
+        return (payloadAttributes.ToArray(), systemConfigs.ToArray(), l1BlockInfos.ToArray());
     }
 
-    private async Task ProcessOneBatch(BatchV1 batch)
+    private async Task<(OptimismPayloadAttributes[], SystemConfig[], L1BlockInfo[])?> ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
     {
+        _logger.Error($"Processing batch RelTimestamp: {batch.RelTimestamp}");
+        ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
+        ArgumentNullException.ThrowIfNull(l2Parent);
+        if (expectedParentNumber < l2Parent.Number)
+        {
+            _logger.Error($"Old batch. Skipping. Expected {expectedParentNumber}, got {l2Parent.Number}");
+            return null;
+        }
+
+        if (!l2Parent.Hash.Bytes.StartsWith(batch.ParentCheck))
+        {
+            _logger.Error($"Unexpected L2Parent. Got: {l2Parent.Hash}, ParentCheck: {batch.ParentCheck.ToHexString()}");
+            throw new ArgumentException("Wrong L2 parent");
+        }
+
         // TODO: proper error handling
         ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
@@ -68,12 +95,10 @@ public class DerivationPipeline : IDerivationPipeline
             parentHash = l1Origin.ParentHash;
         }
 
-        L2Block? l2Parent = _l2BlockTree.GetHighestBlock();
-        ArgumentNullException.ThrowIfNull(l2Parent);
-
         var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
 
-        OnL2BlocksDerived?.Invoke(pa, l2Parent.Number);
+        _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+        return (pa.Item1, pa.Item2, pa.Item3);
     }
 
     private ulong GetNumberOfBits(BigInteger number)
@@ -93,6 +118,4 @@ public class DerivationPipeline : IDerivationPipeline
     {
         throw new NotImplementedException();
     }
-
-    public event Action<OptimismPayloadAttributes[], ulong>? OnL2BlocksDerived;
 }

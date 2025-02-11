@@ -8,5 +8,5 @@ public interface IL2BlockTree
 {
     L2Block? GetHighestBlock();
     L2Block? GetBlockByNumber(ulong number);
-    void AddBlock(L2Block block);
+    bool TryAddBlock(L2Block block);
 }

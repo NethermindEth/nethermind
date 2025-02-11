@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
@@ -35,6 +36,9 @@ public class EthereumL1Bridge : IL1Bridge
         });
     }
 
+    public Channel<(BeaconBlock, ReceiptForRpc[])> NewHeadChannel { get; } =
+        Channel.CreateBounded<(BeaconBlock, ReceiptForRpc[])>(10);
+
     private async void HeadUpdateLoop()
     {
         while (!_cancellationToken.IsCancellationRequested)
@@ -47,15 +51,18 @@ public class EthereumL1Bridge : IL1Bridge
                 beaconBlock = await _beaconApi.GetHead();
             }
 
-            // TODO: handle missed slots(_currentSlot + 1 < beaconBlock.SlotNumber)
+            // handle missed slots(_currentSlot + 1 < beaconBlock.SlotNumber)
+            for (ulong i = _currentSlot + 1; i < beaconBlock.Value.SlotNumber; i++)
+            {
+                BeaconBlock? skippedBlock = await _beaconApi.GetBySlotNumber(i);
+                ReceiptForRpc[]? skippedReceipts = await _ethL1Api.GetReceiptsByHash(skippedBlock!.Value.ExecutionBlockHash);
+                await NewHeadChannel.Writer.WriteAsync((skippedBlock!.Value, skippedReceipts!), _cancellationToken);
+            }
             _logger.Error($"HEAD UPDATED: slot {beaconBlock.Value.SlotNumber}");
             // new slot
             _currentSlot = beaconBlock.Value.SlotNumber;
-
-            _logger.Error($"GETTING RECEIPTS");
             ReceiptForRpc[]? receipts = await _ethL1Api.GetReceiptsByHash(beaconBlock.Value.ExecutionBlockHash);
-            _logger.Error($"INVOKING");
-            OnNewL1Head?.Invoke(beaconBlock.Value, receipts!);
+            await NewHeadChannel.Writer.WriteAsync((beaconBlock.Value, receipts!), _cancellationToken);
 
             // Wait next slot
             await Task.Delay(11000, _cancellationToken);
@@ -64,12 +71,8 @@ public class EthereumL1Bridge : IL1Bridge
 
     public void Start()
     {
-        // var res = await _beaconApi.GetHead();
-        // await _beaconApi.GetBlobSidecars(res.SlotNumber);
         _headUpdateTask.Start();
     }
-
-    public event Action<BeaconBlock, ReceiptForRpc[]>? OnNewL1Head;
 
     public Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber)
     {
@@ -89,5 +92,10 @@ public class EthereumL1Bridge : IL1Bridge
     public Task<ReceiptForRpc[]?> GetReceiptsByBlockHash(Hash256 blockHash)
     {
         return _ethL1Api.GetReceiptsByHash(blockHash);
+    }
+
+    public void SetCurrentL1Head(ulong slotNumber)
+    {
+        _currentSlot = slotNumber;
     }
 }

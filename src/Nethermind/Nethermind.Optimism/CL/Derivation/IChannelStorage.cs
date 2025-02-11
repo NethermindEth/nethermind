@@ -8,5 +8,5 @@ namespace Nethermind.Optimism.CL.Derivation;
 public interface IChannelStorage
 {
     void ConsumeFrames(Frame[] frames);
-    event Action<byte[]>? OnChannelBuilt;
+    BatchV1[]? GetReadyBatches();
 }
