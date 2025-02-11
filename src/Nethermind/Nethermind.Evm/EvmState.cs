@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 /// <summary>
 /// State for EVM Calls
 /// </summary>
-[DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
+[DebuggerDisplay("{Env.ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {Env.OutputDestination}:{Env.OutputLength}")]
 public sealed class EvmState : IDisposable // TODO: rename to CallState
 {
     private static readonly ConcurrentQueue<EvmState> _statePool = new();
@@ -23,20 +23,12 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public int[]? ReturnStack;
 
     public long GasAvailable { get; set; }
-    internal long OutputDestination { get; private set; } // TODO: move to CallEnv
-    internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
 
     public int DataStackHead;
-
     public int ReturnStackHead;
-    internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
-    public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
     private bool _canRestore;
-    public bool IsStatic { get; private set; } // TODO: move to CallEnv
-    public bool IsContinuation { get; set; } // TODO: move to CallEnv
-    public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
 
     private bool _isDisposed = true;
 
@@ -48,6 +40,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 #if DEBUG
     private StackTrace? _creationStackTrace;
 #endif
+
     /// <summary>
     /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
@@ -58,17 +51,25 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         in ExecutionEnvironment env,
         in StackAccessTracker accessedItems)
     {
+        var newEnv = new ExecutionEnvironment(
+            env.CodeInfo,
+            env.ExecutingAccount,
+            env.Caller,
+            env.CodeSource,
+            env.InputData,
+            env.TxExecutionContext,
+            env.TransferValue,
+            env.Value,
+            env.CallDepth,
+            executionType: executionType,
+            isTopLevel: true);
+
         EvmState state = Rent();
         state.Initialize(
             gasAvailable,
-            outputDestination: 0L,
-            outputLength: 0L,
-            executionType: executionType,
-            isTopLevel: true,
-            isStatic: false,
-            isCreateOnPreExistingAccount: false,
+            executionType,
             snapshot: snapshot,
-            env: env,
+            env: newEnv,
             stateForAccessLists: accessedItems);
         return state;
     }
@@ -89,16 +90,29 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     {
         EvmState state = Rent();
 
-        state.Initialize(
-            gasAvailable,
+        var newEnv = new ExecutionEnvironment(
+            env.CodeInfo,
+            env.ExecutingAccount,
+            env.Caller,
+            env.CodeSource,
+            env.InputData,
+            env.TxExecutionContext,
+            env.TransferValue,
+            env.Value,
+            env.CallDepth,
             outputDestination,
             outputLength,
             executionType,
             isTopLevel: false,
             isStatic: isStatic,
-            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            isContinuation: false,
+            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount);
+
+        state.Initialize(
+            gasAvailable,
+            executionType,
             snapshot: snapshot,
-            env: env,
+            env: newEnv,
             stateForAccessLists: stateForAccessLists);
 
         return state;
@@ -108,29 +122,17 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     private void Initialize(
         long gasAvailable,
-        long outputDestination,
-        long outputLength,
         ExecutionType executionType,
-        bool isTopLevel,
-        bool isStatic,
-        bool isCreateOnPreExistingAccount,
         in Snapshot snapshot,
         in ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists)
     {
         GasAvailable = gasAvailable;
-        OutputDestination = outputDestination;
-        OutputLength = outputLength;
         Refund = 0;
         DataStackHead = 0;
         ReturnStackHead = 0;
-        ExecutionType = executionType;
         ProgramCounter = 0;
-        IsTopLevel = isTopLevel;
-        _canRestore = !isTopLevel;
-        IsStatic = isStatic;
-        IsContinuation = false;
-        IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        _canRestore = !env.IsTopLevel;
         _snapshot = snapshot;
         _env = env;
         _accessTracker = new(stateForAccessLists);
@@ -160,20 +162,20 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
     }
 
-    public Address From => ExecutionType switch
+    public Address From => _env.ExecutionType switch
     {
         ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
-            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
-        ExecutionType.DELEGATECALL => Env.ExecutingAccount,
+            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => _env.Caller,
+        ExecutionType.DELEGATECALL => _env.ExecutingAccount,
         _ => throw new ArgumentOutOfRangeException(),
     };
 
-    public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-    internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+    public Address To => _env.CodeSource ?? _env.ExecutingAccount;
+    internal bool IsPrecompile => _env.CodeInfo.IsPrecompile;
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ref readonly ExecutionEnvironment Env => ref _env;
-    public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
-    public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
+    public ref EvmPooledMemory Memory => ref _memory;
+    public ref readonly Snapshot Snapshot => ref _snapshot;
 
     public void Dispose()
     {
