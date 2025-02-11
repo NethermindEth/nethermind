@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Multiformats.Address;
@@ -86,7 +87,7 @@ public interface IShutterConfig : IConfig
         DefaultValue = "false", HiddenFromDocs = true)]
     bool P2PLogsEnabled { get; set; }
 
-    public void Validate(out Multiaddress[] bootnodeP2PAddresses)
+    public void Validate(out IEnumerable<Multiaddress> bootnodeP2PAddresses)
     {
         if (Validator && ValidatorInfoFile is null)
         {
@@ -135,7 +136,7 @@ public interface IShutterConfig : IConfig
 
         try
         {
-            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(static addr => Multiaddress.Decode(addr)).ToArray();
+            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(static addr => Multiaddress.Decode(addr));
         }
         catch (NotSupportedException e)
         {

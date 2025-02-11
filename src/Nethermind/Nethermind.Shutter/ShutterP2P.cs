@@ -23,6 +23,7 @@ using Nethermind.KeyStore.Config;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
+using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
 
@@ -98,14 +99,18 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public async Task Start(Multiaddress[] bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
+    public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
     {
         _cts = cts ?? new();
 
         await _peer.StartListenAsync([_address], _cts.Token);
         await _router.StartAsync(_peer, _cts.Token);
         _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], _cts.Token);
-        _peerStore.Discover(bootnodeP2PAddresses);
+
+        foreach (Multiaddress address in bootnodeP2PAddresses)
+        {
+            _peerStore.Discover([address]);
+        }
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_address}");
 
