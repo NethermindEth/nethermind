@@ -281,13 +281,13 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 UInt256.Zero,
                 parent.Number + 1,
                 parent.GasLimit,
-                parent.Timestamp + 1,
+                parent.Timestamp + blocksConfig.SecondsPerSlot,
                 [])
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
-        result.Timestamp = parent.Timestamp + 1;
+        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation
