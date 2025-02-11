@@ -20,7 +20,14 @@ namespace Nethermind.Evm
             in TxExecutionContext txExecutionContext,
             UInt256 transferValue,
             UInt256 value,
-            int callDepth = 0)
+            int callDepth = 0,
+            long outputDestination = 0,
+            long outputLength = 0,
+            ExecutionType executionType = ExecutionType.TRANSACTION,
+            bool isTopLevel = true,
+            bool isStatic = false,
+            bool isContinuation = false,
+            bool isCreateOnPreExistingAccount = false)
         {
             CodeInfo = codeInfo;
             ExecutingAccount = executingAccount;
@@ -31,6 +38,13 @@ namespace Nethermind.Evm
             TransferValue = transferValue;
             Value = value;
             CallDepth = callDepth;
+            OutputDestination = outputDestination;
+            OutputLength = outputLength;
+            ExecutionType = executionType;
+            IsTopLevel = isTopLevel;
+            IsStatic = isStatic;
+            IsContinuation = isContinuation;
+            IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
         }
 
         /// <summary>
@@ -77,5 +91,40 @@ namespace Nethermind.Evm
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth;
+
+        /// <summary>
+        /// Destination in memory where the output should be written.
+        /// </summary>
+        public readonly long OutputDestination;
+
+        /// <summary>
+        /// Length of the output to be written.
+        /// </summary>
+        public readonly long OutputLength;
+
+        /// <summary>
+        /// Type of execution (CALL, STATICCALL, etc.).
+        /// </summary>
+        public readonly ExecutionType ExecutionType;
+
+        /// <summary>
+        /// Whether this is a top-level call.
+        /// </summary>
+        public readonly bool IsTopLevel;
+
+        /// <summary>
+        /// Whether this is a static call.
+        /// </summary>
+        public readonly bool IsStatic;
+
+        /// <summary>
+        /// Whether this is a continuation call.
+        /// </summary>
+        public readonly bool IsContinuation;
+
+        /// <summary>
+        /// Whether this is a create operation on a pre-existing account.
+        /// </summary>
+        public readonly bool IsCreateOnPreExistingAccount;
     }
 }
