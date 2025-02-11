@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Ethereum
                     foreach (var plugin in _api.Plugins.OfType<INethermindServicesPlugin>())
                     {
                         plugin.AddServices(s);
-                    };
+                    }
                 })
                 .UseStartup<Startup>()
                 .UseUrls(urls)
