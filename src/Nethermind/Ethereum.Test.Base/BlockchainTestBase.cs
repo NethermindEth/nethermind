@@ -27,6 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -77,22 +78,18 @@ public abstract class BlockchainTestBase
             TestContext.Out.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-        ISpecProvider specProvider;
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
+            [((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
         if (test.NetworkAfterTransition is not null)
         {
-            specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance),
-                ((ForkActivation)1, test.Network),
-                (test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
-        }
-        else
-        {
-            specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Network));
+            transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
-        if (specProvider.GenesisSpec != Frontier.Instance)
+        ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
+            ? GnosisSpecProvider.Instance
+            : new CustomSpecProvider(transitions.ToArray());
+
+        if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
         {
             Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
         }

@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Precompiles
 {
     public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     {
-        public static readonly Ripemd160Precompile Instance = new Ripemd160Precompile();
+        public static readonly Ripemd160Precompile Instance = new();
 
         // missing in .NET Core
         //        private static RIPEMD160 _ripemd;
@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Ripemd160Precompile++;
 

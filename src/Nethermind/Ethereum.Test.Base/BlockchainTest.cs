@@ -28,6 +28,7 @@ namespace Ethereum.Test.Base
         public Hash256? PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }
         public string? LoadFailure { get; set; }
+        public ulong ChainId { get; set; }
 
         public override string? ToString()
         {
