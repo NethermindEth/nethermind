@@ -35,7 +35,7 @@ public class GethLikeTxTraceCollectionConverterTests
     [TestCaseSource(nameof(TracesAndJsonsSource))]
     public void Write_with_traces_with_tx_hash(GethLikeTxTrace trace, string json)
     {
-        var expected =  $"""[{json}]""";
+        var expected = $"""[{json}]""";
 
         var collection = new GethLikeTxTraceCollection([trace]);
         var result = _serializer.Serialize(collection);

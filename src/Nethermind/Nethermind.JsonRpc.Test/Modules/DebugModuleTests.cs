@@ -410,7 +410,7 @@ public class DebugModuleTests
     [Test]
     public void TraceBlock_Success()
     {
-        var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
+        var traces = new GethLikeTxTraceCollection(Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray());
         var tracesClone = TestItem.CloneObject(traces);
         var blockRlp = new Rlp(TestItem.RandomDataA);
 
@@ -420,7 +420,7 @@ public class DebugModuleTests
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
-        var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
+        var expected = ResultWrapper<GethLikeTxTraceCollection>.Success(tracesClone);
 
         actual.Should().BeEquivalentTo(expected);
     }
@@ -482,7 +482,7 @@ public class DebugModuleTests
     [Test]
     public void TraceBlockByHash_Success()
     {
-        var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
+        var traces = new GethLikeTxTraceCollection(Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray());
         var tracesClone = TestItem.CloneObject(traces);
         var blockHash = TestItem.KeccakA;
 
@@ -492,7 +492,7 @@ public class DebugModuleTests
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_traceBlockByHash(blockHash);
-        var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
+        var expected = ResultWrapper<GethLikeTxTraceCollection>.Success(tracesClone);
 
         actual.Should().BeEquivalentTo(expected);
     }
@@ -516,7 +516,7 @@ public class DebugModuleTests
     [Test]
     public void TraceBlockByNumber_Success()
     {
-        var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
+        var traces = new GethLikeTxTraceCollection(Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray());
         var tracesClone = TestItem.CloneObject(traces);
         var blockNumber = BlockParameter.Latest;
 
@@ -526,7 +526,7 @@ public class DebugModuleTests
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_traceBlockByNumber(blockNumber);
-        var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
+        var expected = ResultWrapper<GethLikeTxTraceCollection>.Success(tracesClone);
 
         actual.Should().BeEquivalentTo(expected);
     }
@@ -549,7 +549,7 @@ public class DebugModuleTests
 
     private static GethLikeTxTrace MockGethLikeTrace()
     {
-        var trace = new GethLikeTxTrace { ReturnValue = new byte[] { 0xA2 } };
+        var trace = new GethLikeTxTrace { ReturnValue = new byte[] { 0xA2 }, TxHash = TestItem.KeccakA };
 
         trace.Entries.Add(new GethTxTraceEntry
         {
