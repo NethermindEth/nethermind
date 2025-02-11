@@ -217,6 +217,10 @@ namespace Nethermind.Stats.Model
             {
                 return NodeClientType.Nimbus;
             }
+            else if (clientId.Contains(nameof(NodeClientType.EthereumJS), StringComparison.OrdinalIgnoreCase))
+            {
+                return NodeClientType.EthereumJS;
+            }
             else if (clientId.Contains(nameof(NodeClientType.Parity), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Parity;

@@ -14,6 +14,7 @@ namespace Nethermind.Stats.Model
         Trinity,
         Erigon,
         Reth,
-        Nimbus
+        Nimbus,
+        EthereumJS
     }
 }
