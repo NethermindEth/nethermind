@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        public override string Type => SubscriptionType.Logs;
+        public override string Type => SubscriptionType.EthSubscription.Logs;
         public override void Dispose()
         {
             _receiptCanonicalityMonitor.ReceiptsInserted -= OnReceiptsInserted;
