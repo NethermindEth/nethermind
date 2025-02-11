@@ -3,17 +3,46 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Flashbots.Data;
 
 public class BuilderBlockValidationRequest
 {
-    public BuilderBlockValidationRequest(Hash256 parentBeaconBlockRoot, long registeredGasLimit, SubmitBlockRequest blockRequest)
+    public BuilderBlockValidationRequest(
+        BidTrace message,
+        RExecutionPayloadV3 executionPayload,
+        BlobsBundleV1 blobsBundle,
+        byte[] signature,
+        long registeredGasLimit,
+        Hash256 parentBeaconBlockRoot)
     {
-        ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        Message = message;
+        ExecutionPayload = executionPayload;
+        BlobsBundle = blobsBundle;
+        Signature = signature;
         RegisteredGasLimit = registeredGasLimit;
-        BlockRequest = blockRequest;
+        ParentBeaconBlockRoot = parentBeaconBlockRoot;
     }
+
+    [JsonRequired]
+    [JsonPropertyName("message")]
+    public BidTrace Message { get; set; }
+
+    [JsonRequired]
+    [JsonPropertyName("execution_payload")]
+    public RExecutionPayloadV3 ExecutionPayload { get; set; }
+
+    [JsonRequired]
+    [JsonPropertyName("blobs_bundle")]
+    public BlobsBundleV1 BlobsBundle { get; set; }
+
+    [JsonPropertyName("signature")]
+    public byte[] Signature { get; set; }
+
+    [JsonRequired]
+    [JsonPropertyName("registered_gas_limit")]
+    public long RegisteredGasLimit { get; set; }
 
     /// <summary>
     /// The block hash of the parent beacon block.
@@ -22,12 +51,4 @@ public class BuilderBlockValidationRequest
     [JsonRequired]
     [JsonPropertyName("parent_beacon_block_root")]
     public Hash256 ParentBeaconBlockRoot { get; set; }
-
-    [JsonRequired]
-    [JsonPropertyName("registered_gas_limit")]
-    public long RegisteredGasLimit { get; set; }
-
-    [JsonRequired]
-    [JsonPropertyName("block_request")]
-    public SubmitBlockRequest BlockRequest { get; set; }
 }

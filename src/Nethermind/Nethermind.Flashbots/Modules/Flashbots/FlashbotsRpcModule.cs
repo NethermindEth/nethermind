@@ -20,19 +20,4 @@ public class FlashbotsRpcModule : IFlashbotsRpcModule
 
     Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params) =>
         _validateSubmissionHandler.ValidateSubmission(@params);
-
-    Task<ResultWrapper<FlashbotsResult>> IFlashbotsRpcModule.flashbots_validateRBuilderSubmissionV3(RBuilderBlockValidationRequest @params)
-    {
-        BuilderBlockValidationRequest builderBlockValidationRequest = new BuilderBlockValidationRequest(
-            @params.parent_beacon_block_root,
-            @params.registered_gas_limit,
-            new SubmitBlockRequest(
-                @params.execution_payload,
-                @params.blobs_bundle,
-                @params.message.ToBidTrace(),
-                @params.signature
-            )
-        );
-        return _validateSubmissionHandler.ValidateSubmission(builderBlockValidationRequest);
-    }
 }

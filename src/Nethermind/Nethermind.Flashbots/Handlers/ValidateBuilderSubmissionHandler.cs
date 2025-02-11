@@ -69,7 +69,7 @@ public class ValidateSubmissionHandler
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
-        ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload.ToExecutionPayloadV3();
+        ExecutionPayloadV3 payload = request.ExecutionPayload.ToExecutionPayloadV3();
 
         if (request.ParentBeaconBlockRoot is null)
         {
@@ -79,12 +79,12 @@ public class ValidateSubmissionHandler
         payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
 
 
-        BlobsBundleV1 blobsBundle = request.BlockRequest.BlobsBundle;
+        BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
         string payloadStr = $"BuilderBlock: {payload}";
 
         if (_logger.IsInfo)
-            _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length}");
+            _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
         if (!payload.TryGetBlock(out Block? block))
         {
@@ -92,7 +92,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid($"Block {payload} coud not be parsed as a block");
         }
 
-        if (block is not null && !ValidateBlock(block, request.BlockRequest.Message, request.RegisteredGasLimit, out string? error))
+        if (block is not null && !ValidateBlock(block, request.Message, request.RegisteredGasLimit, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
             return FlashbotsResult.Invalid(error ?? "Block validation failed");

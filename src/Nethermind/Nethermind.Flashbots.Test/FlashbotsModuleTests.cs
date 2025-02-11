@@ -39,47 +39,7 @@ public partial class FlashbotsModuleTests
         GetPayloadV3Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block));
 
         BuilderBlockValidationRequest BlockRequest = new(
-            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042"),
-            block.Header.GasLimit,
-            new SubmitBlockRequest(
-                new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
-                expectedPayload.BlobsBundle,
-                new BidTrace(
-                    0, block.Header.ParentHash,
-                    block.Header.Hash,
-                    TestKeysAndAddress.TestBuilderKey.PublicKey,
-                    TestKeysAndAddress.TestValidatorKey.PublicKey,
-                    TestKeysAndAddress.TestBuilderAddr,
-                    block.Header.GasLimit,
-                    block.Header.GasUsed,
-                    new UInt256(132912184722469)
-                ),
-                []
-            )
-        );
-
-        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
-        result.Should().NotBeNull();
-
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        // Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
-
-        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);
-        JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-        jsonResponse.Should().NotBeNull();
-    }
-
-    [Test]
-    public virtual async Task TestValidateRBuilderSubmissionV3()
-    {
-        using MergeTestBlockChain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = chain.CreateReadOnlyTxProcessingEnvFactory();
-        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain, readOnlyTxProcessingEnvFactory);
-
-        Block block = CreateBlock(chain);
-
-        RBuilderBlockValidationRequest BlockRequest = new(
-            new Message(
+            new BidTrace(
                 0, block.Header.ParentHash,
                 block.Header.Hash,
                 TestKeysAndAddress.TestBuilderKey.PublicKey,
@@ -90,20 +50,19 @@ public partial class FlashbotsModuleTests
                 new UInt256(132912184722469)
             ),
             new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
-            new BlobsBundleV1(block),
+            expectedPayload.BlobsBundle,
             [],
             block.Header.GasLimit,
-            block.WithdrawalsRoot,
             new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
         );
 
-        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateRBuilderSubmissionV3(BlockRequest);
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
         result.Should().NotBeNull();
 
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         // Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateRBuilderSubmissionV3", BlockRequest);
+        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);
         JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
         jsonResponse.Should().NotBeNull();
     }

@@ -16,10 +16,4 @@ public interface IFlashbotsRpcModule : IRpcModule
         IsSharable = false,
         IsImplemented = true)]
     Task<ResultWrapper<FlashbotsResult>> flashbots_validateBuilderSubmissionV3(BuilderBlockValidationRequest @params);
-
-    [JsonRpcMethod(
-        Description = " validate the builder submissions as received by a relay",
-        IsSharable = false,
-        IsImplemented = true)]
-    Task<ResultWrapper<FlashbotsResult>> flashbots_validateRBuilderSubmissionV3(RBuilderBlockValidationRequest @params);
 }
