@@ -23,21 +23,16 @@ public class ZstdChainSpecLoader : IChainSpecLoader
 
     public ChainSpec Load(Stream streamData)
     {
-        using var buffer = new MemoryStream();
-        if (_dictionaryPath is null)
-        {
-            Assembly assembly = typeof(IConfig).Assembly;
-            using Stream stream = assembly.GetManifestResourceStream(EmbeddedDictionaryPath)!;
-            stream.CopyTo(buffer);
-        }
-        else
-        {
-            using Stream stream = File.OpenRead(_dictionaryPath);
-            stream.CopyTo(buffer);
-        }
+        using Stream stream = _dictionaryPath is null
+            ? typeof(IConfig).Assembly.GetManifestResourceStream(EmbeddedDictionaryPath)!
+            : File.OpenRead(_dictionaryPath);
+
+        byte[] buffer = new byte[stream.Length];
+        stream.ReadExactly(buffer);
 
         using var decompressedStream = new DecompressionStream(streamData);
-        decompressedStream.LoadDictionary(buffer.ToArray());
+        decompressedStream.LoadDictionary(buffer);
+
         return _decompressedLoader.Load(decompressedStream);
     }
 }
