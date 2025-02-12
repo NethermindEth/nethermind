@@ -1576,8 +1576,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_warn_for_missing_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBaseBlockchain()
-            .Build(new TestSingleReleaseSpecProvider(Prague.Instance));
+        using MergeTestBlockchain chain = await CreateBlockchain();
         var loggerManager = Substitute.For<ILogManager>();
         var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
@@ -1589,17 +1588,16 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         string[] list = new[]
         {
-            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
-            nameof(IEngineRpcModule.engine_newPayloadV3),
-            nameof(IEngineRpcModule.engine_newPayloadV4),
-            nameof(IEngineRpcModule.engine_getPayloadV3)
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
         };
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>
-                    a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal)/* &&
+                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)*/));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
