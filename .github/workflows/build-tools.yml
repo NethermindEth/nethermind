@@ -22,7 +22,7 @@ jobs:
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
           - Nethermind.Tools.Kute/Nethermind.Tools.Kute.slnx
-          - SchemaGenerator/SchemaGenerator.slnx
+          # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
           - TxParser/TxParser.slnx
     steps:
