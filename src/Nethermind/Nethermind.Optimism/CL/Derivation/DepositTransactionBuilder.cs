@@ -15,6 +15,9 @@ namespace Nethermind.Optimism.CL.Derivation;
 public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameters engineParameters)
 {
     private const int SystemTxDataLengthEcotone = 164;
+    private static readonly string DepositEventABI = "TransactionDeposited(address,address,uint256,bytes)";
+    private static readonly Hash256 DepositEventABIHash = Keccak.Compute(DepositEventABI);
+    private static readonly Hash256 DepositEventVersion0 = Hash256.Zero;
 
     public Transaction BuildL1InfoTransaction(L1BlockInfo blockInfo)
     {
@@ -58,7 +61,48 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     {
         List<Transaction> result = [];
 
+        foreach (var receipt in receipts)
+        {
+            if (receipt.StatusCode != 1) { continue; }
+            foreach (var log in receipt.Logs ?? [])
+            {
+                if (log.Address != depositAddress) { throw new ArgumentException($"Expected {nameof(depositAddress)} to be {depositAddress}, got {log.Address}"); }
+                Transaction tx = UnmarshalDepositTransactionFromLogEvent(log);
+                result.Add(tx);
+            }
+        }
+
         return result;
+    }
+
+    private Transaction UnmarshalDepositTransactionFromLogEvent(LogEntry log)
+    {
+        if (log.Topics.Length != 4) throw new ArgumentException($"Expected 4 event topics (address indexed from, address indexed to, uint256 indexed version, bytes opaqueData), got {log.Topics.Length}");
+
+        if (log.Topics[0] != DepositEventABIHash) throw new ArgumentException($"Invalid update event: {log.Topics[0]}, expected {SystemConfigUpdate.EventABIHash}, got {log.Topics[0]}");
+        if (log.Topics[1].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}"); }
+        if (log.Topics[2].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}"); }
+
+
+        if (log.Topics.Length != 4) { throw new ArgumentException($"Expected 4 even topics, got {log.Topics.Length}"); }
+        if (log.Topics[0] != DepositEventABIHash) { throw new ArgumentException($"Expected {DepositEventABIHash}, got {log.Topics[0]}"); }
+
+        var from = new Address(log.Topics[1].Bytes[^Address.Size..]);
+        var to = new Address(log.Topics[2].Bytes[^Address.Size..]);
+
+        var version = log.Topics[3];
+        if (version == DepositEventVersion0)
+        {
+            var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
+            return new()
+            {
+                Type = TxType.DepositTx,
+            };
+        }
+        else
+        {
+            throw new FormatException($"Unknown log event version: {version}");
+        }
     }
 
     public Transaction[] BuildUpgradeTransactions()
@@ -102,5 +146,20 @@ public readonly ref struct DepositLogEventV0
             Data.CopyTo(span.TakeAndMove(Data.Length));
         }
         return AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData);
+    }
+
+    public static DepositLogEventV0 FromBytes(byte[] source) // TODO: Add `ReadOnlySpan<byte>` overloads
+    {
+        var opaqueData = (byte[])AbiEncoder.Instance.Decode(AbiEncodingStyle.None, Signature, source)[0];
+        Span<byte> span = opaqueData;
+
+        return new()
+        {
+            Mint = new UInt256(span.TakeAndMove(32), isBigEndian: true),
+            Value = new UInt256(span.TakeAndMove(32), isBigEndian: true),
+            Gas = BinaryPrimitives.ReadUInt64BigEndian(span.TakeAndMove(8)),
+            IsCreation = span.TakeAndMove(1)[0] == 1,
+            Data = span,
+        };
     }
 }
