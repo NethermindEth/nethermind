@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['csharp']
+        language: ['csharp', 'actions']
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
-          packs: githubsecuritylab/codeql-${{ matrix.language }}-queries
+          packs: githubsecuritylab/codeql-csharp-queries
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build Nethermind
