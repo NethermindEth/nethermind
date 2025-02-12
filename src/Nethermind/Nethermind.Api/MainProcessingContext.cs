@@ -6,9 +6,6 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Api;
 
-public class MainProcessingContext(ITransactionProcessor transactionProcessor, IBlockProcessor processor, IBlockchainProcessor blockchainProcessor) : IMainProcessingContext
+public record MainProcessingContext(ITransactionProcessor TransactionProcessor, IBlockProcessor BlockProcessor, IBlockchainProcessor BlockchainProcessor) : IMainProcessingContext
 {
-    public ITransactionProcessor TransactionProcessor { get; } = transactionProcessor;
-    public IBlockProcessor BlockProcessor { get; } = processor;
-    public IBlockchainProcessor BlockchainProcessor { get; } = blockchainProcessor;
 }

@@ -78,7 +78,7 @@ namespace Nethermind.Init.Steps
 
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
-            var transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
+            ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));

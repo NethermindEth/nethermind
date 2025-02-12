@@ -88,7 +88,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
     {
         if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
-        if (transactionProcessor is null) throw new StepDependencyException(nameof(transactionProcessor));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));

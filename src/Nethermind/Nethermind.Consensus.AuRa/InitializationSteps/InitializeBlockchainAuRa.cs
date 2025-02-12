@@ -137,7 +137,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
-        // IWorldState worldState = _api.WorldStateManager.GlobalWorldState!;
         IAuRaValidator validator = new AuRaValidatorFactory(
                 _api.AbiEncoder,
                 worldState,
