@@ -83,10 +83,6 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (log.Topics[1].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}"); }
         if (log.Topics[2].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}"); }
 
-
-        if (log.Topics.Length != 4) { throw new ArgumentException($"Expected 4 even topics, got {log.Topics.Length}"); }
-        if (log.Topics[0] != DepositEventABIHash) { throw new ArgumentException($"Expected {DepositEventABIHash}, got {log.Topics[0]}"); }
-
         var from = new Address(log.Topics[1].Bytes[^Address.Size..]);
         var to = new Address(log.Topics[2].Bytes[^Address.Size..]);
 
