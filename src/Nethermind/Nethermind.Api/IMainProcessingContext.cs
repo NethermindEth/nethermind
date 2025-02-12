@@ -9,11 +9,11 @@ namespace Nethermind.Api;
 public interface IMainProcessingContext
 {
     ITransactionProcessor TransactionProcessor { get; }
-    IBlockProcessor MainBlockProcessor { get; }
+    IBlockProcessor BlockProcessor { get; }
 }
 
 public class MaatProcessingContext(ITransactionProcessor transactionProcessor, IBlockProcessor processor) : IMainProcessingContext
 {
     public ITransactionProcessor TransactionProcessor { get; } = transactionProcessor;
-    public IBlockProcessor MainBlockProcessor { get; } = processor;
+    public IBlockProcessor BlockProcessor { get; } = processor;
 }

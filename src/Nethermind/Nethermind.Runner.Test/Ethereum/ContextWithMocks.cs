@@ -67,7 +67,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 PeerPool = Substitute.For<IPeerPool>(),
                 SpecProvider = Substitute.For<ISpecProvider>(),
                 EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),
-                MainBlockProcessor = Substitute.For<IBlockProcessor>(),
                 ReceiptStorage = Substitute.For<IReceiptStorage>(),
                 ReceiptFinder = Substitute.For<IReceiptFinder>(),
                 BlockValidator = Substitute.For<IBlockValidator>(),
