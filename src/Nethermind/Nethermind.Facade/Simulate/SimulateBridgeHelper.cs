@@ -109,7 +109,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
+                CheckMissingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
 
                 parent = processedBlock.Header;
             }
@@ -119,7 +119,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         return true;
     }
 
-    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
+    private static void CheckMissingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
     {
         SimulateBlockResult current = simulateOutputTracer.Results.Last();
         current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
