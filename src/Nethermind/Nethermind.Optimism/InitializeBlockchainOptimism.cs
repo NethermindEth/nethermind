@@ -85,9 +85,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         return new InvalidBlockInterceptor(base.CreateBlockValidator(), api.InvalidChainTracker, api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
     {
-        ITransactionProcessor? transactionProcessor = api.TransactionProcessor;
         if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
         if (transactionProcessor is null) throw new StepDependencyException(nameof(transactionProcessor));

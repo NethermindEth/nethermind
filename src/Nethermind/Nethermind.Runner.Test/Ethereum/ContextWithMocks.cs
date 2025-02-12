@@ -97,7 +97,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 StateReader = Substitute.For<IStateReader>(),
                 VerifyTrieStarter = Substitute.For<IVerifyTrieStarter>(),
                 MainNodeStorage = Substitute.For<INodeStorage>(),
-                TransactionProcessor = Substitute.For<ITransactionProcessor>(),
+                MainProcessingContext = Substitute.For<IMainProcessingContext>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),

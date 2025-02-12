@@ -69,11 +69,10 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-        if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
@@ -82,12 +81,12 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         return new BlockProcessor(
             _api.SpecProvider,
             _api.BlockValidator,
-            _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldStateManager.GlobalWorldState),
+            _api.RewardCalculatorSource.Get(transactionProcessor),
+            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), _api.WorldStateManager.GlobalWorldState),
             _api.WorldStateManager.GlobalWorldState,
             _api.ReceiptStorage,
-            _api.TransactionProcessor,
-            new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldStateManager.GlobalWorldState),
+            transactionProcessor,
+            new BeaconBlockRootHandler(transactionProcessor, _api.WorldStateManager.GlobalWorldState),
             new BlockhashStore(_api.SpecProvider, _api.WorldStateManager.GlobalWorldState),
             _api.LogManager,
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),

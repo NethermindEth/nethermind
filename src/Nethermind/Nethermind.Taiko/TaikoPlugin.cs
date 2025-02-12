@@ -36,6 +36,7 @@ using Nethermind.State;
 using Autofac;
 using Nethermind.Synchronization;
 using System.Linq;
+using Autofac.Core.Lifetime;
 
 namespace Nethermind.Taiko;
 
@@ -131,7 +132,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
         ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.TransactionProcessor);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
@@ -166,8 +166,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
                 scope.WorldState,
                 _api.ReceiptStorage,
-                _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldStateManager.GlobalWorldState),
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(_api.SpecProvider, scope.WorldState),
                 _api.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));

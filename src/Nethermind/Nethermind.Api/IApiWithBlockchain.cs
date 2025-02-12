@@ -40,7 +40,6 @@ namespace Nethermind.Api
         IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
-        IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner? BlockProducerRunner { get; set; }
         IBlockValidator? BlockValidator { get; set; }
@@ -65,8 +64,7 @@ namespace Nethermind.Api
         INodeStorage? MainNodeStorage { get; set; }
         CompositePruningTrigger? PruningTrigger { get; set; }
         IVerifyTrieStarter? VerifyTrieStarter { get; set; }
-
-        ITransactionProcessor? TransactionProcessor { get; set; }
+        IMainProcessingContext? MainProcessingContext { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }

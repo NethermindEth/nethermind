@@ -77,7 +77,7 @@ namespace Nethermind.Init.Steps
 
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
-            _api.TransactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
+            var transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -110,7 +110,8 @@ namespace Nethermind.Init.Steps
                     _api.LogManager,
                     preBlockCaches)
                 : null;
-            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor(preWarmer);
+
+            IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor);
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -127,6 +128,7 @@ namespace Nethermind.Init.Steps
                 IsMainProcessor = true
             };
 
+            setApi.MainProcessingContext = new MaatProcessingContext(transactionProcessor, mainBlockProcessor);
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
 
@@ -241,11 +243,10 @@ namespace Nethermind.Init.Steps
             _api.LogManager);
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer)
+        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
         {
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -254,12 +255,12 @@ namespace Nethermind.Init.Steps
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
+                _api.RewardCalculatorSource.Get(transactionProcessor),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
-                _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor, worldState),
+                transactionProcessor,
+                new BeaconBlockRootHandler(transactionProcessor, worldState),
                 new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
                 preWarmer: preWarmer

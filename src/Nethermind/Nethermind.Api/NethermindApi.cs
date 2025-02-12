@@ -206,7 +206,7 @@ namespace Nethermind.Api
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
-        public ITransactionProcessor? TransactionProcessor { get; set; }
+        public IMainProcessingContext? MainProcessingContext { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
