@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        public override string Type => SubscriptionType.DroppedPendingTransactions;
+        public override string Type => SubscriptionType.EthSubscription.DroppedPendingTransactions;
 
         public override void Dispose()
         {

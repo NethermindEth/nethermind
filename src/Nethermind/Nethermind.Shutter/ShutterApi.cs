@@ -106,7 +106,7 @@ public class ShutterApi : IShutterApi
         InitP2P(ip);
     }
 
-    public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
+    public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationTokenSource);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)

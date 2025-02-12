@@ -69,8 +69,8 @@ public class GenesisLoaderTests
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 }
