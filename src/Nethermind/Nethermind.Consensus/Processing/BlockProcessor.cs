@@ -312,59 +312,65 @@ public partial class BlockProcessor(
 
     // TODO: block processor pipeline
     protected virtual TxReceipt[] ProcessBlock(
-        Block block,
-        IBlockTracer blockTracer,
-        ProcessingOptions options)
+    Block block,
+    IBlockTracer blockTracer,
+    ProcessingOptions options)
+{
+    BlockHeader header = block.Header;
+    IReleaseSpec spec = _specProvider.GetSpec(header);
+    ReceiptsTracer.SetOtherTracer(blockTracer);
+    ReceiptsTracer.StartNewBlockTrace(block);
+    StoreBeaconRoot(block, spec);
+    _blockhashStore.ApplyBlockhashStateChanges(header);
+    _stateProvider.Commit(spec, commitStorageRoots: false);
+    if (block.Transactions.Length == 0)
     {
-        BlockHeader header = block.Header;
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-
-        ReceiptsTracer.SetOtherTracer(blockTracer);
-        ReceiptsTracer.StartNewBlockTrace(block);
-
-        StoreBeaconRoot(block, spec);
-        _blockhashStore.ApplyBlockhashStateChanges(header);
-        _stateProvider.Commit(spec, commitStorageRoots: false);
-
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
-        CalculateBlooms(receipts);
-
-        if (spec.IsEip4844Enabled)
-        {
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
-        }
-
+        TxReceipt[] receipts = Array.Empty<TxReceipt>();
+        if (spec.IsEip4844Enabled) header.BlobGasUsed = 0;
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-
-        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-        // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
-        // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec);
-
         _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
-
         ReceiptsTracer.EndBlockTrace();
-
         _stateProvider.Commit(spec, commitStorageRoots: true);
-
         if (BlockchainProcessor.IsMainProcessingThread)
         {
-            // Get the accounts that have been changed
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
-
         if (ShouldComputeStateRoot(header))
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
-
         header.Hash = header.CalculateHash();
-
         return receipts;
     }
+    TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+    CalculateBlooms(receipts);
+    if (spec.IsEip4844Enabled)
+    {
+        header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+    }
+    header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+    ApplyMinerRewards(block, blockTracer, spec);
+    _withdrawalProcessor.ProcessWithdrawals(block, spec);
+    _stateProvider.Commit(spec);
+    _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+    ReceiptsTracer.EndBlockTrace();
+    _stateProvider.Commit(spec, commitStorageRoots: true);
+    if (BlockchainProcessor.IsMainProcessingThread)
+    {
+        block.AccountChanges = _stateProvider.GetAccountChanges();
+    }
+    if (ShouldComputeStateRoot(header))
+    {
+        _stateProvider.RecalculateStateRoot();
+        header.StateRoot = _stateProvider.StateRoot;
+    }
+    header.Hash = header.CalculateHash();
+    return receipts;
+}
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
