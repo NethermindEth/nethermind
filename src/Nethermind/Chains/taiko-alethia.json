@@ -1,6 +1,6 @@
 {
-  "name": "Taiko Mainnet",
-  "dataDir": "taiko-mainnet",
+  "name": "Taiko Alethia",
+  "dataDir": "taiko-alethia",
   "engine": {
     "Taiko": {}
   },
