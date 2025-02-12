@@ -118,5 +118,21 @@
     "checkpoint-sync-url": "",
     "timeout": 180,
     "agent": "g6-standard-6"
+  },
+  {
+    "network": "energyweb",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "volta",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
   }
 ]

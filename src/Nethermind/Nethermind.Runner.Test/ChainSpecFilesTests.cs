@@ -14,14 +14,11 @@ namespace Nethermind.Runner.Test
     [TestFixture]
     public class ChainSpecFilesTests
     {
+        private readonly ChainSpecFileLoader _loader;
 
-        private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
-        private readonly IChainSpecLoader _loader;
-        private readonly ILogger _logger;
         public ChainSpecFilesTests()
         {
-            _loader = new ChainSpecLoader(_jsonSerializer);
-            _logger = default;
+            _loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         }
 
         [TestCase("foundation", 1UL)]
@@ -29,14 +26,14 @@ namespace Nethermind.Runner.Test
         [TestCase("chainspec/foundation.json", 1UL)]
         public void different_formats_to_chainSpecPath(string chainSpecPath, ulong chainId)
         {
-            _loader.LoadEmbeddedOrFromFile(chainSpecPath, _logger).Should()
+            _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()
                 .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("testspec.json", 0x55UL)]
         public void ChainSpec_from_file(string chainSpecPath, ulong chainId)
         {
-            _loader.LoadEmbeddedOrFromFile(chainSpecPath, _logger).Should()
+            _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()
                 .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
@@ -45,16 +42,22 @@ namespace Nethermind.Runner.Test
         [TestCase("holesky.json", 0x4268UL)]
         public void ignoring_custom_chainSpec_when_embedded_exists(string chainSpecPath, ulong chainId)
         {
-            _loader.LoadEmbeddedOrFromFile(chainSpecPath, _logger).Should()
+            _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()
                 .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]
         public void ChainSpecNotFound(string chainSpecPath)
         {
-            _loader.Invoking(l => l.LoadEmbeddedOrFromFile(chainSpecPath, _logger))
-                .Should().Throw<FileNotFoundException>();
+            var tryLoad = () => _loader.LoadEmbeddedOrFromFile(chainSpecPath);
+            tryLoad.Should().Throw<FileNotFoundException>();
         }
 
+        [TestCase("chainspec/arena-z-mainnet.json.zst", 7897UL)]
+        public void Zstandard_Compressed_ChainSpec(string chainSpecPath, ulong chainId)
+        {
+            _loader.LoadEmbeddedOrFromFile(chainSpecPath).Should()
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
+        }
     }
 }

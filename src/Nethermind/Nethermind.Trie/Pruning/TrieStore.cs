@@ -586,14 +586,6 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             AnnounceReorgBoundaries();
             deleteTask.Wait();
 
-            if (_livePruningEnabled)
-            {
-                foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
-                {
-                    dirtyNode.CleanObsoletePersistedLastSeen();
-                }
-            }
-
             if (candidateSets.Count > 0)
             {
                 return true;

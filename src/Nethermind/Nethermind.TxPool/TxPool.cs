@@ -120,6 +120,8 @@ namespace Nethermind.TxPool
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _transactions.Removed += OnRemovedTx;
+
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
@@ -151,7 +153,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new OnlyOneTxPerDelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
+                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -198,6 +200,10 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? proof)
             => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
 
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            RemovePendingDelegations(args.Value);
+        }
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing) return;
@@ -460,10 +466,10 @@ namespace Nethermind.TxPool
         {
             if (tx.HasAuthorizationList)
             {
-                foreach (var auth in tx.AuthorizationList)
+                foreach (AuthorizationTuple auth in tx.AuthorizationList)
                 {
                     if (auth.Authority is not null)
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!, auth.Nonce);
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
                 }
             }
         }
@@ -562,7 +568,7 @@ namespace Nethermind.TxPool
                 foreach (var auth in transaction.AuthorizationList)
                 {
                     if (auth.Authority is not null)
-                        _pendingDelegations.DecrementDelegationCount(auth.Authority!, auth.Nonce);
+                        _pendingDelegations.DecrementDelegationCount(auth.Authority!);
                 }
             }
         }
@@ -801,6 +807,7 @@ namespace Nethermind.TxPool
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
+            _transactions.Removed -= OnRemovedTx;
         }
 
         /// <summary>
