@@ -325,13 +325,13 @@ public partial class BlockProcessor(
     _stateProvider.Commit(spec, commitStorageRoots: false);
     if (block.Transactions.Length == 0)
     {
-        TxReceipt[] receipts = Array.Empty<TxReceipt>();
+        TxReceipt[] emptyReceipts = Array.Empty<TxReceipt>();
         if (spec.IsEip4844Enabled) header.BlobGasUsed = 0;
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(emptyReceipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         _stateProvider.Commit(spec);
-        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, emptyReceipts, spec);
         ReceiptsTracer.EndBlockTrace();
         _stateProvider.Commit(spec, commitStorageRoots: true);
         if (BlockchainProcessor.IsMainProcessingThread)
@@ -344,7 +344,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
         header.Hash = header.CalculateHash();
-        return receipts;
+        return emptyReceipts;
     }
     TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
     CalculateBlooms(receipts);
