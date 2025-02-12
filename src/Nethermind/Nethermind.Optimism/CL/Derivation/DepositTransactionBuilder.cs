@@ -4,8 +4,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -67,5 +69,38 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     public Transaction[] BuildForceIncludeTransactions()
     {
         return []; // TODO implement
+    }
+}
+
+public readonly ref struct DepositLogEventV0
+{
+    public UInt256 Mint { get; init; }
+    public UInt256 Value { get; init; }
+    public UInt64 Gas { get; init; }
+    public bool IsCreation { get; init; }
+    public ReadOnlySpan<byte> Data { get; init; }
+
+    private static readonly AbiSignature Signature = new(string.Empty, AbiType.DynamicBytes);
+
+    public byte[] Marshal()
+    {
+        // NOTE: Format is as follows
+        //      opaqueData   = [mint (32 bytes), value (32 bytes), gas (8 bytes), isCreation (1 byte), ...data]
+        //      result       = [0x20 (32 bytes), opaqueData.Length (32 bytes), data (padded)]
+
+        // TODO: We could even hand-roll the entire process using a single intermediate array (several copies here).
+
+        // TODO: Can we `stackalloc`? What is `data.Length` max size?
+        var opaqueData = new byte[32 + 32 + 8 + 1 + Data.Length];
+        {
+            Span<byte> span = opaqueData;
+
+            Mint.ToBigEndian(span.TakeAndMove(32));
+            Value.ToBigEndian(span.TakeAndMove(32));
+            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), Gas);
+            span.TakeAndMove(1)[0] = (byte)(IsCreation ? 1 : 0);
+            Data.CopyTo(span.TakeAndMove(Data.Length));
+        }
+        return AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData);
     }
 }
