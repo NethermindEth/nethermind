@@ -103,6 +103,11 @@ namespace Nethermind.Abi
                 bytes = new byte[2];
                 BinaryPrimitives.WriteUInt16BigEndian(bytes, ushortInput);
             }
+            else if (arg is byte byteInput)
+            {
+                bytes = new byte[1];
+                bytes[0] = byteInput;
+            }
             else if (arg is JsonElement element && element.ValueKind == JsonValueKind.Number)
             {
                 bytes = new byte[8];
