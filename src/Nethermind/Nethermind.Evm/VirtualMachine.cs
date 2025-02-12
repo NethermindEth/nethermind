@@ -1347,7 +1347,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             Address delegation;
-                            ReadOnlyMemory<byte> externalCode = txCtx.CodeInfoRepository.GetCachedCodeInfo(_state, address, false, spec, out delegation).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = txCtx.CodeInfoRepository.GetCachedCodeInfo(_state, address, spec, out delegation).MachineCode;
+                            if (delegation is not null)
+                            {
+                                externalCode = Eip7702Constants.FirstTwoBytesOfHeader;
+                            }
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1905,14 +1909,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, spec)) goto OutOfGas;
+                        Address delegatedAddress = null;
                         if (_state.AccountExists(address)
-                            && !_state.IsDeadAccount(address))
+                            && !_state.IsDeadAccount(address)
+                            && (!env.TxExecutionContext.CodeInfoRepository
+                            .TryGetDelegation(_state, address, out delegatedAddress)))
                         {
                             stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
                         }
                         else
                         {
-                            stack.PushZero();
+                            if (delegatedAddress is null)
+                                stack.PushZero();
+                            else
+                                stack.PushBytes(Eip7702Constants.HashOfDelegationCode.Bytes);
                         }
 
                         break;
@@ -2060,8 +2070,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
         Address delegation;
-        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_state, address, false, spec, out delegation).MachineCode;
+        ReadOnlyMemory<byte> accountCode = codeInfoRepository.GetCachedCodeInfo(_state, address, spec, out delegation).MachineCode;
         UInt256 result = (UInt256)accountCode.Span.Length;
+        if (delegation is not null)
+        {
+            //If the account has been delegated only the first two bytes of the delegation header counts as size
+            result = (UInt256)Eip7702Constants.FirstTwoBytesOfHeader.Length;
+        }
         stack.PushUInt256(in result);
     }
 
