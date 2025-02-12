@@ -17,10 +17,7 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj">
-      <Project>{968435E3-4245-4CE2-A720-7F334BBB46FA}</Project>
-      <Name>Ethereum.Test.Base</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
     <EmbeddedResource Include="..\..\tests\BasicTests\hexencodetest.json">
       <Link>hexencodetest.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
