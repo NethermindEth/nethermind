@@ -61,9 +61,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
 
+        private bool ShouldUsePreMerge()
+        {
+            return _beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false;
+        }
+
         public override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
         {
-            if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            if (ShouldUsePreMerge())
             {
                 if (_logger.IsDebug)
                     _logger.Debug("Using pre merge dispatcher");
@@ -78,7 +83,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             CancellationToken cancellation)
         {
             // Note: Redundant with Dispatch, but test uses it.
-            if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            if (ShouldUsePreMerge())
             {
                 if (_logger.IsDebug)
                     _logger.Debug("Using pre merge block downloader");
@@ -92,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             CancellationToken cancellation)
         {
             // Note: Redundant with Dispatch, but test uses it.
-            if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            if (ShouldUsePreMerge())
             {
                 if (_logger.IsDebug)
                     _logger.Debug("Using pre merge block downloader");
@@ -123,7 +128,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
             ValidateSeals(headers!, cancellation);
 
-            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(0));
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
         }
 
         protected override bool CheckAncestorJump(PeerInfo? bestPeer, Hash256? startHeaderHash, ref long currentNumber)

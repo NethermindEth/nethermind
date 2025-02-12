@@ -183,6 +183,7 @@ namespace Nethermind.Synchronization.Blocks
                         }
 
                         _syncPeerPool.ReportNoSyncProgress(bestPeer, AllocationContexts.Blocks);
+                        headers.Dispose();
                         return 0;
                     }
 
@@ -197,7 +198,7 @@ namespace Nethermind.Synchronization.Blocks
                     // loop iterator to start with o
                     if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
                     {
-                        _posTransitionHook.TryUpdateTerminalBlock(currentHeader, false);
+                        _posTransitionHook.TryUpdateTerminalBlock(currentHeader);
                         headersSynced++;
                     }
 
@@ -213,8 +214,11 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     break;
                 }
+
+                headers.Dispose();
             }
 
+            headers?.Dispose();
             return headersSynced;
         }
 
@@ -304,8 +308,11 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     break;
                 }
+
+                headers?.Dispose();
             }
 
+            headers?.Dispose();
             return blocksSynced;
         }
 
@@ -406,9 +413,11 @@ namespace Nethermind.Synchronization.Blocks
                 if (shouldProcess == false)
                 {
                     _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                    // Needed to know if a block is the terminal block.
+                    // Not needed if not processing for some reason.
+                    _posTransitionHook.TryUpdateTerminalBlock(currentBlock.Header);
                 }
 
-                _posTransitionHook.TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
                 if (downloadReceipts)
                 {
                     TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];

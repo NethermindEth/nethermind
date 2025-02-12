@@ -9,7 +9,10 @@ namespace Nethermind.Synchronization.Blocks;
 
 public interface IPosTransitionHook
 {
-    void TryUpdateTerminalBlock(BlockHeader currentHeader, bool shouldProcess);
+
+    // Needed to know what is the terminal block so in fast sync, for each
+    // header, it calls this.
+    void TryUpdateTerminalBlock(BlockHeader currentHeader);
     bool ImprovementRequirementSatisfied(PeerInfo? peerInfo);
     IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers);
 }

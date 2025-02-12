@@ -17,12 +17,13 @@ public class PosTransitionHook(IBlockTree blockTree, IPoSSwitcher poSSwitcher, I
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PosTransitionHook>();
 
-    public void TryUpdateTerminalBlock(BlockHeader currentHeader, bool shouldProcess)
+    public void TryUpdateTerminalBlock(BlockHeader currentHeader)
     {
-        if (!shouldProcess) // if we're processing the block we will find TerminalBlock after processing
-            poSSwitcher.TryUpdateTerminalBlock(currentHeader);
+        poSSwitcher.TryUpdateTerminalBlock(currentHeader);
     }
 
+    // Used only in get block header in pre merge block downloader, this hook stops pre merge block downloader
+    // from downloader header once poSSwitcher.HasEverReachedTerminalBlock().
     public bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
     {
         return bestPeer!.TotalDifficulty > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) &&
@@ -39,9 +40,11 @@ public class PosTransitionHook(IBlockTree blockTree, IPoSSwitcher poSSwitcher, I
             bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
             if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
             {
+                IOwnedReadOnlyList<BlockHeader> oldResponse = response;
                 response = response
                     .TakeWhile(header => !poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
                     .ToPooledList(response.Count);
+                oldResponse.Dispose();
                 if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
             }
         }

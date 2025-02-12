@@ -10,7 +10,7 @@ namespace Nethermind.Synchronization.Blocks;
 
 public class NoPosTransition(IBlockTree blockTree) : IPosTransitionHook
 {
-    public void TryUpdateTerminalBlock(BlockHeader currentHeader, bool shouldProcess)
+    public void TryUpdateTerminalBlock(BlockHeader currentHeader)
     {
     }
 
