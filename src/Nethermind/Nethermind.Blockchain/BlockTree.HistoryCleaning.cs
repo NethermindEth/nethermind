@@ -81,6 +81,7 @@ public partial class BlockTree
 
         if (_historyConfig.HistoryPruneEpochs.HasValue)
         {
+            if (_logger.IsInfo) _logger.Info($"(tmp) CalculateCutoffTimestamp, HistoryPruneEpochs: {_historyConfig.HistoryPruneEpochs.Value}, head timestamp: {Head!.Timestamp}, current timestamp: {DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
             cutoffTimestamp = Head!.Timestamp - (_historyConfig.HistoryPruneEpochs.Value * epochLength);
         }
 
