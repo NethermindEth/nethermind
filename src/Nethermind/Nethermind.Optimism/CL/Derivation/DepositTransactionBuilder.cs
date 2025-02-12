@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -51,9 +52,11 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         };
     }
 
-    public Transaction[] BuildUserDepositTransactions()
+    public List<Transaction> BuildUserDepositTransactions(Address depositAddress, List<OptimismTxReceipt> receipts)
     {
-        return []; // TODO implement
+        List<Transaction> result = [];
+
+        return result;
     }
 
     public Transaction[] BuildUpgradeTransactions()
