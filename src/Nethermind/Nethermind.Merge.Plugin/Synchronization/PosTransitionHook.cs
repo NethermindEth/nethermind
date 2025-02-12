@@ -19,7 +19,7 @@ public class PosTransitionHook(IBlockTree blockTree, IPoSSwitcher poSSwitcher, I
 
     public void TryUpdateTerminalBlock(BlockHeader currentHeader, bool shouldProcess)
     {
-        if (shouldProcess == false) // if we're processing the block we will find TerminalBlock after processing
+        if (!shouldProcess) // if we're processing the block we will find TerminalBlock after processing
             poSSwitcher.TryUpdateTerminalBlock(currentHeader);
     }
 
