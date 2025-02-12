@@ -91,13 +91,10 @@ namespace Nethermind.Network
                 yield return new Node(netNode) { IsTrusted = true };
             }
 
-            // continuously yield new nodes as they are added via the channel.
-            while (await _nodeChannel.Reader.WaitToReadAsync(cancellationToken))
+            // yield new nodes as they are added via the channel
+            await foreach (Node node in _nodeChannel.Reader.ReadAllAsync(cancellationToken))
             {
-                while (_nodeChannel.Reader.TryRead(out Node node))
-                {
-                    yield return node;
-                }
+                yield return node;
             }
         }
 
