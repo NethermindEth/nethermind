@@ -32,11 +32,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
-using Nethermind.State;
 using Autofac;
 using Nethermind.Synchronization;
-using System.Linq;
-using Autofac.Core.Lifetime;
 
 namespace Nethermind.Taiko;
 
