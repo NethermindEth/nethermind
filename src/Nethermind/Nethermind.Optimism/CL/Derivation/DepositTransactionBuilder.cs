@@ -66,7 +66,9 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             if (receipt.StatusCode != 1) { continue; }
             foreach (var log in receipt.Logs ?? [])
             {
-                if (log.Address != depositAddress) { throw new ArgumentException($"Expected {nameof(depositAddress)} to be {depositAddress}, got {log.Address}"); }
+                if (log.Address != depositAddress) { continue; }
+                if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) { continue; }
+
                 Transaction tx = UnmarshalDepositTransactionFromLogEvent(log);
                 result.Add(tx);
             }
@@ -78,8 +80,6 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     private Transaction UnmarshalDepositTransactionFromLogEvent(LogEntry log)
     {
         if (log.Topics.Length != 4) throw new ArgumentException($"Expected 4 event topics (address indexed from, address indexed to, uint256 indexed version, bytes opaqueData), got {log.Topics.Length}");
-
-        if (log.Topics[0] != DepositEventABIHash) throw new ArgumentException($"Invalid update event: {log.Topics[0]}, expected {SystemConfigUpdate.EventABIHash}, got {log.Topics[0]}");
         if (log.Topics[1].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}"); }
         if (log.Topics[2].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}"); }
 
