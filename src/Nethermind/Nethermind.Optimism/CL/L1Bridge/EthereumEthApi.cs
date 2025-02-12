@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -28,13 +27,18 @@ public class EthereumEthApi : IEthApi
         return _ethRpcClient.Post<ReceiptForRpc[]>("eth_getBlockReceipts", new object[] { blockHash });
     }
 
-    public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash, bool fullTxs)
+    public Task<L1Block?> GetBlockByHash(Hash256 blockHash, bool fullTxs)
     {
-        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByHash", new object[] { blockHash, fullTxs });
+        return _ethRpcClient.Post<L1Block?>("eth_getBlockByHash", new object[] { blockHash, fullTxs });
     }
 
-    public Task<BlockForRpc?> GetBlockByNumber(ulong blockNumber, bool fullTxs)
+    public Task<L1Block?> GetBlockByNumber(ulong blockNumber, bool fullTxs)
     {
-        return _ethRpcClient.Post<BlockForRpc>("eth_getBlockByNumber", new BlockParameter((long)blockNumber), fullTxs);
+        return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", new BlockParameter((long)blockNumber), fullTxs);
+    }
+
+    public Task<L1Block?> GetHead(bool fullTxs)
+    {
+        return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", BlockParameter.Latest, fullTxs);
     }
 }

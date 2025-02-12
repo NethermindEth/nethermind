@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
@@ -21,7 +20,7 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly ILogger _logger;
     private readonly CancellationToken _cancellationToken;
 
-    private ulong _currentSlot = 0;
+    private ulong _currentHeadNumber = 0;
 
     public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config, CancellationToken cancellationToken, ILogManager logManager)
     {
@@ -36,35 +35,33 @@ public class EthereumL1Bridge : IL1Bridge
         });
     }
 
-    public Channel<(BeaconBlock, ReceiptForRpc[])> NewHeadChannel { get; } =
-        Channel.CreateBounded<(BeaconBlock, ReceiptForRpc[])>(10);
+    public Channel<(L1Block, ReceiptForRpc[])> NewHeadChannel { get; } =
+        Channel.CreateBounded<(L1Block, ReceiptForRpc[])>(20);
 
     private async void HeadUpdateLoop()
     {
         while (!_cancellationToken.IsCancellationRequested)
         {
             // TODO: can we do it with subscription?
-            BeaconBlock? beaconBlock = await _beaconApi.GetHead();
-            while (beaconBlock is null || beaconBlock.Value.SlotNumber <= _currentSlot)
+            L1Block? currentHead = await _ethL1Api.GetHead(true);
+            while (currentHead is null || currentHead.Value.Number <= _currentHeadNumber)
             {
                 await Task.Delay(100);
-                beaconBlock = await _beaconApi.GetHead();
+                currentHead = await _ethL1Api.GetHead(true);
             }
 
-            // handle missed slots(_currentSlot + 1 < beaconBlock.SlotNumber)
-            for (ulong i = _currentSlot + 1; i < beaconBlock.Value.SlotNumber; i++)
+            ulong newHeadNumber = (ulong)currentHead.Value.Number;
+
+            for (ulong i = _currentHeadNumber + 1; i < newHeadNumber; i++)
             {
-                BeaconBlock? skippedBlock = await _beaconApi.GetBySlotNumber(i);
-                ReceiptForRpc[]? skippedReceipts = await _ethL1Api.GetReceiptsByHash(skippedBlock!.Value.ExecutionBlockHash);
-                await NewHeadChannel.Writer.WriteAsync((skippedBlock!.Value, skippedReceipts!), _cancellationToken);
+                L1Block? skippedBlock = await _ethL1Api.GetBlockByNumber(i, true);
+                ReceiptForRpc[]? skippedReceipts = await _ethL1Api.GetReceiptsByHash(skippedBlock!.Value.Hash);
+                await NewHeadChannel.Writer.WriteAsync((skippedBlock.Value, skippedReceipts!), _cancellationToken);
             }
-            _logger.Error($"HEAD UPDATED: slot {beaconBlock.Value.SlotNumber}");
-            // new slot
-            _currentSlot = beaconBlock.Value.SlotNumber;
-            ReceiptForRpc[]? receipts = await _ethL1Api.GetReceiptsByHash(beaconBlock.Value.ExecutionBlockHash);
-            await NewHeadChannel.Writer.WriteAsync((beaconBlock.Value, receipts!), _cancellationToken);
+            _currentHeadNumber = newHeadNumber;
+            ReceiptForRpc[]? receipts = await _ethL1Api.GetReceiptsByHash(currentHead.Value.Hash);
+            await NewHeadChannel.Writer.WriteAsync((currentHead.Value, receipts!), _cancellationToken);
 
-            // Wait next slot
             await Task.Delay(11000, _cancellationToken);
         }
     }
@@ -79,12 +76,12 @@ public class EthereumL1Bridge : IL1Bridge
         return _beaconApi.GetBlobSidecars(slotNumber);
     }
 
-    public Task<BlockForRpc?> GetBlock(ulong blockNumber)
+    public Task<L1Block?> GetBlock(ulong blockNumber)
     {
         return _ethL1Api.GetBlockByNumber(blockNumber, true);
     }
 
-    public Task<BlockForRpc?> GetBlockByHash(Hash256 blockHash)
+    public Task<L1Block?> GetBlockByHash(Hash256 blockHash)
     {
         return _ethL1Api.GetBlockByHash(blockHash, true);
     }
@@ -94,8 +91,8 @@ public class EthereumL1Bridge : IL1Bridge
         return _ethL1Api.GetReceiptsByHash(blockHash);
     }
 
-    public void SetCurrentL1Head(ulong slotNumber)
+    public void SetCurrentL1Head(ulong blockNumber)
     {
-        _currentSlot = slotNumber;
+        _currentHeadNumber = blockNumber;
     }
 }

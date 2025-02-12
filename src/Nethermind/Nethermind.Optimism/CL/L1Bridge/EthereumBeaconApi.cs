@@ -112,7 +112,7 @@ public class EthereumBeaconApi : IBeaconApi
             {
                 if (_logger.IsWarn)
                 {
-                    _logger.Warn($"Unsuccessful {uri} request");
+                    _logger.Warn($"Unsuccessful {uri} request. Status code: {response.StatusCode}");
                 }
 
                 // TODO: remove exception

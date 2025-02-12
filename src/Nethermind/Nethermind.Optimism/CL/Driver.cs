@@ -31,7 +31,7 @@ public class Driver : IDisposable
     private readonly IChannelStorage _channelStorage;
 
     private readonly Task _mainTask;
-    private readonly ChannelReader<(BeaconBlock, ReceiptForRpc[])> _newL1HeadReader;
+    private readonly ChannelReader<(L1Block, ReceiptForRpc[])> _newL1HeadReader;
 
     public Driver(IL1Bridge l1Bridge, IEthRpcModule l2EthRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
@@ -66,7 +66,6 @@ public class Driver : IDisposable
 
     private void OnL2BlocksDerived(OptimismPayloadAttributes[] payloadAttributes, SystemConfig[] systemConfigs, L1BlockInfo[] l1BlockInfos, ulong l2ParentNumber)
     {
-        _logger.Error($"CHECKING PAYLOAD ATTRIBUTES {payloadAttributes.Length}");
         for (int i = 0; i < payloadAttributes.Length; i++)
         {
             var blockResult = _l2EthRpc.eth_getBlockByNumber(new((long)l2ParentNumber + 1 + i), true);
@@ -99,7 +98,7 @@ public class Driver : IDisposable
                 _logger.Error($"Adding block into l2blockTree: {block.Hash}");
             }
 
-            ComparePayloadAttributes(expectedPayloadAttributes, payloadAttributes[i]);
+            ComparePayloadAttributes(expectedPayloadAttributes, payloadAttributes[i], (ulong)block.Number);
         }
     }
 
@@ -122,8 +121,9 @@ public class Driver : IDisposable
         return result;
     }
 
-    private void ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual)
+    private void ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber)
     {
+        _logger.Error($"CHECKING PAYLOAD ATTRIBUTES block {blockNumber}");
         if (expected.NoTxPool != actual.NoTxPool)
         {
             _logger.Error($"Invalid NoTxPool. Expected {expected.NoTxPool}, Actual {actual.NoTxPool}");
@@ -168,20 +168,30 @@ public class Driver : IDisposable
         {
             _logger.Error($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
         }
-        _logger.Error($"CHECKED");
+        _logger.Error($"CHECKED number {blockNumber}");
     }
 
-    private async Task OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
+    private ulong CalculateSlotNumber(ulong timestamp)
     {
-        _logger.Error($"New L1 Block. Number {block.PayloadNumber}");
+        // TODO: review
+        const ulong beaconGenesisTimestamp = 1606824023;
+        const ulong l1SlotTime = 12;
+        return (timestamp - beaconGenesisTimestamp) / l1SlotTime;
+    }
+
+    private async Task OnNewL1Head(L1Block block, ReceiptForRpc[] receipts)
+    {
+        _logger.Error($"New L1 Block. Number {block.Number}");
         // Filter batch submitter transaction
-        foreach (Transaction transaction in block.Transactions)
+        foreach (L1Transaction transaction in block.Transactions!)
         {
-            if (_engineParameters.BatcherInboxAddress == transaction.To && _engineParameters.BatcherAddress == transaction.SenderAddress)
+            if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                _engineParameters.BatcherAddress == transaction.From)
             {
                 if (transaction.Type == TxType.Blob)
                 {
-                    await ProcessBlobBatcherTransaction(transaction, block.SlotNumber);
+                    await ProcessBlobBatcherTransaction(transaction,
+                        CalculateSlotNumber(block.Timestamp.ToUInt64(null)));
                 }
                 else
                 {
@@ -191,7 +201,7 @@ public class Driver : IDisposable
         }
     }
 
-    private async Task ProcessBlobBatcherTransaction(Transaction transaction, ulong slotNumber)
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, ulong slotNumber)
     {
         BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
         while (blobSidecars is null)
@@ -204,7 +214,7 @@ public class Driver : IDisposable
         {
             for (int j = 0; j < blobSidecars.Length; ++j)
             {
-                if (blobSidecars[j].BlobVersionedHash.SequenceEqual(transaction.BlobVersionedHashes[i]!))
+                if (blobSidecars[j].BlobVersionedHash.SequenceEqual(transaction.BlobVersionedHashes[i]))
                 {
                     byte[] data = BlobDecoder.DecodeBlob(blobSidecars[j]);
                     Frame[] frames = FrameDecoder.DecodeFrames(data);
@@ -222,7 +232,7 @@ public class Driver : IDisposable
         }
     }
 
-    private void ProcessCalldataBatcherTransaction(Transaction transaction)
+    private void ProcessCalldataBatcherTransaction(L1Transaction transaction)
     {
         if (_logger.IsError)
         {

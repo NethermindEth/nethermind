@@ -69,30 +69,30 @@ public class DerivationPipeline : IDerivationPipeline
         // TODO: proper error handling
         ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
-        BlockForRpc? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
+        L1Block? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
         ArgumentNullException.ThrowIfNull(lastL1Origin);
-        if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck))
+        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck))
         {
             // TODO: potential L1 reorg
             throw new ArgumentException("Invalid batch origin");
         }
-        BlockForRpc[] l1Origins = new BlockForRpc[numberOfL1Origins];
+        L1Block[] l1Origins = new L1Block[numberOfL1Origins];
         ReceiptForRpc[][] l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
-        l1Origins[numberOfL1Origins - 1] = lastL1Origin;
-        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Hash);
+        l1Origins[numberOfL1Origins - 1] = lastL1Origin.Value;
+        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Value.Hash);
         ArgumentNullException.ThrowIfNull(lastReceipts);
         l1Receipts[numberOfL1Origins - 1] = lastReceipts;
-        Hash256 parentHash = lastL1Origin.ParentHash;
+        Hash256 parentHash = lastL1Origin.Value.ParentHash;
         for (ulong i = 1; i < numberOfL1Origins; i++)
         {
             // TODO: try to save time here
-            BlockForRpc? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
+            L1Block? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
             ReceiptForRpc[]? receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
             ArgumentNullException.ThrowIfNull(l1Origin);
             ArgumentNullException.ThrowIfNull(receipts);
-            l1Origins[numberOfL1Origins - i - 1] = l1Origin;
+            l1Origins[numberOfL1Origins - i - 1] = l1Origin.Value;
             l1Receipts[numberOfL1Origins - i - 1] = receipts;
-            parentHash = l1Origin.ParentHash;
+            parentHash = l1Origin.Value.ParentHash;
         }
 
         var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);

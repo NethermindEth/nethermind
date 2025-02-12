@@ -83,8 +83,7 @@ public class OptimismCL : IDisposable
         SystemConfig config =
             _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input!, block.ExtraData);
-        ulong mainnetGenesisTime = 1606824023;
-        _l1Bridge.SetCurrentL1Head((l1BlockInfo.Timestamp - mainnetGenesisTime) / 12);
+        _l1Bridge.SetCurrentL1Head(l1BlockInfo.Number);
         L2Block nativeBlock = new()
         {
             Hash = block.Hash,
