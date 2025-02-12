@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **Linea** · **Energy Web**
+**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
 
 ## Installing
 
@@ -88,7 +88,7 @@ This is the easiest and fastest way to build Nethermind if you don't want to clo
 docker build https://github.com/nethermindeth/nethermind.git -t nethermind
 ```
 
-For more info, see [Bulding Docker image](https://docs.nethermind.io/developers/building-from-source#bulding-docker-image).
+For more info, see [Building Docker image](https://docs.nethermind.io/developers/building-from-source#bulding-docker-image).
 
 ### Standalone binaries
 
@@ -125,7 +125,7 @@ For more info, see [Building standalone binaries](https://docs.nethermind.io/dev
 
 ## Contributing
 
-BEFORE you start work on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
+Before you start working on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
 
 ## Security
 

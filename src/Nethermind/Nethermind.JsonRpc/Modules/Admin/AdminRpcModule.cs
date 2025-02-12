@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -16,6 +17,9 @@ using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using System.Text.Json;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -33,6 +37,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
     private readonly IAdminEraService _eraService;
+    private readonly ISubscriptionManager _subscriptionManager;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -45,7 +50,8 @@ public class AdminRpcModule : IAdminRpcModule
         IAdminEraService eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
-        ChainParameters parameters)
+        ChainParameters parameters,
+        ISubscriptionManager subscriptionManager)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -60,6 +66,7 @@ public class AdminRpcModule : IAdminRpcModule
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
         BuildNodeInfo();
+        _subscriptionManager = subscriptionManager;
     }
 
     private void BuildNodeInfo()
@@ -193,4 +200,35 @@ public class AdminRpcModule : IAdminRpcModule
 
         return ResultWrapper<string>.Success("Starting.");
     }
+
+    public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)
+    {
+        try
+        {
+            ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
+            return successfulResult;
+        }
+        catch (KeyNotFoundException)
+        {
+            return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+        }
+        catch (ArgumentException e)
+        {
+            return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+        }
+        catch (JsonException)
+        {
+            return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
+        }
+    }
+
+    public ResultWrapper<bool> admin_unsubscribe(string subscriptionId)
+    {
+        bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
+        return unsubscribed
+            ? ResultWrapper<bool>.Success(true)
+            : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+    }
+
+    public JsonRpcContext Context { get; set; }
 }
