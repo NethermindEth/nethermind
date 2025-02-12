@@ -491,7 +491,7 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> OpcodesWithEXTCODE()
     {
-        //EXTCODESIZE should return 23
+        //EXTCODESIZE should return the size of the two bytes of the delegation header
         yield return new object[] {
             Prepare.EvmCode
             .PushData(TestItem.AddressA)
@@ -502,21 +502,8 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.PUSH0)
             .Op(Instruction.RETURN)
             .Done,
-            new byte[]{ (byte)Eip7702Constants.DelegationDesignatorLength } };
-        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
-
-        yield return new object[] {
-            Prepare.EvmCode
-            .PushData(TestItem.AddressA)
-            .Op(Instruction.EXTCODEHASH)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.MSTORE)
-            .PushData(32)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.RETURN)
-            .Done,
-            Keccak.Compute(delegationCode).Bytes.ToArray() };
-        //EXTCOPYCODE should copy the the delegation designator
+            new byte[]{ 2 } };
+        //EXTCOPYCODE should copy only the first two bytes of the delegation header
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressA)
             .Op(Instruction.DUP1)
@@ -525,18 +512,18 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.PUSH0)
             .Op(Instruction.DUP4)
             .Op(Instruction.EXTCODECOPY)
-            .PushData(23)
+            .PushData(2)
             .Op(Instruction.PUSH0)
             .Op(Instruction.RETURN)
             .Done;
         yield return new object[]
         {
             code,
-            delegationCode
+            Eip7702Constants.FirstTwoBytesOfHeader.ToArray()
         };
     }
     [TestCaseSource(nameof(OpcodesWithEXTCODE))]
-    public void Execute_DelegatedCodeUsesEXTOPCODES_ReturnsExpectedValue(byte[] code, byte[] expectedValue)
+    public void Execute_DelegatedCodeUsesEXTOPCODES_StoresExpectedValue(byte[] code, byte[] expectedValue)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -568,33 +555,30 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> EXTCODEHASHAccountSetup()
     {
-        yield return new object[] { static (IWorldState state, Address accountt) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account does not exists
             },
             new byte[] { 0x0 }
         };
-        byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressD.Bytes];
-        yield return new object[] {
-
-            static (IWorldState state, Address account) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account is delegated
-                byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressD.Bytes];
+                byte[] code = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
                 state.CreateAccountIfNotExists(account, 0);
                 state.InsertCode(account, ValueKeccak.Compute(code), code, Prague.Instance);
 
             },
-            ValueKeccak.Compute(code).Bytes.ToArray()
+            Eip7702Constants.HashOfDelegationCode.BytesToArray()
         };
-        yield return new object[] { static (IWorldState state, Address account) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account exists but is not delegated
                 state.CreateAccountIfNotExists(account, 1);
             },
             Keccak.OfAnEmptyString.ValueHash256.ToByteArray()
         };
-        yield return new object[] { static (IWorldState state, Address account) =>
+        yield return new object[] { static (IWorldState state, Address account, Address target) =>
             {
                 //Account is dead
                 state.CreateAccountIfNotExists(account, 0);
@@ -604,13 +588,14 @@ internal class TransactionProcessorEip7702Tests
     }
 
     [TestCaseSource(nameof(EXTCODEHASHAccountSetup))]
-    public void Execute_CodeSavesEXTCODEHASHWhenAccountIsDelegatedOrNot_SavesExpectedValue(Action<IWorldState, Address> setupAccount, byte[] expected)
+    public void Execute_CodeSavesEXTCODEHASHWhenAccountIsDelegatedOrNot_SavesExpectedValue(Action<IWorldState, Address, Address> setupAccount, byte[] expected)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
+        Address target = TestItem.AddressD;
 
-        setupAccount(_stateProvider, signer.Address);
+        setupAccount(_stateProvider, signer.Address, target);
 
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
 
