@@ -77,7 +77,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         }
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
@@ -94,16 +94,14 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api,
             new ServiceTxFilter(_api.SpecProvider));
 
-        return NewAuraBlockProcessor(auRaTxFilter, preWarmer, transactionProcessor);
+        return NewAuraBlockProcessor(auRaTxFilter, preWarmer, transactionProcessor, worldState);
     }
 
-    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
+    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-
-        IWorldState worldState = _api.WorldStateManager!.GlobalWorldState!;
 
         return new AuRaBlockProcessor(
             _api.SpecProvider!,

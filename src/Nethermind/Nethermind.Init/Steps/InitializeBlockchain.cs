@@ -64,7 +64,8 @@ namespace Nethermind.Init.Steps
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             IStateReader stateReader = setApi.StateReader!;
-            PreBlockCaches? preBlockCaches = (_api.WorldStateManager?.GlobalWorldState as IPreBlockCaches)?.Caches;
+            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             ITxPool txPool = _api.TxPool = CreateTxPool(codeInfoRepository);
 
@@ -76,8 +77,8 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
 
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
-            var transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
+            var transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -105,13 +106,13 @@ namespace Nethermind.Init.Steps
                         _api.BlockTree!,
                         _api.SpecProvider,
                         _api.LogManager,
-                        _api.WorldStateManager!.GlobalWorldState),
+                        mainWorldState),
                     _api.SpecProvider!,
                     _api.LogManager,
                     preBlockCaches)
                 : null;
 
-            IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor);
+            IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor, mainWorldState);
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -128,7 +129,7 @@ namespace Nethermind.Init.Steps
                 IsMainProcessor = true
             };
 
-            setApi.MainProcessingContext = new MaatProcessingContext(transactionProcessor, mainBlockProcessor);
+            setApi.MainProcessingContext = new MainProcessingContext(transactionProcessor, mainBlockProcessor);
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
 
@@ -186,19 +187,19 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
+        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             return new TransactionProcessor(
                 _api.SpecProvider,
-                _api.WorldStateManager!.GlobalWorldState,
+                worldState,
                 virtualMachine,
                 codeInfoRepository,
                 _api.LogManager);
         }
 
-        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository)
+        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -206,7 +207,7 @@ namespace Nethermind.Init.Steps
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.SpecProvider, _api.WorldStateManager.GlobalWorldState, _api.LogManager);
+                _api.BlockTree, _api.SpecProvider, worldState, _api.LogManager);
 
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -243,7 +244,7 @@ namespace Nethermind.Init.Steps
             _api.LogManager);
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
+        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
         {
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -251,7 +252,6 @@ namespace Nethermind.Init.Steps
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IWorldState worldState = _api.WorldStateManager.GlobalWorldState!;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,

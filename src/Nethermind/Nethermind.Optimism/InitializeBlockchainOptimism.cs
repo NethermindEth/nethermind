@@ -42,16 +42,15 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
+    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
     {
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.L1CostHelper is null) throw new StepDependencyException(nameof(api.L1CostHelper));
-        if (api.WorldStateManager is null) throw new StepDependencyException(nameof(api.WorldStateManager));
 
         return new OptimismTransactionProcessor(
             api.SpecProvider,
-            api.WorldStateManager.GlobalWorldState,
+            worldState,
             virtualMachine,
             api.LogManager,
             api.L1CostHelper,
@@ -85,7 +84,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         return new InvalidBlockInterceptor(base.CreateBlockValidator(), api.InvalidChainTracker, api.LogManager);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor)
+    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
         if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
         if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
@@ -93,9 +92,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-        if (api.WorldStateManager is null) throw new StepDependencyException(nameof(api.WorldStateManager));
 
-        IWorldState? worldState = api.WorldStateManager.GlobalWorldState;
         Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
 
         return new OptimismBlockProcessor(

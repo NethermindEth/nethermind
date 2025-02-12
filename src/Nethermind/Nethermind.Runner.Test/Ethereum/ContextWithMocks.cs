@@ -37,7 +37,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
@@ -47,7 +46,6 @@ using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
-using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
