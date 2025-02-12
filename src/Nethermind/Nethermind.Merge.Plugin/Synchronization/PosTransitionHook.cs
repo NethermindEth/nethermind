@@ -40,11 +40,10 @@ public class PosTransitionHook(IBlockTree blockTree, IPoSSwitcher poSSwitcher, I
             bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
             if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
             {
-                IOwnedReadOnlyList<BlockHeader> oldResponse = response;
+                using IOwnedReadOnlyList<BlockHeader> oldResponse = response;
                 response = response
                     .TakeWhile(header => !poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
                     .ToPooledList(response.Count);
-                oldResponse.Dispose();
                 if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
             }
         }
