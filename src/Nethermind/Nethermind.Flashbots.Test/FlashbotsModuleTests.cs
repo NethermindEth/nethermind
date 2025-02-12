@@ -93,7 +93,7 @@ public partial class FlashbotsModuleTests
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0xfafb92e8ece12d5fcfa867df9ae6865c5bd8aaf0b277c244552bfe869f61fb26");
+        Hash256 expectedBlockHash = new("0xf823a4118e778834c2d31e9199d9cd1323ed62f0d14268efe5b9518f7157a17e");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(
@@ -119,7 +119,7 @@ public partial class FlashbotsModuleTests
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
             },
-            Array.Empty<Transaction>(),
+            [tx1, tx2, tx3],
             Array.Empty<BlockHeader>(),
             withdrawals
         );

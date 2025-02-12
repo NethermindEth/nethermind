@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -23,7 +24,7 @@ public class RExecutionPayloadV3
     public UInt256 base_fee_per_gas { get; set; }
     public Hash256 block_hash { get; set; }
     public byte[][] transactions { get; set; }
-    public Withdrawal[]? withdrawals { get; set; }
+    public RWithdrawal[]? withdrawals { get; set; }
     public ulong? blob_gas_used { get; set; }
     public ulong? excess_blob_gas { get; set; }
 
@@ -43,7 +44,7 @@ public class RExecutionPayloadV3
         base_fee_per_gas = executionPayloadV3.BaseFeePerGas;
         block_hash = executionPayloadV3.BlockHash;
         transactions = executionPayloadV3.Transactions;
-        withdrawals = executionPayloadV3.Withdrawals;
+        withdrawals = executionPayloadV3.Withdrawals?.Select(w => new RWithdrawal(w)).ToArray();
         blob_gas_used = executionPayloadV3.BlobGasUsed;
         excess_blob_gas = executionPayloadV3.ExcessBlobGas;
     }
@@ -65,7 +66,7 @@ public class RExecutionPayloadV3
             BaseFeePerGas = base_fee_per_gas,
             BlockHash = block_hash,
             Transactions = transactions,
-            Withdrawals = withdrawals,
+            Withdrawals = withdrawals?.Select(w => w.ToWithdrawal()).ToArray(),
             BlobGasUsed = blob_gas_used,
             ExcessBlobGas = excess_blob_gas
         };
@@ -88,7 +89,7 @@ public class RExecutionPayloadV3
         UInt256 base_fee_per_gas,
         Hash256 block_hash,
         byte[][] transactions,
-        Withdrawal[]? withdrawals,
+        RWithdrawal[]? withdrawals,
         ulong? blob_gas_used,
         ulong? excess_blob_gas
     )
