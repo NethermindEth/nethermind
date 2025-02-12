@@ -85,6 +85,9 @@ internal static class ConfigGenerator
         if (!props.Any())
             return;
 
+        static (string, string) GetValue(PropertyInfo prop) =>
+            prop.PropertyType == typeof(bool) ? ("true|false", "[true|false]") : ("<value>", "<value>");
+
         var moduleName = configType.Name[1..].Replace("Config", null);
 
         file.WriteLine($"""
@@ -100,19 +103,7 @@ internal static class ConfigGenerator
                 continue;
 
             var description = itemAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
-            string value;
-            string cliValue;
-
-            if (prop.PropertyType == typeof(bool))
-            {
-                value = "true|false";
-                cliValue = $"[{value}]";
-            }
-            else
-            {
-                value = "<value>";
-                cliValue = value;
-            }
+            (string value, string cliValue) = GetValue(prop);
 
             file.Write($$"""
                 - #### `{{moduleName}}.{{prop.Name}}` \{#{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}}\}
