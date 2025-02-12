@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        public override string Type => SubscriptionType.NewHeads;
+        public override string Type => SubscriptionType.EthSubscription.NewHeads;
 
         public override void Dispose()
         {

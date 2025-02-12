@@ -1,11 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-sepolia.json",
+    "ChainSpecPath": "chainspec/worldchain-sepolia.json.zst",
     "GenesisHash": "0xf1deb67ee953f94d8545d2647918687fa8ba1f30fa6103771f11b7c483984070",
     "BaseDbPath": "nethermind_db/worldchain-sepolia",
-    "LogFileName": "worldchain-sepolia.logs.txt",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "worldchain-sepolia.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -13,7 +12,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "PivotNumber": 9180000,
+    "PivotHash": "0x5878cf3f359eb0e90a0e83a18d38b4fe3c60db658d5e6329b001c363b143f498"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -27,8 +28,7 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 2,
-    "TargetBlockGasLimit": 30000000
+    "SecondsPerSlot": 2
   },
   "Merge": {
     "Enabled": true
