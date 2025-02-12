@@ -32,9 +32,9 @@ jobs:
       - name: Update fast sync settings
         run: python3 scripts/syncSettings.py --superchain
       - name: Copy generated files
-        run:
-          cp /tmp/superchain/chainspec/* ./src/Nethermind/Chains
-          cp /tmp/superchain/runner/* ./src/Nethermind/Nethermind.Runner/configs
+        run: |
+          cp -r /tmp/superchain/chainspec/* ./src/Nethermind/Chains
+          cp -r /tmp/superchain/runner/* ./src/Nethermind/Nethermind.Runner/configs
       - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v1
