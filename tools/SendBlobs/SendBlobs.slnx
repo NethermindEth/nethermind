@@ -1,0 +1,26 @@
+<Solution>
+  <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Cli/Nethermind.Cli.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Config/Nethermind.Config.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Db/Nethermind.Db.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.TxPool/Nethermind.TxPool.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Wallet/Nethermind.Wallet.csproj" />
+  <Project Path="SendBlobs.csproj" />
+</Solution>
