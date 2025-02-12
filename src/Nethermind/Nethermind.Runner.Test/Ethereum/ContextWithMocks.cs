@@ -73,7 +73,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 StaticNodesManager = Substitute.For<IStaticNodesManager>(),
                 BloomStorage = Substitute.For<IBloomStorage>(),
                 Sealer = Substitute.For<ISealer>(),
-                BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
                 BlockProducer = Substitute.For<IBlockProducer>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),

@@ -129,9 +129,8 @@ namespace Nethermind.Init.Steps
                 IsMainProcessor = true
             };
 
-            setApi.MainProcessingContext = new MainProcessingContext(transactionProcessor, mainBlockProcessor);
+            setApi.MainProcessingContext = new MainProcessingContext(transactionProcessor, mainBlockProcessor, blockchainProcessor);
             setApi.BlockProcessingQueue = blockchainProcessor;
-            setApi.BlockchainProcessor = blockchainProcessor;
 
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);

@@ -24,9 +24,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
@@ -37,7 +34,6 @@ namespace Nethermind.Api
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
-        IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProducer? BlockProducer { get; set; }

@@ -269,12 +269,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(_api.MainProcessingContext);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
 
-        _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
+        _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext.BlockchainProcessor);
 
         _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
