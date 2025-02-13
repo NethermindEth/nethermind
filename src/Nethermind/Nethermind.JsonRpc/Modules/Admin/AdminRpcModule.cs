@@ -51,7 +51,9 @@ public class AdminRpcModule : IAdminRpcModule
         IAdminEraService eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
-        ChainParameters parameters)
+        ChainParameters parameters,
+        ITrustedNodesManager trustedNodesManager,
+        ISubscriptionManager subscriptionManager)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));

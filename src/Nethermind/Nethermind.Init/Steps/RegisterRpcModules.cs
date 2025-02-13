@@ -76,6 +76,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SyncServer);
         StepDependencyException.ThrowIfNull(_api.EngineSignerStore);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+        StepDependencyException.ThrowIfNull(_api.TrustedNodesManager);
 
         if (!_jsonRpcConfig.Enabled)
         {

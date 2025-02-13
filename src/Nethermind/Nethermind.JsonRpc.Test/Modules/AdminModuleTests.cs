@@ -325,7 +325,8 @@ public class AdminModuleTests
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters,
-            trustedNodesManager);
+            trustedNodesManager,
+            _subscriptionManager);
 
         // Call admin_addTrustedPeer via the RPC test helper
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
