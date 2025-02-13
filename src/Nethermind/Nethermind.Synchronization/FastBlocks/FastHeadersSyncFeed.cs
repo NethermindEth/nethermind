@@ -200,8 +200,8 @@ namespace Nethermind.Synchronization.FastBlocks
             UInt256 nextTotalDifficulty = UInt256.Zero;
 
             // Only `FastHeaderSyncFeed` need pivot total difficulty. Sounds weird, what about the forward sync
-            // and its peer allocation strategy? nope: they use BestSuggestedHeader, and FastHeader insert the
-            // BestSuggestedHeader. So confusingly, only this part of the code really need the pivot TTD.
+            // and its peer allocation strategy? nope: they use BestSuggestedHeader, and FastHeader insert the first
+            // BestSuggestedHeader. So confusingly, only this part of the code really need the pivot TD.
             if (pivotNumber == 0)
             {
                 // Well... this should not happen at all.
@@ -209,29 +209,29 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             else if (!string.IsNullOrEmpty(_syncConfig.PivotHash) && new Hash256(_syncConfig.PivotHash) == nextHeaderHash)
             {
-                // Still using the total difficulty from sync config, so we use the TTD from sync config.
+                // Still using the pivot from sync config, so we use the TD from sync config.
                 nextTotalDifficulty = UInt256.Parse(_syncConfig.PivotTotalDifficulty ?? "0");
-                if (_logger.IsDebug) _logger.Debug($"TTD for pivot resolved from config is {nextTotalDifficulty}");
+                if (_logger.IsDebug) _logger.Debug($"TotalDifficulty for pivot resolved from config is {nextTotalDifficulty}");
             }
             else if (_blockTree.FindHeader(nextHeaderHash, BlockTreeLookupOptions.RequireCanonical) is { } pivotHeader && pivotHeader.TotalDifficulty is not null)
             {
                 // Probably a saved pivot.
                 nextTotalDifficulty = pivotHeader.TotalDifficulty.Value;
-                if (_logger.IsDebug) _logger.Debug($"TTD for pivot resolved from stored header is {nextTotalDifficulty}");
+                if (_logger.IsDebug) _logger.Debug($"TotalDifficulty for pivot resolved from stored header is {nextTotalDifficulty}");
             }
             else if (_posSwitcher.FinalTotalDifficulty is not null)
             {
                 // So its PoS
                 nextTotalDifficulty = _posSwitcher.FinalTotalDifficulty.Value;
-                if (_logger.IsDebug) _logger.Debug($"TTD for pivot resolved from PosSwitcher is {nextTotalDifficulty}");
+                if (_logger.IsDebug) _logger.Debug($"TotalDifficulty for pivot resolved from PosSwitcher is {nextTotalDifficulty}");
             }
             else
             {
                 // Ah great.
-                // In theory, we could just make fast sync work normally its just that forward sync cannot
+                // In theory, we could just make fast sync work normally without TD its just that forward sync cannot
                 // proceed without completing fast header.
                 // Anyway, just log it so that we know this is happening.
-                if (_logger.IsWarn) _logger.Warn($"Unable to determine TTD for pivot {pivotNumber}:{nextHeaderHash}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to determine TotalDifficulty for pivot {pivotNumber}:{nextHeaderHash}");
             }
 
             (_pivotNumber, _nextHeaderHash, _nextHeaderTotalDifficulty) = (pivotNumber, nextHeaderHash, nextTotalDifficulty);

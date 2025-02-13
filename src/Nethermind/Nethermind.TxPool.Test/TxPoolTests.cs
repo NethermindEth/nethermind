@@ -49,7 +49,7 @@ namespace Nethermind.TxPool.Test
         [SetUp]
         public void Setup()
         {
-            _logManager = new TestLogManager(LogLevel.Trace);
+            _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             var trieStore = new TrieStore(new MemDb(), _logManager);
