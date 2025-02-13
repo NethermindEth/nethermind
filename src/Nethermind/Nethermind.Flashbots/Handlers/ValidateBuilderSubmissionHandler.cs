@@ -282,9 +282,9 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!_blockTree.IsBetterThanHead(block.Header))
+        if (block.Header.Number <= _blockTree.Head?.Number)
         {
-            error = $"Block {block.Header.Hash} is not better than head";
+            error = $"Block {block.Header.Number} is not better than head {_blockTree.Head?.Number}";
             return false;
         }
 
@@ -384,9 +384,9 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (paymentTx.GasPrice != processedBlock.BaseFeePerGas)
+        if (paymentTx.MaxFeePerGas != processedBlock.BaseFeePerGas)
         {
-            error = "Malformed proposer payment, gas price not equal to base fee";
+            error = "Malformed proposer payment, max fee per gas not equal to block base fee per gas";
             return false;
         }
 
@@ -396,11 +396,6 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (paymentTx.MaxFeePerGas != processedBlock.BaseFeePerGas)
-        {
-            error = "Malformed proposer payment, max fee per gas not equal to block base fee per gas";
-            return false;
-        }
 
         error = null;
         return true;
