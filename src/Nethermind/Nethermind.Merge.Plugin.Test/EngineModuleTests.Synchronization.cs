@@ -890,9 +890,9 @@ public partial class EngineModuleTests
             PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
         };
 
-        chain.BlockTree.TryUpdateSyncPivot(
+        chain.BlockTree.UpdateSyncPivot(
             (syncedBlockTree.Head!.Number, syncedBlockTree.Head!.Hash!),
-            IBlockTree.SyncPivotUpdateReason.InitialSync);
+            IBlockTree.SyncPivotUpdateReason.PivotUpdator);
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
         // create block gap from fast sync pivot
         int gap = 7;

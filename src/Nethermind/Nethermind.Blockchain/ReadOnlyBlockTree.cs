@@ -54,13 +54,13 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public (long BlockNumber, Hash256 BlockHash) SyncPivot => _wrapped.SyncPivot;
+        public bool WasInitialSyncPivotSet => _wrapped.WasInitialSyncPivotSet;
         public long AncientBodiesBarrier => _wrapped.AncientBodiesBarrier;
         public long AncientReceiptsBarrier => _wrapped.AncientReceiptsBarrier;
 
-        public bool TryUpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot,
+        public void UpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot,
             IBlockTree.SyncPivotUpdateReason reason)
         {
-            return false;
         }
 
         public Block Head => _wrapped.Head;

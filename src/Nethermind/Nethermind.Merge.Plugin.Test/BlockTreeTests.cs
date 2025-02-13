@@ -258,6 +258,15 @@ public partial class BlockTreeTests
             private IChainLevelHelper? _chainLevelHelper;
             private IBeaconPivot? _beaconPivot;
 
+            private ISyncConfig? _syncConfig;
+            private ISyncConfig SyncConfig
+            {
+                get => _syncConfig ??= new SyncConfig();
+                set => _syncConfig = value;
+            }
+
+            private IDb MetadataDb { get; set; } = new MemDb();
+
             public ScenarioBuilder WithBlockTrees(
                 int notSyncedTreeSize,
                 int syncedTreeSize = -1,
@@ -272,7 +281,7 @@ public partial class BlockTreeTests
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
-                NotSyncedTreeBuilder = Build.A.BlockTree()
+                NotSyncedTreeBuilder = NotSyncedTreeBuilder
                     .WithSpecProvider(testSpecProvider)
                     .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
                 NotSyncedTree = NotSyncedTreeBuilder.TestObject;
@@ -288,7 +297,7 @@ public partial class BlockTreeTests
 
                 _beaconPivot = new BeaconPivot(new MemDb(), SyncedTree, AlwaysPoS.Instance, LimboLogs.Instance);
 
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, SyncConfig, LimboLogs.Instance);
                 if (moveBlocksToMainChain)
                     NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                 return this;
@@ -599,9 +608,89 @@ public partial class BlockTreeTests
 
             public BlockTree SyncedTree { get; private set; } = null!;
 
-            public BlockTree NotSyncedTree { get; private set; } = null!;
 
-            public BlockTreeBuilder NotSyncedTreeBuilder { get; private set; } = null!;
+            private BlockTree? _notSyncedTree;
+            public BlockTree NotSyncedTree
+            {
+                get => _notSyncedTree ??= NotSyncedTreeBuilder.TestObject;
+                private set => _notSyncedTree = value;
+            }
+
+
+            private BlockTreeBuilder? _notSyncedTreeBuilder;
+            public BlockTreeBuilder NotSyncedTreeBuilder
+            {
+                get => _notSyncedTreeBuilder ??= Build.A.BlockTree()
+                    .WithMetadataDb(MetadataDb)
+                    .WithSyncConfig(SyncConfig);
+                private set => _notSyncedTreeBuilder = value;
+            }
+
+            public ScenarioBuilder Given()
+            {
+                return this;
+            }
+
+            public ScenarioBuilder When()
+            {
+                return this;
+            }
+
+            public ScenarioBuilder Then()
+            {
+                return this;
+            }
+
+            public ScenarioBuilder NoSyncPivotIsStored()
+            {
+                return this;
+            }
+
+            public ScenarioBuilder ConfigSyncPivotIs(long blockNumber, Hash256 hash)
+            {
+                SyncConfig.FastSync = true;
+                SyncConfig.PivotNumber = blockNumber.ToString();
+                SyncConfig.PivotHash = hash.ToString();
+                return this;
+            }
+
+            public ScenarioBuilder SyncPivotShouldBe(long blockNumber, Hash256 hash)
+            {
+                NotSyncedTree.SyncPivot.Should().Be((blockNumber, hash));
+                return this;
+            }
+
+            public ScenarioBuilder StartingMetadataSyncPivotIs(long blockNumber, Hash256 hash)
+            {
+                RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+                pivotData.Encode(blockNumber);
+                pivotData.Encode(hash);
+                MetadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+
+                return this;
+            }
+
+            public ScenarioBuilder StoredMetadataSyncPivotShouldBe(long blockNumber, Hash256 hash)
+            {
+                RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+                pivotData.Encode(blockNumber);
+                pivotData.Encode(hash);
+                MetadataDb.Get(MetadataDbKeys.UpdatedPivotData).Should().BeEquivalentTo(pivotData.Data.ToArray());
+
+                return this;
+            }
+
+            public ScenarioBuilder SettingSyncPivotTo((long blockNumber, Hash256 hash) syncPivot, IBlockTree.SyncPivotUpdateReason reason)
+            {
+                NotSyncedTree.UpdateSyncPivot(syncPivot, reason);
+                return this;
+            }
+
+            public ScenarioBuilder WasPivotSetShouldBe(bool wasSet)
+            {
+                NotSyncedTree.WasInitialSyncPivotSet.Should().Be(wasSet);
+                return this;
+            }
         }
 
         public static ScenarioBuilder GoesLikeThis()
@@ -842,5 +931,45 @@ public partial class BlockTreeTests
         AddBlockResult result = scenario.NotSyncedTree.SuggestBlock(block);
         result.Should().Be(AddBlockResult.Added);
         scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().NotBe((UInt256)0);
+    }
+
+    [Test]
+    public void Given_NoSyncPivotIsStored_Then_LoadSyncPivotFromConfig()
+    {
+        _ = BlockTreeTestScenario.GoesLikeThis()
+            .Given()
+            .NoSyncPivotIsStored()
+            .ConfigSyncPivotIs(1000, TestItem.KeccakA)
+            .Then()
+            .SyncPivotShouldBe(1000, TestItem.KeccakA)
+            .WasPivotSetShouldBe(false)
+            ;
+    }
+
+    [Test]
+    public void Given_SyncPivotIsStored_Then_LoadSyncPivotFromMetadataDb()
+    {
+        _ = BlockTreeTestScenario.GoesLikeThis()
+            .Given()
+            .StartingMetadataSyncPivotIs(1010, TestItem.KeccakB)
+            .ConfigSyncPivotIs(1000, TestItem.KeccakA)
+            .Then()
+            .SyncPivotShouldBe(1010, TestItem.KeccakB)
+            .StoredMetadataSyncPivotShouldBe(1010, TestItem.KeccakB)
+            .WasPivotSetShouldBe(true)
+            ;
+    }
+
+    [Test]
+    public void When_UpdatingSyncPeivot_Then_StoreThePivotInDb()
+    {
+        _ = BlockTreeTestScenario.GoesLikeThis()
+            .When()
+            .SettingSyncPivotTo((1010, TestItem.KeccakB), IBlockTree.SyncPivotUpdateReason.PivotUpdator)
+            .Then()
+            .SyncPivotShouldBe(1010, TestItem.KeccakB)
+            .StoredMetadataSyncPivotShouldBe(1010, TestItem.KeccakB)
+            .WasPivotSetShouldBe(true)
+            ;
     }
 }

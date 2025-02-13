@@ -204,7 +204,7 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
 
-        _syncingToBlockTree.TryUpdateSyncPivot((AncientBarrierInConfig + 1_000_000, Keccak.Zero), IBlockTree.SyncPivotUpdateReason.InitialSync);
+        _syncingToBlockTree.UpdateSyncPivot((AncientBarrierInConfig + 1_000_000, Keccak.Zero), IBlockTree.SyncPivotUpdateReason.PivotUpdator);
 
         _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)

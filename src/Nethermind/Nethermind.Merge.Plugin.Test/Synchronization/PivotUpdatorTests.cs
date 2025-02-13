@@ -10,11 +10,9 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats.Model;
@@ -32,7 +30,6 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private ISyncConfig? _syncConfig;
         private IBlockCacheService? _blockCacheService;
         private IBeaconSyncStrategy? _beaconSyncStrategy;
-        private IDb? _metadataDb;
         private IBlockTree? _externalPeerBlockTree;
 
         [SetUp]
@@ -59,9 +56,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
 
-            _metadataDb = new MemDb();
             _blockTree = Build.A.BlockTree()
-                .WithMetadataDb(_metadataDb)
                 .TestObject;
             _syncModeSelector = Substitute.For<ISyncModeSelector>();
             _syncConfig = Substitute.For<ISyncConfig>();
@@ -89,13 +84,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
-            byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
-            Hash256 storedFinalizedHash = pivotStream.DecodeKeccak()!;
-
-            storedFinalizedHash.Should().Be(expectedFinalizedHash);
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
+            _blockTree!.SyncPivot.Should().Be((expectedPivotBlockNumber, expectedFinalizedHash));
         }
 
         [Test]
@@ -119,13 +108,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
-            byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
-            Hash256 storedPivotBlockHash = pivotStream.DecodeKeccak()!;
-
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
-            storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
+            _blockTree!.SyncPivot.Should().Be((expectedPivotBlockNumber, expectedPivotBlockHash));
         }
     }
 }

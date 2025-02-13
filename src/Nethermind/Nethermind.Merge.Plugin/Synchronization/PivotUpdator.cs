@@ -57,14 +57,14 @@ public class PivotUpdator
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
 
         // If its exactly the same then the pivot never moved at all, so pivot updater can work.
-        if (blockTree.SyncPivot.BlockNumber == LongConverter.FromString(string.IsNullOrEmpty(_syncConfig.PivotNumber) ? "0" : _syncConfig.PivotNumber))
-        {
-            _syncModeSelector.Changed += OnSyncModeChanged;
-        }
-        else
+        if (blockTree.WasInitialSyncPivotSet)
         {
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
             _beaconSyncStrategy.AllowBeaconHeaderSync();
+        }
+        else
+        {
+            _syncModeSelector.Changed += OnSyncModeChanged;
         }
     }
 
@@ -213,11 +213,9 @@ public class PivotUpdator
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            if (_blockTree.TryUpdateSyncPivot((potentialPivotBlockNumber, potentialPivotBlockHash), IBlockTree.SyncPivotUpdateReason.InitialSync))
-            {
-                _syncConfig.MaxAttemptsToUpdatePivot = 0;
-                _beaconSyncStrategy.AllowBeaconHeaderSync();
-            }
+            _blockTree.UpdateSyncPivot((potentialPivotBlockNumber, potentialPivotBlockHash), IBlockTree.SyncPivotUpdateReason.PivotUpdator);
+            _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            _beaconSyncStrategy.AllowBeaconHeaderSync();
 
             if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {potentialPivotBlockNumber}, hash: {potentialPivotBlockHash}");
             return true;

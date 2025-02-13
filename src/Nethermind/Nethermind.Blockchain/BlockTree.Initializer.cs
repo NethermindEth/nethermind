@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
@@ -28,9 +27,10 @@ public partial class BlockTree
                 long updatedPivotBlockNumber = pivotStream.DecodeLong();
                 Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
-                if (!updatedPivotBlockHash.IsZero)
+                if (updatedPivotBlockHash is not null && !updatedPivotBlockHash.IsZero)
                 {
                     SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
+                    WasInitialSyncPivotSet = true;
                     if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
                     return;
                 }

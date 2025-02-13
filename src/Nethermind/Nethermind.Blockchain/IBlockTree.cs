@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -185,6 +184,7 @@ namespace Nethermind.Blockchain
         /// But this is more like a delayed finalized block where the block tree initialization was checked.
         /// </summary>
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
+        bool WasInitialSyncPivotSet { get; }
 
         public long AncientBodiesBarrier { get; }
         public long AncientReceiptsBarrier { get; }
@@ -192,15 +192,15 @@ namespace Nethermind.Blockchain
         /// For sync pivot to be moved, there are two case:
         /// 1. Initial setting of SyncPivot. There is one restriction for this case:
         ///     1. the node is not synced yet.
-        /// 2. Moving of SyncPivot when a finialized block was reached. This has some restruction:
+        /// 2. Moving of SyncPivot when a finialized block was reached. This has some restriction:
         ///     1. All block between current sync pivot and new sync pivot must be processed.
         ///     2. Last persisted state (which is also the starting HEAD) must be after the current sync pivot
         ///        and the new sync pivot.
-        bool TryUpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot, SyncPivotUpdateReason reason);
+        void UpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot, SyncPivotUpdateReason reason);
 
         enum SyncPivotUpdateReason
         {
-            InitialSync
+            PivotUpdator
         }
     }
 }

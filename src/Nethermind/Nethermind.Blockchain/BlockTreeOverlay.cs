@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain;
 
@@ -46,14 +45,14 @@ public class BlockTreeOverlay : IBlockTree
     public long BestKnownNumber => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
     public long BestKnownBeaconNumber => Math.Max(_overlayTree.BestKnownBeaconNumber, _baseTree.BestKnownBeaconNumber);
     public (long BlockNumber, Hash256 BlockHash) SyncPivot => _baseTree.SyncPivot;
+    public bool WasInitialSyncPivotSet => _baseTree.WasInitialSyncPivotSet;
     public long AncientBodiesBarrier => _baseTree.AncientBodiesBarrier;
     public long AncientReceiptsBarrier => _baseTree.AncientReceiptsBarrier;
 
-    public bool TryUpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot,
+    public void UpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot,
         IBlockTree.SyncPivotUpdateReason reason)
     {
         // Don't update it here.
-        return false;
     }
 
     public Hash256 HeadHash => _overlayTree.HeadHash ?? _baseTree.HeadHash;
