@@ -20,7 +20,7 @@
   </Folder>
   <Folder Name="/Plugins/Flashbots/">
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
-    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flasbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
   </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
