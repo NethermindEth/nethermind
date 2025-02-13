@@ -345,7 +345,7 @@ public partial class EthRpcModule(
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
     {
-        return new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _secondsPerSlot)
+        return new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _secondsPerSlot)
             .Execute(payload, blockParameter);
     }
 

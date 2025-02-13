@@ -14,12 +14,14 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
-    : ExecutorBase<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>, SimulatePayload<TransactionForRpc>,
-    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
+public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
+    : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
+    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig) where TTrace : class, ISimulateResult
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
@@ -93,31 +95,31 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         return rpcTransaction;
     }
 
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> Execute(
+    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null)
     {
         if (call.BlockStateCalls is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
 
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
 
         if (searchResult.IsError || searchResult.Object is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(searchResult);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult);
 
         BlockHeader header = searchResult.Object.Header;
 
         if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail($"No state available for block {header.Hash}",
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable);
 
         if (call.BlockStateCalls?.Count > _blocksLimit)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"Too many blocks provided, node is configured to simulate up to {_blocksLimit} while {call.BlockStateCalls?.Count} were given",
                 ErrorCodes.InvalidParams);
 
@@ -134,11 +136,11 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                                     (lastBlockNumber == -1 ? (ulong)header.Number + 1 : (ulong)lastBlockNumber + 1);
 
                 if (givenNumber > long.MaxValue)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
                 if (givenNumber < (ulong)header.Number)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block number out of order {givenNumber} is < than given base number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 long given = (long)givenNumber;
@@ -148,7 +150,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 }
                 else
                 {
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block number out of order {givenNumber}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
                 }
 
@@ -161,7 +163,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                                       : lastBlockTime + secondsPerSlot.Value);
 
                 if (givenTime < header.Timestamp)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block timestamp out of order {givenTime} is < than given base timestamp of {header.Timestamp}!", ErrorCodes.BlockTimestampNotIncreased);
 
                 if (givenTime > lastBlockTime)
@@ -170,7 +172,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 }
                 else
                 {
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block timestamp out of order {givenTime}!", ErrorCodes.BlockTimestampNotIncreased);
                 }
 
@@ -213,23 +215,32 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> Execute(BlockHeader header,
+    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
     {
-        SimulateOutput<SimulateBlockResult<SimulateCallResult>>? results = _blockchainBridge.Simulate<SimulateBlockTracer, SimulateBlockResult<SimulateCallResult>>(
-            header, tx, token, new BlockchainBridge.SimulateBlockTracerFactory()
-        );
+        ITracerFactory<IBlockTracer<SimulateBlockResult<TTrace>>, SimulateBlockResult<TTrace>> tracerFactory =
+            typeof(TTrace) == typeof(ParityLikeTxTrace)
+                ? (ITracerFactory<IBlockTracer<SimulateBlockResult<TTrace>>, SimulateBlockResult<TTrace>>)
+                new BlockchainBridge.ParityLikeBlockTracerFactory(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)
+                : throw new NotSupportedException($"Tracer for {typeof(TTrace).Name} is not supported.");
 
-        foreach (SimulateBlockResult<SimulateCallResult> result in results.Items)
-        {
-            foreach (SimulateCallResult? call in result.Calls)
-            {
-                if (call?.Error is not null && call.Error.Message != "")
-                {
-                    call.Error.Code = ErrorCodes.ExecutionError;
-                }
-            }
-        }
+        SimulateOutput<SimulateBlockResult<TTrace>>? results = 
+            _blockchainBridge.Simulate<IBlockTracer<SimulateBlockResult<TTrace>>, SimulateBlockResult<TTrace>>(
+                header, tx, token, tracerFactory
+            );
+
+
+
+        // foreach (SimulateBlockResult<TTrace> result in results.Items)
+        // {
+        //     foreach (TTrace? call in result.Calls)
+        //     {
+        //         if (call is ISimulateResult result && result.Error is not null && result.Error.Message != "")
+        //         {
+        //             result.Error.Code = ErrorCodes.ExecutionError;
+        //         }
+        //     }
+        // }
 
         if (results.Error is not null)
         {
@@ -244,9 +255,9 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         }
 
         return results.Error is null
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success(results.Items)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success(results.Items)
             : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(results.Error!, results.ErrorCode!.Value, results.Items)
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Fail(results.Error, results.Items);
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value, results.Items)
+                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error, results.Items);
     }
 }

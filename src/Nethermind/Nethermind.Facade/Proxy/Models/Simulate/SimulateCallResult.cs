@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
-public class SimulateCallResult
+public class SimulateCallResult : ISimulateResult
 {
     public ulong Status { get; set; }
     public byte[]? ReturnData { get; set; }
