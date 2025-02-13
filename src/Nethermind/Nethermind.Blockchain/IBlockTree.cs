@@ -180,9 +180,9 @@ namespace Nethermind.Blockchain
 
         void RecalculateTreeLevels();
 
-        public readonly struct ForkChoice(long head, long safe, long finalized)
+        public readonly struct ForkChoice(Block? head, long safe, long finalized)
         {
-            public readonly long Head => head;
+            public readonly Block? Head => head;
             public readonly long Safe => safe;
             public readonly long Finalized => finalized;
         }

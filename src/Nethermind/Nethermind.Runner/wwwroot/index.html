@@ -85,8 +85,43 @@
             <div class="max">Max: <span id="maxMemory" class="number"></span> MB</div>
         </div>
     </div>
+    <div id="headBlock" class="container" style="height:240px">
+        <div class="title">Lastest Block</div>
+        <div style="left: calc(50% - 40px);position: absolute;top: 5px;width: 80px;text-align: center;color: #009CDD;">Gas Target</div>
+        <div style="left: 50%;position: absolute;height: 210px;border-left: 2px dashed #FFA726;top: 25px;"></div>
+        <div style="right: 8px;position:absolute;top: 8px;">Extra Data: <span id="blockExtraData" class="right number">0x</span></div>
+        <div id="blockData" style="right: 8px;position:absolute;background: rgba(0,0,0,0.25);top: 36px;padding: 4px 8px;">
+            <table>
+                <tr>
+                    <td>Timestamp</td>
+                    <td id="blockTimestamp" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Gas Limit</td>
+                    <td id="blockGasLimit" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Gas Used</td>
+                    <td id="blockGasUsed" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Block Size</td>
+                    <td id="blockBlockSize" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Transactions</td>
+                    <td id="blockTransactions" class="right number">0</td>
+                </tr>
+                <tr>
+                    <td>Blobs</td>
+                    <td id="blockBlobs" class="right number">0</td>
+                </tr>
+            </table>
+        </div>
+        <div id="block" style="margin-top: 35px;"></div>
+    </div>
     <div id="txPoolFlow" class="container">
-        <div class="title">Transaction Flows</div>
+        <div class="title">Incoming Transactions</div>
         <div id="txPool">
             <table>
                 <thead>

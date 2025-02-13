@@ -5,8 +5,10 @@ import * as d3 from 'd3';
 import Convert = require('ansi-to-html');
 import { formatDuration } from './format';
 import { sparkline, Datum } from './sparkline';
-import { NodeData, INode, TxPool, Processed, ForkChoice, System } from './types';
+import { NodeData, INode, TxPool, Processed, ForkChoice, System, Receipt, Transaction, TransactionReceipt } from './types';
 import { TxPoolFlow } from './txPoolFlow';
+import { updateTreemap } from './treeMap'
+import { formatUnixTimestamp, formatBytes, parseExtraData } from './utilities';
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -43,6 +45,14 @@ const aveGas = document.getElementById('aveGas') as HTMLElement;
 const maxGas = document.getElementById('maxGas') as HTMLElement;
 const gasLimit = document.getElementById('gasLimit') as HTMLElement;
 const gasLimitDelta = document.getElementById('gasLimitDelta') as HTMLElement;
+
+const blockExtraData = document.getElementById('blockExtraData') as HTMLElement;
+const blockGasUsed = document.getElementById('blockGasUsed') as HTMLElement;
+const blockGasLimit = document.getElementById('blockGasLimit') as HTMLElement;
+const blockBlockSize = document.getElementById('blockBlockSize') as HTMLElement;
+const blockTimestamp = document.getElementById('blockTimestamp') as HTMLElement;
+const blockTransactions = document.getElementById('blockTransactions') as HTMLElement;
+const blockBlobs = document.getElementById('blockBlobs') as HTMLElement;
 
 const ansiConvert = new Convert();
 
@@ -90,6 +100,9 @@ let txPoolNodes: INode[] = null;
  * Main function to start polling data and updating the UI.
  */
 function updateTxPool(txPool: TxPool) {
+
+  if (txPool.pooledTx == 0) return;
+
   const nowMs = performance.now();
   const currentNow = nowMs / 1000;
   const diff = currentNow - lastNow;
@@ -203,12 +216,48 @@ sse.addEventListener("forkChoice", (e) => {
   if (document.hidden) return;
 
   const data = JSON.parse(e.data) as ForkChoice;
-  updateText(headBlock, data.head.toFixed(0));
-  updateText(safeBlock, data.safe.toFixed(0));
-  updateText(finalizedBlock, data.finalized.toFixed(0));
+  const number = parseInt(data.head.number, 16);
+  const safe = parseInt(data.safe, 16);
+  const finalized = parseInt(data.finalized, 16);
+  updateText(headBlock, number.toFixed(0));
+  updateText(safeBlock, safe.toFixed(0));
+  updateText(finalizedBlock, finalized.toFixed(0));
 
-  updateText(safeBlockDelta, `(${(data.safe - data.head).toFixed(0)})`);
-  updateText(finalizedBlockDelta, `(${(data.finalized - data.head).toFixed(0)})`);
+  updateText(safeBlockDelta, `(${(safe - number).toFixed(0)})`);
+  updateText(finalizedBlockDelta, `(${(finalized - number).toFixed(0)})`);
+
+  const block = data.head;
+  // Merge tx & receipts into a single array
+  // so each element has { key, size, colorValue, ... } etc.
+  // (One data item per transaction)
+  const mergedData: TransactionReceipt[] = block.tx.map((tx, i) => {
+    const receipt = block.receipts[i];
+    return { order: i, ...tx, ...receipt };
+  });
+
+  updateText(blockExtraData, parseExtraData(block.extraData));
+  updateText(blockGasUsed, format(parseInt(block.gasUsed, 16)));
+  updateText(blockGasLimit, format(parseInt(block.gasLimit, 16)));
+  updateText(blockBlockSize, formatBytes(parseInt(block.size, 16)));
+  updateText(blockTimestamp, formatUnixTimestamp(parseInt(block.timestamp, 16)));
+  updateText(blockTransactions, format(block.tx.length));
+  updateText(blockBlobs, format(block.tx.reduce((p, c) => p + c.blobs, 0)));
+
+  // Update the D3 treemap with the merged data
+  updateTreemap<TransactionReceipt>(
+    document.getElementById("block"), // or d3.select("#treemap")
+    200,
+    parseInt(data.head.gasLimit, 16),
+      mergedData,
+      // keyFn
+      d => d.hash,
+      // orderFn
+      d => d.order,
+      // sizeFn
+      d => parseInt(d.gasUsed, 16),
+      // colorFn
+      d => parseInt(d.effectiveGasPrice, 16) * parseInt(d.gasUsed, 16)
+  );
 });
 
 let maxCpuPercent = 0;

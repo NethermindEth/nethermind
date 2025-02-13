@@ -37,9 +37,9 @@ export class TxPoolFlow {
   constructor(container: string) {
     this.svg = d3.select(container)
       .append('svg')
-      .attr('width', this.width)
+      .attr('width', window.innerWidth)
       .attr('height', this.height)
-      .attr('viewBox', [0, 0, this.width, this.height])
+      .attr('viewBox', [0, 0, window.innerWidth, this.height])
       .style('max-width', '100%')
       .style('height', 'auto');
     this.defs = this.svg.append('defs');
@@ -120,6 +120,12 @@ export class TxPoolFlow {
     // Filter out zero-value links
     const filteredLinks: ILink[] = [];
     const usedNodes: Record<string, boolean> = {};
+
+    this.width = window.innerWidth - (40 + 16);
+    this.svg
+      .attr('width', this.width)
+      .attr('height', this.height)
+      .attr('viewBox', [0, 0, this.width, this.height]);
 
     for (const link of data.links) {
       if (link.value > 0) {

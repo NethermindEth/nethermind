@@ -44,13 +44,61 @@ export interface Processed
 }
 
 export interface ForkChoice {
-  head: number;
-  safe: number;
-  finalized: number;
+  head: Block;
+  safe: string;
+  finalized: string;
+}
+
+export interface Block {
+  extraData: string;
+  gasLimit: string;
+  gasUsed: string;
+  hash: string;
+  beneficiary: string;
+  number: string;
+  size: string;
+  timestamp: string;
+  baseFeePerGas: string;
+  blobGasUsed: string;
+  excessBlobGas: string;
+  tx: Transaction[]; // matched to receipts 1:1
+  receipts: Receipt[]; // matched to tx 1:1
+}
+export interface Transaction {
+  hash: string;
+  from: string;
+  to: string;
+  txType: string;
+  maxPriorityFeePerGas: string;
+  maxFeePerGas: string;
+  gasPrice: string;
+  gasLimit: string;
+  nonce: string;
+  value: string;
+  dataLength: number;
+  blobs: number;
+}
+export interface Receipt {
+  gasUsed: string;
+  effectiveGasPrice: string;
+  contractAddress: string;
+  blobGasPrice: string;
+  blobGasUsed: string;
+  logs: Log[];
+  status: string;
+}
+
+export interface TransactionReceipt extends Transaction, Receipt {
+  order: number
+}
+export interface Log {
+  address: string;
+  data: string;
+  topics: string[];
 }
 
 export interface System {
-  uptime: number,
+  uptime: number;
   userPercent: number;
   privilegedPercent: number;
   workingSet: number;
