@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-
+// using Nethermind.Evm.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 {
     public class ParityLikeTxTrace
     {
+        public string? Error { get; set; }
+
         public byte[]? Output { get; set; }
 
         public Hash256? BlockHash { get; set; }

@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
-    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig) where TTrace : class, ISimulateResult
+    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig) where TTrace : class
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;

@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
+using Nethermind.Facade;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -69,6 +70,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            new BlocksConfig().SecondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
@@ -84,6 +87,8 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge,
+        ulong secondsPerSlot,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculatorSource rewardCalculatorSource,
         IReceiptStorage receiptFinder,
@@ -91,7 +96,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IPoSSwitcher poSSwitcher,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, recoveryStep, rewardCalculatorSource,
+        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, recoveryStep, rewardCalculatorSource,
             receiptFinder, specProvider, poSSwitcher, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
