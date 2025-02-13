@@ -102,10 +102,7 @@ namespace Nethermind.Init.Steps
                 {
                     if (!stepBaseTypeMap.ContainsKey(type))
                         throw new StepDependencyException($"The dependent step {type.Name} for {stepInfo.StepType.Name} was not created.");
-                    foreach (Type dependency in stepInfo.Dependencies)
-                    {
-                        dependencies.AddRange(stepBaseTypeMap[dependency]);
-                    }
+                    dependencies.AddRange(stepBaseTypeMap[type]);
                 }
                 await stepWrapper.StartExecute(dependencies, cancellationToken);
 
