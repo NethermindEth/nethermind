@@ -95,10 +95,10 @@ public class DepositTransactionBuilderTest
             Mint = 0,
             Value = UInt256.Parse("195000000000000000000"),
             Gas = 8732577,
-            IsCreation = to != DepositAddress,
+            IsCreation = false,
         };
 
-        var logData = depositLogEventV0.Marshal();
+        var logData = depositLogEventV0.ToBytes();
 
         List<OptimismTxReceipt> receipts =
         [
@@ -132,6 +132,9 @@ public class DepositTransactionBuilderTest
             .WithTo(to)
             .WithValue(depositLogEventV0.Value)
             .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasPrice(0)
+            .WithMaxPriorityFeePerGas(0)
+            .WithMaxFeePerGas(0)
             .WithSourceHash(new Hash256("0xa39c0336f8bb13bdeb6cb1a969ee335af770f40048fed5064c1f3becf19ca501"))
             .WithIsOPSystemTransaction(false)
             .WithData(depositLogEventV0.Data.ToArray())

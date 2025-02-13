@@ -90,9 +90,19 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (version == DepositEventVersion0)
         {
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
+            var sourceHash = Hash256.Zero; // TODO
+
             return new()
             {
                 Type = TxType.DepositTx,
+                SenderAddress = from,
+                To = depositLogEventV0.IsCreation ? null : to,
+                Mint = depositLogEventV0.Mint,
+                Value = depositLogEventV0.Value,
+                GasLimit = (long)depositLogEventV0.Gas, // WARNING: dangerous cast
+                Data = depositLogEventV0.Data.ToArray(),
+                SourceHash = sourceHash,
+                IsOPSystemTransaction = false,
             };
         }
         else
@@ -122,7 +132,7 @@ public readonly ref struct DepositLogEventV0
 
     private static readonly AbiSignature Signature = new(string.Empty, AbiType.DynamicBytes);
 
-    public byte[] Marshal()
+    public byte[] ToBytes()
     {
         // NOTE: Format is as follows
         //      opaqueData   = [mint (32 bytes), value (32 bytes), gas (8 bytes), isCreation (1 byte), ...data]
