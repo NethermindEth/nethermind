@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -20,7 +21,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -96,6 +96,10 @@ namespace Nethermind.Blockchain
 
         public long BestKnownBeaconNumber { get; private set; }
 
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; private set; } = (0, null);
+
+        public bool WasInitialSyncPivotSet { get; private set; }
+
         public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;
@@ -128,6 +132,8 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+
+            LoadSyncPivot();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)
@@ -1557,6 +1563,30 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+        }
+
+        public void UpdateSyncPivot((long blockNumber, Hash256 blockHash) syncPivot, IBlockTree.SyncPivotUpdateReason reason)
+        {
+            if (reason == IBlockTree.SyncPivotUpdateReason.PivotUpdator)
+            {
+                if (WasInitialSyncPivotSet) throw new InvalidOperationException("Attempted to update sync pivot from pivot updater when sync pivot was already set.");
+                WasInitialSyncPivotSet = true;
+                DoUpdateSyncPivot(syncPivot.blockNumber, syncPivot.blockHash);
+            }
+            else
+            {
+                throw new UnreachableException();
+            }
+        }
+
+        private void DoUpdateSyncPivot(long blockNumber, Hash256 blockHash)
+        {
+            RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+            pivotData.Encode(blockNumber);
+            pivotData.Encode(blockHash);
+            _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
+
+            SyncPivot = (blockNumber, blockHash);
         }
     }
 }
