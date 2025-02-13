@@ -9,12 +9,20 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
+using Nethermind.Evm;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Runner.Monitoring.TransactionPool;
+using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Monitoring;
 
@@ -23,12 +31,17 @@ public class DataFeed
     public static long StartTime { get; set; }
 
     private readonly ITxPool _txPool;
+    private readonly ISpecProvider _specProvider;
+    private readonly IReceiptFinder _receiptFinder;
     private readonly IBlockTree _blockTree;
+    private readonly BlockDecoder _blockDecoder = new();
 
     public DataFeed(INethermindApi api)
     {
         _txPool = api.TxPool;
         _blockTree = api.BlockTree;
+        _specProvider = api.SpecProvider;
+        _receiptFinder = api.ReceiptFinder;
 
         ArgumentNullException.ThrowIfNull(_txPool);
         ArgumentNullException.ThrowIfNull(_blockTree);
@@ -223,7 +236,124 @@ public class DataFeed
         TaskCompletionSource<byte[]> forkChoice = _forkChoice;
         _forkChoice = new TaskCompletionSource<byte[]>();
 
-        forkChoice.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(choice, JsonSerializerOptions.Web));
+        var head = choice.Head;
+        Transaction[] txs = choice.Head.Transactions;
+        IReleaseSpec spec = _specProvider.GetSpec(choice.Head.Header);
+        var receipts = _receiptFinder.Get(choice.Head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
+        forkChoice.TrySetResult(
+            JsonSerializer.SerializeToUtf8Bytes(
+                new ForkData
+                {
+                    Head = new BlockForWeb
+                    {
+                        ExtraData = head.ExtraData ?? [],
+                        GasLimit = head.GasLimit,
+                        GasUsed = head.GasUsed,
+                        Hash = head.Hash ?? Hash256.Zero,
+                        Beneficiary = head.Beneficiary ?? Address.Zero,
+                        Number = head.Number,
+                        Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
+                        Timestamp = head.Timestamp,
+                        BaseFeePerGas = head.BaseFeePerGas,
+                        BlobGasUsed = head.BlobGasUsed ?? 0,
+                        ExcessBlobGas = head.ExcessBlobGas ?? 0,
+                        Tx = head.Transactions.Select(t => new TransactionForWeb
+                        {
+                            Hash = t.Hash,
+                            From = t.SenderAddress,
+                            To = t.To,
+                            TxType = (int)t.Type,
+                            MaxPriorityFeePerGas = t.MaxPriorityFeePerGas,
+                            MaxFeePerGas = t.MaxFeePerGas,
+                            GasPrice = t.GasPrice,
+                            GasLimit = t.GasLimit,
+                            Nonce = t.Nonce,
+                            Value = t.Value,
+                            DataLength = t.DataLength,
+                            Blobs = t.BlobVersionedHashes?.Length ?? 0
+                        }).ToArray(),
+                        Receipts = receipts.Select(r => new ReceiptForWeb
+                        {
+                            GasUsed = r.GasUsed,
+                            EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
+                            ContractAddress = r.ContractAddress,
+                            Logs = r.Logs.Select(l => new LogEntryForWeb
+                            {
+                                Address = l.Address,
+                                Data = l.Data,
+                                Topics = l.Topics
+                            }).ToArray(),
+                            Status = r.Status,
+                            BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
+                            BlobGasUsed = r.BlobGasUsed ?? 0,
+                        }).ToArray()
+                    },
+                    Safe = choice.Safe,
+                    Finalized = choice.Finalized
+                },
+                EthereumJsonSerializer.JsonOptions
+             )
+        );
+    }
+
+    private class ForkData
+    {
+        public BlockForWeb Head { get; set; }
+        public long Safe { get; set; }
+        public long Finalized { get; set; }
+    }
+
+    private class BlockForWeb
+    {
+        public byte[] ExtraData { get; set; }
+        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
+        public Hash256 Hash { get; set; }
+        public Address Beneficiary { get; set; }
+        public long Number { get; set; }
+        public int Size { get; set; }
+        public ulong Timestamp { get; set; }
+        public UInt256 BaseFeePerGas { get; set; }
+        public ulong BlobGasUsed { get; set; }
+        public ulong ExcessBlobGas { get; set; }
+        public TransactionForWeb[] Tx { get; set; } 
+        public ReceiptForWeb[] Receipts { get; set; } 
+        public ReceiptForWeb[] Withdrawals { get; set; }
+    }
+    private class ReceiptForWeb
+    {
+        public long GasUsed { get; set; }
+        public UInt256 EffectiveGasPrice { get; set; }
+        public Address? ContractAddress { get; set; }
+        public LogEntryForWeb[] Logs { get; set; }
+        public long Status { get; set; }
+        public UInt256 BlobGasPrice { get; set; }
+        public ulong BlobGasUsed { get; set; }
+    }
+    private class LogEntryForWeb
+    {
+        public Address Address { get; set; }
+        public byte[] Data { get; set; }
+        public Hash256[] Topics { get; set; }
+    }
+    private class TransactionForWeb
+    {
+        public Hash256 Hash { get; set; }
+        public Address From { get; set; }
+        public Address? To { get; set; }
+        public int TxType { get; set; }
+        public UInt256 MaxPriorityFeePerGas { get; set; }
+        public UInt256 MaxFeePerGas { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public long GasLimit { get; set; }
+        public UInt256 Nonce { get; set; }
+        public UInt256 Value { get; set; }
+        public int DataLength { get; set; }
+        public int Blobs { get; set; }
+    }
+    private class WithdrawalForWeb
+    {
+
     }
 
     TaskCompletionSource<byte[]> _log = new();

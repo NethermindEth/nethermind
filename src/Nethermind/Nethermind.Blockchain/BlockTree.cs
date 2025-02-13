@@ -1543,7 +1543,7 @@ namespace Nethermind.Blockchain
             var finalizedNumber = FindHeader(FinalizedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number;
             var safeNumber = FindHeader(safeBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number;
 
-            OnForkChoiceUpdated?.Invoke(this, new(Head?.Number ?? 0, safeNumber ?? 0, finalizedNumber ?? 0));
+            OnForkChoiceUpdated?.Invoke(this, new(Head, safeNumber ?? 0, finalizedNumber ?? 0));
         }
     }
 }
