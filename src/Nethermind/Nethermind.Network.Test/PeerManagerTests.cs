@@ -749,6 +749,7 @@ namespace Nethermind.Network.Test
         private class RlpxMock : IRlpxHost
         {
             private readonly List<Session> _sessions;
+            public ISessionMonitor SessionMonitor { get; }
 
             public RlpxMock(List<Session> sessions)
             {
