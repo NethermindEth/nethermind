@@ -54,11 +54,11 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(ByteCode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
+                txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
                 inputData: default
             );
 
-            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
+            _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
         }
 
         [Benchmark]

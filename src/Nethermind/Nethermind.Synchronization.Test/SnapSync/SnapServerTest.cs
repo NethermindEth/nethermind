@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -13,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
@@ -32,13 +31,13 @@ public class SnapServerTest
         internal MemDb ClientStateDb { get; init; } = null!;
     }
 
-    private Context CreateContext(ILastNStateRootTracker? stateRootTracker = null)
+    private Context CreateContext(IStateReader? stateRootTracker = null, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
         TrieStore store = new(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
 
         MemDb clientStateDb = new();
         using ProgressTracker progressTracker = new(clientStateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
@@ -120,10 +119,18 @@ public class SnapServerTest
         result.Count.Should().Be(1);
     }
 
-    [Test]
-    public void TestNoState()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TestNoState(bool withLastNStateTracker)
     {
-        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));
+        ILastNStateRootTracker? lastNStateTracker = null;
+        if (withLastNStateTracker)
+        {
+            lastNStateTracker = Substitute.For<ILastNStateRootTracker>();
+            lastNStateTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(false);
+        }
+
+        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(withLastNStateTracker), lastNStateRootTracker: lastNStateTracker);
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> accountProofs) =
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
@@ -443,10 +450,10 @@ public class SnapServerTest
         proofs.Dispose();
     }
 
-    private ILastNStateRootTracker CreateConstantStateRootTracker(bool available)
+    private IStateReader CreateConstantStateRootTracker(bool available)
     {
-        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
-        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(available);
+        IStateReader tracker = Substitute.For<IStateReader>();
+        tracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(available);
         return tracker;
     }
 }

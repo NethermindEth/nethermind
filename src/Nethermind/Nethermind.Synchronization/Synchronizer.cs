@@ -302,7 +302,13 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
-            .AddScoped<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+
+            // The direct implementation is decorated by merge plugin (not the interface)
+            // so its  declared on its own and other use is binded.
+            .AddScoped<BlockDownloader>()
+            .Add<IPosTransitionHook, NoPosTransition>()
+            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
@@ -316,7 +322,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
 
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
-            .Register(ctx => ctx
+            .Register(static ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
@@ -338,7 +344,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .SingleInstance();
 
         builder
-            .Map<IReceiptStorage, IReceiptFinder>((storage) => storage)
+            .Map<IReceiptFinder, IReceiptStorage>(static (storage) => storage)
             .AddSingleton<ISyncServer, SyncServer>();
     }
 

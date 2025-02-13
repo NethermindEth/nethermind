@@ -32,7 +32,7 @@ namespace Nethermind.Init.Steps
 
                 _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
 
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy(static (p) => p.Priority))
                 {
                     _api.BlockProducerRunner = wrapperPlugin.InitBlockProducerRunner(_api.BlockProducerRunner);
                 }
@@ -63,7 +63,7 @@ namespace Nethermind.Init.Steps
             {
                 IBlockProducerFactory blockProducerFactory = consensusPlugin;
 
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy(static (p) => p.Priority))
                 {
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }

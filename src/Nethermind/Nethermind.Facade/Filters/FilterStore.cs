@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else if (filterTopic.Topics?.Length > 0)
             {
-                return new OrExpression(filterTopic.Topics.Select(t => new SpecificTopic(t)).ToArray<TopicExpression>());
+                return new OrExpression(filterTopic.Topics.Select(static t => new SpecificTopic(t)).ToArray<TopicExpression>());
             }
             else
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
 
             if (address is IEnumerable<string> e)
             {
-                return new AddressFilter(e.Select(a => new AddressAsKey(new Address(a))).ToHashSet());
+                return new AddressFilter(e.Select(static a => new AddressAsKey(new Address(a))).ToHashSet());
             }
 
             throw new InvalidDataException("Invalid address filter format");
@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain.Filters
             {
                 return new FilterTopic
                 {
-                    Topics = topics.Select(t => new Hash256(t)).ToArray()
+                    Topics = topics.Select(static t => new Hash256(t)).ToArray()
                 };
             }
         }

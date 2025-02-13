@@ -15,5 +15,5 @@ public class PragueGnosis : Forks.Prague
         IsEip4844FeeCollectorEnabled = true;
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new PragueGnosis());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new PragueGnosis());
 }

@@ -192,7 +192,7 @@ public partial class EngineModuleTests
         {
             IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
             boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
-                .Returns(c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
+                .Returns(static c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
 
             improvementContextFactory = new BoostBlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         }

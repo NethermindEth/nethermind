@@ -98,7 +98,7 @@ public class JsonRpcServiceTests
         SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>() };
         string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(_ =>
+        ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(static _ =>
             ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(Array.Empty<SimulateBlockResult>()));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult>()));
@@ -109,7 +109,7 @@ public class JsonRpcServiceTests
     public void CanHandleOptionalArguments()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x1"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(static _ => ResultWrapper<string>.Success("0x1"));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x1"));
     }
@@ -145,7 +145,7 @@ public class JsonRpcServiceTests
     public void GetNewFilterTest()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<UInt256?>.Success(1));
+        ethRpcModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(static x => ResultWrapper<UInt256?>.Success(1));
 
         var parameters = new
         {
@@ -171,7 +171,7 @@ public class JsonRpcServiceTests
     public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("0x"));
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));
@@ -182,7 +182,7 @@ public class JsonRpcServiceTests
     public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string? nullValue)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("0x"));
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc(), nullValue) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));
@@ -213,7 +213,7 @@ public class JsonRpcServiceTests
     public void NetVersionTest()
     {
         INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
-        netRpcModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
+        netRpcModule.net_version().ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("1"));
         JsonRpcSuccessResponse? response = TestRequest(netRpcModule, "net_version", null) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("1"));
         Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
@@ -223,7 +223,7 @@ public class JsonRpcServiceTests
     public void Web3ShaTest()
     {
         IWeb3RpcModule web3RpcModule = Substitute.For<IWeb3RpcModule>();
-        web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(_ => ResultWrapper<Hash256>.Success(TestItem.KeccakA));
+        web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(static _ => ResultWrapper<Hash256>.Success(TestItem.KeccakA));
         JsonRpcSuccessResponse? response = TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64") as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo(TestItem.KeccakA));
     }

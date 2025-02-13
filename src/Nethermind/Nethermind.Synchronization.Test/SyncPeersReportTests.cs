@@ -194,8 +194,8 @@ namespace Nethermind.Synchronization.Test
             public override string ProtocolCode { get; } = default!;
             public override int MessageIdSpaceSize { get; } = default;
             protected override TimeSpan InitTimeout { get; } = default;
-            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = delegate { };
-            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = delegate { };
+            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = static delegate { };
+            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
             public override void Init()
             {
                 throw new NotImplementedException();

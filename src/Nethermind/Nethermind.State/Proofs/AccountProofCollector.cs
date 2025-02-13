@@ -59,7 +59,7 @@ namespace Nethermind.State.Proofs
         /// Only for testing
         /// </summary>
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[] keccakStorageKeys)
-            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueHash256)keccak).ToArray())
+            : this(hashedAddress, keccakStorageKeys.Select(static (keccak) => (ValueHash256)keccak).ToArray())
         {
         }
 

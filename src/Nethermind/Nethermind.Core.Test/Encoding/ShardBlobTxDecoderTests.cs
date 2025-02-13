@@ -24,7 +24,7 @@ public partial class ShardBlobTxDecoderTests
     public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();
 
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
-        TxDecoderTests.TestCaseSource().Select(tos => (Build.A.Transaction.From(tos.Item1)
+        TxDecoderTests.TestCaseSource().Select(static tos => (Build.A.Transaction.From(tos.Item1)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithShardBlobTxTypeAndFields(2, false)
             .SignedAndResolved()

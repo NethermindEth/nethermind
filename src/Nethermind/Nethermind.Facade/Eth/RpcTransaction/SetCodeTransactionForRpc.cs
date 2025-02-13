@@ -14,6 +14,7 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
 
     public override TxType? Type => TxType;
 
+    [JsonDiscriminator]
     public AuthorizationListForRpc AuthorizationList { get; set; }
 
     #region Deprecated fields

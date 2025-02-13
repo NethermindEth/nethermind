@@ -67,7 +67,7 @@ public class VisitingTests
 
         using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
 
-        byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
 
         var blockCommit = trieStore.BeginBlockCommit(0);

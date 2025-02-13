@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         /// <remarks>
         /// This is used to decorate original filter with <see cref="AuRaMergeTxFilter"/> in order to disable it post-merge.
         /// </remarks>
-        public static FilterDecorator CreateFilter { get; set; } = (x, _) => x;
+        public static FilterDecorator CreateFilter { get; set; } = static (x, _) => x;
 
         private static ITxFilter CreateBaseAuRaTxFilter(
             AuRaNethermindApi api,

@@ -284,7 +284,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)
     {
-        if (rocksDbException.Message.Contains("Corruption:"))
+        if (rocksDbException.Message.Contains("Corruption:") || rocksDbException.Message.Contains("IO error"))
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
@@ -1621,7 +1621,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         {
             private bool _disposed = false;
 
-            public ManagedIterators() : base(() => new IteratorHolder(), trackAllValues: true)
+            public ManagedIterators() : base(static () => new IteratorHolder(), trackAllValues: true)
             {
             }
 

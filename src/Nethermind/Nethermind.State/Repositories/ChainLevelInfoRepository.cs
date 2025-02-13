@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Db;
@@ -18,7 +19,7 @@ namespace Nethermind.State.Repositories
 
         private readonly IDb _blockInfoDb;
 
-        public ChainLevelInfoRepository(IDb blockInfoDb)
+        public ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb)
         {
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
         }

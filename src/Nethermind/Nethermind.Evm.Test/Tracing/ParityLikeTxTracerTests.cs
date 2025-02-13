@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -795,7 +796,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -803,7 +804,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -811,7 +812,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, traceTypes);
-        _processor.Execute(transaction, block.Header, tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 
@@ -819,7 +820,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-        _ = _processor.Execute(transaction, block.Header, tracer);
+        _ = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 }

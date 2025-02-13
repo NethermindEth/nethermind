@@ -28,6 +28,8 @@ public static partial class Merkle
         }
     }
 
+    private static readonly UInt256 RootOfNull;
+
     static Merkle()
     {
         BuildZeroHashes();
@@ -88,48 +90,54 @@ public static partial class Merkle
         root = HashConcatenation(root, lengthPart, 0);
     }
 
-    public static void Ize(out UInt256 root, bool value)
+    public static void Merkleize(out UInt256 root, bool value)
     {
         root = value ? UInt256.One : UInt256.Zero;
     }
 
-    public static void Ize(out UInt256 root, byte value)
+    public static void Merkleize(out UInt256 root, byte value)
     {
         root = new UInt256(value);
     }
 
-    public static void Ize(out UInt256 root, ushort value)
+    public static void Merkleize(out UInt256 root, ushort value)
     {
         root = new UInt256(value);
     }
 
-    public static void Ize(out UInt256 root, int value)
+    public static void Merkleize(out UInt256 root, int value)
     {
         var v = value < 0 ? ulong.MaxValue : 0L;
         root = new UInt256((ulong)value, v, v, v);
     }
 
-    public static void Ize(out UInt256 root, uint value)
+    public static void Merkleize(out UInt256 root, uint value)
     {
         root = new UInt256(value);
     }
 
-    public static void Ize(out UInt256 root, ulong value)
+    public static void Merkleize(out UInt256 root, long value)
+    {
+        var v = value < 0 ? ulong.MaxValue : 0L;
+        root = new UInt256((ulong)value, v, v, v);
+    }
+
+    public static void Merkleize(out UInt256 root, ulong value)
     {
         root = new UInt256(value);
     }
 
-    public static void Ize(out UInt256 root, UInt128 value)
+    public static void Merkleize(out UInt256 root, UInt128 value)
     {
         root = new UInt256((ulong)(value & ulong.MaxValue), (ulong)(value >> 64));
     }
 
-    public static void Ize(out UInt256 root, UInt256 value)
+    public static void Merkleize(out UInt256 root, UInt256 value)
     {
         root = value;
     }
 
-    public static void Ize(out UInt256 root, Bytes32 value)
+    public static void Merkleize(out UInt256 root, Bytes32 value)
     {
         ReadOnlySpan<byte> readOnlyBytes = value.AsSpan();
         unsafe
@@ -143,7 +151,7 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, Root value)
+    public static void Merkleize(out UInt256 root, Root value)
     {
         ReadOnlySpan<byte> readOnlyBytes = value.AsSpan();
         unsafe
@@ -157,7 +165,7 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<bool> value)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<bool> value)
     {
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
@@ -166,15 +174,15 @@ public static partial class Merkle
             ReadOnlySpan<bool> fullChunks = value[..^partialChunkLength];
             Span<bool> lastChunk = stackalloc bool[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<bool, UInt256>(fullChunks), MemoryMarshal.Cast<bool, UInt256>(lastChunk));
+            Merkleize(out root, MemoryMarshal.Cast<bool, UInt256>(fullChunks), MemoryMarshal.Cast<bool, UInt256>(lastChunk));
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<bool, UInt256>(value));
+            Merkleize(out root, MemoryMarshal.Cast<bool, UInt256>(value));
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<byte> value)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
     {
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
@@ -183,15 +191,15 @@ public static partial class Merkle
             ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
+            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value));
+            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value));
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
     {
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
@@ -200,15 +208,15 @@ public static partial class Merkle
             ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
+            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value), chunkCount);
+            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value), chunkCount);
         }
     }
 
-    public static void IzeBits(out UInt256 root, Span<byte> value, uint limit)
+    public static void MerkleizeBits(out UInt256 root, Span<byte> value, uint limit)
     {
         // reset lowest bit perf
         int lastBitPosition = ResetLastBit(ref value[^1]);
@@ -225,11 +233,11 @@ public static partial class Merkle
             Span<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), limit);
+            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), limit);
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value), default, limit);
+            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value), default, limit);
         }
 
         MixIn(ref root, length);
@@ -288,7 +296,7 @@ public static partial class Merkle
         return 8;
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<ushort> value)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<ushort> value)
     {
         const int typeSize = 2;
         int partialChunkLength = value.Length % (32 / typeSize);
@@ -297,15 +305,15 @@ public static partial class Merkle
             ReadOnlySpan<ushort> fullChunks = value[..^partialChunkLength];
             Span<ushort> lastChunk = stackalloc ushort[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<ushort, UInt256>(fullChunks), MemoryMarshal.Cast<ushort, UInt256>(lastChunk));
+            Merkleize(out root, MemoryMarshal.Cast<ushort, UInt256>(fullChunks), MemoryMarshal.Cast<ushort, UInt256>(lastChunk));
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<ushort, UInt256>(value));
+            Merkleize(out root, MemoryMarshal.Cast<ushort, UInt256>(value));
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<uint> value)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<uint> value)
     {
         const int typeSize = 4;
         int partialChunkLength = value.Length % (32 / typeSize);
@@ -314,15 +322,15 @@ public static partial class Merkle
             ReadOnlySpan<uint> fullChunks = value[..^partialChunkLength];
             Span<uint> lastChunk = stackalloc uint[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<uint, UInt256>(fullChunks), MemoryMarshal.Cast<uint, UInt256>(lastChunk));
+            Merkleize(out root, MemoryMarshal.Cast<uint, UInt256>(fullChunks), MemoryMarshal.Cast<uint, UInt256>(lastChunk));
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<uint, UInt256>(value));
+            Merkleize(out root, MemoryMarshal.Cast<uint, UInt256>(value));
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<ulong> value, ulong maxLength = 0U)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<ulong> value, ulong maxLength = 0U)
     {
         const int typeSize = sizeof(ulong);
         ulong limit = (maxLength * typeSize + 31) / 32;
@@ -332,15 +340,15 @@ public static partial class Merkle
             ReadOnlySpan<ulong> fullChunks = value[..^partialChunkLength];
             Span<ulong> lastChunk = stackalloc ulong[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<ulong, UInt256>(fullChunks), MemoryMarshal.Cast<ulong, UInt256>(lastChunk), limit);
+            Merkleize(out root, MemoryMarshal.Cast<ulong, UInt256>(fullChunks), MemoryMarshal.Cast<ulong, UInt256>(lastChunk), limit);
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<ulong, UInt256>(value), limit);
+            Merkleize(out root, MemoryMarshal.Cast<ulong, UInt256>(value), limit);
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<UInt128> value)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt128> value)
     {
         const int typeSize = 16;
         int partialChunkLength = value.Length % (32 / typeSize);
@@ -349,15 +357,15 @@ public static partial class Merkle
             ReadOnlySpan<UInt128> fullChunks = value[..^partialChunkLength];
             Span<UInt128> lastChunk = stackalloc UInt128[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Ize(out root, MemoryMarshal.Cast<UInt128, UInt256>(fullChunks), MemoryMarshal.Cast<UInt128, UInt256>(lastChunk));
+            Merkleize(out root, MemoryMarshal.Cast<UInt128, UInt256>(fullChunks), MemoryMarshal.Cast<UInt128, UInt256>(lastChunk));
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<UInt128, UInt256>(value));
+            Merkleize(out root, MemoryMarshal.Cast<UInt128, UInt256>(value));
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
         if (limit == 0 && (value.Length + lastChunk.Length == 1))
         {
@@ -381,47 +389,7 @@ public static partial class Merkle
         merkleizer.CalculateRoot(out root);
     }
 
-    //public static void Ize(out UInt256 root, List<Ref<DepositData>> value, ulong limit)
-    //{
-    //    int length = value.Count;
-    //    if (limit == 0 && length == 1)
-    //    {
-    //        Merkle.Ize(out root, value[0]);
-    //        return;
-    //    }
-
-    //    int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)length : limit);
-    //    Merkleizer merkleizer = new Merkleizer(depth);
-    //    for (int i = 0; i < length; i++)
-    //    {
-    //        Merkle.Ize(out UInt256 subroot, value[i]);
-    //        merkleizer.Feed(subroot);
-    //    }
-
-    //    merkleizer.CalculateRoot(out root);
-    //}
-
-    //public static void Ize(out UInt256 root, List<DepositData> value, ulong limit)
-    //{
-    //    int length = value.Count;
-    //    if (limit == 0 && length == 1)
-    //    {
-    //        Merkle.Ize(out root, value[0]);
-    //        return;
-    //    }
-
-    //    int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)length : limit);
-    //    Merkleizer merkleizer = new Merkleizer(depth);
-    //    for (int i = 0; i < length; i++)
-    //    {
-    //        Merkle.Ize(out UInt256 subroot, value[i]);
-    //        merkleizer.Feed(subroot);
-    //    }
-
-    //    merkleizer.CalculateRoot(out root);
-    //}
-
-    public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
     {
         if (limit == 0 && value.Length == 1)
         {

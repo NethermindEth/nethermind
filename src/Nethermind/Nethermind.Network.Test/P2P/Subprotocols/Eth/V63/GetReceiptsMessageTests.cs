@@ -24,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Throws_on_null_argument()
         {
-            Assert.Throws<ArgumentNullException>(() => new GetReceiptsMessage(null));
+            Assert.Throws<ArgumentNullException>(static () => new GetReceiptsMessage(null));
         }
 
         [Test]

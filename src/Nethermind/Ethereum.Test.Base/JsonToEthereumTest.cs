@@ -154,11 +154,6 @@ namespace Ethereum.Test.Base
                     transactionJson.AuthorizationList
                     .Select(i =>
                     {
-                        if (i.ChainId > ulong.MaxValue)
-                        {
-                            i.ChainId = 0;
-                            transaction.SenderAddress = Address.Zero;
-                        }
                         if (i.Nonce > ulong.MaxValue)
                         {
                             i.Nonce = 0;

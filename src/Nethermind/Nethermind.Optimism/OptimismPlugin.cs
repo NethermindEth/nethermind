@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -27,6 +28,8 @@ using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Steps;
+using Nethermind.Optimism.CL;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
@@ -54,6 +57,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
+
+    private OptimismCL? _cl;
 
     public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
@@ -85,7 +90,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     {
         if (ShouldRunSteps(api))
         {
-            api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+            api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
             api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
         }
@@ -278,6 +283,18 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule);
 
         _api.RpcModuleProvider.RegisterSingle(opEngine);
+
+        StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+
+        ICLConfig clConfig = _api.Config<ICLConfig>();
+        if (clConfig.Enabled)
+        {
+            CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<CLChainSpecEngineParameters>();
+            _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
+                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
+            await _cl.Start();
+        }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
     }

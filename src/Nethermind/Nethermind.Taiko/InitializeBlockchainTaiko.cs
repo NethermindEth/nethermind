@@ -25,11 +25,11 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
     protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
         return new TaikoTransactionProcessor(
             _api.SpecProvider,
-            _api.WorldState,
+            _api.WorldStateManager.GlobalWorldState,
             virtualMachine,
             codeInfoRepository,
             _api.LogManager
@@ -76,19 +76,19 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
         if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
         return new BlockProcessor(
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState),
-            _api.WorldState,
+            new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldStateManager.GlobalWorldState),
+            _api.WorldStateManager.GlobalWorldState,
             _api.ReceiptStorage,
             _api.TransactionProcessor,
-            new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldState),
-            new BlockhashStore(_api.SpecProvider, _api.WorldState),
+            new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldStateManager.GlobalWorldState),
+            new BlockhashStore(_api.SpecProvider, _api.WorldStateManager.GlobalWorldState),
             _api.LogManager,
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
             preWarmer: preWarmer);

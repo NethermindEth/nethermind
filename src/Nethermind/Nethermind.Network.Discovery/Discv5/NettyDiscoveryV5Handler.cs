@@ -66,5 +66,5 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
 
     public static void Register(IServiceCollection services) => services
         .AddSingleton<NettyDiscoveryV5Handler>()
-        .AddSingleton<IUdpConnection>(p => p.GetRequiredService<NettyDiscoveryV5Handler>());
+        .AddSingleton<IUdpConnection>(static p => p.GetRequiredService<NettyDiscoveryV5Handler>());
 }

@@ -42,9 +42,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         stateProvider.StateRoot = parent.StateRoot!;
         stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
-        IEnumerable<Address> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? [];
-        IEnumerable<Address> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? [];
-        foreach (Address address in senders.Union(targets).Where(t => t is not null))
+        IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
+        IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
+        foreach (Address address in senders.Union(targets).Where(static t => t is not null))
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
@@ -282,13 +282,13 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 UInt256.Zero,
                 parent.Number + 1,
                 parent.GasLimit,
-                parent.Timestamp + 1,
+                parent.Timestamp + blocksConfig.SecondsPerSlot,
                 [])
             {
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
-        result.Timestamp = parent.Timestamp + 1;
+        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation

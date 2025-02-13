@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly Lock _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
+        private readonly ulong _fastHeadersMemoryBudget;
         protected long _lowestRequestedHeaderNumber;
 
         protected Hash256 _nextHeaderHash;
@@ -67,7 +68,6 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private readonly ReaderWriterLockSlim _resetLock = new();
 
-        private IEnumerator<KeyValuePair<long, HeadersSyncBatch>>? _enumerator;
         private ulong _memoryEstimate;
         private long _headersEstimate;
 
@@ -77,11 +77,12 @@ namespace Nethermind.Synchronization.FastBlocks
             set => _blockTree.LowestInsertedHeader = value;
         }
 
-        protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
-        protected virtual MeasuredProgress HeadersSyncQueueReport => _syncReport.HeadersInQueue;
+        protected virtual ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.FastBlocksHeaders;
 
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) <= 1;
+
+        protected virtual long TotalBlocks => _syncConfig.PivotNumberParsed;
 
         public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
@@ -104,18 +105,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private long CalculateHeadersInQueue()
         {
             // Reuse the enumerator
-            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _dependencies.GetEnumerator();
+            using var enumerator = _dependencies.GetEnumerator();
 
             long count = 0;
             while (enumerator.MoveNext())
             {
                 count += enumerator.Current.Value.Response?.Count ?? 0;
             }
-
-            // Stop gap method to reduce allocations from non-struct enumerator
-            // https://github.com/dotnet/runtime/pull/38296
-            enumerator.Reset();
-            _enumerator = enumerator;
 
             return count;
         }
@@ -138,18 +134,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private ulong CalculateMemoryInQueue()
         {
             // Reuse the enumerator
-            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _dependencies.GetEnumerator();
+            using var enumerator = _dependencies.GetEnumerator();
 
             ulong amount = 0;
             while (enumerator.MoveNext())
             {
                 amount += (ulong)enumerator.Current.Value?.ResponseSizeEstimate;
             }
-
-            // Stop gap method to reduce allocations from non-struct enumerator
-            // https://github.com/dotnet/runtime/pull/38296
-            enumerator.Reset();
-            _enumerator = enumerator;
 
             return amount;
         }
@@ -169,6 +160,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
+            _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
@@ -195,8 +187,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
-            HeadersSyncProgressReport.Reset(0);
-            HeadersSyncQueueReport.Reset(0);
+            HeadersSyncProgressLoggerReport.Reset(_pivotNumber - (LowestInsertedBlockHeader?.Number ?? 0) + 1, TotalBlocks);
         }
 
         protected virtual void ResetPivot()
@@ -210,8 +201,25 @@ namespace Nethermind.Synchronization.FastBlocks
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
             if (lowestInserted is not null && lowestInserted!.Number < _pivotNumber)
             {
-                SetExpectedNextHeaderToParent(lowestInserted);
-                _lowestRequestedHeaderNumber = lowestInserted.Number;
+                if (lowestInserted.TotalDifficulty is null)
+                {
+                    // When the LowestInsertedHeader is set in blockTree initializer, its TD is not set from block info.
+                    // So here we explicitly try to fetch it again.
+                    lowestInserted = _blockTree.FindHeader(lowestInserted.Number, BlockTreeLookupOptions.RequireCanonical);
+
+                    // In case of some strange corruption, we will have to reset the whole sync.
+                    if (lowestInserted!.TotalDifficulty is null)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Missing total difficulty on lowest inserted header: {lowestInserted!.ToString(BlockHeader.Format.Short)}. Resetting header sync.");
+                        _blockTree.LowestInsertedHeader = null;
+                    }
+                }
+
+                if (lowestInserted?.TotalDifficulty is not null)
+                {
+                    SetExpectedNextHeaderToParent(lowestInserted);
+                    _lowestRequestedHeaderNumber = lowestInserted.Number;
+                }
             }
         }
 
@@ -229,7 +237,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || destinationHeaderRequested
-                                 || MemoryInQueue >= MemoryAllowance.FastBlocksMemory
+                                 || MemoryInQueue >= _fastHeadersMemoryBudget
                                  || isImmediateSync && AnyHeaderDownloaded;
 
             if (noBatchesLeft)
@@ -260,15 +268,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual void PostFinishCleanUp()
         {
-            HeadersSyncProgressReport.Update(_pivotNumber);
-            HeadersSyncProgressReport.MarkEnd();
+            HeadersSyncProgressLoggerReport.Update(TotalBlocks);
+            HeadersSyncProgressLoggerReport.CurrentQueued = 0;
+            HeadersSyncProgressLoggerReport.MarkEnd();
             ClearDependencies(); // there may be some dependencies from wrong branches
             _pending.DisposeItems();
             _pending.Clear(); // there may be pending wrong branches
             _sent.DisposeItems();
             _sent.Clear(); // we my still be waiting for some bad branches
-            HeadersSyncQueueReport.Update(0L);
-            HeadersSyncQueueReport.MarkEnd();
         }
 
         private void HandleDependentBatches(CancellationToken cancellationToken)
@@ -316,7 +323,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    batch = ProcessPersistedHeadersOrBuildNewBatch();
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(cancellationToken);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -339,14 +346,14 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch()
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(CancellationToken cancellationToken)
         {
             HeadersSyncBatch? batch = null;
             do
             {
                 batch = BuildNewBatch();
                 batch = ProcessPersistedPortion(batch);
-            } while (batch is null && ShouldBuildANewBatch());
+            } while (batch is null && ShouldBuildANewBatch() && !cancellationToken.IsCancellationRequested);
             return batch;
         }
 
@@ -385,7 +392,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
-                        .OrderByDescending(kvp => kvp.Key))
+                        .OrderByDescending(static kvp => kvp.Key))
                     {
                         builder.AppendLine(keyValuePair.Value);
                     }
@@ -497,7 +504,7 @@ namespace Nethermind.Synchronization.FastBlocks
             // This only check for the last header though, which is fine as headers are so small, the time it take
             // to download one is more or less the same as the whole batch. So many small batch is slower than
             // less large batch.
-            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None);
+            BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (lastHeader is null) return batch;
 
             using ArrayPoolList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(1);
@@ -505,22 +512,26 @@ namespace Nethermind.Synchronization.FastBlocks
             for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
             {
                 // Don't worry about fork, `InsertHeaders` will check for fork and retry if it is not on the right fork.
-                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, i);
+                BlockHeader nextHeader = _blockTree.FindHeader(lastHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, i);
                 if (nextHeader is null) break;
                 headers.Add(nextHeader);
                 lastHeader = nextHeader;
             }
 
             headers.AsSpan().Reverse();
-
-            using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
-            newBatchToProcess.StartNumber = lastHeader.Number;
-            newBatchToProcess.RequestSize = headers.Count;
-            newBatchToProcess.Response = headers;
-            if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
-            InsertHeaders(newBatchToProcess);
-
             int newRequestSize = batch.RequestSize - headers.Count;
+            if (headers.Count > 0)
+            {
+                using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
+                newBatchToProcess.StartNumber = lastHeader.Number;
+                newBatchToProcess.RequestSize = headers.Count;
+                newBatchToProcess.Response = headers;
+                if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
+                InsertHeaders(newBatchToProcess);
+                MarkDirty();
+                HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
+                HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
+            }
 
             if (newRequestSize == 0) return null;
 
@@ -669,12 +680,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (LowestInsertedBlockHeader is not null)
             {
-                HeadersSyncProgressReport.Update(_pivotNumber - LowestInsertedBlockHeader.Number + 1);
+                HeadersSyncProgressLoggerReport.Update(_pivotNumber - LowestInsertedBlockHeader.Number + 1);
             }
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {LowestInsertedBlockHeader?.Number} | HANDLED {batch}");
 
-            HeadersSyncQueueReport.Update(HeadersInQueue);
+            HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
             return added;
 
             // Well, its the last in the batch, but first processed.

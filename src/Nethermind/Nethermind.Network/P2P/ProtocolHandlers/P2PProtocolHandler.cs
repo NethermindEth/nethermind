@@ -79,13 +79,7 @@ public class P2PProtocolHandler(
 
         // We are expecting to receive Hello message anytime from the handshake completion,
         // irrespective of sending Hello from our side
-        CheckProtocolInitTimeout().ContinueWith(x =>
-        {
-            if (x.IsFaulted && Logger.IsError)
-            {
-                Logger.Error("Error during p2pProtocol handler timeout logic", x.Exception);
-            }
-        });
+        _ = CheckProtocolInitTimeout();
     }
 
     public override void HandleMessage(Packet msg)
@@ -105,7 +99,7 @@ public class P2PProtocolHandler(
                     // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
                     // which are alphabetically before already initialized ones.
                     foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()).OrderBy(c => c.ProtocolCode))
+                        _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
                     {
                         if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
                         SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));

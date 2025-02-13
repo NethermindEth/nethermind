@@ -47,51 +47,51 @@ public abstract class ConfigFileTestsBase
 
     [ConfigFileGroup("fast")]
     protected IEnumerable<string> FastSyncConfigs
-        => Configs.Where(config => !config.Contains('_') && !config.Contains("spaceneth"));
+        => Configs.Where(static config => !config.Contains('_') && !config.Contains("spaceneth"));
 
     [ConfigFileGroup("archive")]
     protected IEnumerable<string> ArchiveConfigs
-        => Configs.Where(config => config.Contains("_archive"));
+        => Configs.Where(static config => config.Contains("_archive"));
 
     [ConfigFileGroup("poacore")]
     protected IEnumerable<string> PoaCoreConfigs
-        => Configs.Where(config => config.Contains("poacore"));
+        => Configs.Where(static config => config.Contains("poacore"));
 
     [ConfigFileGroup("volta")]
     protected IEnumerable<string> VoltaConfigs
-        => Configs.Where(config => config.Contains("volta"));
+        => Configs.Where(static config => config.Contains("volta"));
 
     [ConfigFileGroup("energy")]
     protected IEnumerable<string> EnergyConfigs
-        => Configs.Where(config => config.Contains("energy"));
+        => Configs.Where(static config => config.Contains("energy"));
 
     [ConfigFileGroup("gnosis")]
     protected IEnumerable<string> GnosisConfigs
-        => Configs.Where(config => config.Contains("gnosis"));
+        => Configs.Where(static config => config.Contains("gnosis"));
 
     [ConfigFileGroup("sepolia")]
     protected IEnumerable<string> SepoliaConfigs
-        => Configs.Where(config => config.Contains("sepolia"));
+        => Configs.Where(static config => config.Contains("sepolia"));
 
     [ConfigFileGroup("chiado")]
     protected IEnumerable<string> ChiadoConfigs
-        => Configs.Where(config => config.Contains("chiado"));
+        => Configs.Where(static config => config.Contains("chiado"));
 
     [ConfigFileGroup("holesky")]
     protected IEnumerable<string> HoleskyConfigs
-        => Configs.Where(config => config.Contains("holesky"));
+        => Configs.Where(static config => config.Contains("holesky"));
 
     [ConfigFileGroup("spaceneth")]
     protected IEnumerable<string> SpacenethConfigs
-        => Configs.Where(config => config.Contains("spaceneth"));
+        => Configs.Where(static config => config.Contains("spaceneth"));
 
     [ConfigFileGroup("mainnet")]
     protected IEnumerable<string> MainnetConfigs
-        => Configs.Where(config => config.Contains("mainnet"));
+        => Configs.Where(static config => config.Contains("mainnet"));
 
     [ConfigFileGroup("validators")]
     protected IEnumerable<string> ValidatorConfigs
-        => Configs.Where(config => config.Contains("validator"));
+        => Configs.Where(static config => config.Contains("validator"));
 
     [ConfigFileGroup("aura")]
     protected IEnumerable<string> AuraConfigs
@@ -103,7 +103,7 @@ public abstract class ConfigFileTestsBase
 
     [ConfigFileGroup("aura_non_validating")]
     protected IEnumerable<string> AuraNonValidatingConfigs
-        => AuraConfigs.Where(c => !c.Contains("validator"));
+        => AuraConfigs.Where(static c => !c.Contains("validator"));
 
     protected IEnumerable<string> Resolve(string configWildcard)
     {

@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Precompiles
 {
     public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
     {
-        public static readonly IdentityPrecompile Instance = new IdentityPrecompile();
+        public static readonly IdentityPrecompile Instance = new();
 
         private IdentityPrecompile()
         {
@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return (inputData.ToArray(), true);
         }

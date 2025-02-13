@@ -191,7 +191,7 @@ public class AccessListTests
     [Test]
     public void Invalid_storage_when_no_previous_address()
     {
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<InvalidOperationException>(static () =>
         {
             AccessList.Builder _ = new AccessList.Builder()
                 .AddStorage(UInt256.Zero);

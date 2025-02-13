@@ -346,7 +346,7 @@ public partial class EngineModuleTests
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
 
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
@@ -372,7 +372,7 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
     }
 
     [Test]
@@ -462,7 +462,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(txsA, withdrawals)
             };
 
-            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+            payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
         }
 
         // Second branch
@@ -491,7 +491,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(Array.Empty<Transaction>(), withdrawals)
             };
 
-            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+            payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
         }
     }
 
@@ -521,7 +521,7 @@ public partial class EngineModuleTests
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
         blockTree.FindBlock(Arg.Any<long>())
-            .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
+            .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);

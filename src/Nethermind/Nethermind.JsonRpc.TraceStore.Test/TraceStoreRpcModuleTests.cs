@@ -45,7 +45,7 @@ public class TraceStoreRpcModuleTests
             new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) }
         ];
         test.Module.trace_callMany(calls, BlockParameter.Latest)
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(t => new ParityTxTraceFromReplay(t))));
+            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
     [Test]
@@ -81,7 +81,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         test.Module.trace_replayBlockTransactions(new BlockParameter(1), new[] { ParityTraceTypes.Trace.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(t => new ParityTxTraceFromReplay(t))));
+            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
     [Test]
@@ -90,7 +90,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         test.Module.trace_replayBlockTransactions(BlockParameter.Latest, new[] { ParityTraceTypes.Trace.ToString(), ParityTraceTypes.Rewards.ToString() })
-            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.DbTraces.Select(t => new ParityTxTraceFromReplay(t))));
+            .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.DbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
     [Test]
@@ -141,7 +141,7 @@ public class TraceStoreRpcModuleTests
             ReceiptFinder.FindBlockHash(nonDbTransaction).Returns(dbBlock);
 
             ResultWrapper<ParityTxTraceFromReplay> nonDbReplayWrapper = ResultWrapper<ParityTxTraceFromReplay>.Success(new(NonDbTraces[0]));
-            ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> nonDbReplaysWrapper = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(NonDbTraces.Select(t => new ParityTxTraceFromReplay(t)));
+            ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> nonDbReplaysWrapper = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t)));
 
             InnerModule.trace_call(Arg.Any<TransactionForRpc>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplayWrapper);

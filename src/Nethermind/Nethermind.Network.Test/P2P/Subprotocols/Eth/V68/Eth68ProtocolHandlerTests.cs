@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
@@ -125,7 +124,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
+            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
     }
 
     [TestCase(true)]
@@ -163,7 +162,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
+            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
     }
 
     [TestCase(1)]
@@ -231,7 +230,7 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
+            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }, _specProvider),
             _gossipPolicy,
             new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
             LimboLogs.Instance,

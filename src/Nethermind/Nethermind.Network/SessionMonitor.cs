@@ -8,7 +8,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -48,6 +47,7 @@ namespace Nethermind.Network
         }
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        public IEnumerable<ISession> Sessions => _sessions.Values;
 
         public void AddSession(ISession session)
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Network
                         int tasksLength = tasks.Length;
                         if (tasksLength != 0)
                         {
-                            int successes = tasks.Count(x => x);
+                            int successes = tasks.Count(static x => x);
                             int failures = tasksLength - successes;
                             if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
                             if (failures > 4 && failures > tasks.Length / 3)

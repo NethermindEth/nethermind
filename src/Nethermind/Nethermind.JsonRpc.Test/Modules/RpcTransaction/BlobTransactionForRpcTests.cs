@@ -103,10 +103,10 @@ public static class BlobTransactionForRpcTests
         var accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
-            accessList.Should().AllSatisfy(item =>
+            accessList.Should().AllSatisfy(static item =>
             {
                 item.GetProperty("address").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(key =>
+                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(static key =>
                     key.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
                 );
             });
@@ -114,7 +114,7 @@ public static class BlobTransactionForRpcTests
         var blobVersionedHashes = json.GetProperty("blobVersionedHashes").EnumerateArray();
         if (blobVersionedHashes.Any())
         {
-            blobVersionedHashes.Should().AllSatisfy(hash =>
+            blobVersionedHashes.Should().AllSatisfy(static hash =>
                 hash.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
             );
         }

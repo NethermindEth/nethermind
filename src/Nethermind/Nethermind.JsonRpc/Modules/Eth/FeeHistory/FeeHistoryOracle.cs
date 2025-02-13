@@ -106,16 +106,26 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
         private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
         {
+            double CalculateBlobGasUsedRatio(Block b, out UInt256 feePerBlobGas)
+            {
+                IReleaseSpec spec = _specProvider.GetSpec(b.Header);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas);
+
+                var maxBlobGasPerBlob = spec.GetMaxBlobGasPerBlock();
+                return maxBlobGasPerBlob == 0 ? 0 : (b.BlobGasUsed ?? 0) / (double)maxBlobGasPerBlob;
+            }
+
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
-                BlobGasCalculator.TryCalculateFeePerBlobGas(b.Header, out UInt256 feePerBlobGas);
+                double blobGasUsedRatio = CalculateBlobGasUsedRatio(b, out UInt256 feePerBlobGas);
+
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
-                    (b.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
+                    blobGasUsedRatio,
                     b.ParentHash,
                     b.GasUsed,
                     b.Transactions.Length,
@@ -251,16 +261,17 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
-                : txs.Select(tx => tx.GasLimit));
+                : txs.Select(static tx => tx.GasLimit));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
+            Span<long> gasUsedSpan = gasUsed.AsSpan();
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                rewardInfos.Add(new RewardInfo(gasUsed[i], premiumPerGas));
+                rewardInfos.Add(new RewardInfo(gasUsedSpan[i], premiumPerGas));
             }
 
-            rewardInfos.Sort((i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
+            rewardInfos.Sort(static (i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
 
             return rewardInfos;
         }

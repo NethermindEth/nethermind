@@ -157,7 +157,7 @@ public class MetricsTests
         foreach (string dll in dlls)
         {
             Assembly assembly = Assembly.LoadFile(dll);
-            Type[] configs = assembly.GetExportedTypes().Where(t => t.Name == "Metrics").ToArray();
+            Type[] configs = assembly.GetExportedTypes().Where(static t => t.Name == "Metrics").ToArray();
 
             foreach (Type metricsType in configs)
             {

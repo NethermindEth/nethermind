@@ -59,6 +59,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
+        [Retry(3)]
         public async Task whitelist_should_return_correctly()
         {
             using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
@@ -84,9 +85,9 @@ namespace Nethermind.AuRa.Test.Contract
                 new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
             };
 
-            priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
-                .Excluding(su => su.BlockNumber));
-            prioritiesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+            priorities.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>()
+                .Excluding(static su => su.BlockNumber));
+            prioritiesInContract.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
         [Test]
@@ -102,10 +103,10 @@ namespace Nethermind.AuRa.Test.Contract
                 new(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
             };
 
-            minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
-                .Excluding(su => su.BlockNumber));
+            minGasPrices.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>()
+                .Excluding(static su => su.BlockNumber));
 
-            minGasPricesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+            minGasPricesInContract.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
         [Test]

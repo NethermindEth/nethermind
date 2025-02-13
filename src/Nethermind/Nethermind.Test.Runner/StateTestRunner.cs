@@ -29,15 +29,17 @@ namespace Nethermind.Test.Runner
         private readonly bool _traceMemory;
         private readonly bool _traceStack;
         private readonly string? _filter;
+        private readonly ulong _chainId;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, string? filter = null)
+        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _whenTrace = whenTrace;
             _traceMemory = traceMemory;
             _traceStack = traceStack;
             _filter = filter;
+            _chainId = chainId;
             Setup(null);
         }
 
@@ -65,6 +67,7 @@ namespace Nethermind.Test.Runner
             {
                 if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
                     continue;
+                test.ChainId = _chainId;
 
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)
@@ -91,7 +94,7 @@ namespace Nethermind.Test.Runner
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork);
+                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
                     WriteErr(txTrace);
                 }
 

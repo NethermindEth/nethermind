@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,7 +34,7 @@ namespace Nethermind.Network
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
         private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
-        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(p => !p.Node.IsStatic);
+        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(static p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
 
         public int PeerCount => Peers.Count;
@@ -48,7 +49,7 @@ namespace Nethermind.Network
         public PeerPool(
             INodeSource nodeSource,
             INodeStatsManager nodeStatsManager,
-            INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
             ILogManager logManager)
         {

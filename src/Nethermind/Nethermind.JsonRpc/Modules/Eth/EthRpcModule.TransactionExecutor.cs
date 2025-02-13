@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -114,12 +115,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
             {
                 long gas = result.GasSpent;
+                long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    // if we generated access list, we need to fix actual gas cost, as all storage was considered warm
-                    gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+                    var oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
                     transaction.AccessList = result.AccessList;
-                    gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+                    var newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
+                    if (gas > operationGas)
+                    {
+                        if (gas - operationGas < updatedAccessListCost) gas = operationGas + updatedAccessListCost;
+                    }
+                    else
+                    {
+                        gas += updatedAccessListCost;
+                    }
                 }
 
                 return (UInt256)gas;

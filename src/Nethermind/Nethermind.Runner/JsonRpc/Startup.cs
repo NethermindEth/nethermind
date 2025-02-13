@@ -171,7 +171,7 @@ public class Startup
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
-            else
+            else if (ctx.Request.ContentType?.Contains("application/json") ?? false)
             {
                 if (jsonRpcUrl.MaxRequestBodySize is not null)
                     ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;

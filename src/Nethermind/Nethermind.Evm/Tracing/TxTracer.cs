@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -50,8 +51,8 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
     public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
-    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
-    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) { }
+    public virtual void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
+    public virtual void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { }
     public virtual void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
     public virtual void ReportOperationRemainingGas(long gas) { }

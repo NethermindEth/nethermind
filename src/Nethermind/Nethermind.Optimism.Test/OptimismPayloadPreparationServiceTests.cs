@@ -1,42 +1,54 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
-using FluentAssertions;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 using System;
+using NUnit.Framework;
 using NSubstitute;
-using Nethermind.Core.Specs;
-using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Core.Timers;
-using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Logging;
+using Nethermind.Int256;
+using Nethermind.Evm.Tracing;
+using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
-using Nethermind.Blockchain;
-using Nethermind.State;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
-using System.Buffers.Binary;
-using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using FluentAssertions;
+using Nethermind.Crypto;
 
 namespace Nethermind.Optimism.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class OptimismPayloadPreparationServiceTests
 {
-    [TestCase(8u, 2u)]
-    [TestCase(2u, 2u)]
-    [TestCase(2u, 10u)]
-    public async Task Writes_EIP1559Params_Into_HeaderExtraData(UInt32 denominator, UInt32 elasticity)
+    private static IEnumerable<(OptimismPayloadAttributes, EIP1559Parameters?)> TestCases()
+    {
+        foreach (var noTxPool in (bool[])[true, false])
+        {
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 2));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
+        }
+    }
+    [TestCaseSource(nameof(TestCases))]
+    public async Task Writes_EIP1559Params_Into_HeaderExtraData((OptimismPayloadAttributes Attributes, EIP1559Parameters? ExpectedEIP1559Parameters) testCase)
     {
         var parent = Build.A.BlockHeader.TestObject;
 
         var releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
+        releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
+        releaseSpec.ElasticityMultiplier.Returns(6);
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
@@ -69,23 +81,16 @@ public class OptimismPayloadPreparationServiceTests
             logManager: TestLogManager.Instance
         );
 
-        var eip1559Params = new byte[8];
-        BinaryPrimitives.WriteUInt32BigEndian(eip1559Params.AsSpan(0, 4), denominator);
-        BinaryPrimitives.WriteUInt32BigEndian(eip1559Params.AsSpan(4, 4), elasticity);
+        testCase.Attributes.PrevRandao = Hash256.Zero;
+        testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        var attributes = new OptimismPayloadAttributes()
-        {
-            PrevRandao = Hash256.Zero,
-            SuggestedFeeRecipient = TestItem.AddressA,
-            EIP1559Params = eip1559Params,
-        };
-
-        var payloadId = service.StartPreparingPayload(parent, attributes);
+        var payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
         var context = await service.GetPayload(payloadId);
         var currentBestBlock = context?.CurrentBestBlock!;
 
         currentBestBlock.Should().Be(block);
         currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
-        parameters.Should().BeEquivalentTo(new EIP1559Parameters(0, denominator, elasticity));
+        parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
+        currentBestBlock.Header.Hash.Should().BeEquivalentTo(currentBestBlock.Header.CalculateHash());
     }
 }

@@ -117,7 +117,7 @@ namespace Nethermind.Db.Test
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
             new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
 
-            logger.Received().Warn(Arg.Is<string>(s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
+            logger.Received().Warn(Arg.Is<string>(static s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
         }
 
         [Test]

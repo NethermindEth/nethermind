@@ -23,20 +23,20 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x10);
+    public static Address Address { get; } = Address.FromNumber(0xe);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 45000L * k * Discount.For(k) / 1000;
+        return 22500L * k * Discount.ForG2(k) / 1000;
     }
 
     public const int ItemSize = 288;
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG2MSMPrecompile++;
 
@@ -46,7 +46,34 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         }
 
         int nItems = inputData.Length / ItemSize;
+        return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
+    }
 
+
+    private (byte[], bool) Mul(ReadOnlyMemory<byte> inputData)
+    {
+        G2 x = new(stackalloc long[G2.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
+        {
+            return IPrecompile.Failure;
+        }
+
+        bool scalarIsInfinity = !inputData[BlsConst.LenG2..].Span.ContainsAnyExcept((byte)0);
+        if (scalarIsInfinity || x.IsInf())
+        {
+            return (BlsConst.G2Inf, true);
+        }
+
+        Span<byte> scalar = stackalloc byte[32];
+        inputData.Span[BlsConst.LenG2..].CopyTo(scalar);
+        scalar.Reverse();
+
+        G2 res = x.Mult(scalar);
+        return (res.EncodeRaw(), true);
+    }
+
+    private (byte[], bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    {
         using ArrayPoolList<long> pointBuffer = new(nItems * G2.Sz, nItems * G2.Sz);
         using ArrayPoolList<byte> scalarBuffer = new(nItems * 32, nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);

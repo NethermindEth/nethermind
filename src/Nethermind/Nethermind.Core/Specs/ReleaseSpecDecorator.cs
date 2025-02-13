@@ -67,6 +67,9 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4895Enabled => spec.IsEip4895Enabled;
     public virtual bool IsEip4844Enabled => spec.IsEip4844Enabled;
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
+    public virtual ulong TargetBlobCount => spec.TargetBlobCount;
+    public virtual ulong MaxBlobCount => spec.MaxBlobCount;
+    public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
     public bool IsEip6110Enabled => spec.IsEip6110Enabled;
     public Address DepositContractAddress => spec.DepositContractAddress;
@@ -83,6 +86,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOntakeEnabled => spec.IsOntakeEnabled;
+    public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);

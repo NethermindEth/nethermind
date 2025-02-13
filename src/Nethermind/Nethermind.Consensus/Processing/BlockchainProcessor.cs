@@ -31,7 +31,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
-    private static AsyncLocal<bool> _isMainProcessingThread = new();
+    private static readonly AsyncLocal<bool> _isMainProcessingThread = new();
     public static bool IsMainProcessingThread => _isMainProcessingThread.Value;
     public bool IsMainProcessor { get; init; }
 
@@ -497,7 +497,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
+                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }),
                     DumpOptions.Geth);
             }
 

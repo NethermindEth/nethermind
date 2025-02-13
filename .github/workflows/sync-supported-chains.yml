@@ -35,6 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: nethermind
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
       - name: Set Matrix
         id: set-matrix
         run: |
@@ -100,6 +101,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           clean: true
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
           
       - name: Checkout tests repository
         uses: actions/checkout@v4
@@ -142,9 +144,10 @@ jobs:
           network="${{ matrix.config.network }}"
           
           if [ -z "${{ inputs.nethermind_image }}" ]; then
-            REF_NAME=${{ github.ref }}
-            if [[ $REF_NAME == refs/heads/release/* ]]; then
-              CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+            CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}")
+            if [[ $CLEAN_REF == release/* ]]; then
+              CLEAN_REF=$(echo "$CLEAN_REF" | sed 's/[^a-zA-Z0-9._-]/-/g')
               docker_image="nethermindeth/nethermind:$CLEAN_REF"
             else
               docker_image="nethermindeth/nethermind:master"
@@ -156,7 +159,7 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
-          if [[ "$network" == base-* || "$network" == op-* ]]; then
+          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
@@ -172,8 +175,13 @@ jobs:
               extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
             fi
 
+            if [[ "$network" == world-* ]]; then
+              extra_param="--world"
+            fi
+
             stripped_network="${network#base-}"
             stripped_network="${stripped_network#op-}"
+            stripped_network="${stripped_network#world-}"
 
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
@@ -183,7 +191,7 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.10.3 \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
@@ -283,7 +291,7 @@ jobs:
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
-          if [[ "$network" == base-* || "$network" == op-* ]]; then
+          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             docker logs sedge-consensus-op-l2-client
           elif [[ "$network" == taiko-* ]]; then
             docker logs sedge-consensus-taikodriver-client
@@ -302,7 +310,7 @@ jobs:
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          action: "destroy-machine"
+          action: "destroy-machine-async"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
@@ -365,5 +373,5 @@ jobs:
           ref: "main"
           token: "${{ steps.gh-app.outputs.token }}"
           inputs: '{
-            "nethermind_branch": "${{ github.ref}}"
+            "nethermind_branch": "${{ github.event.workflow_run.head_branch }}"
           }'

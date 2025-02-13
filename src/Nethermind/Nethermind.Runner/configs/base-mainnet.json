@@ -1,10 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/base-mainnet.json",
+    "ChainSpecPath": "chainspec/base-mainnet.json.zst",
     "GenesisHash": "0xf712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd",
     "BaseDbPath": "nethermind_db/base-mainnet",
-    "LogFileName": "base-mainnet.logs.txt",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "base-mainnet.logs.txt"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -13,9 +13,8 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 23700000,
-    "PivotHash": "0xf0688530851d54a7ab48bdada5b0c337c83f4e02c18e154fd28117ee8b24a3c1",
-    "PivotTotalDifficulty": "0"
+    "PivotNumber": 26280000,
+    "PivotHash": "0xdccba67e264d2d11ad870fff846065e20c6bbc2f05929e77194bf3f56952f86d"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -29,8 +28,7 @@
     "PruningBoundary": 192
   },
   "Blocks": {
-    "SecondsPerSlot": 2,
-    "TargetBlockGasLimit": 97500000
+    "SecondsPerSlot": 2
   },
   "Merge": {
     "Enabled": true

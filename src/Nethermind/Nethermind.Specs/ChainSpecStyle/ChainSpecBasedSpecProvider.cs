@@ -10,6 +10,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -38,9 +40,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
             }
 
-            AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
-            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
-            AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
+            AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
+            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
+            AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -194,11 +196,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip3607Enabled = (chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.ValidateChainId = (chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
             releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(chainSpec.Parameters.ValidateReceiptsTransition ?? 0, chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
-
-            bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
-            bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
-
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
@@ -233,8 +230,14 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
+            releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsOntakeEnabled = (chainSpec.Parameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
+
+            bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
+            bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
+            releaseSpec.IsEip4844FeeCollectorEnabled = eip4844FeeCollector;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
@@ -242,7 +245,41 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
             }
 
+            SetMaxAndTargetBlobCount();
+
             return releaseSpec;
+
+            void SetMaxAndTargetBlobCount()
+            {
+                (IReleaseSpec? fork, IReleaseSpec? previousFork) = GetCurrentAndPreviousFork();
+                if (fork is null) return;
+
+                if (chainSpec.Parameters.BlobSchedule.TryGetValue(fork.Name, out ChainSpecBlobCountJson blobCount) ||
+                    chainSpec.Parameters.BlobSchedule.TryGetValue(previousFork.Name, out blobCount))
+                {
+                    releaseSpec.TargetBlobCount = blobCount.Target;
+                    releaseSpec.MaxBlobCount = blobCount.Max;
+                    releaseSpec.BlobBaseFeeUpdateFraction = blobCount.BaseFeeUpdateFraction;
+                }
+                else
+                {
+                    releaseSpec.TargetBlobCount = 3;
+                    releaseSpec.MaxBlobCount = 6;
+                    releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+                }
+            }
+            (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork()
+            {
+                if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+                {
+                    return (Prague.Instance, Cancun.Instance);
+                }
+
+                return (chainSpec.CancunTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                    ? (Cancun.Instance, Shanghai.Instance)
+                    : (null, null);
+            }
+
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

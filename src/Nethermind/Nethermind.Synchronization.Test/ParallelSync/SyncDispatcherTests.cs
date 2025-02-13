@@ -111,8 +111,8 @@ public class SyncDispatcherTests
             return null;
         }
 
-        public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = delegate { };
-        public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = delegate { };
+        public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
+        public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = static delegate { };
 
         public ValueTask DisposeAsync()
         {

@@ -40,9 +40,9 @@ namespace Nethermind.AuRa.Test.Transactions
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),
-                    Arg.Is<TxPriorityContract.Destination>(d => d.Target == TestItem.AddressA),
+                    Arg.Is<TxPriorityContract.Destination>(static d => d.Target == TestItem.AddressA),
                     out Arg.Any<TxPriorityContract.Destination>())
-                .Returns(x =>
+                .Returns(static x =>
                 {
                     x[2] = new TxPriorityContract.Destination(TestItem.AddressA, [], 5);
                     return true;

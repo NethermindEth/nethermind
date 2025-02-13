@@ -21,7 +21,7 @@ namespace Nethermind.Core.Test.Json
         {
             TestConverter(
                 values,
-                (before, after) => Bytes.AreEqual(before.WithoutLeadingZeros(), after.WithoutLeadingZeros()),
+                static (before, after) => Bytes.AreEqual(before.WithoutLeadingZeros(), after.WithoutLeadingZeros()),
                 new Bytes32Converter());
         }
     }

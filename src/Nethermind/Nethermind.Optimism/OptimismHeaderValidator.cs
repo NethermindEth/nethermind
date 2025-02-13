@@ -41,9 +41,15 @@ public class OptimismHeaderValidator(
         IReleaseSpec spec = _specProvider.GetSpec(header);
         if (spec.IsOpHoloceneEnabled)
         {
-            if (!header.TryDecodeEIP1559Parameters(out _, out var decodeError))
+            if (!header.TryDecodeEIP1559Parameters(out var parameters, out var decodeError))
             {
                 error = decodeError;
+                return false;
+            }
+
+            if (parameters.IsZero())
+            {
+                error = $"{nameof(EIP1559Parameters)} is zero";
                 return false;
             }
         }

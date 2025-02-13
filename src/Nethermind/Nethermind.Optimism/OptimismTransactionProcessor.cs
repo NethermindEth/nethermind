@@ -70,7 +70,7 @@ public sealed class OptimismTransactionProcessor(
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
 
-        bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+        bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
@@ -151,8 +151,8 @@ public sealed class OptimismTransactionProcessor(
         }
     }
 
-    protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int refunds)
+    protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
@@ -160,9 +160,10 @@ public sealed class OptimismTransactionProcessor(
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
-            return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            var gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            return gas;
         }
 
-        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, refunds);
+        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
     }
 }

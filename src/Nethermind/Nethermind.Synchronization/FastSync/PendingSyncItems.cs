@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private string LevelsDescription => $"{MaxStorageLevel:D2} {_maxStorageRightness:D8} | {MaxStateLevel:D2} {_maxRightness:D8}";
         public string Description => $"{CodeItems?.Count ?? 0:D4} + {StorageItemsPriority0?.Count ?? 0:D6} {StorageItemsPriority1?.Count ?? 0:D6} {StorageItemsPriority2?.Count ?? 0:D6} + {StateItemsPriority0?.Count ?? 0:D6} {StateItemsPriority1?.Count ?? 0:D6} {StateItemsPriority2?.Count ?? 0:D6}";
-        public int Count => _allStacks.Sum(n => n?.Count ?? 0);
+        public int Count => _allStacks.Sum(static n => n?.Count ?? 0);
 
         public StateSyncItem? PeekState()
         {
