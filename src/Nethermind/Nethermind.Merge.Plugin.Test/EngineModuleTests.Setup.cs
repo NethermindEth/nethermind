@@ -139,6 +139,7 @@ public partial class EngineModuleTests
                 peerRefresher,
                 chain.SpecProvider,
                 chain.SyncPeerPool,
+                chain.WorldStateManager.GlobalWorldState,
                 chain.LogManager,
                 new BlocksConfig().SecondsPerSlot),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),

@@ -230,6 +230,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool,
+                _api.WorldStateManager.GlobalWorldState,
                 _api.LogManager,
                 _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
