@@ -181,7 +181,10 @@ namespace Nethermind.Blockchain
 
         /// <summary>
         /// Sync pivot is the point at which forward sync start. That was the original start point.
-        /// But this is more like a delayed finalized block where the block tree initialization was checked.
+        /// After 4444 its more like a delayed-finalized-block, or a forward-genesis-block
+        /// This is important as the blocktree initialization assume that all block between the sync pivot and
+        /// `long.MaxValue` exist. Additionally, it makes for a useful trigger for aux cleanup as when
+        /// it move (not yet) you can arbitrarily remove (or add) any blocks before it.
         /// </summary>
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
         bool WasInitialSyncPivotSet { get; }
