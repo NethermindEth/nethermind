@@ -25,7 +25,6 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ClearExtensions;
 using NUnit.Framework;
