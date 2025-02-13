@@ -17,5 +17,7 @@ namespace Nethermind.Network.Rlpx
         int LocalPort { get; }
 
         event EventHandler<SessionEventArgs> SessionCreated;
+
+        ISessionMonitor SessionMonitor { get; }
     }
 }

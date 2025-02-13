@@ -23,10 +23,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Stats.Model;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 using Nethermind.Specs;
@@ -37,6 +39,7 @@ using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -58,6 +61,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         private ISyncConfig _syncConfig = null!;
         private ISyncProgressResolver _syncProgressResolver = null!;
         private EthSyncingInfo _ethSyncingInfo;
+        private IPeerPool _peerPool;
+        private IRlpxHost _rlpxPeer;
 
         [SetUp]
         public void Setup()
@@ -75,13 +80,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
                 new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
+            _peerPool = Substitute.For<IPeerPool>();
+            _rlpxPeer = Substitute.For<IRlpxHost>();
 
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardSubscription(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -217,6 +224,37 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
+            return jsonRpcResult;
+        }
+
+        private JsonRpcResult GetPeerEventsAddResult(PeerEventArgs peerEventArgs, out string subscriptionId, bool shouldReceiveResult = true)
+        {
+            PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+            JsonRpcResult jsonRpcResult = new();
+            ManualResetEvent manualResetEvent = new(false);
+            peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult = j;
+                manualResetEvent.Set();
+            }));
+            _peerPool.PeerAdded += Raise.EventWith(new object(), peerEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+            subscriptionId = peerEventsSubscription.Id;
+            return jsonRpcResult;
+        }
+        private JsonRpcResult GetPeerEventsRemovedResult(PeerEventArgs peerEventArgs, out string subscriptionId, bool shouldReceiveResult = true)
+        {
+            PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
+            JsonRpcResult jsonRpcResult = new();
+            ManualResetEvent manualResetEvent = new(false);
+            peerEventsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult = j;
+                manualResetEvent.Set();
+            }));
+            _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
+            subscriptionId = peerEventsSubscription.Id;
             return jsonRpcResult;
         }
 

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../../src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj" />
+  <Project Path="DocGen.csproj" />
+</Solution>

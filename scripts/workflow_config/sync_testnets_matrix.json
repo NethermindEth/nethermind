@@ -72,7 +72,7 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "taiko-mainnet",
+    "network": "taiko-alethia",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

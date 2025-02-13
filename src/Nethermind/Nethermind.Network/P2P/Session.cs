@@ -178,6 +178,8 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
+            MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.ReadableBytes));
+
             RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
 
             if (_logger.IsTrace)
@@ -229,6 +231,8 @@ namespace Nethermind.Network.P2P
                 message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
                 int size = _packetSender.Enqueue(message);
 
+                MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
+
                 RecordOutgoingMessageMetric(message, size);
 
                 Interlocked.Add(ref Metrics.P2PBytesSent, size);
@@ -261,6 +265,8 @@ namespace Nethermind.Network.P2P
             int dynamicMessageCode = packet.PacketType;
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
+
+            MsgReceived?.Invoke(this, new PeerEventArgs(_node, packet.Protocol, packet.PacketType, packet.Data.Length));
 
             RecordIncomingMessageMetric(protocol, messageId, packet.Data.Length);
 
@@ -543,6 +549,8 @@ namespace Nethermind.Network.P2P
         public event EventHandler<DisconnectEventArgs> Disconnected;
         public event EventHandler<EventArgs> HandshakeComplete;
         public event EventHandler<EventArgs> Initialized;
+        public event EventHandler<PeerEventArgs> MsgReceived;
+        public event EventHandler<PeerEventArgs> MsgDelivered;
 
         public void Dispose()
         {

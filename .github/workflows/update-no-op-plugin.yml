@@ -32,8 +32,8 @@ jobs:
         run: |
           rm -rf src/Nethermind/Nethermind.Optimism
           rm -rf src/Nethermind/Nethermind.Optimism.Test
-          sed -i "/Nethermind.Optimism/d" src/Nethermind/Nethermind.sln
-          sed -i "/Nethermind.Optimism.Test/d" src/Nethermind/Nethermind.sln
+          sed -i "/Nethermind.Optimism/d" src/Nethermind/Nethermind.slnx
+          sed -i "/Nethermind.Optimism.Test/d" src/Nethermind/Nethermind.slnx
       - name: Push changes
         run: |
           git config user.name "${{ github.actor }}"

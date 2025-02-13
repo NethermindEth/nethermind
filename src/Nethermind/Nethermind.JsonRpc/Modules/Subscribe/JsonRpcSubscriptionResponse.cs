@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         [JsonPropertyName("method")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public new string MethodName => "eth_subscription";
+        public new string MethodName { get; set; }
 
         [JsonPropertyName("params")]
         [JsonPropertyOrder(2)]

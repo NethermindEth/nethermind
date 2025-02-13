@@ -302,7 +302,13 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
-            .AddScoped<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+
+            // The direct implementation is decorated by merge plugin (not the interface)
+            // so its  declared on its own and other use is binded.
+            .AddScoped<BlockDownloader>()
+            .Add<IPosTransitionHook, NoPosTransition>()
+            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 

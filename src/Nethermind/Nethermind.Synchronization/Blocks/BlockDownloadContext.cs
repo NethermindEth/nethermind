@@ -71,6 +71,8 @@ namespace Nethermind.Synchronization.Blocks
 
         public List<Hash256> NonEmptyBlockHashes { get; }
 
+        public bool DownloadReceipts => _downloadReceipts;
+
         public IReadOnlyList<Hash256> GetHashesByOffset(int offset, int maxLength)
         {
             var hashesToRequest =
