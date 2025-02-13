@@ -70,7 +70,7 @@ public class ReceiptSyncFeedTests
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
             _receiptStorage,
-            new MemorySyncPointers(),
+            new MemorySyncPointers(_syncingToBlockTree, _syncConfig),
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),

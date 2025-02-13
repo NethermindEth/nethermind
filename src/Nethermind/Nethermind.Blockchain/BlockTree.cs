@@ -100,9 +100,6 @@ namespace Nethermind.Blockchain
 
         public bool WasInitialSyncPivotSet { get; private set; }
 
-        public long AncientBodiesBarrier => Math.Max(1, Math.Min(SyncPivot.BlockNumber, _syncConfig.AncientBodiesBarrier));
-        public long AncientReceiptsBarrier => Math.Max(1, Math.Min(SyncPivot.BlockNumber, Math.Max(AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier)));
-
         public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;
@@ -1573,6 +1570,7 @@ namespace Nethermind.Blockchain
             if (reason == IBlockTree.SyncPivotUpdateReason.PivotUpdator)
             {
                 if (WasInitialSyncPivotSet) throw new InvalidOperationException("Attempted to update sync pivot from pivot updater when sync pivot was already set.");
+                WasInitialSyncPivotSet = true;
                 DoUpdateSyncPivot(syncPivot.blockNumber, syncPivot.blockHash);
             }
             else

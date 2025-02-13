@@ -44,7 +44,6 @@ public class BodiesSyncFeedTests
 
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
-        _syncPointers = new MemorySyncPointers();
 
         _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
         _syncConfig = new TestSyncConfig()
@@ -60,6 +59,8 @@ public class BodiesSyncFeedTests
             .WithSyncConfig(_syncConfig)
             .WithBlocksDb(_blocksDb)
             .TestObject;
+
+        _syncPointers = new MemorySyncPointers(_syncingToBlockTree, _syncConfig);
 
         for (int i = 1; i < 100; i++)
         {

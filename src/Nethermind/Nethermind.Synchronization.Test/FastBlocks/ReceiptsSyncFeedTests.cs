@@ -97,7 +97,6 @@ public class ReceiptsSyncFeedTests
     public void Setup()
     {
         _receiptStorage = Substitute.For<IReceiptStorage>();
-        _syncPointers = new MemorySyncPointers();
         _metadataDb = new TestMemDb();
 
         _syncConfig = new TestSyncConfig { FastSync = true };
@@ -107,6 +106,7 @@ public class ReceiptsSyncFeedTests
         _blockTree = Substitute.For<IBlockTree>();
         _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
+        _syncPointers = new MemorySyncPointers(_blockTree, _syncConfig);
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
 
@@ -277,8 +277,8 @@ public class ReceiptsSyncFeedTests
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
-        _blockTree.AncientReceiptsBarrier.Returns(AncientBarrierInConfig);
-        _blockTree.AncientBodiesBarrier.Returns(AncientBarrierInConfig);
+        _syncPointers.AncientReceiptsBarrier.Returns(AncientBarrierInConfig);
+        _syncPointers.AncientBodiesBarrier.Returns(AncientBarrierInConfig);
         _pivotNumber = AncientBarrierInConfig + 1_000_000;
         _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
         if (previousBarrierInDb is not null)
@@ -303,11 +303,11 @@ public class ReceiptsSyncFeedTests
         _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash));
         if (_syncConfig.AncientReceiptsBarrier == 0)
         {
-            _blockTree.AncientReceiptsBarrier.Returns(1);
+            _syncPointers.AncientReceiptsBarrier.Returns(1);
         }
         else
         {
-            _blockTree.AncientReceiptsBarrier.Returns(_syncConfig.AncientReceiptsBarrier);
+            _syncPointers.AncientReceiptsBarrier.Returns(_syncConfig.AncientReceiptsBarrier);
         }
 
         _feed = new ReceiptsSyncFeed(
@@ -446,7 +446,6 @@ public class ReceiptsSyncFeedTests
     [Test]
     public void Is_fast_block_bodies_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
     {
-        _blockTree = Substitute.For<IBlockTree>();
         _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
@@ -456,8 +455,8 @@ public class ReceiptsSyncFeedTests
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-        _blockTree.AncientReceiptsBarrier.Returns(1);
         _syncPointers = Substitute.For<ISyncPointers>();
+        _syncPointers.AncientReceiptsBarrier.Returns(1);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
 
         ReceiptsSyncFeed feed = CreateFeed();

@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => _blockTree.AncientBodiesBarrier;
+        protected override long SyncConfigBarrierCalc => _syncPointers.AncientBodiesBarrier;
         protected override Func<bool> HasPivot =>
             () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
 
@@ -80,16 +80,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _blockTree.AncientBodiesBarrier)
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncPointers.AncientBodiesBarrier)
             {
                 _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _blockTree.AncientBodiesBarrier;
+                _barrier = _syncPointers.AncientBodiesBarrier;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _blockTree.AncientBodiesBarrier);
+            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncPointers.AncientBodiesBarrier);
         }
 
         private void ResetSyncStatusList()
@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
-                _blockTree.AncientBodiesBarrier);
+                _syncPointers.AncientBodiesBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;

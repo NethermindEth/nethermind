@@ -94,10 +94,11 @@ namespace Nethermind.Facade.Test.Eth
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.SyncPivot.Returns((1000, Hash256.Zero));
-            blockTree.AncientBodiesBarrier.Returns(800);
-            blockTree.AncientReceiptsBarrier.Returns(900);
 
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            syncPointers.AncientBodiesBarrier.Returns(800);
+            syncPointers.AncientReceiptsBarrier.Returns(900);
+
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingreceipts);

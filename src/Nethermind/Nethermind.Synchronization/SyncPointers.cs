@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,6 +18,8 @@ public class SyncPointers : ISyncPointers
 {
     private readonly IDb _blocksDb;
     private readonly IDb _defaultReceiptDbColumn;
+    private readonly ISyncConfig _syncConfig;
+    private readonly IBlockTree _blockTree;
 
     private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
@@ -45,11 +50,20 @@ public class SyncPointers : ISyncPointers
         }
     }
 
+    public long AncientBodiesBarrier => Math.Max(1, Math.Min(_blockTree.SyncPivot.BlockNumber, _syncConfig.AncientBodiesBarrier));
+    public long AncientReceiptsBarrier => Math.Max(1, Math.Min(_blockTree.SyncPivot.BlockNumber, Math.Max(AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier)));
 
-    public SyncPointers([KeyFilter(DbNames.Blocks)] IDb blocksDb, IColumnsDb<ReceiptsColumns> receiptsDb, IReceiptConfig receiptConfig)
+    public SyncPointers(
+        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+        IColumnsDb<ReceiptsColumns> receiptsDb,
+        IBlockTree blockTree,
+        ISyncConfig syncConfig,
+        IReceiptConfig receiptConfig)
     {
         _blocksDb = blocksDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        _syncConfig = syncConfig;
+        _blockTree = blockTree;
 
         LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeLong();
 

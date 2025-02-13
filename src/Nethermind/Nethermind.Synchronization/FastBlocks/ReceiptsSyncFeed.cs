@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => _blockTree.AncientReceiptsBarrier;
+        protected override long SyncConfigBarrierCalc => _syncPointers.AncientReceiptsBarrier;
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
@@ -81,16 +81,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _blockTree.AncientReceiptsBarrier)
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncPointers.AncientReceiptsBarrier)
             {
                 _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _blockTree.AncientReceiptsBarrier;
+                _barrier = _syncPointers.AncientReceiptsBarrier;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _blockTree.AncientReceiptsBarrier);
+            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncPointers.AncientReceiptsBarrier);
         }
 
         private void ResetSyncStatusList()
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedReceiptBlockNumber,
-                _blockTree.AncientReceiptsBarrier);
+                _syncPointers.AncientReceiptsBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; }

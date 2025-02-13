@@ -186,9 +186,6 @@ namespace Nethermind.Blockchain
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
         bool WasInitialSyncPivotSet { get; }
 
-        public long AncientBodiesBarrier { get; }
-        public long AncientReceiptsBarrier { get; }
-
         /// For sync pivot to be moved, there are two case:
         /// 1. Initial setting of SyncPivot. There is one restriction for this case:
         ///     1. the node is not synced yet.
