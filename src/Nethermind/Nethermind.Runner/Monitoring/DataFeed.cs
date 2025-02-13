@@ -316,8 +316,8 @@ public class DataFeed
         public UInt256 BaseFeePerGas { get; set; }
         public ulong BlobGasUsed { get; set; }
         public ulong ExcessBlobGas { get; set; }
-        public TransactionForWeb[] Tx { get; set; } 
-        public ReceiptForWeb[] Receipts { get; set; } 
+        public TransactionForWeb[] Tx { get; set; }
+        public ReceiptForWeb[] Receipts { get; set; }
         public ReceiptForWeb[] Withdrawals { get; set; }
     }
     private class ReceiptForWeb
