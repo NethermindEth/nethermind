@@ -3,8 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Optimism.CL.Decoding;
 
-namespace Nethermind.Optimism.CL.Derivation;
+namespace Nethermind.Optimism.CL.Decoding;
 
 // Compressed batches of L2 txs are split into multiple frames.
 // This class is used to merge these frames back together

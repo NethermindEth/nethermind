@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Optimism.CL.Decoding;
 
-namespace Nethermind.Optimism.CL.Derivation;
+namespace Nethermind.Optimism.CL.Decoding;
 
 public interface IChannelStorage
 {

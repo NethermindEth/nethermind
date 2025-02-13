@@ -11,6 +11,8 @@ public class L2BlockTree : IL2BlockTree
     // TODO: pruning
     private readonly List<L2Block> _blocks = new();
 
+    public ulong HeadBlockNumber => _blocks[_blocks.Count - 1].Number;
+
     public L2Block? GetBlockByNumber(ulong number)
     {
         if (_blocks.Count == 0 || number < _blocks[0].Number)

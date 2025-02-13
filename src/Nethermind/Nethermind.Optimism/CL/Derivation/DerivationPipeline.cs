@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Numerics;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
-using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
@@ -22,6 +22,8 @@ public class DerivationPipeline : IDerivationPipeline
     private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
 
+    private readonly Task _mainTask;
+
     public DerivationPipeline(IPayloadAttributesDeriver payloadAttributesDeriver, IL2BlockTree l2BlockTree,
         IL1Bridge l1Bridge, ILogger logger)
     {
@@ -29,35 +31,45 @@ public class DerivationPipeline : IDerivationPipeline
         _l2BlockTree = l2BlockTree;
         _l1Bridge = l1Bridge;
         _logger = logger;
-    }
-
-    public async Task<(OptimismPayloadAttributes[], SystemConfig[], L1BlockInfo[])> ConsumeV1Batches(L2Block l2Parent, BatchV1[] batches)
-    {
-        List<OptimismPayloadAttributes> payloadAttributes = new();
-        List<SystemConfig> systemConfigs = new();
-        List<L1BlockInfo> l1BlockInfos = new();
-        foreach (BatchV1 batch in batches)
+        _mainTask = new Task(async () =>
         {
-            var oneBatchProcessingResult = await ProcessOneBatch(l2Parent, batch);
-            if (oneBatchProcessingResult is not null)
+            // TODO: cancellation
+            while (true)
             {
-                payloadAttributes.AddRange(oneBatchProcessingResult.Value.Item1);
-                systemConfigs.AddRange(oneBatchProcessingResult.Value.Item2);
-                l1BlockInfos.AddRange(oneBatchProcessingResult.Value.Item3);
+                (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync();
+                await ConsumeV1Batches(l2Parent, batch);
             }
-        }
-        return (payloadAttributes.ToArray(), systemConfigs.ToArray(), l1BlockInfos.ToArray());
+        });
     }
 
-    private async Task<(OptimismPayloadAttributes[], SystemConfig[], L1BlockInfo[])?> ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
+    public void Start()
+    {
+        _mainTask.Start();
+    }
+
+    private readonly Channel<(L2Block L2Parent, BatchV1 Batch)> _inputChannel = Channel.CreateBounded<(L2Block, BatchV1)>(20);
+    public ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing => _inputChannel.Writer;
+
+    private readonly Channel<PayloadAttributesRef> _outputChannel = Channel.CreateBounded<PayloadAttributesRef>(20);
+    public ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes => _outputChannel.Reader;
+
+    private async Task ConsumeV1Batches(L2Block parent, BatchV1 batch)
+    {
+        var result = await ProcessOneBatch(parent, batch);
+        foreach (PayloadAttributesRef payloadAttributes in result)
+        {
+            await _outputChannel.Writer.WriteAsync(payloadAttributes);
+        }
+    }
+
+    private async Task<PayloadAttributesRef[]> ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
     {
         _logger.Error($"Processing batch RelTimestamp: {batch.RelTimestamp}");
         ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
         if (expectedParentNumber < l2Parent.Number)
         {
-            _logger.Error($"Old batch. Skipping. Expected {expectedParentNumber}, got {l2Parent.Number}");
-            return null;
+            throw new ArgumentException("Old batch");
         }
 
         if (!l2Parent.Hash.Bytes.StartsWith(batch.ParentCheck))
@@ -98,7 +110,7 @@ public class DerivationPipeline : IDerivationPipeline
         var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
 
         _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
-        return (pa.Item1, pa.Item2, pa.Item3);
+        return pa;
     }
 
     private ulong GetNumberOfBits(BigInteger number)

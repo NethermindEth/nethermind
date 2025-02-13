@@ -88,7 +88,18 @@ public class OptimismCL : IDisposable
         {
             Hash = block.Hash,
             Number = (ulong)block.Number!.Value,
-            Timestamp = block.Timestamp.ToUInt64(null),
+            PayloadAttributes = new()
+            {
+                EIP1559Params = null,
+                GasLimit = block.GasLimit,
+                NoTxPool = true,
+                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
+                PrevRandao = block.MixHash,
+                SuggestedFeeRecipient = block.Miner,
+                Timestamp = block.Timestamp.ToUInt64(null),
+                Transactions = null,
+                Withdrawals = Array.Empty<Withdrawal>(),
+            },
             ParentHash = block.ParentHash,
             SystemConfig = config,
             L1BlockInfo = l1BlockInfo,

@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Decoding;
 
 // TODO: maybe we should avoid using Rlp library at all?
 // TODO: Split into singular and span decoders

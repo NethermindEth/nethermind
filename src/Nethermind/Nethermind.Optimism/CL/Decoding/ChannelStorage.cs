@@ -3,10 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism.CL.Derivation;
+namespace Nethermind.Optimism.CL.Decoding;
 
 public class ChannelStorage : IChannelStorage
 {

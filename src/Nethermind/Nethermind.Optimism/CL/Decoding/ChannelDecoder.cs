@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Decoding;
 
 public class ChannelDecoder
 {
