@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -15,6 +16,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -262,7 +264,27 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            _api.FinalizationManager = InitializeMergeFinilizationManager();
+
+            IBlockFinalizationManager finalizer = InitializeMergeFinilizationManager();
+
+            // Connect the checkpoint of block processor to the finality.
+            // When a new block is finalized it should be the checkpoint for the block processor to return to.
+            IBlockProcessor? processor = _api.MainBlockProcessor;
+            if (processor != null)
+            {
+                finalizer.BlocksFinalized += (_, e) =>
+                {
+                    IReadOnlyList<BlockHeader> finalized = e.FinalizedBlocks;
+
+                    if (finalized.Count == 0)
+                        return;
+
+                    BlockHeader? last = finalized.Count == 1 ? finalized[0] : finalized.MaxBy(block => block.Number);
+                    if (last != null) processor.UpdateCheckpoint(last.Number, last.StateRoot!);
+                };
+            }
+
+            _api.FinalizationManager = finalizer;
 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
