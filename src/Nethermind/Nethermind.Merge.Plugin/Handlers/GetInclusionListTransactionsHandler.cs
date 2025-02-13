@@ -4,8 +4,6 @@
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Rlp;
-using System.Linq;
-using Nethermind.Consensus.Producers;
 using Nethermind.Blockchain;
 using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
@@ -17,11 +15,28 @@ public class GetInclusionListTransactionsHandler(
     ITxSource inclusionListTxSource)
     : IHandler<byte[][]>
 {
+    private const int MaxILSizeBytes = 8000;
+
     public ResultWrapper<byte[][]> Handle()
     {
-        // todo: limit size of IL?
+        // todo: get top transactions from txpool or something else?
         IEnumerable<Transaction> txs = inclusionListTxSource.GetTransactions(blockTree.Head!.Header, long.MaxValue);
-        byte[][] txBytes = [.. txs.Select(tx => Rlp.Encode(tx).Bytes)];
+        byte[][] txBytes = [.. DecodeTransactionsUpToLimit(txs)];
         return ResultWrapper<byte[][]>.Success(txBytes);
+    }
+
+    private static IEnumerable<byte[]> DecodeTransactionsUpToLimit(IEnumerable<Transaction> txs)
+    {
+        int size = 0;
+        foreach (Transaction tx in txs)
+        {
+            byte[] txBytes = Rlp.Encode(tx).Bytes;
+            size += txBytes.Length;
+            if (size > MaxILSizeBytes)
+            {
+                break;
+            }
+            yield return txBytes;
+        }
     }
 }
