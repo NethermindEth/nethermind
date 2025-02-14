@@ -403,6 +403,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notReachedFullSyncTransition = best.Header < best.TargetBlock - TotalSyncLag;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+
+            bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
             bool stateNotDownloadedYet = best.State == 0;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
@@ -413,7 +415,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           // OR standard fast sync)
                           notInAStickyFullSync &&
                           notReachedFullSyncTransition &&
-                          stateNotDownloadedYet &&
+                          (stateNotDownloadedYet || longRangeCatchUp) &&
                           notNeedToWaitForHeaders;
 
             if (_logger.IsTrace)
@@ -425,6 +427,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
+                    (nameof(longRangeCatchUp), longRangeCatchUp),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
 
@@ -586,6 +589,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
+
+            bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
             bool stateNotDownloadedYet = best.State == 0;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
@@ -596,7 +601,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           hasFastSyncBeenActive &&
                           hasAnyPostPivotPeer &&
                           (notInFastSync || stickyStateNodes) &&
-                          stateNotDownloadedYet &&
+                          (stateNotDownloadedYet || longRangeCatchUp) &&
                           notInAStickyFullSync &&
                           notNeedToWaitForHeaders;
 
@@ -609,6 +614,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
                     ($"{nameof(notInFastSync)}||{nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
                     (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
+                    (nameof(longRangeCatchUp), longRangeCatchUp),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
