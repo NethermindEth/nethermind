@@ -123,7 +123,13 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
-        _api.WorldStateManager!.InitializeNetwork(new GetNodeDataTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager), new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
+        _api.WorldStateManager!.InitializeNetwork(
+            new PathNodeRecovery(
+                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
+                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
+                _api.LogManager
+            )
+        );
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
@@ -346,6 +352,9 @@ public class InitializeNetwork : IStep
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
 
+        _api.TrustedNodesManager = new TrustedNodesManager(initConfig.TrustedNodesPath, _api.LogManager);
+        await _api.TrustedNodesManager.InitAsync();
+
         // ToDo: PeersDB is registered outside dbProvider
         string dbName = INetworkStorage.PeerDb;
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
@@ -411,9 +420,9 @@ public class InitializeNetwork : IStep
         }
 
         CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
-            ? new(_api.StaticNodesManager, nodesLoader)
-            : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
-        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
+            ? new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader)
+            : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
             _api.PeerPool,

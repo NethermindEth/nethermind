@@ -23,9 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Healing;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -54,65 +52,68 @@ public class HealingTreeTests
     }
 
     [Test]
-    public void recovery_works_state_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
+    public void recovery_works_state_trie([Values(true, false)] bool successfullyRecovered)
     {
-        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery)
+        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, IPathRecovery recovery)
         {
             HealingStateTree stateTree = new(trieStore, LimboLogs.Instance);
             stateTree.InitializeNetwork(recovery);
             return stateTree;
         }
 
-        byte[] path = { 1, 2 };
-        recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStateTree, r => PathMatch(r, path, 0));
+        TreePath path = TreePath.FromNibble([1, 2]);
+        Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
+        recovery_works(successfullyRecovered, null, path, fullPath, CreateHealingStateTree);
     }
 
-    private static bool PathMatch(GetTrieNodesRequest r, byte[] path, int lastPathIndex) =>
-        r.RootHash == _key
-        && r.AccountAndStoragePaths.Count == 1
-        && r.AccountAndStoragePaths[0].Group.Length == lastPathIndex + 1
-        && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[lastPathIndex], Nibbles.EncodePath(path));
-
     [Test]
-    public void recovery_works_storage_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
+    public void recovery_works_storage_trie([Values(true, false)] bool successfullyRecovered)
     {
-        static HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery) =>
-            new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, _key, recovery);
-        byte[] path = { 1, 2 };
-        byte[] addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes).Bytes.ToArray();
-        recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStorageTree,
-            r => PathMatch(r, path, 1) && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], addressPath));
+        Hash256 addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+        HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, IPathRecovery recovery) =>
+            new(trieStore.GetTrieStore(addressPath), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA,
+                _key, recovery);
+
+        TreePath path = TreePath.FromNibble([1, 2]);
+        Hash256 fullPath = new Hash256("1200000000000000000000000000000000000000000000000000000000000000");
+
+        recovery_works(successfullyRecovered, addressPath, path, fullPath, CreateHealingStorageTree);
     }
 
     private void recovery_works<T>(
-        bool isMainThread,
         bool successfullyRecovered,
-        byte[] path,
-        Func<ITrieStore, ITrieNodeRecovery<GetTrieNodesRequest>, T> createTrie,
-        Expression<Predicate<GetTrieNodesRequest>> requestMatch)
+        Hash256? address,
+        TreePath path,
+        Hash256 fullPath,
+        Func<ITrieStore, IPathRecovery, T> createTrie)
         where T : PatriciaTree
     {
         ITrieStore trieStore = Substitute.For<ITrieStore>();
-        trieStore.FindCachedOrUnknown(null, TreePath.Empty, _key).Returns(
-            k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
-            k => new TrieNode(NodeType.Leaf) { Key = path });
-        trieStore.GetTrieStore(Arg.Any<Hash256?>())
+        trieStore.FindCachedOrUnknown(address, TreePath.Empty, _key).Returns(
+            k => throw new MissingTrieNodeException("", null, path, _key),
+            k => new TrieNode(NodeType.Leaf) { Key = Nibbles.BytesToNibbleBytes(fullPath.Bytes)[path.Length..] });
+        trieStore.GetTrieStore(Arg.Is<Hash256?>(address))
             .Returns((callInfo) => new ScopedTrieStore(trieStore, (Hash256?)callInfo[0]));
         TestMemDb db = new();
         trieStore.TrieNodeRlpStore.Returns(db);
 
-        ITrieNodeRecovery<GetTrieNodesRequest> recovery = Substitute.For<ITrieNodeRecovery<GetTrieNodesRequest>>();
-        recovery.CanRecover.Returns(isMainThread);
-        recovery.Recover(_key, Arg.Is(requestMatch)).Returns(successfullyRecovered ? Task.FromResult<byte[]?>(_rlp) : Task.FromResult<byte[]?>(null));
+        IPathRecovery recovery = Substitute.For<IPathRecovery>();
+        recovery.Recover(Arg.Any<Hash256>(), Arg.Is<Hash256?>(address), Arg.Is<TreePath>(path), _key, fullPath)
+            .Returns(successfullyRecovered ? Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>?>(
+                new ArrayPoolList<(TreePath, byte[])>(1)
+                {
+                    { (path, _rlp) }
+                }
+            ) : Task.FromResult<IOwnedReadOnlyList<(TreePath, byte[])>?>(null));
 
         T trie = createTrie(trieStore, recovery);
 
-        Action action = () => trie.Get(stackalloc byte[] { 1, 2, 3 }, _key);
-        if (isMainThread && successfullyRecovered)
+        Action action = () => trie.Get(fullPath.Bytes, _key);
+        if (successfullyRecovered)
         {
             action.Should().NotThrow();
             trieStore.Received()
-                .Set(null, TreePath.FromNibble(path), ValueKeccak.Compute(_rlp), _rlp);
+                .Set(address, path, ValueKeccak.Compute(_rlp), _rlp);
         }
         else
         {
@@ -147,15 +148,6 @@ public class HealingTreeTests
             return new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
-                .OnBuild((ctx) =>
-                {
-                    ILogManager logManager = ctx.Resolve<ILogManager>();
-                    ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
-                    // Always recover flag
-                    ctx.Resolve<IWorldStateManager>().InitializeNetwork(
-                        new GetNodeDataTrieNodeRecovery(peerPool, logManager, true),
-                        new SnapTrieNodeRecovery(peerPool, logManager, true));
-                })
                 .Build();
         }
 
@@ -215,7 +207,7 @@ public class HealingTreeTests
             IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
             mainWorldState.StateRoot = stateRoot;
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 100; i++)
             {
                 Address address = new Address(Keccak.Compute(i.ToString()));
                 mainWorldState.GetBalance(address).Should().Be((UInt256)i);
@@ -225,7 +217,7 @@ public class HealingTreeTests
             Address storageAddress = new Address(Keccak.Compute("storage"));
             mainWorldState.GetBalance(storageAddress).Should().Be((UInt256)100);
             mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
-            for (int i = 1; i < 10; i++)
+            for (int i = 1; i < 100; i++)
             {
                 mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray().Should().BeEquivalentTo(i.ToBigEndianByteArray());
             }

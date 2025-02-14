@@ -370,14 +370,14 @@ namespace Nethermind.Trie
             }
             catch (RlpException rlpException)
             {
-                ThrowDecodingError(rlpException);
+                ThrowDecodingError(rlpException, path);
             }
 
             [DoesNotReturn]
             [StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException)
+            void ThrowDecodingError(RlpException rlpException, in TreePath path)
             {
-                throw new TrieNodeException($"Error when decoding node {Keccak}", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+                throw new TrieNodeException($"Error when decoding node {Keccak}", path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
             }
         }
 
@@ -408,7 +408,7 @@ namespace Nethermind.Trie
 
             if (!DecodeRlp(rlp.GetRlpStream(), bufferPool, out int numberOfItems))
             {
-                ThrowUnexpectedNumberOfItems(numberOfItems);
+                ThrowUnexpectedNumberOfItems(numberOfItems, path);
             }
 
             [DoesNotReturn]
@@ -427,9 +427,9 @@ namespace Nethermind.Trie
 
             [DoesNotReturn]
             [StackTraceHidden]
-            void ThrowUnexpectedNumberOfItems(int numberOfItems)
+            void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path)
             {
-                throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
+                throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
             }
         }
 

@@ -119,7 +119,7 @@ public class TxPoolContentListsTests
                     maxBytesPerTxList,
                     maxTransactionsLists
                 ];
-            };
+            }
 
             yield return new TestCaseData(args: MakeTestData(new Dictionary<int, int[]> { { 1, [1] }, { 2, [2] }, { 3, [3] } }, [], 2 * Transaction.BaseTxGasCost, 1000, 2))
             {

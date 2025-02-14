@@ -505,7 +505,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
+                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }),
                     DumpOptions.Geth);
             }
 
