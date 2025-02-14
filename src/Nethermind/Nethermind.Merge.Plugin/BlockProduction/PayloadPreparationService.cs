@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -43,6 +44,7 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
+    private readonly IEthereumEcdsa _ecdsa;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
@@ -53,6 +55,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
+        ulong chainId,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
         TimeSpan? improvementDelay = null,
         TimeSpan? minTimeForProduction = null)
@@ -60,6 +63,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         _blockProducer = blockProducer;
         _blockImprovementContextFactory = blockImprovementContextFactory;
         _timePerSlot = timePerSlot;
+        _ecdsa = new EthereumEcdsa(chainId);
         TimeSpan timeout = timePerSlot;
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
@@ -73,7 +77,7 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
-        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
+        string payloadId = payloadAttributes.GetPayloadId(parentHeader, _ecdsa);
         if (!_payloadStorage.ContainsKey(payloadId))
         {
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);

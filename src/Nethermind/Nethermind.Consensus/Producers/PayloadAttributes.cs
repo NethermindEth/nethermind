@@ -11,6 +11,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using System.Collections.Generic;
+using Nethermind.Crypto;
+using Nethermind.Consensus.Decoders;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -25,6 +28,8 @@ public class PayloadAttributes
     public Withdrawal[]? Withdrawals { get; set; }
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    public byte[][]? InclusionListTransactions { get; set; }
 
     public virtual long? GetGasLimit() => null;
 
@@ -47,6 +52,11 @@ public class PayloadAttributes
             sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
         }
 
+        if (InclusionListTransactions is not null)
+        {
+            sb.Append($", {nameof(InclusionListTransactions)} count: {InclusionListTransactions.Length}");
+        }
+
         sb.Append('}');
 
         return sb.ToString();
@@ -55,13 +65,21 @@ public class PayloadAttributes
 
     private string? _payloadId;
 
-    public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
+    public string GetPayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa = null) => _payloadId ??= ComputePayloadId(parentHeader, ecdsa);
 
-    private string ComputePayloadId(BlockHeader parentHeader)
+    public IEnumerable<Transaction>? GetInclusionListTransactions(ulong chainId)
+        => GetInclusionListTransactions(new EthereumEcdsa(chainId));
+
+    public IEnumerable<Transaction>? GetInclusionListTransactions(IEthereumEcdsa ecdsa)
+        => _inclusionListTransactions ??= InclusionListDecoder.Decode(InclusionListTransactions, ecdsa);
+
+    private IEnumerable<Transaction>? _inclusionListTransactions;
+
+    private string ComputePayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa)
     {
         int size = ComputePayloadIdMembersSize();
         Span<byte> inputSpan = stackalloc byte[size];
-        WritePayloadIdMembers(parentHeader, inputSpan);
+        WritePayloadIdMembers(parentHeader, inputSpan, ecdsa);
         return ComputePayloadId(inputSpan);
     }
 
@@ -71,7 +89,8 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list transactions root hash
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -79,7 +98,7 @@ public class PayloadAttributes
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
 
-    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
+    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan, IEthereumEcdsa? ecdsa)
     {
         int position = 0;
 
@@ -107,6 +126,16 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
+        if (InclusionListTransactions is not null)
+        {
+            Transaction[] txs = [.. GetInclusionListTransactions(ecdsa)!];
+            Hash256 inclusionListTransactionsRootHash = txs.Length == 0
+                ? PatriciaTree.EmptyTreeHash
+                : new TxTrie(txs).RootHash;
+            inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 
@@ -166,6 +195,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { InclusionListTransactions: not null } => EngineApiVersions.Osaka,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
@@ -174,6 +204,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true } => EngineApiVersions.Osaka,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

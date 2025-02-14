@@ -55,7 +55,8 @@ public partial class EngineModuleTests
             improvementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
-            timePerSlot);
+            timePerSlot,
+            chain.SpecProvider.ChainId);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -158,7 +159,8 @@ public partial class EngineModuleTests
             improvementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
-            timePerSlot);
+            timePerSlot,
+            chain.SpecProvider.ChainId);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -207,7 +209,8 @@ public partial class EngineModuleTests
             improvementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
-            timePerSlot);
+            timePerSlot,
+            chain.SpecProvider.ChainId);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
