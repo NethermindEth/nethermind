@@ -23,7 +23,6 @@ public class InclusionListValidatorTests
     private ISpecProvider _specProvider;
     private InclusionListValidator _inclusionListValidator;
     private Transaction _validTx;
-    private byte[] _validTxBytes;
 
     [SetUp]
     public void Setup()
@@ -42,8 +41,6 @@ public class InclusionListValidatorTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-
-        _validTxBytes = Rlp.Encode(_validTx).Bytes;
     }
 
     [Test]
@@ -52,7 +49,7 @@ public class InclusionListValidatorTests
         var block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(30_000_000)
-            .WithInclusionListTransactions([_validTxBytes])
+            .WithInclusionListTransactions([_validTx])
             .TestObject;
 
         bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
@@ -67,7 +64,7 @@ public class InclusionListValidatorTests
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .WithTransactions(_validTx)
-            .WithInclusionListTransactions([_validTxBytes])
+            .WithInclusionListTransactions([_validTx])
             .TestObject;
 
         bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
@@ -87,7 +84,7 @@ public class InclusionListValidatorTests
         var block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([_validTxBytes])
+            .WithInclusionListTransactions([_validTx])
             .TestObject;
 
         bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);

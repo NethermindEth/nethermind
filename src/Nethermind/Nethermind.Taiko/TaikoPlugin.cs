@@ -215,6 +215,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.InvalidChainTracker!,
                 _beaconSync,
                 _api.LogManager,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
             new TaikoForkchoiceUpdatedHandler(

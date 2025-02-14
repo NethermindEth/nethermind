@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 
@@ -32,7 +33,7 @@ public class TaikoExecutionPayload : ExecutionPayload
         _ => 1
     };
 
-    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
     {
         if (Withdrawals is null && Transactions is null)
         {

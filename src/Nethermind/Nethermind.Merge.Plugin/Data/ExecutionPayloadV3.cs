@@ -3,9 +3,11 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
+using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -21,13 +23,13 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
-        executionPayload.InclusionListTransactions = block.InclusionListTransactions;
+        executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
         return executionPayload;
     }
 
     public new static ExecutionPayloadV3 Create(Block block) => Create<ExecutionPayloadV3>(block);
 
-    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
     {
         if (!base.TryGetBlock(out block, totalDifficulty))
         {
@@ -38,7 +40,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions;
+        block.InclusionListTransactions = InclusionListTransactions is null ? [] : [.. InclusionListDecoder.Decode(InclusionListTransactions, ecdsa!)];
         return true;
     }
 

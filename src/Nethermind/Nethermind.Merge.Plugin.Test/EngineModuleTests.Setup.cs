@@ -126,6 +126,7 @@ public partial class EngineModuleTests
                 invalidChainTracker,
                 chain.BeaconSync,
                 chain.LogManager,
+                chain.SpecProvider.ChainId,
                 newPayloadTimeout,
                 storeReceipts: true,
                 newPayloadCacheSize),

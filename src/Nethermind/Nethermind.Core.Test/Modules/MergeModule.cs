@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
@@ -98,7 +99,8 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
                     ctx.Resolve<IBlockImprovementContextFactory>(),
                     ctx.Resolve<ITimerFactory>(),
                     ctx.Resolve<ILogManager>(),
-                    TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot));
+                    TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot),
+                    ctx.Resolve<ISpecProvider>().ChainId);
             })
             ;
 

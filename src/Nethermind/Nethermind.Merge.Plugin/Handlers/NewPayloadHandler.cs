@@ -46,7 +46,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
-
+    private readonly IEthereumEcdsa _ecdsa;
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
 
@@ -62,6 +62,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
         ILogManager logManager,
+        ulong chainId,
         TimeSpan? timeout = null,
         bool storeReceipts = true,
         int cacheSize = 50)
@@ -79,6 +80,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
+        _ecdsa = new EthereumEcdsa(chainId);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
@@ -101,7 +103,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
+        if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty, _ecdsa))
         {
             if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");

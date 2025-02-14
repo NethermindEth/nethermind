@@ -328,11 +328,11 @@ public partial class EngineModuleTests
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
-        return await PrepareAndGetPayloadResultV1(rpc, startingHead, timestamp, random, feeRecipient);
+        return await PrepareAndGetPayloadResultV1(rpc, startingHead, timestamp, random, feeRecipient, chain.SpecProvider.ChainId);
     }
 
     private async Task<ExecutionPayload> PrepareAndGetPayloadResultV1(
-        IEngineRpcModule rpc, Hash256 currentHead, ulong timestamp, Hash256 random, Address feeRecipient)
+        IEngineRpcModule rpc, Hash256 currentHead, ulong timestamp, Hash256 random, Address feeRecipient, ulong chainId)
     {
         PayloadAttributes? payloadAttributes = new()
         {
@@ -1004,7 +1004,7 @@ public partial class EngineModuleTests
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
         ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcu1 = (await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest,
-            new PayloadAttributes()
+            new PayloadAttributes
             {
                 PrevRandao = TestItem.KeccakA,
                 SuggestedFeeRecipient = Address.Zero,
@@ -1434,7 +1434,7 @@ public partial class EngineModuleTests
                 chain.BlockTree.Head!.Hash!);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResultGen =
                 await rpc.engine_forkchoiceUpdatedV1(forkChoiceStateGen,
-                    new PayloadAttributes()
+                    new PayloadAttributes
                     {
                         Timestamp = Timestamper.UnixTime.Seconds,
                         PrevRandao = prevRandao1,
@@ -1459,7 +1459,7 @@ public partial class EngineModuleTests
             executionPayloadV11.BlockHash, executionPayloadV11.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 =
             await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1,
-                new PayloadAttributes()
+                new PayloadAttributes
                 {
                     Timestamp = Timestamper.UnixTime.Seconds,
                     PrevRandao = prevRandao2,

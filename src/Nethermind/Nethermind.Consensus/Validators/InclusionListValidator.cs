@@ -53,10 +53,8 @@ public class InclusionListValidator : IInclusionListValidator
 
         var blockTxHashes = new HashSet<Hash256>(block.Transactions.Select(tx => tx.Hash));
 
-        foreach (byte[] txBytes in block.InclusionListTransactions)
+        foreach (Transaction tx in block.InclusionListTransactions)
         {
-            Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
             if (blockTxHashes.Contains(tx.Hash))
             {
                 continue;

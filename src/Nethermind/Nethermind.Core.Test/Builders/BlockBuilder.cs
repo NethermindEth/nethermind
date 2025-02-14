@@ -291,7 +291,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithInclusionListTransactions(params byte[][]? inclusionListTransactions)
+        public BlockBuilder WithInclusionListTransactions(params Transaction[]? inclusionListTransactions)
         {
             TestObjectInternal.InclusionListTransactions = inclusionListTransactions;
             return this;

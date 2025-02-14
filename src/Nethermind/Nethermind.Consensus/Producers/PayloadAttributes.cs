@@ -11,8 +11,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using System.Linq;
-using Nethermind.Serialization.Rlp;
+using System.Collections.Generic;
+using Nethermind.Crypto;
+using Nethermind.Consensus.Decoders;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -64,13 +65,21 @@ public class PayloadAttributes
 
     private string? _payloadId;
 
-    public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
+    public string GetPayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa = null) => _payloadId ??= ComputePayloadId(parentHeader, ecdsa);
 
-    private string ComputePayloadId(BlockHeader parentHeader)
+    public IEnumerable<Transaction>? GetInclusionListTransactions(ulong chainId)
+        => GetInclusionListTransactions(new EthereumEcdsa(chainId));
+
+    public IEnumerable<Transaction>? GetInclusionListTransactions(IEthereumEcdsa ecdsa)
+        => _inclusionListTransactions ??= InclusionListDecoder.Decode(InclusionListTransactions, ecdsa);
+
+    private IEnumerable<Transaction>? _inclusionListTransactions;
+
+    private string ComputePayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa)
     {
         int size = ComputePayloadIdMembersSize();
         Span<byte> inputSpan = stackalloc byte[size];
-        WritePayloadIdMembers(parentHeader, inputSpan);
+        WritePayloadIdMembers(parentHeader, inputSpan, ecdsa);
         return ComputePayloadId(inputSpan);
     }
 
@@ -89,7 +98,7 @@ public class PayloadAttributes
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
 
-    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
+    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan, IEthereumEcdsa? ecdsa)
     {
         int position = 0;
 
@@ -122,8 +131,8 @@ public class PayloadAttributes
 
         if (InclusionListTransactions is not null)
         {
-            Transaction[] txs = InclusionListTransactions.Select(tx => Rlp.Decode<Transaction>(tx)).ToArray();
-            Hash256 inclusionListTransactionsRootHash = InclusionListTransactions.Length == 0
+            Transaction[] txs = [.. GetInclusionListTransactions(ecdsa)!];
+            Hash256 inclusionListTransactionsRootHash = txs.Length == 0
                 ? PatriciaTree.EmptyTreeHash
                 : new TxTrie(txs).RootHash;
             inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));

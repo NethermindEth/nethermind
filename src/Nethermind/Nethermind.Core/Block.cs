@@ -28,7 +28,7 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        IEnumerable<byte[]>? inclusionListTransactions = null)
+        IEnumerable<Transaction>? inclusionListTransactions = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
@@ -123,7 +123,7 @@ public class Block
     public byte[][]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
-    public byte[][]? InclusionListTransactions { get; set; }
+    public Transaction[]? InclusionListTransactions { get; set; }
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }

@@ -41,9 +41,10 @@ public partial class EngineModuleTests
         [
             new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         ];
-        byte[][] inclusionListTransactions = []; // empty inclusion list satisfied by default
+        byte[][] inclusionListRaw = []; // empty inclusion list satisfied by default
+        Transaction[] inclusionListTransactions = [];
 
-        string?[] @params = InitForkchoiceParams(chain, inclusionListTransactions, withdrawals);
+        string?[] @params = InitForkchoiceParams(chain, inclusionListRaw, withdrawals);
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
@@ -167,7 +168,8 @@ public partial class EngineModuleTests
             .WithSenderAddress(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        byte[][] inclusionListTransactions = [Rlp.Encode(censoredTx).Bytes];
+        byte[][] inclusionListRaw = [Rlp.Encode(censoredTx).Bytes];
+        Transaction[] inclusionListTransactions = [censoredTx];
 
         Hash256 expectedBlockHash = new(blockHash);
         Block block = ExpectedBlock(chain, blockHash, stateRoot, [], inclusionListTransactions, [], chain.BlockTree.Head!.ReceiptsRoot!, 0);
@@ -227,9 +229,10 @@ public partial class EngineModuleTests
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
         byte[] txBytes = Rlp.Encode(tx).Bytes;
-        byte[][] inclusionListTransactions = [txBytes];
+        byte[][] inclusionListRaw = [txBytes];
+        Transaction[] inclusionListTransactions = [tx];
 
-        string?[] @params = InitForkchoiceParams(chain, inclusionListTransactions);
+        string?[] @params = InitForkchoiceParams(chain, inclusionListRaw);
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
@@ -313,7 +316,7 @@ public partial class EngineModuleTests
         string blockHash,
         string stateRoot,
         Transaction[] transactions,
-        byte[][] inclusionListTransactions,
+        Transaction[] inclusionListTransactions,
         Withdrawal[] withdrawals,
         Hash256 receiptsRoot,
         long gasUsed)
