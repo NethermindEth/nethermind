@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Specs;
@@ -24,7 +25,8 @@ public class L1BlockInfoBuilderTests
         l1BlockInfo.Number.Should().Be(21670913);
         l1BlockInfo.BaseFee.Should().Be(6278383865);
 
-        DepositTransactionBuilder depositTransactionBuilder = new DepositTransactionBuilder(1, new CLChainSpecEngineParameters());
+        var parameters = new CLChainSpecEngineParameters { DepositAddress = TestItem.AddressA };
+        var depositTransactionBuilder = new DepositTransactionBuilder(1, parameters);
         Transaction tx = depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
 
         tx.Data!.Value.ToArray().Should().BeEquivalentTo(data);
