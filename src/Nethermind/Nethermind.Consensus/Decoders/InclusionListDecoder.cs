@@ -16,7 +16,8 @@ public static class InclusionListDecoder
 
     public static IEnumerable<Transaction> Decode(byte[][] transactions, IEthereumEcdsa ecdsa)
         => transactions.AsParallel()
-            .Select((txBytes) => {
+            .Select((txBytes) =>
+            {
                 Transaction tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping);
                 tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
                 return tx;
