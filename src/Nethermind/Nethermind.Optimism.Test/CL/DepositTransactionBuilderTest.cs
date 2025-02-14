@@ -50,7 +50,6 @@ public class DepositTransactionBuilderTest
             {
                 Type = TxType.EIP1559,
                 Status = 1,
-                LogsBloom = Bloom.Empty,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -58,8 +57,6 @@ public class DepositTransactionBuilderTest
                         Address = SomeAddressA,
                     }
                 ],
-                TransactionHash = Hash256.Zero,
-                ContractAddress = Address.Zero,
                 BlockHash = blockHash,
             },
         ];
@@ -91,7 +88,6 @@ public class DepositTransactionBuilderTest
             {
                 Type = TxType.EIP1559,
                 Status = 0, // Failed
-                LogsBloom = Bloom.Empty,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -109,8 +105,6 @@ public class DepositTransactionBuilderTest
                         BlockHash = blockHash,
                     }
                 ],
-                TransactionHash = Hash256.Zero,
-                ContractAddress = Address.Zero,
                 BlockHash = blockHash,
             },
         ];
@@ -142,7 +136,6 @@ public class DepositTransactionBuilderTest
             {
                 Type = TxType.EIP1559,
                 Status = 1,
-                LogsBloom = Bloom.Empty,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -160,8 +153,6 @@ public class DepositTransactionBuilderTest
                         BlockHash = blockHash,
                     }
                 ],
-                TransactionHash = Hash256.Zero,
-                ContractAddress = Address.Zero,
                 BlockHash = blockHash,
             },
         ];
@@ -210,7 +201,6 @@ public class DepositTransactionBuilderTest
             {
                 Type = TxType.EIP1559,
                 Status = 1,
-                LogsBloom = Bloom.Empty,
                 Logs =
                 [
                     new LogEntryForRpc
@@ -228,8 +218,6 @@ public class DepositTransactionBuilderTest
                         BlockHash = blockHash,
                     }
                 ],
-                TransactionHash = Hash256.Zero,
-                ContractAddress = Address.Zero,
                 BlockHash = blockHash,
             },
         ];
