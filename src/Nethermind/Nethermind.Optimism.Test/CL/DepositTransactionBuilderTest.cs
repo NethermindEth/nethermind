@@ -46,13 +46,62 @@ public class DepositTransactionBuilderTest
 
         List<ReceiptForRpc> receipts =
         [
-            new ReceiptForRpc {
+            new()
+            {
                 Type = TxType.EIP1559,
                 Status = 1,
                 LogsBloom = Bloom.Empty,
                 Logs = [
                     new LogEntryForRpc() {
                         Address = SomeAddressA,
+                    }
+                ],
+                TransactionHash = Hash256.Zero,
+                ContractAddress = Address.Zero,
+                BlockHash = blockHash,
+            },
+        ];
+        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+
+        depositTransactions.Count.Should().Be(0);
+    }
+
+    [Test]
+    public void DeriveUserDeposits_FailedDeposit()
+    {
+        var blockHash = TestItem.KeccakA;
+        var from = SomeAddressA;
+        var to = SomeAddressB;
+
+        var depositLogEventV0 = new DepositLogEventV0
+        {
+            Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
+            Mint = 0,
+            Value = UInt256.Parse("195000000000000000000"),
+            Gas = 8732577,
+            IsCreation = false,
+        };
+        var logData = depositLogEventV0.ToBytes();
+
+        List<ReceiptForRpc> receipts =
+        [
+            new()
+            {
+                Type = TxType.EIP1559,
+                Status = 0, // Failed
+                LogsBloom = Bloom.Empty,
+                Logs = [
+                    new LogEntryForRpc {
+                        Address = DepositAddress,
+                        Topics = [
+                            DepositEvent.ABIHash,
+                            new Hash256(from.Bytes.PadLeft(32)),
+                            new Hash256(to.Bytes.PadLeft(32)),
+                            DepositEvent.Version0,
+                        ],
+                        Data = logData,
+                        LogIndex = 0,
+                        BlockHash = blockHash,
                     }
                 ],
                 TransactionHash = Hash256.Zero,
@@ -84,7 +133,8 @@ public class DepositTransactionBuilderTest
 
         List<ReceiptForRpc> receipts =
         [
-            new ReceiptForRpc {
+            new()
+            {
                 Type = TxType.EIP1559,
                 Status = 1,
                 LogsBloom = Bloom.Empty,
