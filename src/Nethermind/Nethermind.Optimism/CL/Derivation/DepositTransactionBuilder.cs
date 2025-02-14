@@ -73,7 +73,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         };
     }
 
-    public List<Transaction> BuildUserDepositTransactions(Address depositAddress, List<ReceiptForRpc> receipts)
+    public List<Transaction> BuildUserDepositTransactions(List<ReceiptForRpc> receipts)
     {
         List<Transaction> result = [];
 
@@ -82,7 +82,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             if (receipt.Status != 1) { continue; }
             foreach (var log in receipt.Logs ?? [])
             {
-                if (log.Address != depositAddress) { continue; }
+                if (log.Address != engineParameters.DepositAddress) { continue; }
                 if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) { continue; }
 
                 Transaction tx = UnmarshalDepositTransactionFromLogEvent(log);

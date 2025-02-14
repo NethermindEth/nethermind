@@ -26,7 +26,7 @@ public class DepositTransactionBuilderTest
 
     public DepositTransactionBuilderTest()
     {
-        var parameters = new CLChainSpecEngineParameters();
+        var parameters = new CLChainSpecEngineParameters() { DepositAddress = DepositAddress };
         _builder = new DepositTransactionBuilder(TestBlockchainIds.ChainId, parameters);
     }
 
@@ -34,7 +34,7 @@ public class DepositTransactionBuilderTest
     public void DeriveUserDeposits_NoDeposits()
     {
         List<ReceiptForRpc> receipts = [];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(DepositAddress, receipts);
+        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
 
         depositTransactions.Count.Should().Be(0);
     }
@@ -60,7 +60,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(DepositAddress, receipts);
+        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
 
         depositTransactions.Count.Should().Be(0);
     }
@@ -107,7 +107,7 @@ public class DepositTransactionBuilderTest
                 BlockHash = blockHash,
             },
         ];
-        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(DepositAddress, receipts);
+        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
 
         var expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)
