@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
-                getFromApi.TransactionProcessor,
+                scope.TransactionProcessor,
                 new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager,

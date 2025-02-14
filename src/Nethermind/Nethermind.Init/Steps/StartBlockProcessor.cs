@@ -19,12 +19,12 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            if (_api.BlockchainProcessor is null)
+            if (_api.MainProcessingContext is null)
             {
-                throw new StepDependencyException(nameof(_api.BlockchainProcessor));
+                throw new StepDependencyException(nameof(_api.MainProcessingContext));
             }
 
-            _api.BlockchainProcessor.Start();
+            _api.MainProcessingContext.BlockchainProcessor.Start();
             return Task.CompletedTask;
         }
     }

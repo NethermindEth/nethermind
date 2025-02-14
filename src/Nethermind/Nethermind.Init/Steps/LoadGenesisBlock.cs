@@ -52,7 +52,7 @@ namespace Nethermind.Init.Steps
             if (!_initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (_api.MainProcessingContext!.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
             }
         }
 
@@ -62,13 +62,13 @@ namespace Nethermind.Init.Steps
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.MainProcessingContext is null) throw new StepDependencyException(nameof(_api.MainProcessingContext));
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
                 worldState,
-                _api.TransactionProcessor)
+                _api.MainProcessingContext.TransactionProcessor)
                 .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
