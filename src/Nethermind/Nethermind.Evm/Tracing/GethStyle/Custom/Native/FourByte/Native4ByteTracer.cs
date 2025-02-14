@@ -27,11 +27,13 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 {
     public const string FourByteTracer = "4byteTracer";
 
+    private readonly Transaction _transaction;
     private readonly Dictionary<string, int> _4ByteIds = new();
     private Instruction _op;
 
-    public Native4ByteTracer(GethTraceOptions options) : base(options)
+    public Native4ByteTracer(Transaction transaction, GethTraceOptions options) : base(options)
     {
+        _transaction = transaction;
         IsTracingActions = true;
     }
 
@@ -41,7 +43,9 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
 
-        result.CustomTracerResult = new GethLikeCustomTrace() { Value = _4ByteIds };
+        result.TxHash = _transaction.Hash;
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = _4ByteIds };
+
         return result;
     }
 
@@ -101,13 +105,13 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
          * This is equivalent to the following code:
          * string _4byteId = input.Span[..4].ToHexString() + '-' + size;
          */
-        string _4byteId = string.Create(length * 2 + 1 + GetDigitsBase10(size), (input, size), static (span, state) =>
+        string _4byteId = string.Create(2 + length * 2 + 1 + GetDigitsBase10(size), (input, size), static (span, state) =>
         {
             ref char charsRef = ref MemoryMarshal.GetReference(span);
             ReadOnlySpan<byte> bytes = state.input.Span[..length];
-            Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(bytes), length, ref charsRef, false, 0);
-            span[length * 2] = '-';
-            state.size.TryFormat(span[(length * 2 + 1)..], out _);
+            Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(bytes), length, ref charsRef, true, 0);
+            span[2 + length * 2] = '-';
+            state.size.TryFormat(span[(2 + length * 2 + 1)..], out _);
         });
 
         CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, _4byteId, out _) += 1;
