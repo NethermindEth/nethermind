@@ -81,19 +81,18 @@ public class DepositTransactionBuilderTest
             event TransactionDeposited(address indexed from, address indexed to, uint256 indexed version, bytes opaqueData);
          */
 
-        var blockHash = new Hash256([115, 249, 71, 242, 21, 168, 132, 160, 156, 149, 63, 253, 23, 30, 58, 63, 234, 181, 100, 221, 103, 207, 188, 189, 94, 227, 33, 20, 58, 34, 5, 51]);
+        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
         var from = SomeAddressA;
         var to = SomeAddressB;
 
         var depositLogEventV0 = new DepositLogEventV0
         {
-            Data = [52, 68, 244, 214, 131, 5, 52, 40, 56, 7, 43, 60, 73, 223, 27, 100, 198, 10],
+            Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
             Value = UInt256.Parse("195000000000000000000"),
             Gas = 8732577,
             IsCreation = false,
         };
-
         var logData = depositLogEventV0.ToBytes();
 
         List<ReceiptForRpc> receipts =
