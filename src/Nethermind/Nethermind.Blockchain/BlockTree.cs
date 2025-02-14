@@ -960,7 +960,7 @@ namespace Nethermind.Blockchain
 
         public bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better
-            && (header.IsGenesis && Genesis is null // is genesis
+            && ((header.IsGenesis && Genesis is null) // is genesis
                 || header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty // is post-merge block, we follow engine API
                 || header.TotalDifficulty > (Head?.TotalDifficulty ?? 0) // pre-merge rules
                 || (header.TotalDifficulty == Head?.TotalDifficulty // when in doubt on difficulty
