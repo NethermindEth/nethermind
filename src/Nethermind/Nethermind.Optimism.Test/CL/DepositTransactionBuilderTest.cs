@@ -26,7 +26,7 @@ public class DepositTransactionBuilderTest
 
     public DepositTransactionBuilderTest()
     {
-        var parameters = new CLChainSpecEngineParameters() { DepositAddress = DepositAddress };
+        var parameters = new CLChainSpecEngineParameters { DepositAddress = DepositAddress };
         _builder = new DepositTransactionBuilder(TestBlockchainIds.ChainId, parameters);
     }
 
@@ -51,8 +51,10 @@ public class DepositTransactionBuilderTest
                 Type = TxType.EIP1559,
                 Status = 1,
                 LogsBloom = Bloom.Empty,
-                Logs = [
-                    new LogEntryForRpc() {
+                Logs =
+                [
+                    new LogEntryForRpc
+                    {
                         Address = SomeAddressA,
                     }
                 ],
@@ -90,10 +92,13 @@ public class DepositTransactionBuilderTest
                 Type = TxType.EIP1559,
                 Status = 0, // Failed
                 LogsBloom = Bloom.Empty,
-                Logs = [
-                    new LogEntryForRpc {
+                Logs =
+                [
+                    new LogEntryForRpc
+                    {
                         Address = DepositAddress,
-                        Topics = [
+                        Topics =
+                        [
                             DepositEvent.ABIHash,
                             new Hash256(from.Bytes.PadLeft(32)),
                             new Hash256(to.Bytes.PadLeft(32)),
@@ -138,10 +143,13 @@ public class DepositTransactionBuilderTest
                 Type = TxType.EIP1559,
                 Status = 1,
                 LogsBloom = Bloom.Empty,
-                Logs = [
-                    new LogEntryForRpc {
+                Logs =
+                [
+                    new LogEntryForRpc
+                    {
                         Address = DepositAddress,
-                        Topics = [
+                        Topics =
+                        [
                             DepositEvent.ABIHash,
                             new Hash256(from.Bytes.PadLeft(32)),
                             new Hash256(to.Bytes.PadLeft(32)),
@@ -203,10 +211,13 @@ public class DepositTransactionBuilderTest
                 Type = TxType.EIP1559,
                 Status = 1,
                 LogsBloom = Bloom.Empty,
-                Logs = [
-                    new LogEntryForRpc {
+                Logs =
+                [
+                    new LogEntryForRpc
+                    {
                         Address = DepositAddress,
-                        Topics = [
+                        Topics =
+                        [
                             DepositEvent.ABIHash,
                             new Hash256(from.Bytes.PadLeft(32)),
                             Hash256.Zero,
