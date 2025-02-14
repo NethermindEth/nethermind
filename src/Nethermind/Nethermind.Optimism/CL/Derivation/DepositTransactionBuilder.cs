@@ -93,6 +93,18 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         return result;
     }
 
+    /*
+    See: https://github.com/ethereum-optimism/optimism/blob/ca4b1f687977d3f771d6e3a1b8c6f113f2331f63/packages/contracts-bedrock/src/L1/OptimismPortal2.sol#L144
+
+    /// @notice Emitted when a transaction is deposited from L1 to L2.
+    ///         The parameters of this event are read by the rollup node and used to derive deposit
+    ///         transactions on L2.
+    /// @param from       Address that triggered the deposit transaction.
+    /// @param to         Address that the deposit transaction is directed to.
+    /// @param version    Version of this deposit transaction event.
+    /// @param opaqueData ABI encoded deposit data to be parsed off-chain.
+    event TransactionDeposited(address indexed from, address indexed to, uint256 indexed version, bytes opaqueData);
+    */
     private Transaction UnmarshalDepositTransactionFromLogEvent(LogEntryForRpc log)
     {
         if (log.Topics.Length != 4) throw new ArgumentException($"Expected 4 event topics (address indexed from, address indexed to, uint256 indexed version, bytes opaqueData), got {log.Topics.Length}");
