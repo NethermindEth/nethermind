@@ -11,6 +11,7 @@ using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
 using NUnit.Framework;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.Test.CL;
 
@@ -36,7 +37,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_NoDeposits()
     {
-        List<OptimismTxReceipt> receipts = [];
+        List<ReceiptForRpc> receipts = [];
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(DepositAddress, receipts);
 
         depositTransactions.Count.Should().Be(0);
@@ -47,22 +48,21 @@ public class DepositTransactionBuilderTest
     {
         var blockHash = TestItem.KeccakA;
 
-        List<OptimismTxReceipt> receipts =
+        List<ReceiptForRpc> receipts =
         [
-            new(Build.A.Receipt
-                .WithTxType(TxType.EIP1559)
-                .WithState(Hash256.Zero)
-                .WithStatusCode(1)
-                .WithBloom(Bloom.Empty)
-                .WithLogs(
-                    Build.A.LogEntry
-                        .WithAddress(SomeAddressA)
-                        .TestObject
-                )
-                .WithTransactionHash(Hash256.Zero)
-                .WithContractAddress(Address.Zero)
-                .WithBlockHash(blockHash)
-                .TestObject)
+            new ReceiptForRpc {
+                Type = TxType.EIP1559,
+                Status = 1,
+                LogsBloom = Bloom.Empty,
+                Logs = [
+                    new LogEntryForRpc() {
+                        Address = SomeAddressA,
+                    }
+                ],
+                TransactionHash = Hash256.Zero,
+                ContractAddress = Address.Zero,
+                BlockHash = blockHash,
+            },
         ];
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(DepositAddress, receipts);
 
@@ -100,31 +100,32 @@ public class DepositTransactionBuilderTest
 
         var logData = depositLogEventV0.ToBytes();
 
-        List<OptimismTxReceipt> receipts =
+        List<ReceiptForRpc> receipts =
         [
-            new(Build.A.Receipt
-                .WithTxType(TxType.EIP1559)
-                .WithState(Hash256.Zero)
-                .WithStatusCode(1)
-                .WithBloom(Bloom.Empty)
-                .WithLogs(
-                    Build.A.LogEntry
-                        .WithAddress(DepositAddress)
-                        .WithTopics(
+            new ReceiptForRpc {
+                Type = TxType.EIP1559,
+                Status = 1,
+                LogsBloom = Bloom.Empty,
+                Logs = [
+                    new LogEntryForRpc {
+                        Address = DepositAddress,
+                        Topics = [
                             DepositEventABIHash,
                             new Hash256(from.Bytes.PadLeft(32)),
                             new Hash256(to.Bytes.PadLeft(32)),
-                            DepositEventVersion0)
-                        .WithData(logData)
-                        .TestObject
-                )
-                .WithTransactionHash(Hash256.Zero)
-                .WithContractAddress(Address.Zero)
-                .WithBlockHash(blockHash)
-                .TestObject)
+                            DepositEventVersion0
+                        ],
+                        Data = logData,
+                        LogIndex = 0,
+                        BlockHash = blockHash,
+                    }
+                ],
+                TransactionHash = Hash256.Zero,
+                ContractAddress = Address.Zero,
+                BlockHash = blockHash,
+            },
         ];
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(DepositAddress, receipts);
-
 
         var expectedTransaction = Build.A.Transaction
             .WithType(TxType.DepositTx)

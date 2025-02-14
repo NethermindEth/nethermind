@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
@@ -57,13 +58,13 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         };
     }
 
-    public List<Transaction> BuildUserDepositTransactions(Address depositAddress, List<OptimismTxReceipt> receipts)
+    public List<Transaction> BuildUserDepositTransactions(Address depositAddress, List<ReceiptForRpc> receipts)
     {
         List<Transaction> result = [];
 
         foreach (var receipt in receipts)
         {
-            if (receipt.StatusCode != 1) { continue; }
+            if (receipt.Status != 1) { continue; }
             foreach (var log in receipt.Logs ?? [])
             {
                 if (log.Address != depositAddress) { continue; }
@@ -77,7 +78,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         return result;
     }
 
-    private Transaction UnmarshalDepositTransactionFromLogEvent(LogEntry log)
+    private Transaction UnmarshalDepositTransactionFromLogEvent(LogEntryForRpc log)
     {
         if (log.Topics.Length != 4) throw new ArgumentException($"Expected 4 event topics (address indexed from, address indexed to, uint256 indexed version, bytes opaqueData), got {log.Topics.Length}");
         if (log.Topics[1].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}"); }
@@ -86,11 +87,15 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         var from = new Address(log.Topics[1].Bytes[^Address.Size..]);
         var to = new Address(log.Topics[2].Bytes[^Address.Size..]);
 
+        static Hash256 ComputeSourceHash(Hash256 l1BlockHash, ulong logIndex) {
+            return Keccak.Zero;
+        }
+
         var version = log.Topics[3];
         if (version == DepositEventVersion0)
         {
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
-            var sourceHash = Hash256.Zero; // TODO
+            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
 
             return new()
             {
