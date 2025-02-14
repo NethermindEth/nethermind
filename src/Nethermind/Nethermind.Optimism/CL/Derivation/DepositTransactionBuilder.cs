@@ -87,8 +87,37 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         var from = new Address(log.Topics[1].Bytes[^Address.Size..]);
         var to = new Address(log.Topics[2].Bytes[^Address.Size..]);
 
-        static Hash256 ComputeSourceHash(Hash256 l1BlockHash, ulong logIndex) {
-            return Keccak.Zero;
+        static Hash256 ComputeSourceHash(Hash256 l1BlockHash, ulong logIndex)
+        {
+            UInt64 UserDepositSourceDomain = 0;
+
+            // var input [32 * 2]byte
+            Span<byte> input = stackalloc byte[32 * 2];
+            Span<byte> span = input;
+
+            // copy(input[:32], dep.L1BlockHash[:])
+            l1BlockHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
+
+            span.TakeAndMove(32 - 8); // skip 24 bytes
+
+            // binary.BigEndian.PutUint64(buffer[32*2-8:], dep.LogIndex)
+            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), logIndex);
+
+            // depositIDHash := crypto.Keccak256Hash(input[:])
+            var depositIdHash = Keccak.Compute(input);
+
+            // var domainInput [32 * 2]byte
+            Span<byte> domainInput = stackalloc byte[32 * 2];
+            span = domainInput;
+            span.TakeAndMove(32 - 8); // skip 24 bytes
+            // binary.BigEndian.PutUint64(domainInput[32-8:32], UserDepositSourceDomain)
+            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), UserDepositSourceDomain);
+
+            // copy(domainInput[32:], depositIDHash[:])
+            depositIdHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
+
+            // return crypto.Keccak256Hash(domainInput[:])
+            return Keccak.Compute(domainInput);
         }
 
         var version = log.Topics[3];

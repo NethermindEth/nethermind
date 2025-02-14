@@ -85,7 +85,7 @@ public class DepositTransactionBuilderTest
             event TransactionDeposited(address indexed from, address indexed to, uint256 indexed version, bytes opaqueData);
          */
 
-        var blockHash = TestItem.KeccakA;
+        var blockHash = new Hash256([115, 249, 71, 242, 21, 168, 132, 160, 156, 149, 63, 253, 23, 30, 58, 63, 234, 181, 100, 221, 103, 207, 188, 189, 94, 227, 33, 20, 58, 34, 5, 51]);
         var from = SomeAddressA;
         var to = SomeAddressB;
 
