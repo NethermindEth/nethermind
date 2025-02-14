@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -113,7 +112,7 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
+            Hash256? FindBlockHash(long blockNumber, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
@@ -203,14 +202,14 @@ namespace Nethermind.Facade.Find
             return true;
         }
 
-        private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<int> GetBlockNumbersFor(LogFilter filter, long fromBlock, long toBlock, CancellationToken cancellationToken)
         {
             ConcurrentDictionary<Address, List<int>> byAddress = null;
             if (filter.AddressFilter.Address is {} address)
             {
                 byAddress = new() { [address] = null };
             }
-            else if (filter.AddressFilter.Addresses is { } addresses)
+            else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
             {
                 byAddress = new();
                 byAddress.AddRange(addresses.Select(a => KeyValuePair.Create(a.Value, (List<int>)null)));
@@ -226,13 +225,13 @@ namespace Nethermind.Facade.Find
             Enumerable.Empty<object>()
                 .Union(byAddress?.Keys ?? Enumerable.Empty<Address>())
                 .Union(byTopic?.Keys ?? Enumerable.Empty<Hash256>())
-                .AsParallel() // TODO utilize canRunParallel similar to FilterLogsWithBloomsIndex
+                .AsParallel() // TODO utilize canRunParallel
                 .ForAll(x =>
                 {
                     if (x is Address addr)
-                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock.Number, (int)toBlock.Number).ToList();
+                        byAddress![addr] = _logIndexStorage.GetBlockNumbersFor(addr, (int)fromBlock, (int)toBlock).ToList();
                     if (x is Hash256 tpc)
-                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock.Number, (int)toBlock.Number).ToList();
+                        byTopic![tpc] = _logIndexStorage.GetBlockNumbersFor(tpc, (int)fromBlock, (int)toBlock).ToList();
                 });
 
             HashSet<int> blockNumbers = null;
@@ -244,7 +243,6 @@ namespace Nethermind.Facade.Find
             if (byTopic is not null)
             {
                 HashSet<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
-
                 if (blockNumbers is null)
                     blockNumbers = [..topicNumbers];
                 else
@@ -255,23 +253,72 @@ namespace Nethermind.Facade.Find
             return blockNumbers?.Order() ?? Enumerable.Empty<int>();
         }
 
-        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
+            CancellationToken cancellationToken)
         {
-            IEnumerable<int> blockNums = GetBlockNumbersFor(filter, fromBlock, toBlock, cancellationToken);
+            // TODO: merge common code with FilterLogsWithBloomsIndex
 
-            int count = 0;
-            foreach (var blockNum in blockNums)
+            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
             {
-                BlockHeader blockHeader = _blockFinder.FindHeader(blockNum);
-                if (blockHeader is null)
-                    break;
+                token.ThrowIfCancellationRequested();
+                var blockHash = _blockFinder.FindBlockHash(blockNumber);
+                if (blockHash is null)
+                {
+                    if (_logger.IsError)
+                        _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                }
 
-                foreach (FilterLog filterLog in FindLogsInBlock(filter, blockHeader!, cancellationToken))
-                    yield return filterLog;
-
-                if (++count >= _maxBlockDepth)
-                    break;
+                return blockHash;
             }
+
+            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            {
+                try
+                {
+                    var count = 0;
+                    foreach (var blockNumber in GetBlockNumbersFor(f, @from, to, cancellationToken))
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        yield return blockNumber;
+
+                        if (++count >= _maxBlockDepth)
+                            break;
+                    }
+                }
+                finally
+                {
+                    if (runParallel)
+                    {
+                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
+                    }
+
+                    Interlocked.Decrement(ref ParallelExecutions);
+                }
+            }
+
+            // we want to support one parallel eth_getLogs call for maximum performance
+            // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
+            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
+            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
+            bool canRunParallel = parallelLock == 0;
+
+            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel, cancellationToken);
+
+            if (canRunParallel)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
+                filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
+                    .AsOrdered() // we want to keep block order
+                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
+            }
+
+            return filterBlocks
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
@@ -296,7 +343,7 @@ namespace Nethermind.Facade.Find
                 ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {

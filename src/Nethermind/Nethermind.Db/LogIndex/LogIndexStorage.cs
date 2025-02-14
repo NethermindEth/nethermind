@@ -128,17 +128,34 @@ namespace Nethermind.Db
 
         private IEnumerable<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
         {
+            bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
+            {
+                return iterator.Valid() && iterator.Key().AsSpan()[..key.Length].SequenceEqual(key);
+            }
+
             using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
-            //TODO: rework to use SeekForPrev
-            iterator.Seek(keyPrefix);
+            var dbKeyBuffer = ArrayPool<byte>.Shared.Rent(keyPrefix.Length + BlockNumSize);
+            Span<byte> dbKey = dbKeyBuffer.AsSpan(0, keyPrefix.Length + BlockNumSize);
+
+            // Find last index for the given key, starting at or before `from`
+            CreateDbKey(keyPrefix, from, dbKey);
+            iterator.SeekForPrev(dbKey);
+
+            // Otherwise, find first index for the given key starting at or before `to`
+            // TODO: always achieve in a single seek?
+            if (to != from && !IsInKeyBounds(iterator, keyPrefix))
+            {
+                CreateDbKey(keyPrefix, to, dbKey);
+                iterator.SeekForPrev(dbKey);
+            }
 
             byte[] indexBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
 
             try
             {
                 // TODO: optimize allocations
-                while (iterator.Valid() && iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
+                while (IsInKeyBounds(iterator, keyPrefix))
                 {
                     ReadOnlySpan<byte> firstKey = iterator.Key().AsSpan();
 
@@ -146,7 +163,7 @@ namespace Nethermind.Db
 
                     iterator.Next();
                     int? nextLowestBlockNumber;
-                    if (iterator.Valid() && iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
+                    if (IsInKeyBounds(iterator, keyPrefix))
                     {
                         ReadOnlySpan<byte> nextKey = iterator.Key().AsSpan();
                         nextLowestBlockNumber = GetBlockNumber(nextKey);
@@ -192,6 +209,7 @@ namespace Nethermind.Db
             }
             finally
             {
+                ArrayPool<byte>.Shared.Return(dbKeyBuffer);
                 ArrayPool<byte>.Shared.Return(indexBuffer);
             }
         }
@@ -285,6 +303,9 @@ namespace Nethermind.Db
             BlockReceipts[] batch, bool isBackwardSync
         )
         {
+            // _addressDb.Compact();
+            // _topicsDb.Compact();
+
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
 
@@ -857,7 +878,7 @@ namespace Nethermind.Db
 
             public byte[] Serialize() => Serialize(Type, File, LastBlockNumber, Data);
 
-            public static bool IsSerializedTemp(byte[] bytes) => bytes.Length == 0 || bytes[0] == (int)IndexType.Temp;
+            public static IndexType GetSerializedType(ReadOnlySpan<byte> bytes) => bytes.Length == 0 ? IndexType.Temp : (IndexType)bytes[0];
 
             public static IndexInfo Deserialize(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> bytes)
             {
