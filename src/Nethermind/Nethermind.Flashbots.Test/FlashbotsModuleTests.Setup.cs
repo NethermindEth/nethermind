@@ -32,7 +32,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
-namespace Nethermind.Flasbots.Test;
+namespace Nethermind.Flashbots.Test;
 
 public partial class FlashbotsModuleTests
 {

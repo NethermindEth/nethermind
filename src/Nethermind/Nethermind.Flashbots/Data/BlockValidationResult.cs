@@ -14,7 +14,7 @@ public class FlashbotsResult
 
     public static ResultWrapper<FlashbotsResult> Invalid(string error)
     {
-        return ResultWrapper<FlashbotsResult>.Success(new FlashbotsResult
+        return ResultWrapper<FlashbotsResult>.Fail(error, new FlashbotsResult
         {
             Status = FlashbotsStatus.Invalid,
             ValidationError = error

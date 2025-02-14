@@ -20,7 +20,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
 
-namespace Nethermind.Flasbots.Test;
+namespace Nethermind.Flashbots.Test;
 
 public partial class FlashbotsModuleTests
 {
