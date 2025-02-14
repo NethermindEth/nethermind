@@ -31,11 +31,6 @@ namespace Nethermind.Synchronization.Blocks
                 options |= DownloaderOptions.WithReceipts;
             }
 
-            if (_syncConfig.DownloadBodiesInFastSync)
-            {
-                options |= DownloaderOptions.WithBodies;
-            }
-
             return options;
         }
 
