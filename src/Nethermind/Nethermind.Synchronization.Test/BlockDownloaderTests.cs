@@ -48,7 +48,7 @@ public partial class BlockDownloaderTests
 {
     [TestCase(1L, DownloaderOptions.Process, 0)]
     [TestCase(32L, DownloaderOptions.Process, 0)]
-    [TestCase(32L, DownloaderOptions.None, 0)]
+    [TestCase(32L, DownloaderOptions.Insert, 0)]
     [TestCase(1L, DownloaderOptions.WithReceipts, 0)]
     [TestCase(2L, DownloaderOptions.WithReceipts, 0)]
     [TestCase(3L, DownloaderOptions.WithReceipts, 0)]
@@ -57,7 +57,7 @@ public partial class BlockDownloaderTests
     [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Process, 0)]
     [TestCase(1L, DownloaderOptions.Process, 32)]
     [TestCase(32L, DownloaderOptions.Process, 32)]
-    [TestCase(32L, DownloaderOptions.None, 32)]
+    [TestCase(32L, DownloaderOptions.Insert, 32)]
     [TestCase(1L, DownloaderOptions.WithReceipts, 32)]
     [TestCase(2L, DownloaderOptions.WithReceipts, 32)]
     [TestCase(3L, DownloaderOptions.WithReceipts, 32)]
@@ -85,7 +85,7 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);
 
         ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
 
@@ -190,8 +190,8 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, ignoredBlocks), CancellationToken.None).ContinueWith(_ => { });
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, ignoredBlocks), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, ignoredBlocks), CancellationToken.None).ContinueWith(_ => { });
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, ignoredBlocks), CancellationToken.None);
         Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(0, peerInfo.HeadNumber - ignoredBlocks)));
 
         syncPeer.HeadNumber.Returns((int)Math.Ceiling(SyncBatchSize.Max * SyncBatchSize.AdjustmentFactor) + ignoredBlocks);
@@ -277,7 +277,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(64);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None)
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None)
             .ContinueWith(t => Assert.That(t.IsCompletedSuccessfully, Is.True));
 
         syncPeer.HeadNumber.Returns(128);
@@ -343,7 +343,7 @@ public partial class BlockDownloaderTests
         syncPeer.HeadNumber.Returns(1024);
 
         BlockDownloader downloader = ctx.BlockDownloader;
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
         syncPeer.Received().Disconnect(DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
@@ -362,7 +362,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
         syncPeer.Received().Disconnect(DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
@@ -381,7 +381,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
         syncPeer.Received().Disconnect(DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
@@ -491,7 +491,7 @@ public partial class BlockDownloaderTests
 
         CancellationTokenSource cancellation = new();
         cancellation.CancelAfter(1000);
-        Task task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), cancellation.Token);
+        Task task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), cancellation.Token);
         await task.ContinueWith(t => Assert.That(t.IsCanceled, Is.True, $"headers {t.Status}"));
 
         syncPeer.HeadNumber.Returns(2000);
@@ -522,14 +522,14 @@ public partial class BlockDownloaderTests
 
         CancellationTokenSource cancellation = new();
         cancellation.CancelAfter(990);
-        Task task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), cancellation.Token);
+        Task task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), cancellation.Token);
         await task.ContinueWith(t => Assert.That(t.IsCanceled, Is.True, "headers"));
 
         syncPeer.HeadNumber.Returns(2000);
         // peerInfo.HeadNumber *= 2;
         cancellation = new CancellationTokenSource();
         cancellation.CancelAfter(990);
-        task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), cancellation.Token);
+        task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), cancellation.Token);
         await task.ContinueWith(t => Assert.That(t.IsCanceled, Is.True, "blocks"));
     }
 
@@ -552,7 +552,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(511);
 
-        Task task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+        Task task = downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
         await task;
 
         sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
@@ -648,7 +648,7 @@ public partial class BlockDownloaderTests
         ISyncPeer syncPeer = new ThrowingPeer(1000, UInt256.MaxValue);
         PeerInfo peerInfo = new(syncPeer);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None)
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None)
             .ContinueWith(static t => Assert.That(t.IsFaulted, Is.True));
     }
 
@@ -672,7 +672,7 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
 
         syncPeer.HeadNumber.Returns(2);
         await downloader.Dispatch(peerInfo, new BlocksRequest(), CancellationToken.None);
@@ -680,7 +680,7 @@ public partial class BlockDownloaderTests
     }
 
     [TestCase(DownloaderOptions.WithReceipts, true)]
-    [TestCase(DownloaderOptions.None, false)]
+    [TestCase(DownloaderOptions.Insert, false)]
     [TestCase(DownloaderOptions.Process, false)]
     public async Task Throws_on_receipt_task_exception_when_downloading_receipts(int options, bool shouldThrow)
     {
@@ -703,7 +703,7 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
 
         syncPeer.HeadNumber.Returns(2);
 
@@ -719,7 +719,7 @@ public partial class BlockDownloaderTests
     }
 
     [TestCase(DownloaderOptions.WithReceipts, true)]
-    [TestCase(DownloaderOptions.None, false)]
+    [TestCase(DownloaderOptions.Insert, false)]
     [TestCase(DownloaderOptions.Process, false)]
     public async Task Throws_on_null_receipt_downloaded(int options, bool shouldThrow)
     {
@@ -765,7 +765,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
 
         int threshold = 2;
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
 
         syncPeerInternal.ExtendTree(chainLength * 2);
@@ -804,11 +804,11 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);
 
         syncPeer.HeadNumber.Returns(2);
 
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None | DownloaderOptions.WithReceipts), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert | DownloaderOptions.WithReceipts), CancellationToken.None);
         syncPeer.Received().Disconnect(DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
@@ -834,7 +834,7 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);
 
         syncPeer.HeadNumber.Returns(2);
 
@@ -864,7 +864,7 @@ public partial class BlockDownloaderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);
 
         syncPeer.HeadNumber.Returns(2);
 

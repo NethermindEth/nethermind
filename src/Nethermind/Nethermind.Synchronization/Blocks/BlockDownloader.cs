@@ -149,7 +149,6 @@ namespace Nethermind.Synchronization.Blocks
             DownloaderOptions options = blocksRequest.Options;
             bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
-            bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
             int blocksSynced = 0;
             _ancestorLookupLevel = 0;
@@ -198,7 +197,7 @@ namespace Nethermind.Synchronization.Blocks
                     long blockNumber = currentBlock.Number;
                     (shouldProcess, receipts) = await ReceiptEdgeCase(bestPeer, cancellation, blockNumber, bestProcessedBlock, context, shouldProcess, receipts);
                     PreValidate(bestPeer, context, blockIndex);
-                    if (SuggestBlock(bestPeer, currentBlock, blockIndex, shouldProcess, context.DownloadReceipts, receipts, shouldMoveToMain))
+                    if (SuggestBlock(bestPeer, currentBlock, blockIndex, shouldProcess, context.DownloadReceipts, receipts))
                     {
                         if (shouldProcess)
                         {
@@ -296,14 +295,14 @@ namespace Nethermind.Synchronization.Blocks
             int blockIndex,
             bool shouldProcess,
             bool downloadReceipts,
-            TxReceipt[]?[]? receipts, bool shouldMoveToMain)
+            TxReceipt[]?[]? receipts)
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
             {
-                if (shouldProcess == false)
+                if (!shouldProcess)
                 {
                     _blockTree.UpdateMainChain(new[] { currentBlock }, false);
                     // Needed to know if a block is the terminal block.
@@ -332,7 +331,7 @@ namespace Nethermind.Synchronization.Blocks
                 handled = true;
             }
 
-            if (shouldMoveToMain)
+            if (!shouldProcess)
             {
                 _blockTree.UpdateMainChain(new[] { currentBlock }, false);
             }

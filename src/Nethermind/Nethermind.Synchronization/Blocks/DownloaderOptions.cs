@@ -8,11 +8,8 @@ namespace Nethermind.Synchronization.Blocks
     [Flags]
     public enum DownloaderOptions
     {
-        None = 0,
+        Insert = 0,
         Process = 1,
         WithReceipts = 2,
-        MoveToMain = 4,
-        // ReSharper disable once UnusedMember.Global
-        All = 7
     }
 }

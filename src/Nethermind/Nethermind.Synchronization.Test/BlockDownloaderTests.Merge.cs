@@ -35,8 +35,8 @@ public partial class BlockDownloaderTests
 {
     [TestCase(16L, 32L, DownloaderOptions.Process, 32, 32)]
     [TestCase(16L, 32L, DownloaderOptions.Process, 32, 29)]
-    [TestCase(16L, 32L, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 0, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 32, 32)]
+    [TestCase(16L, 32L, DownloaderOptions.WithReceipts | DownloaderOptions.Insert, 0, 32)]
+    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.Insert, 32, 32)]
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, SyncBatchSize.Max * 8 - 16L)]
     public async Task Merge_Happy_path(long pivot, long headNumber, int options, int threshold, long insertedBeaconBlocks)
@@ -87,8 +87,8 @@ public partial class BlockDownloaderTests
         ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(insertedBeaconBlocks);
     }
 
-    [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
-    [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
+    [TestCase(32L, DownloaderOptions.Insert, 32, false)]
+    [TestCase(32L, DownloaderOptions.Insert, 32, true)]
     public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
     {
         UInt256 ttd = 10000000;
@@ -117,8 +117,8 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
-    [TestCase(32L, DownloaderOptions.MoveToMain, 16, false, 16)]
-    [TestCase(32L, DownloaderOptions.MoveToMain, 16, true, 3)] // No beacon header, so it does not sync
+    [TestCase(32L, DownloaderOptions.Insert, 16, false, 16)]
+    [TestCase(32L, DownloaderOptions.Insert, 16, true, 3)] // No beacon header, so it does not sync
     public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
@@ -384,7 +384,7 @@ public partial class BlockDownloaderTests
     }
 
     [TestCase(DownloaderOptions.WithReceipts)]
-    [TestCase(DownloaderOptions.None)]
+    [TestCase(DownloaderOptions.Insert)]
     [TestCase(DownloaderOptions.Process)]
     public async Task BlockDownloader_works_correctly_with_withdrawals(int options)
     {
@@ -425,7 +425,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
 
         int threshold = 2;
-        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
 
         syncPeerInternal.ExtendTree(chainLength * 2);

@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private DownloaderOptions BuildOptions()
         {
-            DownloaderOptions options = DownloaderOptions.MoveToMain;
+            DownloaderOptions options = DownloaderOptions.Insert;
             if (_syncConfig.DownloadReceiptsInFastSync)
             {
                 options |= DownloaderOptions.WithReceipts;
