@@ -193,8 +193,16 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     }
                     else
                     {
-                        // Deserializes the JSON document into a request object or a collection of requests.
-                        (model, collection) = DeserializeObjectOrArray(jsonDocument);
+                        try
+                        {
+                            // Deserializes the JSON document into a request object or a collection of requests.
+                            (model, collection) = DeserializeObjectOrArray(jsonDocument);
+                        }
+                        catch
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Error handling {jsonDocument.RootElement}");
+                            throw;
+                        }
                     }
                 }
                 catch (BadHttpRequestException e)
