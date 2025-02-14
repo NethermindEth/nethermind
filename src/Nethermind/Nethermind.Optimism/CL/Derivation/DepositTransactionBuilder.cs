@@ -13,6 +13,21 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
+public static class DepositEvent
+{
+    public static readonly string ABI = "TransactionDeposited(address,address,uint256,bytes)";
+    public static readonly Hash256 ABIHash = Keccak.Compute(ABI);
+    public static readonly Hash256 Version0 = Hash256.Zero;
+
+    public enum SourceDomain : ulong
+    {
+        User = 0,
+        L1Info = 1,
+        Upgrade = 2,
+        AfterForceInclude = 3,
+    }
+}
+
 public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameters engineParameters)
 {
     private const int SystemTxDataLengthEcotone = 164;
@@ -89,35 +104,21 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
 
         static Hash256 ComputeSourceHash(Hash256 l1BlockHash, ulong logIndex)
         {
-            UInt64 UserDepositSourceDomain = 0;
-
-            // var input [32 * 2]byte
-            Span<byte> input = stackalloc byte[32 * 2];
-            Span<byte> span = input;
-
-            // copy(input[:32], dep.L1BlockHash[:])
+            Span<byte> buffer = stackalloc byte[32 * 2];
+            Span<byte> span = buffer;
             l1BlockHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
-
             span.TakeAndMove(32 - 8); // skip 24 bytes
-
-            // binary.BigEndian.PutUint64(buffer[32*2-8:], dep.LogIndex)
             BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), logIndex);
+            var depositIdHash = Keccak.Compute(buffer);
 
-            // depositIDHash := crypto.Keccak256Hash(input[:])
-            var depositIdHash = Keccak.Compute(input);
+            buffer.Clear();
+            span = buffer;
 
-            // var domainInput [32 * 2]byte
-            Span<byte> domainInput = stackalloc byte[32 * 2];
-            span = domainInput;
             span.TakeAndMove(32 - 8); // skip 24 bytes
-            // binary.BigEndian.PutUint64(domainInput[32-8:32], UserDepositSourceDomain)
-            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), UserDepositSourceDomain);
-
-            // copy(domainInput[32:], depositIDHash[:])
+            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), (ulong)DepositEvent.SourceDomain.User);
             depositIdHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
 
-            // return crypto.Keccak256Hash(domainInput[:])
-            return Keccak.Compute(domainInput);
+            return Keccak.Compute(buffer);
         }
 
         var version = log.Topics[3];

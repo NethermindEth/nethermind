@@ -18,10 +18,6 @@ namespace Nethermind.Optimism.Test.CL;
 [TestFixture]
 public class DepositTransactionBuilderTest
 {
-    private static readonly string DepositEventABI = "TransactionDeposited(address,address,uint256,bytes)";
-    private static readonly Hash256 DepositEventABIHash = Keccak.Compute(DepositEventABI);
-    private static readonly Hash256 DepositEventVersion0 = Hash256.Zero;
-
     private static readonly Address DepositAddress = TestItem.AddressA;
     private static readonly Address SomeAddressA = TestItem.AddressB;
     private static readonly Address SomeAddressB = TestItem.AddressC;
@@ -110,10 +106,10 @@ public class DepositTransactionBuilderTest
                     new LogEntryForRpc {
                         Address = DepositAddress,
                         Topics = [
-                            DepositEventABIHash,
+                            DepositEvent.ABIHash,
                             new Hash256(from.Bytes.PadLeft(32)),
                             new Hash256(to.Bytes.PadLeft(32)),
-                            DepositEventVersion0
+                            DepositEvent.Version0,
                         ],
                         Data = logData,
                         LogIndex = 0,
