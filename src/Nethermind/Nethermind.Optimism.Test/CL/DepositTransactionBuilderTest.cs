@@ -138,6 +138,8 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         depositTransactions.Count.Should().Be(1);
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction);
+        // NOTE: Check if we can simplify this assertion
+        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
+        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
     }
 }
