@@ -21,15 +21,13 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="GenesisLoader"></param>
 public record MainBlockProcessingContext(
     ILifetimeScope LifetimeScope,
-    BlockchainProcessor BlockchainProcessorImpl,
+    IBlockProcessingQueue BlockProcessingQueue,
+    IBlockchainProcessor BlockchainProcessor,
     IWorldState WorldState,
     IBlockProcessor BlockProcessor,
     ITransactionProcessor TransactionProcessor,
     GenesisLoader GenesisLoader) : IMainProcessingContext, IAsyncDisposable
 {
-    public IBlockProcessingQueue BlockProcessingQueue => BlockchainProcessorImpl;
-    public IBlockchainProcessor BlockchainProcessor => BlockchainProcessorImpl;
-
     public async ValueTask DisposeAsync()
     {
         await LifetimeScope.DisposeAsync();
