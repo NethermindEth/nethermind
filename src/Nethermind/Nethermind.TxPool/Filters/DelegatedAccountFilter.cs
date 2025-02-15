@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Filters
                 }
             }
 
-            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
+            if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, spec, out _))
                 return AcceptTxResult.Accepted;
             //If the account is delegated we only accept the next transaction nonce 
             if (state.SenderAccount.Nonce != tx.Nonce)
