@@ -76,14 +76,19 @@ public class OptimismCL : IDisposable
         _driver.Dispose();
     }
 
-    private void SetupTest()
+    private async void SetupTest()
     {
         var block = _l2EthRpc.eth_getBlockByNumber(new(9739163), true).Data;
         DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
         SystemConfig config =
             _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input!, block.ExtraData);
-        _l1Bridge.SetCurrentL1Head(l1BlockInfo.Number);
+        L1Block l1Block = await _l1Bridge.GetBlock(l1BlockInfo.Number);
+        if (l1Block.Hash != l1BlockInfo.BlockHash)
+        {
+            throw new ArgumentException("Unexpected block hash");
+        }
+        _l1Bridge.SetCurrentL1Head(l1BlockInfo.Number, l1BlockInfo.BlockHash);
         L2Block nativeBlock = new()
         {
             Hash = block.Hash,

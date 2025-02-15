@@ -22,6 +22,7 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly CancellationToken _cancellationToken;
 
     private ulong _currentHeadNumber = 0;
+    private Hash256? _currentHeadHash = null;
 
     public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config, CancellationToken cancellationToken, ILogManager logManager)
     {
@@ -46,24 +47,46 @@ public class EthereumL1Bridge : IL1Bridge
         while (!_cancellationToken.IsCancellationRequested)
         {
             // TODO: can we do it with subscription?
-            L1Block? currentHead = await _ethL1Api.GetHead(true);
-            while (currentHead is null || currentHead.Value.Number <= _currentHeadNumber)
+            L1Block newHead = await GetHead();
+            ulong newHeadNumber = newHead.Number;
+
+            if (newHeadNumber > _currentHeadNumber + 1)
             {
-                await Task.Delay(100);
-                currentHead = await _ethL1Api.GetHead(true);
+                int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHeadNumber - 1;
+                Hash256 currentHash = newHead.ParentHash;
+                L1Block[] chainSegment = new L1Block[numberOfMissingBlocks];
+                ReceiptForRpc[][] chainSegmentReceipts = new ReceiptForRpc[numberOfMissingBlocks][];
+                for (int i = numberOfMissingBlocks - 1; i >= 0; i--)
+                {
+                    _logger.Info($"Rolling back L1 head. {i} to go. Block {currentHash}");
+                    chainSegment[i] = await GetBlockByHash(currentHash);
+                    chainSegmentReceipts[i] = await GetReceiptsByBlockHash(currentHash);
+                    currentHash = chainSegment[i].ParentHash;
+                    if (_cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                }
+
+                if (_currentHeadHash is not null && _currentHeadHash != chainSegment[0].ParentHash)
+                {
+                    // TODO: chain reorg
+                }
+
+                for (int i = 0; i < numberOfMissingBlocks; i++)
+                {
+                    await NewHeadChannel.Writer.WriteAsync((chainSegment[i], chainSegmentReceipts[i]), _cancellationToken);
+                    if (_cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                }
             }
 
-            ulong newHeadNumber = (ulong)currentHead.Value.Number;
-
-            for (ulong i = _currentHeadNumber + 1; i < newHeadNumber; i++)
-            {
-                L1Block? skippedBlock = await _ethL1Api.GetBlockByNumber(i, true);
-                ReceiptForRpc[]? skippedReceipts = await _ethL1Api.GetReceiptsByHash(skippedBlock!.Value.Hash);
-                await NewHeadChannel.Writer.WriteAsync((skippedBlock.Value, skippedReceipts!), _cancellationToken);
-            }
             _currentHeadNumber = newHeadNumber;
-            ReceiptForRpc[]? receipts = await _ethL1Api.GetReceiptsByHash(currentHead.Value.Hash);
-            await NewHeadChannel.Writer.WriteAsync((currentHead.Value, receipts!), _cancellationToken);
+            _currentHeadHash = newHead.Hash;
+            ReceiptForRpc[] receipts = await GetReceiptsByBlockHash(newHead.Hash);
+            await NewHeadChannel.Writer.WriteAsync((newHead, receipts!), _cancellationToken);
 
             await Task.Delay(11000, _cancellationToken);
         }
@@ -74,51 +97,87 @@ public class EthereumL1Bridge : IL1Bridge
         _headUpdateTask.Start();
     }
 
-    public Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo)
+    public Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo)
     {
-        return _beaconApi.GetBlobSidecars(slotNumber, indexFrom, indexTo);
+        // TODO: retry here
+        return _beaconApi.GetBlobSidecars(slotNumber, indexFrom, indexTo)!;
     }
 
-    public Task<L1Block?> GetBlock(ulong blockNumber)
+    public async Task<L1Block> GetBlock(ulong blockNumber)
     {
-        // Do not cache getByNumber
-        return _ethL1Api.GetBlockByNumber(blockNumber, true);
+        L1Block? result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
+        while (result is null)
+        {
+            _logger.Warn($"Unable to get L1 block by block number({blockNumber})");
+            result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
+        }
+        CacheBlock(result.Value);
+        return result.Value;
     }
 
     // TODO: pruning
     private readonly ConcurrentDictionary<Hash256, L1Block> _cachedL1Blocks = new();
     private readonly ConcurrentDictionary<Hash256, ReceiptForRpc[]> _cachedReceipts = new();
 
-    public async Task<L1Block?> GetBlockByHash(Hash256 blockHash)
+    private void CacheBlock(L1Block block)
+    {
+        _cachedL1Blocks.TryAdd(block.Hash, block);
+    }
+
+    private void CacheReceipts(Hash256 blockHash, ReceiptForRpc[] receipts)
+    {
+        _cachedReceipts.TryAdd(blockHash, receipts);
+    }
+
+    public async Task<L1Block> GetBlockByHash(Hash256 blockHash)
     {
         if (_cachedL1Blocks.TryGetValue(blockHash, out L1Block cachedBlock))
         {
             return cachedBlock;
         }
         L1Block? result = await _ethL1Api.GetBlockByHash(blockHash, true);
-        if (result is not null)
+        while (result is null)
         {
-            _cachedL1Blocks.TryAdd(blockHash, result.Value);
+            _logger.Warn($"Unable to get L1 block by hash({blockHash})");
+            result = await _ethL1Api.GetBlockByHash(blockHash, true);
         }
-        return result;
+
+        CacheBlock(result.Value);
+        return result.Value;
     }
 
-    public async Task<ReceiptForRpc[]?> GetReceiptsByBlockHash(Hash256 blockHash)
+    public async Task<ReceiptForRpc[]> GetReceiptsByBlockHash(Hash256 blockHash)
     {
         if (_cachedReceipts.TryGetValue(blockHash, out ReceiptForRpc[]? cachedReceipts))
         {
             return cachedReceipts;
         }
         ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
-        if (result is not null)
+        while (result is null)
         {
-            _cachedReceipts.TryAdd(blockHash, result);
+            _logger.Warn($"Unable to get L1 receipts by hash({blockHash})");
+            result = await _ethL1Api.GetReceiptsByHash(blockHash);
         }
+
+        CacheReceipts(blockHash, result);
         return result;
     }
 
-    public void SetCurrentL1Head(ulong blockNumber)
+    public async Task<L1Block> GetHead()
+    {
+        L1Block? result = await _ethL1Api.GetHead(true);
+        while (result is null)
+        {
+            _logger.Warn($"Unable to get L1 head");
+            result = await _ethL1Api.GetHead(true);
+        }
+        CacheBlock(result.Value);
+        return result.Value;
+    }
+
+    public void SetCurrentL1Head(ulong blockNumber, Hash256 blockHash)
     {
         _currentHeadNumber = blockNumber;
+        _currentHeadHash = blockHash;
     }
 }

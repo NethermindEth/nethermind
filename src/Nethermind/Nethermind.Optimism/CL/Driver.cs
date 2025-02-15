@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
@@ -196,13 +195,7 @@ public class Driver : IDisposable
 
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
-            for (int j = 0; j < blobSidecars.Length; ++j)
-            {
-                if (blobSidecars[j].BlobVersionedHash.SequenceEqual(transaction.BlobVersionedHashes[i]))
-                {
-                    await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[j].Blob);
-                }
-            }
+            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob);
         }
     }
 
