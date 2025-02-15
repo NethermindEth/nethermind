@@ -44,6 +44,7 @@ namespace Nethermind.Network
             if (!File.Exists(_trustedNodesPath))
             {
                 if (_logger.IsDebug) _logger.Debug($"Trusted nodes file not found at: {_trustedNodesPath}");
+                return;
             }
 
             var nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
