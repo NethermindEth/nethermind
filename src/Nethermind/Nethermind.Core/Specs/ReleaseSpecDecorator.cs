@@ -89,6 +89,9 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
+
+    public virtual bool IsEofEnabled => spec.IsEofEnabled;
+
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
 
@@ -136,4 +139,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
+    public object? EvmInstructions { get => spec.EvmInstructions; set => spec.EvmInstructions = value; }
+    public object? EvmTracedInstructions { get => spec.EvmTracedInstructions; set => spec.EvmTracedInstructions = value; }
 }

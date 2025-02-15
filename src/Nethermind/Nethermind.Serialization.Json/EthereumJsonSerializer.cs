@@ -70,6 +70,7 @@ namespace Nethermind.Serialization.Json
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
                 Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                NewLine = "\n",
                 Converters =
                 {
                     new LongConverter(),

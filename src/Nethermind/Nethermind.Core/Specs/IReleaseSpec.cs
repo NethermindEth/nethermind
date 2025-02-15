@@ -309,6 +309,12 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// Eof execution env in EVM
+        /// </summary>
+        bool IsEofEnabled { get; }
+
+        /// <summary>
+        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
@@ -431,5 +437,9 @@ namespace Nethermind.Core.Specs
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+
+        public object? EvmInstructions { get; set; }
+
+        public object? EvmTracedInstructions { get; set; }
     }
 }
