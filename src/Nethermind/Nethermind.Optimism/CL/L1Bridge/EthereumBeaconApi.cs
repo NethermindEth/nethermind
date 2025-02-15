@@ -34,66 +34,10 @@ public class EthereumBeaconApi : IBeaconApi
         _logger = logger;
     }
 
-    public async Task<BeaconBlock?> GetHead()
+    public async Task<BlobSidecar[]?> GetBlobSidecars(ulong slot, int indexFrom, int indexTo)
     {
-        GetBlockResponse? data = await GetData<GetBlockResponse>("/eth/v2/beacon/blocks/head");
-        return data is null ? null : new BeaconBlock
-        {
-            PayloadNumber = data.Value.Data.Message.Body.ExecutionPayload.BlockNumber,
-            SlotNumber = data.Value.Data.Message.Slot,
-            ExecutionBlockHash = data.Value.Data.Message.Body.ExecutionPayload.BlockHash,
-            PrevRandao = data.Value.Data.Message.Body.ExecutionPayload.PrevRandao,
-            Transactions = data.Value.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
-            {
-                // Should we remove this and use L1 EL to retrieve data?
-                var tx = Rlp.Decode<Transaction>(x);
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-                return tx;
-            }).ToArray()
-        };
-    }
-
-    public async Task<BeaconBlock?> GetBySlotNumber(ulong slot)
-    {
-        GetBlockResponse? data = await GetData<GetBlockResponse>($"/eth/v2/beacon/blocks/{slot}");
-        return new BeaconBlock
-        {
-            PayloadNumber = data.Value.Data.Message.Body.ExecutionPayload.BlockNumber,
-            SlotNumber = data.Value.Data.Message.Slot,
-            ExecutionBlockHash = data.Value.Data.Message.Body.ExecutionPayload.BlockHash,
-            PrevRandao = data.Value.Data.Message.Body.ExecutionPayload.PrevRandao,
-            Transactions = data.Value.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
-            {
-                // Should we remove this and use L1 EL to retrieve data?
-                var tx = Rlp.Decode<Transaction>(x);
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-                return tx;
-            }).ToArray()
-        };
-    }
-
-    public async Task<BeaconBlock?> GetFinalized()
-    {
-        GetBlockResponse? data = await GetData<GetBlockResponse>("/eth/v2/beacon/blocks/finalized");
-        return data is null ? null : new BeaconBlock
-        {
-            PayloadNumber = data.Value.Data.Message.Body.ExecutionPayload.BlockNumber,
-            SlotNumber = data.Value.Data.Message.Slot,
-            ExecutionBlockHash = data.Value.Data.Message.Body.ExecutionPayload.BlockHash,
-            PrevRandao = data.Value.Data.Message.Body.ExecutionPayload.PrevRandao,
-            Transactions = data.Value.Data.Message.Body.ExecutionPayload.Transactions.Select(x =>
-            {
-                // Should we remove this and use L1 EL to retrieve data?
-                var tx = Rlp.Decode<Transaction>(x);
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, true);
-                return tx;
-            }).ToArray()
-        };
-    }
-
-    public async Task<BlobSidecar[]?> GetBlobSidecars(ulong slot)
-    {
-        GetBlobSidecarsResponse? data = await GetData<GetBlobSidecarsResponse>($"/eth/v1/beacon/blob_sidecars/{slot}");
+        GetBlobSidecarsResponse? data = await GetData<GetBlobSidecarsResponse>(
+            $"/eth/v1/beacon/blob_sidecars/{slot}?indices={string.Join(',', Enumerable.Range(indexFrom, indexTo - indexFrom + 1))}");
         if (data is null) return null;
         for (int i = 0; i < data.Value.Data.Length; ++i)
         {
@@ -138,42 +82,7 @@ public class EthereumBeaconApi : IBeaconApi
         return default;
     }
 
-    // TODO: remove
 #pragma warning disable 0649
-    private struct GetBlockResponse
-    {
-        public GetBlockData Data;
-    }
-
-    // TODO: can we avoid additional structs
-    private struct GetBlockData
-    {
-        public GetBlockMessage Message;
-    }
-
-    private struct GetBlockMessage
-    {
-        public ulong Slot;
-        public GetBlockBody Body;
-    }
-
-    private struct GetBlockBody
-    {
-        [JsonPropertyName("execution_payload")]
-        public GetBlockExecutionPayload ExecutionPayload;
-    }
-
-    private struct GetBlockExecutionPayload
-    {
-        [JsonPropertyName("block_number")]
-        public ulong BlockNumber;
-        [JsonPropertyName("block_hash")]
-        public Hash256 BlockHash;
-        [JsonPropertyName("prev_randao")]
-        public Hash256 PrevRandao;
-        public byte[][] Transactions;
-    }
-
     private struct GetBlobSidecarsResponse
     {
         public BlobSidecar[] Data;

@@ -132,6 +132,7 @@ public class Driver : IDisposable
 
     private OptimismPayloadAttributes PayloadAttributesFromBlockForRpc(BlockForRpc block)
     {
+        ArgumentNullException.ThrowIfNull(block);
         OptimismPayloadAttributes result = new()
         {
             NoTxPool = true,
@@ -160,18 +161,24 @@ public class Driver : IDisposable
     private async Task OnNewL1Head(L1Block block)
     {
         _logger.Error($"New L1 Block. Number {block.Number}");
+        int startingBlobIndex = 0;
         // Filter batch submitter transaction
         foreach (L1Transaction transaction in block.Transactions!)
         {
-            if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                _engineParameters.BatcherAddress == transaction.From)
+            if (transaction.Type == TxType.Blob)
             {
-                if (transaction.Type == TxType.Blob)
+                if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                    _engineParameters.BatcherAddress == transaction.From)
                 {
                     await ProcessBlobBatcherTransaction(transaction,
-                        CalculateSlotNumber(block.Timestamp.ToUInt64(null)));
+                        startingBlobIndex, CalculateSlotNumber(block.Timestamp.ToUInt64(null)));
                 }
-                else
+                startingBlobIndex += transaction.BlobVersionedHashes!.Length;
+            }
+            else
+            {
+                if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                    _engineParameters.BatcherAddress == transaction.From)
                 {
                     ProcessCalldataBatcherTransaction(transaction);
                 }
@@ -179,16 +186,17 @@ public class Driver : IDisposable
         }
     }
 
-    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, ulong slotNumber)
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
     {
-        BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+        BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
+            startingBlobIndex + transaction.BlobVersionedHashes!.Length);
         while (blobSidecars is null)
         {
-            await Task.Delay(100);
-            blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+            blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
+                startingBlobIndex + transaction.BlobVersionedHashes.Length);
         }
 
-        for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+        for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
             for (int j = 0; j < blobSidecars.Length; ++j)
             {

@@ -71,9 +71,9 @@ public class EthereumL1Bridge : IL1Bridge
         _headUpdateTask.Start();
     }
 
-    public Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber)
+    public Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo)
     {
-        return _beaconApi.GetBlobSidecars(slotNumber);
+        return _beaconApi.GetBlobSidecars(slotNumber, indexFrom, indexTo);
     }
 
     public Task<L1Block?> GetBlock(ulong blockNumber)

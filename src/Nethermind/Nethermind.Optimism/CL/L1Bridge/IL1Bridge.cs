@@ -13,8 +13,7 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 public interface IL1Bridge
 {
     Channel<(L1Block, ReceiptForRpc[])> NewHeadChannel { get; }
-    // TODO: use indices to skip blobs
-    Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber);
+    Task<BlobSidecar[]?> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo);
     Task<L1Block?> GetBlock(ulong blockNumber);
     Task<L1Block?> GetBlockByHash(Hash256 blockHash);
     Task<ReceiptForRpc[]?> GetReceiptsByBlockHash(Hash256 blockHash);
