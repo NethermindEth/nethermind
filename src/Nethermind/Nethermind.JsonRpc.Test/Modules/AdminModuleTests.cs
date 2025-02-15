@@ -90,6 +90,7 @@ public class AdminModuleTests
 
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         Enode enode = new(_enodeString);
         ChainSpec chainSpec = new()
         {
@@ -116,6 +117,7 @@ public class AdminModuleTests
             _exampleDataDir,
             new ManualPruningTrigger(),
             chainSpec.Parameters,
+            trustedNodesManager,
             _subscriptionManager);
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
@@ -295,6 +297,51 @@ public class AdminModuleTests
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("false");
         _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("true");
+    }
+
+    [Test]
+    public async Task Test_admin_addTrustedPeer()
+    {
+        // Setup dependencies
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        IPeerPool peerPool = Substitute.For<IPeerPool>();
+
+        ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
+        Enode testEnode = new(_enodeString);
+
+        // Mock AddAsync to return true for any enode (to simplify)
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
+
+        // Create the adminRpcModule as IAdminRpcModule (important for RpcTest)
+        IAdminRpcModule adminRpcModule = new AdminRpcModule(
+            _blockTree,
+            _networkConfig,
+            peerPool,
+            Substitute.For<IStaticNodesManager>(),
+            Substitute.For<IVerifyTrieStarter>(),
+            Substitute.For<IStateReader>(),
+            new Enode(_enodeString),
+            Substitute.For<IAdminEraService>(),
+            _exampleDataDir,
+            new ManualPruningTrigger(),
+            chainSpec.Parameters,
+            trustedNodesManager,
+            _subscriptionManager);
+
+        // Call admin_addTrustedPeer via the RPC test helper
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
+
+        // Deserialize the response
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        response.Should().NotBeNull("Response should not be null");
+        bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
+        result.Should().BeTrue("The RPC call should succeed and return true");
+
+        // Verify that AddAsync was called once with any Enode
+        await trustedNodesManager.Received(1).AddAsync(Arg.Any<Enode>(), Arg.Any<bool>());
+
+        // Verify that peerPool.GetOrAdd was called once with any NetworkNode
+        peerPool.Received(1).GetOrAdd(Arg.Any<NetworkNode>());
     }
 
     [Test]

@@ -74,6 +74,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>(),
                 TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>(),
                 StaticNodesManager = Substitute.For<IStaticNodesManager>(),
+                TrustedNodesManager = Substitute.For<ITrustedNodesManager>(),
                 BloomStorage = Substitute.For<IBloomStorage>(),
                 Sealer = Substitute.For<ISealer>(),
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),

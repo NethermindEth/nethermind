@@ -56,6 +56,14 @@
     "agent": "g6-standard-6"
   },
   {
+    "network": "world-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
     "network": "op-mainnet",
     "cl": "",
     "cl_image": "",
@@ -65,6 +73,14 @@
   },
   {
     "network": "base-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "world-mainnet",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

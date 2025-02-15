@@ -53,6 +53,9 @@ namespace Nethermind.Stats.Model
         /// </summary>
         public bool IsStatic { get; set; }
 
+        public bool IsTrusted { get; set; }
+
+
         public string ClientId
         {
             get => _clientId;

@@ -36,6 +36,9 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             // This load from file.
             .AddSingleton<NodesLoader>()
 
+            .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
+                new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
+
             .Bind<INodeSource, IStaticNodesManager>()
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()

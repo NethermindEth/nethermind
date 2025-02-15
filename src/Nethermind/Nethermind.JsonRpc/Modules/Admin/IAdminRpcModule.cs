@@ -108,6 +108,16 @@ public interface IAdminRpcModule : IContextAwareRpcModule
         IsImplemented = true)]
     ResultWrapper<string> admin_verifyTrie(BlockParameter block);
 
+    [JsonRpcMethod(Description = "Adds given node as a trusted peer, allowing the node to always connect even if slots are full.",
+        EdgeCaseHint = "",
+        ResponseDescription = "Boolean indicating success",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_addTrustedPeer(
+        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
+        string enode
+);
+
     [JsonRpcMethod(Description = "Subscribes to a particular event over WebSocket. For every event that matches the subscription, a notification with event details and subscription id is sent to a client.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
     ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null);
     [JsonRpcMethod(Description = "Unsubscribes from a subscription.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
