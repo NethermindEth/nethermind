@@ -32,7 +32,6 @@ public class Driver : IDisposable
     private readonly IDecodingPipeline _decodingPipeline;
 
     private readonly Task _mainTask;
-    private readonly ChannelReader<(L1Block, ReceiptForRpc[])> _newL1HeadReader;
 
     public Driver(IL1Bridge l1Bridge, IEthRpcModule l2EthRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
@@ -47,7 +46,6 @@ public class Driver : IDisposable
         _l2EthRpc = l2EthRpc;
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
-        _newL1HeadReader = _l1Bridge.NewHeadChannel.Reader;
         _decodingPipeline = new DecodingPipeline(logger);
 
         _mainTask = new(async () =>
@@ -78,7 +76,7 @@ public class Driver : IDisposable
                         }
                     }
                 }
-                if (_newL1HeadReader.TryRead(out (L1Block Block, ReceiptForRpc[]) newHead))
+                if (_l1Bridge.NewHeadReader.TryRead(out (L1Block Block, ReceiptForRpc[]) newHead))
                 {
                     await OnNewL1Head(newHead.Block);
                 }

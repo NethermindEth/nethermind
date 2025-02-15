@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -35,8 +36,10 @@ public class EthereumL1Bridge : IL1Bridge
         });
     }
 
-    public Channel<(L1Block, ReceiptForRpc[])> NewHeadChannel { get; } =
-        Channel.CreateBounded<(L1Block, ReceiptForRpc[])>(20);
+
+    private readonly Channel<(L1Block, ReceiptForRpc[])> NewHeadChannel = Channel.CreateBounded<(L1Block, ReceiptForRpc[])>(20);
+    public ChannelReader<(L1Block, ReceiptForRpc[])> NewHeadReader => NewHeadChannel.Reader;
+
 
     private async void HeadUpdateLoop()
     {
@@ -78,17 +81,40 @@ public class EthereumL1Bridge : IL1Bridge
 
     public Task<L1Block?> GetBlock(ulong blockNumber)
     {
+        // Do not cache getByNumber
         return _ethL1Api.GetBlockByNumber(blockNumber, true);
     }
 
-    public Task<L1Block?> GetBlockByHash(Hash256 blockHash)
+    // TODO: pruning
+    private readonly ConcurrentDictionary<Hash256, L1Block> _cachedL1Blocks = new();
+    private readonly ConcurrentDictionary<Hash256, ReceiptForRpc[]> _cachedReceipts = new();
+
+    public async Task<L1Block?> GetBlockByHash(Hash256 blockHash)
     {
-        return _ethL1Api.GetBlockByHash(blockHash, true);
+        if (_cachedL1Blocks.TryGetValue(blockHash, out L1Block cachedBlock))
+        {
+            return cachedBlock;
+        }
+        L1Block? result = await _ethL1Api.GetBlockByHash(blockHash, true);
+        if (result is not null)
+        {
+            _cachedL1Blocks.TryAdd(blockHash, result.Value);
+        }
+        return result;
     }
 
-    public Task<ReceiptForRpc[]?> GetReceiptsByBlockHash(Hash256 blockHash)
+    public async Task<ReceiptForRpc[]?> GetReceiptsByBlockHash(Hash256 blockHash)
     {
-        return _ethL1Api.GetReceiptsByHash(blockHash);
+        if (_cachedReceipts.TryGetValue(blockHash, out ReceiptForRpc[]? cachedReceipts))
+        {
+            return cachedReceipts;
+        }
+        ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
+        if (result is not null)
+        {
+            _cachedReceipts.TryAdd(blockHash, result);
+        }
+        return result;
     }
 
     public void SetCurrentL1Head(ulong blockNumber)
