@@ -43,8 +43,8 @@ public class GoerliSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId => BlockchainIds.Goerli;
-    public ulong ChainId => BlockchainIds.Goerli;
+    public ulong NetworkId => BlockchainIds.Sepolia;
+    public ulong ChainId => BlockchainIds.Sepolia;
     public string SealEngine => SealEngineType.Clique;
     public long? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;

@@ -50,7 +50,7 @@ public class CliqueBlockProducerTests
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
-        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
+        private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
         private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
         private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -122,7 +122,7 @@ public class CliqueBlockProducerTests
 
             SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
             _snapshotManager[privateKey] = snapshotManager;
-            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
             _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
