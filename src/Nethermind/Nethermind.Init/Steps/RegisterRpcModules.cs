@@ -215,6 +215,8 @@ public class RegisterRpcModules : IStep
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
+            _api.CreateBlockchainBridge(),
+            new BlocksConfig().SecondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
