@@ -86,8 +86,9 @@
             <div class="max">Max: <span id="maxMemory" class="number"></span> MB</div>
         </div>
     </div>
-    <div id="headBlock" class="container" style="height:240px">
+    <div id="headBlock" class="container not-active" style="height:240px">
         <div class="title">Lastest Block</div>
+        <div class="not-active-message">Not Synced</div>
         <div style="left: calc(50% - 40px);position: absolute;top: 5px;width: 80px;text-align: center;color: #009CDD;">Gas Target</div>
         <div style="left: 50%;position: absolute;height: 210px;border-left: 2px dashed #FFA726;top: 25px;"></div>
         <div style="right: 8px;position:absolute;top: 8px;">Extra Data: <span id="blockExtraData" class="right number">0x</span></div>
@@ -121,8 +122,9 @@
         </div>
         <div id="block" style="margin-top: 35px;"></div>
     </div>
-    <div id="txPoolFlow" class="container">
+    <div id="txPoolFlow" class="container not-active">
         <div class="title">Incoming Transactions</div>
+        <div class="not-active-message">Mempool Not Active</div>
         <div id="txPool">
             <table>
                 <thead>
