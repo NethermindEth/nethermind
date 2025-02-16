@@ -43,11 +43,27 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>();
+    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
+        new UnboundedChannelOptions()
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+            // Share thread with request
+            AllowSynchronousContinuations = true
+        });
+
+    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
+        new BoundedChannelOptions(MaxProcessingQueueSize)
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+            // Share thread with request
+            AllowSynchronousContinuations = true,
+            // Blocks need to be processed in order
+            FullMode = BoundedChannelFullMode.DropWrite
+        });
+
     private bool _recoveryComplete = false;
-
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(MaxProcessingQueueSize);
-
     private int _queueCount;
 
     private readonly ProcessingStats _stats;
