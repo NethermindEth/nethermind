@@ -58,9 +58,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // Optimize for single reader concurrency
             SingleReader = true,
             // Share thread with request
-            AllowSynchronousContinuations = true,
-            // Blocks need to be processed in order
-            FullMode = BoundedChannelFullMode.DropWrite
+            AllowSynchronousContinuations = true
         });
 
     private bool _recoveryComplete = false;
