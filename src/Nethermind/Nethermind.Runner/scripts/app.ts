@@ -101,7 +101,11 @@ let txPoolNodes: INode[] = null;
  */
 function updateTxPool(txPool: TxPool) {
 
-  if (txPool.pooledTx == 0) return;
+  if (txPool.pooledTx == 0) {
+    document.getElementById("txPoolFlow").classList.add("not-active");
+    return;
+  }
+  document.getElementById("txPoolFlow").classList.remove("not-active");
 
   const nowMs = performance.now();
   const currentNow = nowMs / 1000;
@@ -219,6 +223,9 @@ sse.addEventListener("forkChoice", (e) => {
 
   const data = JSON.parse(e.data) as ForkChoice;
   const number = parseInt(data.head.number, 16);
+  if (number !== 0) {
+    document.getElementById("headBlock").classList.remove("not-active");
+  }
   const safe = parseInt(data.safe, 16);
   const finalized = parseInt(data.finalized, 16);
   updateText(headBlock, number.toFixed(0));

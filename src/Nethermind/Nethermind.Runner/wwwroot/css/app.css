@@ -234,6 +234,28 @@ th {
   width: 58px;
   text-align: right;
 }
+.not-active svg {
+  display: none;
+}
+.not-active > div, .not-active > #txTps {
+  display: none;
+}
+.not-active > div.title {
+  display: block;
+}
+.container > .not-active-message {
+  text-align: center;
+  display: none;
+  padding: 4px;
+}
+.container.not-active > .not-active-message {
+  display: block;
+}
+.container.not-active {
+  display: block;
+  height: 26px !important;
+  overflow: hidden;
+}
 
 #network-logo {
   float: left;
