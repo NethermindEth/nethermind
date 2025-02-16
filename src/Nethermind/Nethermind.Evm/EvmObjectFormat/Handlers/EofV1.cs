@@ -772,18 +772,21 @@ internal class Eof1 : IEofVersionHandler
     /// </returns>
     private static bool ValidateDataSection(in EofHeader header, ValidationStrategy strategy, ReadOnlySpan<byte> dataBody)
     {
-        // If full body validation is requested, the DataSection size must be less than or equal to the data available.
-        if (strategy.HasFlag(ValidationStrategy.ValidateFullBody) && header.DataSection.Size > dataBody.Length)
+        // If full body validation is requested, or it is runtime mode (but not both)
+        // the DataSection size must be less than or equal to the data available.
+        if ((strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode) ^ strategy.HasFlag(ValidationStrategy.ValidateFullBody))
+            && header.DataSection.Size > dataBody.Length)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, DataSection size ({header.DataSection.Size}) exceeds available data ({dataBody.Length}).");
             return false;
         }
 
-        // When trailing bytes are not allowed, the DataSection size must exactly match the available data.
+        // When trailing bytes are not allowed, the DataSection cannot exceed the stated size data.
+        // Undeflow cases were checked above as they don't apply in all cases
         if (!strategy.HasFlag(ValidationStrategy.AllowTrailingBytes)
             && strategy.HasFlag(ValidationStrategy.ValidateFullBody)
-            && header.DataSection.Size != dataBody.Length)
+            && header.DataSection.Size < dataBody.Length)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"EOF: Eof{VERSION}, DataSection size ({header.DataSection.Size}) does not match available data ({dataBody.Length}).");
@@ -1041,8 +1044,6 @@ internal class Eof1 : IEofVersionHandler
                 }
                 else if (opcode == Instruction.JUMPF)
                 {
-                    // A JUMPF always implies a required section exit.
-                    hasRequiredSectionExit = true;
                     if (nextPosition + TWO_BYTE_LENGTH > code.Length)
                     {
                         if (Logger.IsTrace)
@@ -1078,6 +1079,12 @@ internal class Eof1 : IEofVersionHandler
                         if (Logger.IsTrace)
                             Logger.Trace($"EOF: Eof{VERSION}, {Instruction.JUMPF} from non-returning must target non-returning");
                         return false;
+                    }
+
+                    // JUMPF is only returnig when the target is returning
+                    if (!isTargetSectionNonReturning)
+                    {
+                        hasRequiredSectionExit = true;
                     }
 
                     sectionsWorklist.Enqueue(targetSectionId, strategy);

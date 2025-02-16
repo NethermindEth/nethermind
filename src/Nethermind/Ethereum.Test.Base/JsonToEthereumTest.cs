@@ -341,8 +341,7 @@ namespace Ethereum.Test.Base
                     vector.ContainerKind =
                         ("INITCODE".Equals(vectorJson.ContainerKind)
                             ? ValidationStrategy.ValidateInitCodeMode
-                            : ValidationStrategy.ValidateRuntimeMode)
-                        | ValidationStrategy.ValidateFullBody;
+                            : ValidationStrategy.ValidateRuntimeMode);
 
                     foreach (var result in vectorJson.Results)
                     {

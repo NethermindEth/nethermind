@@ -13,5 +13,4 @@ public enum ValidationStrategy : byte
     AllowTrailingBytes = Validate | 16,
     ExractHeader = 32,
     HasEofMagic = 64,
-
 }
