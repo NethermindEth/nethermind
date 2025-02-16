@@ -1148,15 +1148,14 @@ namespace Nethermind.Synchronization.FastSync
                             if (syncItem.NodeDataType == NodeDataType.Storage)
                             {
                                 childNode.ResolveNode(NullTrieNodeResolver.Instance, in p);
-                                childPath = currentPath.Append(childNode.Key);
-                                rawState.SetStorage(accountHash, new Hash256(childPath.Span),
+                                TreePath inlineNodeFullPath = childPath.Append(childNode.Key);
+                                rawState.SetStorage(accountHash, new Hash256(inlineNodeFullPath.Span),
                                     new Rlp.ValueDecoderContext(childNode.Value).DecodeByteArray());
-                                if (childNode.Key.Length > 0)
-                                    rawState.CreateProofLeaf(accountHash, childPath.Span, syncItem.Level + 1,
-                                        0);
+                                if (childNode.Key?.Length > 0)
+                                    rawState.CreateProofLeaf(accountHash, inlineNodeFullPath.Span, syncItem.Level + 1, 0);
 
                                 if (_logger.IsDebug)
-                                    _logger.Debug($"Save inline node {childNode} at {accountHash} | {currentPath.ToHexString()}");
+                                    _logger.Debug($"Save inline node {childNode} at {accountHash} | {childPath.ToHexString()} | {inlineNodeFullPath.ToHexString()}");
                             }
                             else
                             {
