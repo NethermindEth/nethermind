@@ -5,10 +5,10 @@ import * as d3 from 'd3';
 import Convert = require('ansi-to-html');
 import { formatDuration } from './format';
 import { sparkline, Datum } from './sparkline';
-import { NodeData, INode, TxPool, Processed, ForkChoice, System, Receipt, Transaction, TransactionReceipt } from './types';
+import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionReceipt } from './types';
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
-import { formatUnixTimestamp, formatBytes, parseExtraData } from './utilities';
+import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo } from './utilities';
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -180,12 +180,14 @@ const sse = new EventSource("/data/events");
 sse.addEventListener("nodeData", (e) => {
   const data = JSON.parse(e.data) as NodeData;
 
-  var newTitle = `Nethermind [${data.network}]${(data.instance ? ' - ' + data.instance : '')}`;
+  const networkName = getNetworkName(data.network);
+  const newTitle = `Nethermind [${networkName}]${(data.instance ? ' - ' + data.instance : '')}`;
   if (document.title != newTitle) {
     document.title = newTitle;
   }
   updateText(version, data.version);
-  updateText(network, data.network);
+  updateText(network, networkName);
+  (document.getElementById("network-logo") as HTMLImageElement).src = `logos/${getNetworkLogo(data.network)}`;
   // Update uptime text
   updateText(upTime, formatDuration(data.uptime));
 });

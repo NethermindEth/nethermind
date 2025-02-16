@@ -268,3 +268,19 @@ function hexStringToUint8Array(hex: string): Uint8Array {
   }
   return bytes;
 }
+
+const networks = {
+  "1": "Ethereum mainnet",
+  "8453": "Base mainnet"
+}
+const logos = {
+  "1": "ethereum-logo.svg",
+  "8453": "base-logo.svg"
+}
+
+export function getNetworkName(network: string) {
+  return networks[network] || network;
+}
+export function getNetworkLogo(network: string) {
+  return logos[network] || "unknown.png";
+}

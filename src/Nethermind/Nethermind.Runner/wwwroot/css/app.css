@@ -234,3 +234,10 @@ th {
   width: 58px;
   text-align: right;
 }
+
+#network-logo {
+  float: left;
+  width: 42px;
+  height: 42px;
+  margin-left: -50px;
+}
