@@ -129,7 +129,7 @@ public class CliqueBlockProducerTests
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
             TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
+                new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new(
@@ -150,7 +150,7 @@ public class CliqueBlockProducerTests
             IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
             WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
+            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
             BlockProcessor minerBlockProcessor = new(

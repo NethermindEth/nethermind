@@ -119,6 +119,8 @@ namespace Nethermind.Specs
             set => _eip4788ContractAddress = value;
         }
 
+        public bool IsEofEnabled { get; set; }
+
         public bool IsEip6110Enabled { get; set; }
 
         private Address _depositContractAddress;
@@ -138,5 +140,7 @@ namespace Nethermind.Specs
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
+        public object EvmInstructions { get; set; }
+        public object? EvmTracedInstructions { get; set; }
     }
 }

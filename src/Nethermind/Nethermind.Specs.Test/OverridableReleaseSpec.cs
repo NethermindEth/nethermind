@@ -181,7 +181,11 @@ namespace Nethermind.Specs.Test
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator => _spec.BaseFeeCalculator;
+        public bool IsEofEnabled => _spec.IsEofEnabled;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+
+        public object? EvmInstructions { get => _spec.EvmInstructions; set => _spec.EvmInstructions = value; }
+        public object? EvmTracedInstructions { get => _spec.EvmTracedInstructions; set => _spec.EvmTracedInstructions = value; }
     }
 }
