@@ -21,8 +21,7 @@ public class TxTrie : PatriciaTrie<Transaction>
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
     public TxTrie(ReadOnlySpan<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
-        : base(transactions, canBuildProof, bufferPool: bufferPool)
-    {}
+        : base(transactions, canBuildProof, bufferPool: bufferPool) { }
 
     protected override void Initialize(ReadOnlySpan<Transaction> list)
     {
