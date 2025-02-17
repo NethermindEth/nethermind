@@ -72,7 +72,7 @@ public class PayloadAttributes
         => GetInclusionListTransactions(new EthereumEcdsa(chainId));
 
     public IEnumerable<Transaction>? GetInclusionListTransactions(IEthereumEcdsa ecdsa)
-        => _inclusionListTransactions ??= InclusionListDecoder.Decode(InclusionListTransactions?, ecdsa);
+        => _inclusionListTransactions ??= InclusionListTransactions is null ? null : InclusionListDecoder.Decode(InclusionListTransactions, ecdsa);
 
     private IEnumerable<Transaction>? _inclusionListTransactions;
 
