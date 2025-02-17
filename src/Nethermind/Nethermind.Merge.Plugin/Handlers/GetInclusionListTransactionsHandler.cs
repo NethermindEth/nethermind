@@ -12,11 +12,16 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetInclusionListTransactionsHandler(
     IBlockTree blockTree,
-    TxPoolTxSource txPoolTxSource)
+    TxPoolTxSource? txPoolTxSource)
     : IHandler<byte[][]>
 {
     public ResultWrapper<byte[][]> Handle()
     {
+        if (txPoolTxSource is null)
+        {
+            return ResultWrapper<byte[][]>.Success([]);
+        }
+
         // get highest priority fee transactions from txpool up to limit
         IEnumerable<Transaction> txs = txPoolTxSource.GetTransactions(blockTree.Head!.Header, long.MaxValue);
         byte[][] txBytes = [.. DecodeTransactionsUpToLimit(txs)];
