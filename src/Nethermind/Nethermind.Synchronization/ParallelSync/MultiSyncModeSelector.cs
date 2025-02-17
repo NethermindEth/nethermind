@@ -379,7 +379,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return false;
             }
 
-            if (best.Header > best.PivotNumber)
+            if (best.PivotNumber != 0 && best.Header == 0)
             {
                 // do not start fast sync until at least one header is downloaded or we would start from zero
                 // we are fine to start from zero if we do not use fast blocks
@@ -813,7 +813,7 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInBeaconHeaders { get; set; }
             public bool IsInBeaconControl { get; }
             public readonly bool IsInAnyBeaconMode => IsInBeaconHeaders || IsInBeaconControl;
-            public readonly bool StateDownloaded => State > PivotNumber;
+            public readonly bool StateDownloaded => State >= PivotNumber;
             public readonly bool AnyPostPivotPeerKnown => Peer.Block > PivotNumber;
 
             /// <summary>
