@@ -6,7 +6,6 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -37,7 +36,9 @@ public class InclusionListValidator(
             return false;
         }
 
-        if (block.GasUsed >= block.GasLimit)
+        // There is no more gas for transactions so IL is satisfied
+        // FOCIL is conditional IL
+        if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit)
         {
             return true;
         }
