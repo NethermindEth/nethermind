@@ -9,24 +9,15 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Validators;
 
-public class InclusionListValidator : IInclusionListValidator
+public class InclusionListValidator(
+    ISpecProvider specProvider,
+    ITransactionProcessor transactionProcessor) : IInclusionListValidator
 {
-    private readonly ISpecProvider _specProvider;
-    private readonly IEthereumEcdsa _ecdsa;
-    private readonly ITransactionProcessor _transactionProcessor;
-
-    public InclusionListValidator(
-        ISpecProvider specProvider,
-        ITransactionProcessor transactionProcessor)
-    {
-        _specProvider = specProvider;
-        _ecdsa = new EthereumEcdsa(specProvider.ChainId);
-        _transactionProcessor = transactionProcessor;
-    }
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
     public bool ValidateInclusionList(Block block, out string? error) =>
         ValidateInclusionList(block, _specProvider.GetSpec(block.Header), out error);
