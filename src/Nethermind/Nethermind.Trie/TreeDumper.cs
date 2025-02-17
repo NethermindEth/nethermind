@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie
 {
-    public class TreeDumper : ITreeVisitor<EmptyContext>
+    public class TreeDumper : ITreeVisitor<OldTrieVisitContext>
     {
         private readonly StringBuilder _builder = new();
 
@@ -21,12 +21,12 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan { get; init; } = true;
 
-        public bool ShouldVisit(in EmptyContext _, Hash256 nextNode)
+        public bool ShouldVisit(in OldTrieVisitContext _, Hash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(in EmptyContext _, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in OldTrieVisitContext _, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
@@ -38,49 +38,49 @@ namespace Nethermind.Trie
             }
         }
 
-        private static string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
+        private static string GetPrefix(in OldTrieVisitContext ctx, TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(ctx)}");
 
         private static string GetIndent(int level) => new('+', level * 2);
-        private static string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
+        private static string GetChildIndex(in OldTrieVisitContext ctx) => ctx.BranchChildIndex is null ? string.Empty : $"{ctx.BranchChildIndex:x2} ";
 
-        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in OldTrieVisitContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetIndent(trieVisitContext.Level)}{GetChildIndex(trieVisitContext)}MISSING {nodeHash}");
+            _builder.AppendLine($"{GetIndent(trieVisitContext.Level)}{GetChildIndex(ctx)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in OldTrieVisitContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
         }
 
-        public void VisitExtension(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in OldTrieVisitContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         private readonly AccountDecoder decoder = new();
 
-        public void VisitLeaf(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in OldTrieVisitContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             Rlp.ValueDecoderContext valueDecoderContext = new(value);
             if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(ref valueDecoderContext);
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  NONCE: {account.Nonce}");
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  BALANCE: {account.Balance}");
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  IS_CONTRACT: {account.IsContract}");
+                _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}  NONCE: {account.Nonce}");
+                _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}  BALANCE: {account.Balance}");
+                _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}  IS_CONTRACT: {account.IsContract}");
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
             }
         }
 
-        public void VisitCode(in EmptyContext _, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in OldTrieVisitContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}CODE {codeHash}");
+            _builder.AppendLine($"{GetPrefix(ctx, trieVisitContext)}CODE {codeHash}");
         }
 
         public override string ToString()

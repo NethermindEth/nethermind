@@ -4,10 +4,43 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie
 {
+    public struct OldTrieVisitContext : INodeContext<OldTrieVisitContext>
+    {
+        public int Level;
+        public bool IsStorage;
+        public int? BranchChildIndex;
+
+        public OldTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
+        {
+            return this;
+        }
+
+        public OldTrieVisitContext Add(byte nibble)
+        {
+            return new OldTrieVisitContext
+            {
+                Level = Level,
+                IsStorage = IsStorage,
+                BranchChildIndex = nibble,
+            };
+        }
+
+        public OldTrieVisitContext AddStorage(in ValueHash256 storage)
+        {
+            return new OldTrieVisitContext
+            {
+                Level = Level,
+                IsStorage = true,
+                BranchChildIndex = BranchChildIndex,
+            };
+        }
+    }
+
     public class TrieVisitContext : IDisposable
     {
         private readonly int _maxDegreeOfParallelism = 1;
@@ -18,9 +51,6 @@ namespace Nethermind.Trie
 
         public int Level { get; internal set; }
         public bool IsStorage { get; set; }
-        public int? BranchChildIndex { get; internal set; }
-        public int VisitedNodes => _visitedNodes;
-
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
@@ -57,7 +87,6 @@ namespace Nethermind.Trie
         {
             Level = (byte)trieVisitContext.Level;
             IsStorage = trieVisitContext.IsStorage;
-            BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
         }
 
         public byte Level { get; internal set; }
@@ -99,29 +128,12 @@ namespace Nethermind.Trie
             }
         }
 
-        public byte? BranchChildIndex
-        {
-            readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
-            internal set
-            {
-                if (value is null)
-                {
-                    _branchChildIndex = 255;
-                }
-                else
-                {
-                    _branchChildIndex = (byte)value;
-                }
-            }
-        }
-
         public readonly TrieVisitContext ToVisitContext()
         {
             return new TrieVisitContext()
             {
                 Level = Level,
                 IsStorage = IsStorage,
-                BranchChildIndex = BranchChildIndex,
             };
         }
     }

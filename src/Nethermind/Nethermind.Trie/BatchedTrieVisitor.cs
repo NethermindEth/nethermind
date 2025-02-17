@@ -366,7 +366,7 @@ public class BatchedTrieVisitor<TNodeContext>
         static void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
         {
             throw new TrieException(
-                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
+                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}");
         }
     }
 

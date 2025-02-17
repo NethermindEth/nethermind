@@ -49,7 +49,6 @@ namespace Nethermind.Trie
                                 if (visitor.ShouldVisit(childContext, child.Keccak!))
                                 {
                                     SmallTrieVisitContext childCtx = trieVisitContext; // Copy
-                                    childCtx.BranchChildIndex = (byte?)i;
                                     nextToVisit.Add((child, childContext, childCtx));
                                 }
 
@@ -71,7 +70,6 @@ namespace Nethermind.Trie
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
 
 
                             nextToVisit.Add((child, childContext, trieVisitContext));
@@ -92,7 +90,6 @@ namespace Nethermind.Trie
                             if (account.HasCode && visitor.ShouldVisit(childContext, account.CodeHash))
                             {
                                 trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
                                 visitor.VisitCode(childContext, account.CodeHash, trieVisitContext.ToVisitContext());
                                 trieVisitContext.Level--;
                             }
@@ -102,7 +99,6 @@ namespace Nethermind.Trie
                                 trieVisitContext.IsStorage = true;
                                 TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
                                 trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
 
                                 if (TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
                                 {
@@ -152,7 +148,6 @@ namespace Nethermind.Trie
                             TNodeContext childContext = nodeContext.Add((byte)i);
                             if (v.ShouldVisit(childContext, child.Keccak!))
                             {
-                                context.BranchChildIndex = i;
                                 child.Accept(v, childContext, resolver, ref path, context);
                             }
                             path.TruncateMut(previousPathLength);
@@ -230,7 +225,6 @@ namespace Nethermind.Trie
                                 TNodeContext childContext = nodeContext.Add((byte)i);
                                 if (visitor.ShouldVisit(childContext, child.Keccak!))
                                 {
-                                    visitContext.BranchChildIndex = i;
                                     child.Accept(visitor, childContext, nodeResolver, ref path, visitContext);
                                 }
                             }
@@ -260,7 +254,6 @@ namespace Nethermind.Trie
                         }
 
                         trieVisitContext.Level--;
-                        trieVisitContext.BranchChildIndex = null;
                         break;
                     }
 
@@ -275,7 +268,6 @@ namespace Nethermind.Trie
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
                             child.Accept(visitor, childContext, nodeResolver, ref path, trieVisitContext);
                             trieVisitContext.Level--;
                         }
@@ -298,7 +290,6 @@ namespace Nethermind.Trie
                             if (account.HasCode && visitor.ShouldVisit(leafContext, account.CodeHash))
                             {
                                 trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
                                 visitor.VisitCode(leafContext, account.CodeHash, trieVisitContext);
                                 trieVisitContext.Level--;
                             }
@@ -306,7 +297,6 @@ namespace Nethermind.Trie
                             if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
                             {
                                 trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
 
                                 if (TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
                                 {
