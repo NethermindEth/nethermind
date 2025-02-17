@@ -15,13 +15,15 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        public static IReleaseSpec ParseSpec(string network)
+        public static IReleaseSpec ParseSpec(string network, ulong chainId)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
@@ -58,9 +60,9 @@ namespace Ethereum.Test.Base
                 "ArrowGlacier" => ArrowGlacier.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
-                "Cancun" => Cancun.Instance,
+                "Cancun" => chainId == GnosisSpecProvider.Instance.ChainId ? CancunGnosis.Instance : Cancun.Instance,
                 "Paris" => Paris.Instance,
-                "Prague" => Prague.Instance,
+                "Prague" => chainId == GnosisSpecProvider.Instance.ChainId ? PragueGnosis.Instance : Prague.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -227,7 +229,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
+        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson, ulong chainId)
         {
             if (testJson.LoadFailure is not null)
             {
@@ -249,7 +251,7 @@ namespace Ethereum.Test.Base
                     }
 
                     test.ForkName = postStateBySpec.Key;
-                    test.Fork = ParseSpec(postStateBySpec.Key);
+                    test.Fork = ParseSpec(postStateBySpec.Key, chainId);
                     test.PreviousHash = testJson.Env.PreviousHash;
                     test.CurrentCoinbase = testJson.Env.CurrentCoinbase;
                     test.CurrentDifficulty = testJson.Env.CurrentDifficulty;
@@ -310,7 +312,7 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<GeneralStateTest> Convert(string json)
+        public static IEnumerable<GeneralStateTest> Convert(string json, ulong chainId)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
@@ -318,13 +320,13 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                tests.AddRange(Convert(namedTest.Key, namedTest.Value));
+                tests.AddRange(Convert(namedTest.Key, namedTest.Value, chainId));
             }
 
             return tests;
         }
 
-        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json, ulong chainId)
         {
             Dictionary<string, BlockchainTestJson> testsInFile;
             try
@@ -347,11 +349,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = ParseSpec(networks[0]);
+                testSpec.EthereumNetwork = ParseSpec(networks[0], chainId);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
+                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1], chainId);
                 }
 
                 testsByName.Add(Convert(testName, testSpec));

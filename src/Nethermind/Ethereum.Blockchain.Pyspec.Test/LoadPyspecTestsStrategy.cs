@@ -18,7 +18,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
     public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
 
-    public IEnumerable<IEthereumTest> Load(string testsDir, string wildcard = null)
+    public IEnumerable<IEthereumTest> Load(string testsDir, ulong chainId, string wildcard = null)
     {
         string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", ArchiveVersion, ArchiveName.Split('.')[0]);
         if (!Directory.Exists(testsDirectoryName)) // Prevent redownloading the fixtures if they already exists with this version and archive name
@@ -27,7 +27,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
             ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard, isStateTest));
+        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard, isStateTest, chainId));
     }
 
     private void DownloadAndExtract(string archiveVersion, string archiveName, string testsDirectoryName)
@@ -44,7 +44,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
 
-    private IEnumerable<IEthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, bool isStateTest)
+    private IEnumerable<IEthereumTest> LoadTestsFromDirectory(string testDir, string wildcard, bool isStateTest, ulong chainId)
     {
         List<IEthereumTest> testsByName = new();
         IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
@@ -55,8 +55,8 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             try
             {
                 IEnumerable<IEthereumTest> tests = isStateTest
-                    ? fileTestsSource.LoadGeneralStateTests()
-                    : fileTestsSource.LoadBlockchainTests();
+                    ? fileTestsSource.LoadGeneralStateTests(chainId)
+                    : fileTestsSource.LoadBlockchainTests(chainId);
                 foreach (IEthereumTest test in tests)
                 {
                     test.Category = testDir;

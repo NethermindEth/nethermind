@@ -62,10 +62,10 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            ISpecProvider specProvider = test.ChainId == GnosisSpecProvider.Instance.ChainId
-                ? GnosisSpecProvider.Instance
-                : new CustomSpecProvider(
-                    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+            var genesisSpec = test.ChainId == GnosisSpecProvider.Instance.ChainId ? GnosisSpecProvider.Instance.GenesisSpec : MainnetSpecProvider.Instance.GenesisSpec;
+            ISpecProvider specProvider =
+                new CustomSpecProvider(test.ChainId, test.ChainId,
+                    ((ForkActivation)0, genesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
 
             if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
@@ -111,7 +111,7 @@ namespace Ethereum.Test.Base
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+                test.Transaction.ChainId = test.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
                 BlockHeader parent = new(
