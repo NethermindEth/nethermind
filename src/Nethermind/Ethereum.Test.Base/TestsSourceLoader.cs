@@ -22,7 +22,7 @@ namespace Ethereum.Test.Base
 
         public IEnumerable<IEthereumTest> LoadTests()
         {
-            return _testLoadStrategy.Load(_path);
+            return _testLoadStrategy.Load(_path, _wildcard);
         }
     }
 }

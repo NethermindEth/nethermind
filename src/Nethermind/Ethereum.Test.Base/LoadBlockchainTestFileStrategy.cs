@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base
 {
     public class LoadBlockchainTestFileStrategy : ITestLoadStrategy
     {
-        public IEnumerable<IEthereumTest> Load(string testName, string wildcard = null)
+        public IEnumerable<IEthereumTest> Load(string testName, string? wildcard = null)
         {
             FileTestsSource fileTestsSource = new(testName, wildcard);
             IEnumerable<BlockchainTest> tests = fileTestsSource.LoadBlockchainTests();

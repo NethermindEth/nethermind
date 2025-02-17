@@ -15,9 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.GnosisForks;
 
 namespace Ethereum.Test.Base
 {
