@@ -150,24 +150,21 @@ namespace Nethermind.Trie
                 case NodeType.Branch:
                     {
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        void VisitChild(ref TreePath path, int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor<TNodeContext> v, in TNodeContext nodeContext, TrieVisitContext context)
+                        void VisitChild(ref TreePath path, int i, TrieNode child, ITrieNodeResolver resolver, ITreeVisitor<TNodeContext> v, in TNodeContext nodeContext, TrieVisitContext context)
                         {
-                            if (child is not null)
+                            int previousPathLength = AppendChildPath(ref path, i);
+                            child.ResolveKey(resolver, ref path, false);
+                            TNodeContext childContext = nodeContext.Add((byte)i);
+                            if (v.ShouldVisit(childContext, child.Keccak!))
                             {
-                                int previousPathLength = AppendChildPath(ref path, i);
-                                child.ResolveKey(resolver, ref path, false);
-                                TNodeContext childContext = nodeContext.Add((byte)i);
-                                if (v.ShouldVisit(childContext, child.Keccak!))
-                                {
-                                    context.BranchChildIndex = i;
-                                    child.Accept(v, childContext, resolver, ref path, context);
-                                }
-                                path.TruncateMut(previousPathLength);
+                                context.BranchChildIndex = i;
+                                child.Accept(v, childContext, resolver, ref path, context);
+                            }
+                            path.TruncateMut(previousPathLength);
 
-                                if (child.IsPersisted)
-                                {
-                                    UnresolveChild(i);
-                                }
+                            if (child.IsPersisted)
+                            {
+                                UnresolveChild(i);
                             }
                         }
 
@@ -177,7 +174,9 @@ namespace Nethermind.Trie
                             // single threaded route
                             for (int i = 0; i < BranchesCount; i++)
                             {
-                                VisitChild(ref parentPath, i, GetChild(trieNodeResolver, ref parentPath, i), trieNodeResolver, treeVisitor, nodeContext, visitContext);
+                                TrieNode? childNode = GetChild(trieNodeResolver, ref parentPath, i);
+                                if (childNode is null) continue;
+                                VisitChild(ref parentPath, i, childNode, trieNodeResolver, treeVisitor, nodeContext, visitContext);
                             }
                         }
 
@@ -190,14 +189,17 @@ namespace Nethermind.Trie
                             ArrayPoolList<Task>? tasks = null;
                             for (int i = 0; i < BranchesCount; i++)
                             {
+                                TrieNode? childNode = GetChild(trieNodeResolver, ref parentPath, i);
+                                if (childNode is null) continue;
+
                                 if (i < BranchesCount - 1 && visitContext.ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
                                 {
                                     tasks ??= new ArrayPoolList<Task>(BranchesCount);
-                                    tasks.Add(SpawnChildVisit(parentPath, i, GetChild(nodeResolver, ref parentPath, i), returner));
+                                    tasks.Add(SpawnChildVisit(parentPath, i, childNode, returner));
                                 }
                                 else
                                 {
-                                    VisitChild(ref parentPath, i, GetChild(nodeResolver, ref parentPath, i), trieNodeResolver, treeVisitor, contextCopy, visitContext);
+                                    VisitChild(ref parentPath, i, childNode, trieNodeResolver, treeVisitor, contextCopy, visitContext);
                                 }
                             }
 
@@ -208,7 +210,7 @@ namespace Nethermind.Trie
                             }
                             return;
 
-                            Task SpawnChildVisit(TreePath closureParentPath, int i, TrieNode? childNode, ConcurrencyController.Slot slotReturner) =>
+                            Task SpawnChildVisit(TreePath closureParentPath, int i, TrieNode childNode, ConcurrencyController.Slot slotReturner) =>
                                 Task.Run(() =>
                                 {
                                     using ConcurrencyController.Slot _ = slotReturner;
