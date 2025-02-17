@@ -264,7 +264,7 @@ jobs:
           python scripts/waitForSync.py
 
       - name: Get Nethermind Debug Logs
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         id: find-and-upload
         run: |      
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
