@@ -3,10 +3,10 @@
 
 using Nethermind.Core;
 using Nethermind.JsonRpc;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain;
 using System.Collections.Generic;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Decoders;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -15,11 +15,11 @@ public class GetInclusionListTransactionsHandler(
     TxPoolTxSource txPoolTxSource)
     : IHandler<byte[][]>
 {
-    private const int MaxILSizeBytes = 8000;
+    private const int MaxILSizeBytes = 8192;
 
     public ResultWrapper<byte[][]> Handle()
     {
-        // todo: get top transactions from txpool or something else?
+        // get highest priority fee transactions from txpool up to limit
         IEnumerable<Transaction> txs = txPoolTxSource.GetTransactions(blockTree.Head!.Header, long.MaxValue);
         byte[][] txBytes = [.. DecodeTransactionsUpToLimit(txs)];
         return ResultWrapper<byte[][]>.Success(txBytes);
@@ -30,7 +30,7 @@ public class GetInclusionListTransactionsHandler(
         int size = 0;
         foreach (Transaction tx in txs)
         {
-            byte[] txBytes = Rlp.Encode(tx).Bytes;
+            byte[] txBytes = InclusionListDecoder.Encode(tx);
             size += txBytes.Length;
             if (size > MaxILSizeBytes)
             {

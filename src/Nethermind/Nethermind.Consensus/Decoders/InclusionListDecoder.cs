@@ -23,6 +23,9 @@ public static class InclusionListDecoder
                 return tx;
             });
 
+    public static byte[] Encode(Transaction transaction)
+        => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+
     public static byte[][] Encode(IEnumerable<Transaction> transactions)
-        => [.. transactions.Select(tx => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)];
+        => [.. transactions.Select(Encode)];
 }
