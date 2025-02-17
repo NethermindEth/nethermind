@@ -14,6 +14,7 @@ using Nethermind.Trie;
 using System.Collections.Generic;
 using Nethermind.Crypto;
 using Nethermind.Consensus.Decoders;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -131,10 +132,10 @@ public class PayloadAttributes
 
         if (InclusionListTransactions is not null)
         {
-            Transaction[] txs = [.. GetInclusionListTransactions(ecdsa)!];
-            Hash256 inclusionListTransactionsRootHash = txs.Length == 0
+            using ArrayPoolList<Transaction> txs = GetInclusionListTransactions(ecdsa)!.ToPooledList(Eip7805Constants.MaxTransactionsPerInclusionList);
+            Hash256 inclusionListTransactionsRootHash = txs.Count == 0
                 ? PatriciaTree.EmptyTreeHash
-                : new TxTrie(txs).RootHash;
+                : new TxTrie(txs.AsSpan()).RootHash;
             inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }

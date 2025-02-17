@@ -20,10 +20,11 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(Transaction[] transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
-        : base(transactions, canBuildProof, bufferPool: bufferPool) => ArgumentNullException.ThrowIfNull(transactions);
+    public TxTrie(ReadOnlySpan<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+        : base(transactions, canBuildProof, bufferPool: bufferPool)
+    {}
 
-    protected override void Initialize(Transaction[] list)
+    protected override void Initialize(ReadOnlySpan<Transaction> list)
     {
         int key = 0;
 

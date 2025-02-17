@@ -15,8 +15,6 @@ public class GetInclusionListTransactionsHandler(
     TxPoolTxSource txPoolTxSource)
     : IHandler<byte[][]>
 {
-    private const int MaxILSizeBytes = 8192;
-
     public ResultWrapper<byte[][]> Handle()
     {
         // get highest priority fee transactions from txpool up to limit
@@ -32,7 +30,7 @@ public class GetInclusionListTransactionsHandler(
         {
             byte[] txBytes = InclusionListDecoder.Encode(tx);
             size += txBytes.Length;
-            if (size > MaxILSizeBytes)
+            if (size > Eip7805Constants.MaxBytesPerInclusionList)
             {
                 yield break;
             }

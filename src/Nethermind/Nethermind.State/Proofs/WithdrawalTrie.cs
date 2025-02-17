@@ -20,7 +20,7 @@ public class WithdrawalTrie : PatriciaTrie<Withdrawal>
     public WithdrawalTrie(Withdrawal[]? withdrawals, bool canBuildProof = false)
         : base(withdrawals, canBuildProof) => ArgumentNullException.ThrowIfNull(withdrawals);
 
-    protected override void Initialize(Withdrawal[] withdrawals)
+    protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
         var key = 0;
 

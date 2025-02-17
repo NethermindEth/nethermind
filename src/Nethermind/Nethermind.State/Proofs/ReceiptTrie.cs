@@ -35,7 +35,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
         }
     }
 
-    private void Initialize(TReceipt[] receipts, IReceiptSpec spec)
+    private void Initialize(ReadOnlySpan<TReceipt> receipts, IReceiptSpec spec)
     {
         RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         int key = 0;
@@ -49,7 +49,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
         }
     }
 
-    protected override void Initialize(TReceipt[] list) => throw new NotSupportedException();
+    protected override void Initialize(ReadOnlySpan<TReceipt> list) => throw new NotSupportedException();
 
     public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, TReceipt[] receipts, int index, IRlpStreamDecoder<TReceipt> decoder)
     {
