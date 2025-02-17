@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
@@ -18,6 +19,7 @@ namespace Nethermind.Optimism.Test.CL;
 [TestFixture]
 public class DepositTransactionBuilderTest
 {
+    private static readonly Hash256 SomeHash = TestItem.KeccakA;
     private static readonly Address DepositAddress = TestItem.AddressA;
     private static readonly Address SomeAddressA = TestItem.AddressB;
     private static readonly Address SomeAddressB = TestItem.AddressC;
@@ -65,6 +67,99 @@ public class DepositTransactionBuilderTest
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
 
         depositTransactions.Count.Should().Be(0);
+    }
+
+
+    private static IEnumerable<LogEntryForRpc> InvalidLogFormatTestCases()
+    {
+        // Missing `from`, `to` and `version`
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+            ],
+            Data = new byte[10],
+            LogIndex = 0,
+            BlockHash = SomeHash,
+        };
+        // Unknown version
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+                new Hash256(SomeAddressA.Bytes.PadLeft(32)),
+                new Hash256(SomeAddressB.Bytes.PadLeft(32)),
+                new Hash256("0x000000000000000000000000000000000000000000000000000000000000000f"),
+            ],
+            Data = new byte[10],
+            LogIndex = 0,
+            BlockHash = SomeHash,
+        };
+        // Missing address
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+                new Hash256(SomeAddressA.Bytes.PadLeft(32)),
+                new Hash256("0x000000000000000000000000000000000000000000000000000000000000000f"),
+            ],
+            Data = new byte[10],
+            LogIndex = 0,
+            BlockHash = SomeHash,
+        };
+        // Invalid number of topics
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+                new Hash256(SomeAddressA.Bytes.PadLeft(32)),
+                new Hash256(SomeAddressB.Bytes.PadLeft(32)),
+                DepositEvent.Version0,
+                Hash256.Zero,
+            ],
+            Data = new byte[10],
+            LogIndex = 0,
+            BlockHash = SomeHash,
+        };
+        // Invalid data
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+                new Hash256(SomeAddressA.Bytes.PadLeft(32)),
+                new Hash256(SomeAddressB.Bytes.PadLeft(32)),
+                DepositEvent.Version0,
+            ],
+            Data = new byte[33],
+            LogIndex = 0,
+            BlockHash = SomeHash,
+        };
+    }
+    [TestCaseSource(nameof(InvalidLogFormatTestCases))]
+    public void DeriveUserDeposits_ThrowsOnInvalidLogFormat(LogEntryForRpc log)
+    {
+        List<ReceiptForRpc> receipts =
+        [
+            new()
+            {
+                Type = TxType.EIP1559,
+                Status = 1,
+                Logs = [log],
+                BlockHash = SomeHash,
+            },
+        ];
+        Action build = () => _builder.BuildUserDepositTransactions(receipts);
+        build.Should().Throw<ArgumentException>();
     }
 
     [Test]

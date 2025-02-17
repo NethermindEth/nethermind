@@ -80,13 +80,20 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         foreach (var receipt in receipts)
         {
             if (receipt.Status != 1) { continue; }
-            foreach (var log in receipt.Logs ?? [])
+            foreach (var log in receipt.Logs)
             {
                 if (log.Address != engineParameters.DepositAddress) { continue; }
                 if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) { continue; }
 
-                Transaction tx = UnmarshalDepositTransactionFromLogEvent(log);
-                result.Add(tx);
+                try
+                {
+                    Transaction tx = UnmarshalDepositTransactionFromLogEvent(log);
+                    result.Add(tx);
+                }
+                catch (Exception e)
+                {
+                    throw new ArgumentException($"Failed to decode {nameof(Transaction)} from {nameof(LogEntryForRpc)}", e);
+                }
             }
         }
 
@@ -154,7 +161,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         }
         else
         {
-            throw new FormatException($"Unknown log event version: {version}");
+            throw new ArgumentException($"Unknown log event version: {version}");
         }
     }
 
