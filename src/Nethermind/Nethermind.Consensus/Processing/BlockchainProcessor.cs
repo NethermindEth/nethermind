@@ -573,7 +573,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         List<Block> blocksToBeAddedToMain = new();
 
         bool branchingCondition;
-        bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
         Block toBeProcessed = suggestedBlock;
         long iterations = 0;
@@ -613,13 +612,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-            bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
             if (_logger.IsTrace)
                 _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
             toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
             if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
-            bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
             if (toBeProcessed is null)
             {
                 if (_logger.IsDebug)
@@ -628,41 +624,29 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            if (isFastSyncTransition)
-            {
-                // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
-                // MultiSyncModeSelector switched to full sync when it shouldn't
-                // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
-                if (iterations > MaxBlocksDuringFastSyncTransition)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
-                    break;
-                }
-
-                // if we have parent state it means that we don't need to go deeper
-                if (toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header))
-                {
-                    if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
-                    break;
-                }
-                else
-                {
-                    if (_logger.IsDebug) _logger.Debug($"A new block {toBeProcessed} in fast sync transition branch - state not found");
-                }
-            }
-
             // TODO: there is no test for the second condition
             // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
             // then on restart we would find 14 as the branch head (since 14 is on the main chain)
             // we need to dig deeper to go all the way to the false (reorg boundary) head
             // otherwise some nodes would be missing
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+            bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number);
+            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
-            branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInForceProcessing;
+            branchingCondition =
+                (notFoundTheBranchingPointYet || (notReachedTheReorgBoundary && !hasState))
+                && notInForceProcessing;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+                    $" Current branching point: " +
+                    $"{branchingPoint.Number}," +
+                    $" {branchingPoint.Hash} " +
+                    $"TD: {branchingPoint.TotalDifficulty} " +
+                    $"Processing conditions " +
+                    $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
+                    $"notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, " +
+                    $"hasState: {hasState}, " +
+                    $"notInForceProcessing: {notInForceProcessing}, ");
 
         } while (branchingCondition);
 
