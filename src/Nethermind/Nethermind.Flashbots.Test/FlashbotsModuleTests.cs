@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -30,8 +31,8 @@ public partial class FlashbotsModuleTests
     [Test]
     public virtual async Task TestValidateBuilderSubmissionV3()
     {
-        using MergeTestBlockChain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = chain.CreateReadOnlyTxProcessingEnvFactory();
+        using EngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = CreateReadOnlyTxProcessingEnvFactory(chain);
         IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain, readOnlyTxProcessingEnvFactory);
 
         Block block = CreateBlock(chain);
@@ -59,41 +60,29 @@ public partial class FlashbotsModuleTests
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
         result.Should().NotBeNull();
 
-        // Assert.That(result.Result, Is.EqualTo(Result.Success));
-        // Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+        Assert.That(result.Result.Error, Is.EqualTo("No proposer payment receipt"));
+        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
 
         string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);
         JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
         jsonResponse.Should().NotBeNull();
     }
 
-    private Block CreateBlock(MergeTestBlockChain chain)
+    private Block CreateBlock(EngineModuleTests.MergeTestBlockchain chain)
     {
         BlockHeader currentHeader = chain.BlockTree.Head.Header;
         IWorldState State = chain.State;
         State.CreateAccount(TestKeysAndAddress.TestAddr, TestKeysAndAddress.TestBalance);
         UInt256 nonce = State.GetNonce(TestKeysAndAddress.TestAddr);
 
-        Transaction tx1 = Build.A.Transaction.WithNonce(nonce).WithTo(TestKeysAndAddress.TestBuilderAddr).WithValue(10).WithGasLimit(21000).WithGasPrice(TestKeysAndAddress.BaseInitialFee).Signed(TestKeysAndAddress.PrivateKey).TestObject;
-        chain.TxPool.SubmitTx(tx1, TxPool.TxHandlingOptions.None);
-
-        Transaction tx2 = Build.A.Transaction.WithNonce(nonce + 1).WithValue(0).WithGasLimit(1000000).WithGasPrice(2 * TestKeysAndAddress.BaseInitialFee).Signed(TestKeysAndAddress.PrivateKey).TestObject;
-        chain.TxPool.SubmitTx(tx2, TxPool.TxHandlingOptions.None);
-
-        UInt256 baseFee = BaseFeeCalculator.Calculate(currentHeader, chain.SpecProvider.GetFinalSpec());
-
-        Transaction tx3 = Build.A.Transaction.WithNonce(nonce + 2).WithValue(10).WithGasLimit(21000).WithValue(baseFee).Signed(TestKeysAndAddress.PrivateKey).TestObject;
-        chain.TxPool.SubmitTx(tx3, TxPool.TxHandlingOptions.None);
-
         Withdrawal[] withdrawals = [
             Build.A.Withdrawal.WithIndex(0).WithValidatorIndex(1).WithAmount(100).WithRecipient(TestKeysAndAddress.TestAddr).TestObject,
             Build.A.Withdrawal.WithIndex(1).WithValidatorIndex(1).WithAmount(100).WithRecipient(TestKeysAndAddress.TestAddr).TestObject
         ];
 
-        ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0xd8f631517e9f336a3c13997786e874e17e7859fc95eddc1359226c0b8d71a307");
+        Hash256 expectedBlockHash = new("0x479f7c9b7389e9ff3f443b99c3cd4b90f9b7feef5f41d714edb59de6b3e7ac02");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(
@@ -119,7 +108,7 @@ public partial class FlashbotsModuleTests
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
             },
-            [tx1, tx2, tx3],
+            [],
             Array.Empty<BlockHeader>(),
             withdrawals
         );

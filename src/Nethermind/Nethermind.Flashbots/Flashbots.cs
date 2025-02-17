@@ -27,6 +27,7 @@ public class Flashbots : INethermindPlugin
     public string Author => "Nethermind";
     public Task InitRpcModules()
     {
+        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(
             _api.WorldStateManager ?? throw new ArgumentNullException(nameof(_api.WorldStateManager)),
             _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
@@ -45,8 +46,6 @@ public class Flashbots : INethermindPlugin
         );
 
         ModuleFactoryBase<IFlashbotsRpcModule> flashbotsRpcModule = new FlashbotsRpcModuleFactory(validateSubmissionHandler);
-
-        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterBounded(flashbotsRpcModule,
             _flashbotsConfig.FlashbotsModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
 

@@ -1,36 +1,19 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm.Tracing;
-using Nethermind.Flashbots;
 using Nethermind.Flashbots.Handlers;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
-using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using Nethermind.Merge.Plugin.Test;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Flashbots.Test;
 
@@ -67,20 +50,22 @@ public partial class FlashbotsModuleTests
         }
     }
 
-    protected virtual MergeTestBlockChain CreateBaseBlockChain(
-        IFlashbotsConfig flashbotsConfig,
-        ILogManager? logManager = null)
+    public ReadOnlyTxProcessingEnvFactory CreateReadOnlyTxProcessingEnvFactory(EngineModuleTests.MergeTestBlockchain chain)
     {
-        return new MergeTestBlockChain(flashbotsConfig, logManager);
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
+            chain.WorldStateManager,
+            chain.BlockTree,
+            chain.SpecProvider,
+            chain.LogManager
+        );
+        return readOnlyTxProcessingEnvFactory;
     }
 
-    protected async Task<MergeTestBlockChain> CreateBlockChain(
-        IReleaseSpec? releaseSpec = null,
-        IFlashbotsConfig? flashbotsConfig = null,
-        ILogManager? logManager = null)
-    => await CreateBaseBlockChain(flashbotsConfig ?? new FlashbotsConfig(), logManager).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+    protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
+        IReleaseSpec? releaseSpec = null)
+    => await new EngineModuleTests.MergeTestBlockchain().Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    private IFlashbotsRpcModule CreateFlashbotsModule(MergeTestBlockChain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
+    private IFlashbotsRpcModule CreateFlashbotsModule(EngineModuleTests.MergeTestBlockchain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
     {
         return new FlashbotsRpcModule(
             new ValidateSubmissionHandler(
@@ -90,140 +75,8 @@ public partial class FlashbotsModuleTests
                 readOnlyTxProcessingEnvFactory,
                 chain.LogManager,
                 chain.SpecProvider,
-                chain.FlashbotsConfig
+                new FlashbotsConfig()
             )
         );
-    }
-
-    public class MergeTestBlockChain : TestBlockchain
-    {
-        public IFlashbotsConfig FlashbotsConfig;
-
-        public IMergeConfig MergeConfig;
-
-        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
-
-        public ReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; set; }
-
-        public MergeTestBlockChain(IFlashbotsConfig flashbotsConfig, ILogManager? logManager = null)
-        {
-            FlashbotsConfig = flashbotsConfig;
-            MergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
-            LogManager = logManager ?? LogManager;
-        }
-
-        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
-
-        public ReadOnlyTxProcessingEnvFactory CreateReadOnlyTxProcessingEnvFactory()
-        {
-            ReadOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(
-                WorldStateManager,
-                BlockTree,
-                SpecProvider,
-                LogManager
-            );
-            return ReadOnlyTxProcessingEnvFactory;
-        }
-
-        protected override IBlockProcessor CreateBlockProcessor()
-        {
-            BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
-            IBlockProcessor processor = new BlockProcessor(
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
-                ReceiptStorage,
-                TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor, State),
-                new BlockhashStore(SpecProvider, State),
-                LogManager,
-                WithdrawalProcessor,
-                preWarmer: CreateBlockCachePreWarmer()
-            );
-
-            return new TestBlockProcessorInterceptor(processor);
-        }
-
-        protected IBlockValidator CreateBlockValidator()
-        {
-            PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject }, LogManager);
-            ISealValidator SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
-            HeaderValidator = new MergeHeaderValidator(
-                PoSSwitcher,
-                new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager),
-                BlockTree,
-                SpecProvider,
-                SealValidator,
-                LogManager
-            );
-
-            return new BlockValidator(
-                new TxValidator(SpecProvider.ChainId),
-                HeaderValidator,
-                Always.Valid,
-                SpecProvider,
-                LogManager
-            );
-        }
-
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
-        {
-            TestBlockchain chain = await base.Build(specProvider, initialValues, false);
-            return chain;
-        }
-
-        public async Task<MergeTestBlockChain> Build(ISpecProvider? specProvider = null) =>
-            (MergeTestBlockChain)await Build(specProvider, null);
-
-    }
-}
-
-public class TestBlockProcessorInterceptor : IBlockProcessor
-{
-    private readonly IBlockProcessor _blockProcessorImplementation;
-    public Exception? ExceptionToThrow { get; set; }
-
-    public TestBlockProcessorInterceptor(IBlockProcessor baseBlockProcessor)
-    {
-        _blockProcessorImplementation = baseBlockProcessor;
-    }
-
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
-        IBlockTracer blockTracer)
-    {
-
-        if (ExceptionToThrow is not null)
-        {
-            throw ExceptionToThrow;
-        }
-
-        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
-    }
-
-    public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
-    {
-        add => _blockProcessorImplementation.BlocksProcessing += value;
-        remove => _blockProcessorImplementation.BlocksProcessing -= value;
-    }
-
-    public event EventHandler<BlockEventArgs>? BlockProcessing
-    {
-        add => _blockProcessorImplementation.BlockProcessing += value;
-        remove => _blockProcessorImplementation.BlockProcessing -= value;
-    }
-
-    public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
-    {
-        add => _blockProcessorImplementation.BlockProcessed += value;
-        remove => _blockProcessorImplementation.BlockProcessed -= value;
-    }
-
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-    {
-        add => _blockProcessorImplementation.TransactionProcessed += value;
-        remove => _blockProcessorImplementation.TransactionProcessed -= value;
     }
 }
