@@ -58,16 +58,17 @@ namespace Nethermind.Trie
             _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
-        private readonly AccountDecoder decoder = new();
-
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
+        {
+        }
+
+        public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             Rlp.ValueDecoderContext valueDecoderContext = new(node.Value);
             if (!context.IsStorage)
             {
-                Account account = decoder.Decode(ref valueDecoderContext);
                 _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
                 _builder.AppendLine($"{GetPrefix(context)}  BALANCE: {account.Balance}");
                 _builder.AppendLine($"{GetPrefix(context)}  IS_CONTRACT: {account.IsContract}");
@@ -76,11 +77,6 @@ namespace Nethermind.Trie
             {
                 _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
             }
-        }
-
-        public void VisitCode(in OldStyleTrieVisitContext context, Hash256 codeHash)
-        {
-            _builder.AppendLine($"{GetPrefix(context)}CODE {codeHash}");
         }
 
         public override string ToString()

@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.Analytics
@@ -81,24 +80,15 @@ namespace Nethermind.Analytics
 
         public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
+        }
+
+        public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account)
+        {
             _nodesVisited++;
-
-            if (trieVisitContext.IsStorage)
-            {
-                return;
-            }
-
-            AccountDecoder accountDecoder = new AccountDecoder();
-            Account account = accountDecoder.Decode(node.Value.AsRlpStream());
             Balance += account.Balance;
             _accountsVisited++;
 
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
-        }
-
-        public void VisitCode(in OldStyleTrieVisitContext _, Hash256 codeHash)
-        {
-            _nodesVisited++;
         }
     }
 }

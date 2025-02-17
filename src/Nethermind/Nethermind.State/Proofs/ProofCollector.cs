@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -76,7 +77,7 @@ namespace Nethermind.State.Proofs
             _pathIndex = 0;
         }
 
-        public void VisitCode(in EmptyContext _, Hash256 codeHash)
+        public void VisitAccount(in EmptyContext _, TrieNode node, in AccountStruct account)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }

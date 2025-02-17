@@ -86,13 +86,12 @@ namespace Nethermind.Trie
                         {
                             TNodeContext childContext = nodeContext.Add(Key!);
 
-                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                            if (account.HasCode && visitor.ShouldVisit(childContext, account.CodeHash))
+                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Value.AsSpan());
+                            if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
-                                trieVisitContext.Level++;
-                                visitor.VisitCode(childContext, account.CodeHash);
-                                trieVisitContext.Level--;
+                                throw new InvalidDataException("Non storage leaf should be an account");
                             }
+                            visitor.VisitAccount(childContext, this, account);
 
                             if (account.HasStorage && visitor.ShouldVisit(childContext, account.StorageRoot))
                             {
@@ -286,13 +285,12 @@ namespace Nethermind.Trie
 
                         if (!trieVisitContext.IsStorage && visitor.ExpectAccounts) // can combine these conditions
                         {
-                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                            if (account.HasCode && visitor.ShouldVisit(leafContext, account.CodeHash))
+                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Value.AsSpan());
+                            if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
-                                trieVisitContext.Level++;
-                                visitor.VisitCode(leafContext, account.CodeHash);
-                                trieVisitContext.Level--;
+                                throw new InvalidDataException("Non storage leaf should be an account");
                             }
+                            visitor.VisitAccount(leafContext, this, account);
 
                             if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
                             {

@@ -212,7 +212,7 @@ public class VisitingTests
             _paths.Enqueue(context.Nibbles);
         }
 
-        public void VisitCode(in PathGatheringContext nodeContext, Hash256 codeHash)
+        public void VisitAccount(in PathGatheringContext nodeContext, TrieNode node, in AccountStruct account)
         {
         }
     }

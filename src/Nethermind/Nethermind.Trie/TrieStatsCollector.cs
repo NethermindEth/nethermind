@@ -149,8 +149,9 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext);
         }
 
-        public void VisitCode(in Context nodeContext, Hash256 codeHash)
+        public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account)
         {
+            Hash256 codeHash = account.CodeHash;
             ValueHash256 key = new ValueHash256(codeHash.Bytes);
             bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
             if (!codeExist)

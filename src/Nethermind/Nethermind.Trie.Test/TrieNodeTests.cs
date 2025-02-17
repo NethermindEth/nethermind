@@ -1047,7 +1047,7 @@ public class TrieNodeTests
             CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, node.Value.ToArray()), out _) += 1;
         }
 
-        public void VisitCode(in TreePathContext ctx, Hash256 codeHash)
+        public void VisitAccount(in TreePathContext ctx, TrieNode node, in AccountStruct account)
         {
         }
 

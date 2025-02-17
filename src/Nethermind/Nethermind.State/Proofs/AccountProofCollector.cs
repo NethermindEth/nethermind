@@ -311,7 +311,7 @@ namespace Nethermind.State.Proofs
 
         private readonly AccountDecoder _accountDecoder = new();
 
-        public void VisitCode(in OldStyleTrieVisitContext _, Hash256 codeHash)
+        public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }

@@ -44,6 +44,11 @@ namespace Nethermind.Trie
 
         void VisitLeaf(in TNodeContext nodeContext, TrieNode node);
 
-        void VisitCode(in TNodeContext nodeContext, Hash256 codeHash);
+        /// <summary>
+        /// Called right after VisitLeaf when `ExpectAccounts` is true.
+        /// The visitor need to decode account to traverse storage. So if you need the account instead of decoding from
+        /// `VisitLeaf` you might as well get it here.
+        /// </summary>
+        void VisitAccount(in TNodeContext nodeContext, TrieNode node, in AccountStruct account);
     }
 }

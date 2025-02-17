@@ -192,7 +192,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _skipStarthashComparison = true;
     }
 
-    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash)
+    public void VisitAccount(in TreePathContext nodeContext, TrieNode node, in AccountStruct accountStruct)
     {
     }
 

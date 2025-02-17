@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void VisitLeaf(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitCode(in TContext ctx, Hash256 codeHash) { }
+        public void VisitAccount(in TContext ctx, TrieNode node, in AccountStruct account) { }
 
         private void PersistNode(Hash256 storage, in TreePath path, TrieNode node)
         {

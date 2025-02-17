@@ -472,7 +472,7 @@ public class FullPrunerTests
             CheckNode(ctx.Storage, ctx.Path, node);
         }
 
-        public void VisitCode(in TreePathContextWithStorage ctx, Hash256 codeHash)
+        public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
         {
         }
     }
