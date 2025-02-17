@@ -151,12 +151,12 @@ namespace Nethermind.Trie
 
         public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account)
         {
-            Hash256 codeHash = account.CodeHash;
-            ValueHash256 key = new ValueHash256(codeHash.Bytes);
+            if (!account.HasCode) return;
+            ValueHash256 key = account.CodeHash;
             bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
             if (!codeExist)
             {
-                byte[] code = _codeKeyValueStore[codeHash.Bytes];
+                byte[] code = _codeKeyValueStore[key.Bytes];
                 codeExist = code is not null;
                 if (codeExist)
                 {
@@ -172,7 +172,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"Missing code. Hash: {codeHash}");
+                if (_logger.IsWarn) _logger.Warn($"Missing code. Hash: {account.CodeHash}");
                 Interlocked.Increment(ref Stats._missingCode);
             }
 
