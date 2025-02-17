@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using Nethermind.Specs.Test;
 
 namespace Evm.T8n;
@@ -79,6 +80,9 @@ public static class T8nInputProcessor
         {
             throw new T8nException(e, $"unsupported fork {arguments.StateFork}", T8nErrorCodes.ErrorConfig);
         }
+
+        if (spec == Prague.Instance) spec = PragueGnosis.Instance;
+        if (spec == Cancun.Instance) spec = CancunGnosis.Instance;
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 
         if (!string.IsNullOrEmpty(arguments.StateReward) && arguments.StateReward != "-1") // (-1 means rewards are disabled)
@@ -86,7 +90,8 @@ public static class T8nInputProcessor
             overridableReleaseSpec.BlockReward = UInt256.Parse(arguments.StateReward);
         }
         ISpecProvider specProvider = arguments.StateChainId == GnosisSpecProvider.Instance.ChainId
-            ? GnosisSpecProvider.Instance
+            ? new CustomSpecProvider(arguments.StateChainId, arguments.StateChainId, ((ForkActivation)0, Byzantium.Instance),
+                ((ForkActivation)1, overridableReleaseSpec))
             : new CustomSpecProvider(((ForkActivation)0, Frontier.Instance),
                 ((ForkActivation)1, overridableReleaseSpec));
 
