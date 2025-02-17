@@ -337,7 +337,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 }
                 catch (TrieException)
                 {
-                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak, ctx.ToVisitContext());
+                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
                 }
             }
 

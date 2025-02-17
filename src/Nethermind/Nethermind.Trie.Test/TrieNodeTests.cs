@@ -335,7 +335,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.Received().VisitExtension(new EmptyContext(), node, context);
+        visitor.Received().VisitExtension(new EmptyContext(), node);
     }
 
     [Test]
@@ -348,7 +348,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.Received().VisitMissingNode(new EmptyContext(), node.Keccak, context);
+        visitor.Received().VisitMissingNode(new EmptyContext(), node.Keccak);
     }
 
     [Test]
@@ -363,7 +363,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
+        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
 
     [Test]
@@ -378,7 +378,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
+        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
 
     [Test]
@@ -393,7 +393,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
+        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
 
     [Test]
@@ -408,7 +408,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
+        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
     }
 
     [Test]
@@ -422,8 +422,8 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitExtensionReceived[(TreePath.Empty, node, context)].Should().Be(1);
-        visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+        visitor.VisitExtensionReceived[(TreePath.Empty, node)].Should().Be(1);
+        visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
     }
 
     [Test]
@@ -442,11 +442,11 @@ public class TrieNodeTests
         node.ResolveKey(NullTrieStore.Instance, ref emptyPath, true);
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitBranchReceived[(TreePath.Empty, node, context)].Should().Be(1);
+        visitor.VisitBranchReceived[(TreePath.Empty, node)].Should().Be(1);
         for (byte i = 0; i < 16; i++)
         {
             var hex = "0x" + i.ToString("x2")[1] + "000000000000000000000000000000000000000000000000000000000000000";
-            visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+            visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
         }
     }
 
@@ -464,7 +464,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.Received().VisitBranch(new EmptyContext(), node, context);
+        visitor.Received().VisitBranch(new EmptyContext(), node);
     }
 
     [Test]
@@ -1016,48 +1016,48 @@ public class TrieNodeTests
 
     private class TreeVisitorMock : ITreeVisitor<TreePathContext>
     {
-        public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitExtensionReceived = new();
-        public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitBranchReceived = new();
-        public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext, byte[]), int> VisitLeafReceived = new(new LeafComparer());
+        public readonly Dictionary<(TreePath path, TrieNode), int> VisitExtensionReceived = new();
+        public readonly Dictionary<(TreePath path, TrieNode), int> VisitBranchReceived = new();
+        public readonly Dictionary<(TreePath path, TrieNode, byte[]), int> VisitLeafReceived = new(new LeafComparer());
 
         public bool IsFullDbScan => false;
 
         public bool ShouldVisit(in TreePathContext nodeContext, Hash256 nextNode) => true;
 
-        public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash)
         {
         }
 
-        public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePathContext ctx, TrieNode node)
         {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (ctx.Path, node, trieVisitContext), out _) += 1;
+            CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (ctx.Path, node), out _) += 1;
         }
 
-        public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in TreePathContext ctx, TrieNode node)
         {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (ctx.Path, node, trieVisitContext), out _) += 1;
+            CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (ctx.Path, node), out _) += 1;
         }
 
-        public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in TreePathContext ctx, TrieNode node, ReadOnlySpan<byte> value)
         {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, trieVisitContext, value.ToArray()), out _) += 1;
+            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, value.ToArray()), out _) += 1;
         }
 
-        public void VisitCode(in TreePathContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in TreePathContext ctx, Hash256 codeHash)
         {
         }
 
-        private class LeafComparer : IEqualityComparer<(TreePath, TrieNode, TrieVisitContext, byte[])>
+        private class LeafComparer : IEqualityComparer<(TreePath, TrieNode, byte[])>
         {
-            public bool Equals((TreePath, TrieNode, TrieVisitContext, byte[]) x, (TreePath, TrieNode, TrieVisitContext, byte[]) y) =>
-                Equals(x.Item1, y.Item1) && Equals(x.Item2, y.Item2) && Equals(x.Item3, y.Item3) && Bytes.EqualityComparer.Equals(x.Item4, y.Item4);
+            public bool Equals((TreePath, TrieNode, byte[]) x, (TreePath, TrieNode, byte[]) y) =>
+                Equals(x.Item1, y.Item1) && Equals(x.Item2, y.Item2) && Bytes.EqualityComparer.Equals(x.Item3, y.Item3);
 
-            public int GetHashCode((TreePath, TrieNode, TrieVisitContext, byte[]) obj) =>
-                HashCode.Combine(obj.Item1, obj.Item2, obj.Item3, Bytes.EqualityComparer.GetHashCode(obj.Item4));
+            public int GetHashCode((TreePath, TrieNode, byte[]) obj) =>
+                HashCode.Combine(obj.Item1, obj.Item2, Bytes.EqualityComparer.GetHashCode(obj.Item3));
         }
     }
 }

@@ -189,31 +189,30 @@ public class VisitingTests
 
         public bool ShouldVisit(in PathGatheringContext nodeContext, Hash256 nextNode) => true;
 
-        public void VisitTree(in PathGatheringContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in PathGatheringContext nodeContext, Hash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in PathGatheringContext nodeContext, Hash256 nodeHash,
-            TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in PathGatheringContext nodeContext, Hash256 nodeHash)
         {
             throw new System.Exception("Should not happen");
         }
 
-        public void VisitBranch(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in PathGatheringContext nodeContext, TrieNode node)
         {
         }
 
-        public void VisitExtension(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in PathGatheringContext nodeContext, TrieNode node)
         {
         }
 
-        public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node, ReadOnlySpan<byte> value)
         {
             PathGatheringContext context = nodeContext.Add(node.Key!);
             _paths.Enqueue(context.Nibbles);
         }
 
-        public void VisitCode(in PathGatheringContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in PathGatheringContext nodeContext, Hash256 codeHash)
         {
         }
     }

@@ -35,7 +35,7 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                     {
-                        visitor.VisitBranch(nodeContext, this, trieVisitContext.ToVisitContext());
+                        visitor.VisitBranch(nodeContext, this);
                         trieVisitContext.Level++;
 
                         for (int i = 0; i < BranchesCount; i++)
@@ -63,7 +63,7 @@ namespace Nethermind.Trie
                     }
                 case NodeType.Extension:
                     {
-                        visitor.VisitExtension(nodeContext, this, trieVisitContext.ToVisitContext());
+                        visitor.VisitExtension(nodeContext, this);
                         TrieNode child = GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         child.ResolveKey(nodeResolver, ref emptyPath, false);
                         TNodeContext childContext = nodeContext.Add(Key!);
@@ -80,7 +80,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(nodeContext, this, trieVisitContext.ToVisitContext(), Value.AsSpan());
+                        visitor.VisitLeaf(nodeContext, this, Value.AsSpan());
 
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
@@ -90,7 +90,7 @@ namespace Nethermind.Trie
                             if (account.HasCode && visitor.ShouldVisit(childContext, account.CodeHash))
                             {
                                 trieVisitContext.Level++;
-                                visitor.VisitCode(childContext, account.CodeHash, trieVisitContext.ToVisitContext());
+                                visitor.VisitCode(childContext, account.CodeHash);
                                 trieVisitContext.Level--;
                             }
 
@@ -106,7 +106,7 @@ namespace Nethermind.Trie
                                 }
                                 else
                                 {
-                                    visitor.VisitMissingNode(storageContext, account.StorageRoot, trieVisitContext.ToVisitContext());
+                                    visitor.VisitMissingNode(storageContext, account.StorageRoot);
                                 }
 
                                 trieVisitContext.IsStorage = false;
@@ -130,7 +130,7 @@ namespace Nethermind.Trie
             }
             catch (TrieException)
             {
-                visitor.VisitMissingNode(nodeContext, Keccak, trieVisitContext);
+                visitor.VisitMissingNode(nodeContext, Keccak);
                 return;
             }
 
@@ -231,7 +231,7 @@ namespace Nethermind.Trie
                             path.TruncateOne();
                         }
 
-                        visitor.VisitBranch(nodeContext, this, trieVisitContext);
+                        visitor.VisitBranch(nodeContext, this);
                         trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
@@ -259,7 +259,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Extension:
                     {
-                        visitor.VisitExtension(nodeContext, this, trieVisitContext);
+                        visitor.VisitExtension(nodeContext, this);
                         trieVisitContext.AddVisited();
                         TrieNode child = GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         int previousPathLength = AppendChildPath(ref path, 0);
@@ -278,7 +278,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(nodeContext, this, trieVisitContext, Value.AsSpan());
+                        visitor.VisitLeaf(nodeContext, this, Value.AsSpan());
 
                         trieVisitContext.AddVisited();
 
@@ -290,7 +290,7 @@ namespace Nethermind.Trie
                             if (account.HasCode && visitor.ShouldVisit(leafContext, account.CodeHash))
                             {
                                 trieVisitContext.Level++;
-                                visitor.VisitCode(leafContext, account.CodeHash, trieVisitContext);
+                                visitor.VisitCode(leafContext, account.CodeHash);
                                 trieVisitContext.Level--;
                             }
 
@@ -316,7 +316,7 @@ namespace Nethermind.Trie
                                 }
                                 else
                                 {
-                                    visitor.VisitMissingNode(leafContext, account.StorageRoot, trieVisitContext);
+                                    visitor.VisitMissingNode(leafContext, account.StorageRoot);
                                 }
 
                                 trieVisitContext.Level--;

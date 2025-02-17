@@ -1330,7 +1330,7 @@ namespace Nethermind.Trie
                     rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
                     if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
                     {
-                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
+                        visitor.VisitMissingNode(default, rootHash);
                         return false;
                     }
                 }
@@ -1340,7 +1340,7 @@ namespace Nethermind.Trie
 
             if (!visitor.IsFullDbScan)
             {
-                visitor.VisitTree(default, rootHash, trieVisitContext);
+                visitor.VisitTree(default, rootHash);
                 if (TryGetRootRef(out TrieNode rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
@@ -1350,14 +1350,14 @@ namespace Nethermind.Trie
             // Full db scan
             else if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
             {
-                visitor.VisitTree(default, rootHash, trieVisitContext);
+                visitor.VisitTree(default, rootHash);
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else if (TryGetRootRef(out TrieNode rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
-                visitor.VisitTree(default, rootHash, trieVisitContext);
+                visitor.VisitTree(default, rootHash);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }

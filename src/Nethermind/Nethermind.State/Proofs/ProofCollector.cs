@@ -36,15 +36,15 @@ namespace Nethermind.State.Proofs
 
         public bool ShouldVisit(in EmptyContext _, Hash256 nextNode) => _visitingFilter.Contains(nextNode);
 
-        public void VisitTree(in EmptyContext _, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in EmptyContext _, Hash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash)
         {
         }
 
-        public void VisitBranch(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in EmptyContext _, TrieNode node)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
@@ -53,7 +53,7 @@ namespace Nethermind.State.Proofs
             _pathIndex++;
         }
 
-        public void VisitExtension(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in EmptyContext _, TrieNode node)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
@@ -69,14 +69,14 @@ namespace Nethermind.State.Proofs
             _proofBits.Add(node.FullRlp.ToArray());
         }
 
-        public void VisitLeaf(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in EmptyContext _, TrieNode node, ReadOnlySpan<byte> value)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
             _pathIndex = 0;
         }
 
-        public void VisitCode(in EmptyContext _, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in EmptyContext _, Hash256 codeHash)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }

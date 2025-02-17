@@ -145,29 +145,29 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
     }
 
-    public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+    public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash)
     {
     }
 
 
-    public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+    public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash)
     {
         throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
     }
 
-    public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitBranch(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
+    public void VisitExtension(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+    public void VisitLeaf(in TreePathContext ctx, TrieNode node, ReadOnlySpan<byte> value)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
@@ -192,7 +192,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _skipStarthashComparison = true;
     }
 
-    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash)
     {
     }
 

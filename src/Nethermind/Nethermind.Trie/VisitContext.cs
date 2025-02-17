@@ -9,34 +9,37 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie
 {
-    public struct OldTrieVisitContext : INodeContext<OldTrieVisitContext>
+    public struct OldStyleTrieVisitContext : INodeContext<OldStyleTrieVisitContext>
     {
         public int Level;
         public bool IsStorage;
         public int? BranchChildIndex;
 
-        public OldTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
+        public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
         {
-            return this;
-        }
-
-        public OldTrieVisitContext Add(byte nibble)
-        {
-            return new OldTrieVisitContext
+            return this with
             {
-                Level = Level,
-                IsStorage = IsStorage,
-                BranchChildIndex = nibble,
+                BranchChildIndex = null,
+                Level = Level + 1,
             };
         }
 
-        public OldTrieVisitContext AddStorage(in ValueHash256 storage)
+        public OldStyleTrieVisitContext Add(byte nibble)
         {
-            return new OldTrieVisitContext
+            return this with
             {
-                Level = Level,
+                BranchChildIndex = nibble,
+                Level = Level + 1,
+            };
+        }
+
+        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage)
+        {
+            return new OldStyleTrieVisitContext
+            {
+                BranchChildIndex = null,
                 IsStorage = true,
-                BranchChildIndex = BranchChildIndex,
+                Level = Level + 1
             };
         }
     }

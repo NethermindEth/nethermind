@@ -12,7 +12,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Analytics
 {
-    public class SupplyVerifier : ITreeVisitor<EmptyContext>
+    public class SupplyVerifier : ITreeVisitor<OldStyleTrieVisitContext>
     {
         private readonly ILogger _logger;
         private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
@@ -28,7 +28,7 @@ namespace Nethermind.Analytics
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(in EmptyContext _, Hash256 nextNode)
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, Hash256 nextNode)
         {
             if (_ignoreThisOne.Count > 16)
             {
@@ -43,16 +43,16 @@ namespace Nethermind.Analytics
             return true;
         }
 
-        public void VisitTree(in EmptyContext _, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in OldStyleTrieVisitContext _, Hash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in OldStyleTrieVisitContext _, Hash256 nodeHash)
         {
             _logger.Warn($"Missing node {nodeHash}");
         }
 
-        public void VisitBranch(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
             _nodesVisited++;
@@ -70,7 +70,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitExtension(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             _nodesVisited++;
             if (trieVisitContext.IsStorage)
@@ -79,7 +79,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitLeaf(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node, ReadOnlySpan<byte> value)
         {
             _nodesVisited++;
 
@@ -96,7 +96,7 @@ namespace Nethermind.Analytics
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
         }
 
-        public void VisitCode(in EmptyContext _, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in OldStyleTrieVisitContext _, Hash256 codeHash)
         {
             _nodesVisited++;
         }

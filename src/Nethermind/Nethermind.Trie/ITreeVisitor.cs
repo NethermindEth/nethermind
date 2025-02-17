@@ -22,16 +22,16 @@ namespace Nethermind.Trie
 
         bool ShouldVisit(in TNodeContext nodeContext, Hash256 nextNode);
 
-        void VisitTree(in TNodeContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext);
+        void VisitTree(in TNodeContext nodeContext, Hash256 rootHash);
 
-        void VisitMissingNode(in TNodeContext nodeContext, Hash256 nodeHash, TrieVisitContext trieVisitContext);
+        void VisitMissingNode(in TNodeContext nodeContext, Hash256 nodeHash);
 
-        void VisitBranch(in TNodeContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext);
+        void VisitBranch(in TNodeContext nodeContext, TrieNode node);
 
-        void VisitExtension(in TNodeContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext);
+        void VisitExtension(in TNodeContext nodeContext, TrieNode node);
 
-        void VisitLeaf(in TNodeContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value);
+        void VisitLeaf(in TNodeContext nodeContext, TrieNode node, ReadOnlySpan<byte> value);
 
-        void VisitCode(in TNodeContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext);
+        void VisitCode(in TNodeContext nodeContext, Hash256 codeHash);
     }
 }
