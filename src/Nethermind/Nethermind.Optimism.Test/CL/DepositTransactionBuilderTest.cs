@@ -21,6 +21,8 @@ public class DepositTransactionBuilderTest
     private static readonly Address DepositAddress = TestItem.AddressA;
     private static readonly Address SomeAddressA = TestItem.AddressB;
     private static readonly Address SomeAddressB = TestItem.AddressC;
+    private static readonly Address SomeAddressC = TestItem.AddressD;
+    private static readonly Address SomeAddressD = TestItem.AddressE;
 
     private readonly DepositTransactionBuilder _builder;
 
@@ -506,5 +508,121 @@ public class DepositTransactionBuilderTest
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
 
         depositTransactions.Count.Should().Be(0);
+    }
+
+    [Test]
+    public void DeriveUserDeposits_SuccessfulDepositNotAllDepositLogs()
+    {
+        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var from_0 = SomeAddressA;
+        var to_0 = SomeAddressB;
+
+        var from_1 = SomeAddressC;
+        var to_1 = SomeAddressD;
+
+        var depositLogEventV0_0 = new DepositLogEventV0
+        {
+            Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
+            Mint = 0,
+            Value = UInt256.Parse("195000000000000000000"),
+            Gas = 8732577,
+            IsCreation = false,
+        };
+        var logData_0 = depositLogEventV0_0.ToBytes();
+
+        var depositLogEventV0_1 = new DepositLogEventV0
+        {
+            Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
+            Mint = 0,
+            Value = UInt256.Parse("14659767778871345152"),
+            Gas = 8078654,
+            IsCreation = false,
+        };
+        var logData_1 = depositLogEventV0_1.ToBytes();
+
+        List<ReceiptForRpc> receipts =
+        [
+            new()
+            {
+                Type = TxType.EIP1559,
+                Status = 1,
+                Logs =
+                [
+                    new LogEntryForRpc
+                    {
+                        Address = DepositAddress,
+                        Topics =
+                        [
+                            DepositEvent.ABIHash,
+                            new Hash256(from_0.Bytes.PadLeft(32)),
+                            new Hash256(to_0.Bytes.PadLeft(32)),
+                            DepositEvent.Version0,
+                        ],
+                        Data = logData_0,
+                        LogIndex = 0,
+                        BlockHash = blockHash,
+                    },
+                    new LogEntryForRpc
+                    {
+                        Address = SomeAddressA,
+                        Topics = [],
+                        Data = new byte[10],
+                        LogIndex = 1,
+                        BlockHash = blockHash,
+                    },
+                    new LogEntryForRpc
+                    {
+                        Address = DepositAddress,
+                        Topics =
+                        [
+                            DepositEvent.ABIHash,
+                            new Hash256(from_1.Bytes.PadLeft(32)),
+                            new Hash256(to_1.Bytes.PadLeft(32)),
+                            DepositEvent.Version0,
+                        ],
+                        Data = logData_1,
+                        LogIndex = 2,
+                        BlockHash = blockHash,
+                    },
+                ],
+                BlockHash = blockHash,
+            },
+        ];
+        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+
+        var expectedTransaction_0 = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSenderAddress(from_0)
+            .WithTo(to_0)
+            .WithValue(depositLogEventV0_0.Value)
+            .WithGasLimit((long)depositLogEventV0_0.Gas) // WARNING: dangerous cast
+            .WithGasPrice(0)
+            .WithMaxPriorityFeePerGas(0)
+            .WithMaxFeePerGas(0)
+            .WithSourceHash(new Hash256("0xa39c0336f8bb13bdeb6cb1a969ee335af770f40048fed5064c1f3becf19ca501"))
+            .WithIsOPSystemTransaction(false)
+            .WithData(depositLogEventV0_0.Data.ToArray())
+            .TestObject;
+
+        var expectedTransaction_1 = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSenderAddress(from_1)
+            .WithTo(to_1)
+            .WithValue(depositLogEventV0_1.Value)
+            .WithGasLimit((long)depositLogEventV0_1.Gas) // WARNING: dangerous cast
+            .WithGasPrice(0)
+            .WithMaxPriorityFeePerGas(0)
+            .WithMaxFeePerGas(0)
+            .WithSourceHash(new Hash256("0xf3a97e2bed2ee2a61cfadad45283592d1674fa5647392e97be02e404f1a15e52"))
+            .WithIsOPSystemTransaction(false)
+            .WithData(depositLogEventV0_1.Data.ToArray())
+            .TestObject;
+
+        depositTransactions.Count.Should().Be(2);
+        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
+        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data?.ToArray());
+
+        depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
+        depositTransactions[1].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data?.ToArray());
     }
 }
