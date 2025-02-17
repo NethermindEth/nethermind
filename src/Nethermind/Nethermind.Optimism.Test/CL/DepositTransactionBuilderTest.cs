@@ -330,4 +330,109 @@ public class DepositTransactionBuilderTest
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
         depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
     }
+
+    [Test]
+    public void DeriveUserDeposits_SuccessfulDepositMultipleLogs()
+    {
+        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var from = SomeAddressA;
+        var to = SomeAddressB;
+
+        var depositLogEventV0_0 = new DepositLogEventV0
+        {
+            Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
+            Mint = 0,
+            Value = UInt256.Parse("195000000000000000000"),
+            Gas = 8732577,
+            IsCreation = false,
+        };
+        var logData_0 = depositLogEventV0_0.ToBytes();
+
+        var depositLogEventV0_1 = new DepositLogEventV0
+        {
+            Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
+            Mint = 0,
+            Value = UInt256.Parse("14659767778871345152"),
+            Gas = 8078654,
+            IsCreation = true,
+        };
+        var logData_1 = depositLogEventV0_1.ToBytes();
+
+        List<ReceiptForRpc> receipts =
+        [
+            new()
+            {
+                Type = TxType.EIP1559,
+                Status = 1,
+                Logs =
+                [
+                    new LogEntryForRpc
+                    {
+                        Address = DepositAddress,
+                        Topics =
+                        [
+                            DepositEvent.ABIHash,
+                            new Hash256(from.Bytes.PadLeft(32)),
+                            new Hash256(to.Bytes.PadLeft(32)),
+                            DepositEvent.Version0,
+                        ],
+                        Data = logData_0,
+                        LogIndex = 0,
+                        BlockHash = blockHash,
+                    },
+                    new LogEntryForRpc
+                    {
+                        Address = DepositAddress,
+                        Topics =
+                        [
+                            DepositEvent.ABIHash,
+                            new Hash256(from.Bytes.PadLeft(32)),
+                            Hash256.Zero,
+                            DepositEvent.Version0,
+                        ],
+                        Data = logData_1,
+                        LogIndex = 1,
+                        BlockHash = blockHash,
+                    },
+                ],
+                BlockHash = blockHash,
+            },
+        ];
+        List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
+
+        var expectedTransaction_0 = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSenderAddress(from)
+            .WithTo(to)
+            .WithValue(depositLogEventV0_0.Value)
+            .WithGasLimit((long)depositLogEventV0_0.Gas) // WARNING: dangerous cast
+            .WithGasPrice(0)
+            .WithMaxPriorityFeePerGas(0)
+            .WithMaxFeePerGas(0)
+            .WithSourceHash(new Hash256("0xa39c0336f8bb13bdeb6cb1a969ee335af770f40048fed5064c1f3becf19ca501"))
+            .WithIsOPSystemTransaction(false)
+            .WithData(depositLogEventV0_0.Data.ToArray())
+            .TestObject;
+
+        var expectedTransaction_1 = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSenderAddress(from)
+            .WithTo(null)
+            .WithValue(depositLogEventV0_1.Value)
+            .WithGasLimit((long)depositLogEventV0_1.Gas) // WARNING: dangerous cast
+            .WithGasPrice(0)
+            .WithMaxPriorityFeePerGas(0)
+            .WithMaxFeePerGas(0)
+            .WithSourceHash(new Hash256("0xe0afd0f8dec64b119c51723546cd6ff231b37aed016d7a2934eb6caf5d40eae2"))
+            .WithIsOPSystemTransaction(false)
+            .WithData(depositLogEventV0_1.Data.ToArray())
+            .TestObject;
+
+        depositTransactions.Count.Should().Be(2);
+        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
+        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data?.ToArray());
+
+        depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
+        depositTransactions[1].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data?.ToArray());
+    }
 }
