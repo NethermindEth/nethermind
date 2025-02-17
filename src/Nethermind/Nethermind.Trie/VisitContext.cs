@@ -19,7 +19,6 @@ namespace Nethermind.Trie
         public int Level { get; internal set; }
         public bool IsStorage { get; set; }
         public int? BranchChildIndex { get; internal set; }
-        public bool ExpectAccounts { get; init; }
         public int VisitedNodes => _visitedNodes;
 
         public int MaxDegreeOfParallelism
@@ -59,7 +58,6 @@ namespace Nethermind.Trie
             Level = (byte)trieVisitContext.Level;
             IsStorage = trieVisitContext.IsStorage;
             BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
-            ExpectAccounts = trieVisitContext.ExpectAccounts;
         }
 
         public byte Level { get; internal set; }
@@ -124,7 +122,6 @@ namespace Nethermind.Trie
                 Level = Level,
                 IsStorage = IsStorage,
                 BranchChildIndex = BranchChildIndex,
-                ExpectAccounts = ExpectAccounts
             };
         }
     }

@@ -47,6 +47,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
     public bool IsRangeScan => true;
+    public bool ExpectAccounts => false;
     private readonly CancellationToken _cancellationToken;
 
     public ReadFlags ExtraReadFlag { get; }

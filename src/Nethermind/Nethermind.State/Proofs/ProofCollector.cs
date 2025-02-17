@@ -32,6 +32,7 @@ namespace Nethermind.State.Proofs
         public byte[][] BuildResult() => _proofBits.ToArray();
 
         public bool IsFullDbScan => false;
+        public bool ExpectAccounts => false;
 
         public bool ShouldVisit(in EmptyContext _, Hash256 nextNode) => _visitingFilter.Contains(nextNode);
 

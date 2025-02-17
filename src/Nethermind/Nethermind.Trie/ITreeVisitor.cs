@@ -16,6 +16,7 @@ namespace Nethermind.Trie
         public bool IsFullDbScan { get; }
 
         public bool IsRangeScan => IsFullDbScan;
+        public bool ExpectAccounts => true;
 
         ReadFlags ExtraReadFlag => ReadFlags.None;
 

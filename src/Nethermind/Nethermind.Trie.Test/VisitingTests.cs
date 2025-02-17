@@ -21,7 +21,7 @@ namespace Nethermind.Trie.Test;
 
 public class VisitingTests
 {
-    [TestCaseSource(nameof(GetAccountOptions))]
+    [TestCaseSource(nameof(GetOptions))]
     public void Visitors_state(VisitingOptions options)
     {
         MemDb memDb = new();
@@ -41,7 +41,7 @@ public class VisitingTests
 
         using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
 
-        var visitor = new AppendingVisitor();
+        var visitor = new AppendingVisitor(false);
 
         patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
 
@@ -60,7 +60,7 @@ public class VisitingTests
         }
     }
 
-    [TestCaseSource(nameof(GetStorageOptions))]
+    [TestCaseSource(nameof(GetOptions))]
     public void Visitors_storage(VisitingOptions options)
     {
         MemDb memDb = new();
@@ -104,7 +104,7 @@ public class VisitingTests
         stateTree.Commit();
         blockCommit.Dispose();
 
-        var visitor = new AppendingVisitor();
+        var visitor = new AppendingVisitor(true);
 
         stateTree.Accept(visitor, stateTree.RootHash, options);
 
@@ -137,26 +137,22 @@ public class VisitingTests
         }
     }
 
-    public static IEnumerable<TestCaseData> GetAccountOptions() => GetOptions(false);
-    public static IEnumerable<TestCaseData> GetStorageOptions() => GetOptions(true);
-
-    private static IEnumerable<TestCaseData> GetOptions(bool expectAccounts)
+    private static IEnumerable<TestCaseData> GetOptions()
     {
         yield return new TestCaseData(new VisitingOptions
         {
-            ExpectAccounts = expectAccounts
         }).SetName("Default");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
             FullScanMemoryBudget = 1.MiB(),
-            ExpectAccounts = expectAccounts
         }).SetName("Parallel");
     }
 
-    public class AppendingVisitor : ITreeVisitor<AppendingVisitor.PathGatheringContext>
+    public class AppendingVisitor(bool expectAccount) : ITreeVisitor<AppendingVisitor.PathGatheringContext>
     {
+        public bool ExpectAccounts => expectAccount;
         public IEnumerable<byte[]> LeafPaths => _paths;
 
         private readonly ConcurrentQueue<byte[]> _paths = new();

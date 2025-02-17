@@ -1281,10 +1281,6 @@ namespace Nethermind.Trie
 
             using TrieVisitContext trieVisitContext = new()
             {
-                // hacky but other solutions are not much better, something nicer would require a bit of thinking
-                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
-                // but we know that we have multiple optimizations and assumptions on trees
-                ExpectAccounts = visitingOptions.ExpectAccounts,
                 MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
                 IsStorage = storageAddr is not null
             };

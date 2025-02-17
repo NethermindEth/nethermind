@@ -292,7 +292,7 @@ namespace Nethermind.Trie
 
                         TNodeContext leafContext = nodeContext.Add(Key!);
 
-                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                        if (!trieVisitContext.IsStorage && visitor.ExpectAccounts) // can combine these conditions
                         {
                             Account account = _accountDecoder.Decode(Value.AsRlpStream());
                             if (account.HasCode && visitor.ShouldVisit(leafContext, account.CodeHash))
