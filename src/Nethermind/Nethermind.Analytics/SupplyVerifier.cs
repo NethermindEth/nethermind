@@ -79,7 +79,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             _nodesVisited++;
 

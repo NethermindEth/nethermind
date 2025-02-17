@@ -167,7 +167,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _rightmostNodes[ctx.Path.Length] = node;
     }
 
-    public void VisitLeaf(in TreePathContext ctx, TrieNode node, ReadOnlySpan<byte> value)
+    public void VisitLeaf(in TreePathContext ctx, TrieNode node)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;

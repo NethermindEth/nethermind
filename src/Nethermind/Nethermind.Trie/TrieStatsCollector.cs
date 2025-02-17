@@ -126,7 +126,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext);
         }
 
-        public void VisitLeaf(in Context nodeContext, TrieNode node, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in Context nodeContext, TrieNode node)
         {
             long lastAccountNodeCount = _lastAccountNodeCount;
             long currentNodeCount = Stats.NodesCount;

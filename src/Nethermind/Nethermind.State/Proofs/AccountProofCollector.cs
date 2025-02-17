@@ -250,7 +250,7 @@ namespace Nethermind.State.Proofs
             }
         }
 
-        public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in OldStyleTrieVisitContext trieVisitContext, TrieNode node)
         {
             AddProofItem(node, trieVisitContext);
             _nodeToVisitFilter.Remove(node.Keccak);

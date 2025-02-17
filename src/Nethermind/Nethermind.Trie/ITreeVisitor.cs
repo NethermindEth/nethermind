@@ -15,9 +15,21 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsFullDbScan { get; }
 
+        /// <summary>
+        /// Used by snap sync, specify that a range of nodes in increasing order will be traversed. This turn on
+        /// some optimization for this specific scenario.
+        /// </summary>
         public bool IsRangeScan => IsFullDbScan;
+
+        /// <summary>
+        /// Specify that the account will be decoded and code and storage will get traversed.
+        /// </summary>
         public bool ExpectAccounts => true;
 
+        /// <summary>
+        /// Extra read flags for passing to triestore. Used to optimize snap sync's gettrie so that it won't effect
+        /// block processing.
+        /// </summary>
         ReadFlags ExtraReadFlag => ReadFlags.None;
 
         bool ShouldVisit(in TNodeContext nodeContext, Hash256 nextNode);
@@ -30,7 +42,7 @@ namespace Nethermind.Trie
 
         void VisitExtension(in TNodeContext nodeContext, TrieNode node);
 
-        void VisitLeaf(in TNodeContext nodeContext, TrieNode node, ReadOnlySpan<byte> value);
+        void VisitLeaf(in TNodeContext nodeContext, TrieNode node);
 
         void VisitCode(in TNodeContext nodeContext, Hash256 codeHash);
     }

@@ -467,7 +467,7 @@ public class FullPrunerTests
             CheckNode(ctx.Storage, ctx.Path, node);
         }
 
-        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node)
         {
             CheckNode(ctx.Storage, ctx.Path, node);
         }

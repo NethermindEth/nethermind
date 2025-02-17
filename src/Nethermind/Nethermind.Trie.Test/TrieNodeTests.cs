@@ -1042,9 +1042,9 @@ public class TrieNodeTests
             CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (ctx.Path, node), out _) += 1;
         }
 
-        public void VisitLeaf(in TreePathContext ctx, TrieNode node, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in TreePathContext ctx, TrieNode node)
         {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, value.ToArray()), out _) += 1;
+            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, node.Value.ToArray()), out _) += 1;
         }
 
         public void VisitCode(in TreePathContext ctx, Hash256 codeHash)

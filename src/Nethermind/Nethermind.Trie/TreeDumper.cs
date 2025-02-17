@@ -60,11 +60,11 @@ namespace Nethermind.Trie
 
         private readonly AccountDecoder decoder = new();
 
-        public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            Rlp.ValueDecoderContext valueDecoderContext = new(value);
+            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value);
             if (!context.IsStorage)
             {
                 Account account = decoder.Decode(ref valueDecoderContext);

@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void VisitExtension(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitLeaf(in TContext ctx, TrieNode node, ReadOnlySpan<byte> value) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitLeaf(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
 
         public void VisitCode(in TContext ctx, Hash256 codeHash) { }
 
