@@ -297,6 +297,7 @@ public class SynchronizerTests
 
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
+            syncConfig.GCOnFeedFinished = false;
             syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
             syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
             syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
@@ -345,6 +346,7 @@ public class SynchronizerTests
 
         public SyncingContext BestSuggestedHeaderIs(BlockHeader header)
         {
+            Console.WriteLine($"BSH is {BlockTree.BestSuggestedHeader}");
             Assert.That(
                 () => BlockTree.BestSuggestedHeader,
                 Is.EqualTo(header).After(DynamicTimeout, 2), "header");
@@ -431,9 +433,11 @@ public class SynchronizerTests
 
         public SyncingContext AfterNewBlockMessage(Block block, ISyncPeer peer)
         {
+            Console.Error.WriteLine($"Add new block {block.Header.ToString(BlockHeader.Format.Short)}");
             _logger.Info($"NEW BLOCK MESSAGE {block.Number}");
             block.Header.TotalDifficulty = block.Difficulty * (ulong)(block.Number + 1);
             SyncServer.AddNewBlock(block, peer);
+            Console.Error.WriteLine($"Added new block {block.Header.ToString(BlockHeader.Format.Short)}");
             return this;
         }
 
@@ -591,7 +595,7 @@ public class SynchronizerTests
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_extend_chain_by_more_than_one_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");

@@ -53,7 +53,6 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ILogger _logger;
         private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
-        private long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
@@ -131,7 +130,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
-            _pivotNumber = _syncConfig.PivotNumberParsed;
             bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
 
             SyncMode newModes;
@@ -264,8 +262,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             if (_logger.IsTrace)
             {
-                string message = $"Changing state to {newModes} | {reason}";
-                if (_logger.IsTrace) _logger.Trace(message);
+                _logger.Trace($"Changing state to {newModes} | {reason}");
             }
 
             SyncMode previous = Current;
@@ -287,9 +284,8 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
-        private static string BuildStateString(Snapshot best) => best.Block == best.Header ?
-            $"block: {best.Block} | target: {best.TargetBlock} | peer: {best.Peer.Block} | state: {best.State}" :
-            $"block: {best.Block} | header: {best.Header} | target: {best.TargetBlock} | peer: {best.Peer.Block} | state: {best.State}";
+        private static string BuildStateString(Snapshot best) =>
+            $"pivot: {best.PivotNumber} | header: {best.Header} | header: {best.Header} | target: {best.TargetBlock} | peer: {best.Peer.Block} | state: {best.State}";
 
         private static string BuildStateStringDebug(Snapshot best) =>
             $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | chain difficulty: {best.ChainDifficulty} | target block: {best.TargetBlock} | peer block: {best.Peer.Block} | peer total difficulty: {best.Peer.TotalDifficulty}";
@@ -307,8 +303,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool inBeaconControl = best.IsInBeaconControl;
             bool notInBeaconHeaders = !best.IsInBeaconHeaders;
             bool noDesiredPeerKnown = !AnyDesiredPeerKnown(best);
-            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
-            bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
+            bool postPivotPeerAvailable = best.AnyPostPivotPeerKnown;
+            bool hasFastSyncBeenActive = best.Header >= best.PivotNumber;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
@@ -383,7 +379,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return false;
             }
 
-            if (_pivotNumber != 0 && best.Header == 0)
+            if (best.Header > best.PivotNumber)
             {
                 // do not start fast sync until at least one header is downloaded or we would start from zero
                 // we are fine to start from zero if we do not use fast blocks
@@ -394,7 +390,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
+            bool postPivotPeerAvailable = best.AnyPostPivotPeerKnown;
 
             // We stop `FastSyncLag` block before the highest known block in case the highest known block is non-canon
             // and we need to sync away from it.
@@ -405,7 +401,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
 
             bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
-            bool stateNotDownloadedYet = best.State == 0;
+            bool stateNotDownloadedYet = !best.StateDownloaded;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
             bool result = notInUpdatingPivot &&
@@ -440,13 +436,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
+            bool postPivotPeerAvailable = best.AnyPostPivotPeerKnown;
 
             // Shared with full sync archive
             bool desiredPeerKnown = AnyDesiredPeerKnown(best);
 
             // Full sync specific
-            bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
+            bool hasFastSyncBeenActive = best.Header >= best.PivotNumber;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
@@ -523,7 +519,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastBodiesNotFinished = !FastBlocksBodiesFinished;
             bool fastHeadersFinished = FastBlocksHeadersFinished;
             bool notInStateSync = !best.IsInStateSync;
-            bool stateSyncFinished = best.State > 0;
+            bool stateSyncFinished = best.StateDownloaded;
 
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
@@ -546,7 +542,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastReceiptsNotFinished = !FastBlocksReceiptsFinished;
             bool fastBodiesFinished = FastBlocksBodiesFinished;
             bool notInStateSync = !best.IsInStateSync;
-            bool stateSyncFinished = best.State > 0;
+            bool stateSyncFinished = best.StateDownloaded;
 
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished
@@ -584,14 +580,14 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastSyncEnabled = FastSyncEnabled;
             bool notInUpdatingPivot = !best.IsInUpdatingPivot;
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
-            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.Peer.Block);
+            bool hasFastSyncBeenActive = best.Header >= best.PivotNumber;
+            bool hasAnyPostPivotPeer = best.AnyPostPivotPeerKnown;
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
 
             bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
-            bool stateNotDownloadedYet = best.State == 0;
+            bool stateNotDownloadedYet = !best.StateDownloaded;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
 
@@ -663,8 +659,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyDesiredPeerKnown(Snapshot best) => _betterPeerStrategy.IsDesiredPeer(best.Peer, (best.ChainDifficulty, best.Header));
 
-        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
-
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
@@ -732,7 +726,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
             UInt256 chainDifficulty = _syncProgressResolver.ChainDifficulty;
 
-            return new(processed, state, block, header, chainDifficulty, Math.Max(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock);
+            return new(processed, state, block, header, chainDifficulty, Math.Max(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock, _syncConfig.PivotNumberParsed);
         }
 
         private static bool IsSnapshotInvalid(Snapshot best)
@@ -787,7 +781,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 long peerBlock,
                 in UInt256 peerDifficulty,
                 bool isInBeaconControl,
-                long targetBlock
+                long targetBlock,
+                long pivotNumber
             )
             {
                 Processed = processed;
@@ -798,6 +793,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 Peer = (peerDifficulty, peerBlock);
                 IsInBeaconControl = isInBeaconControl;
                 TargetBlock = targetBlock;
+                PivotNumber = pivotNumber;
 
                 IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders
                     = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInSnapRanges = IsInBeaconHeaders = IsInUpdatingPivot = false;
@@ -817,6 +813,8 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInBeaconHeaders { get; set; }
             public bool IsInBeaconControl { get; }
             public readonly bool IsInAnyBeaconMode => IsInBeaconHeaders || IsInBeaconControl;
+            public readonly bool StateDownloaded => State > PivotNumber;
+            public readonly bool AnyPostPivotPeerKnown => Peer.Block > PivotNumber;
 
             /// <summary>
             /// Best block that has been processed
@@ -853,6 +851,9 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
             /// </summary>
             public (UInt256 TotalDifficulty, long Block) Peer { get; }
+
+            public long PivotNumber { get; }
+
         }
     }
 }

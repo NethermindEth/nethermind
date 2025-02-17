@@ -955,9 +955,10 @@ public partial class BlockDownloaderTests
             BuildTree(chainLength, withReceipts);
         }
 
-        public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty, bool withWithdrawals = false)
+        public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty, bool withWithdrawals = false, IReceiptStorage? receiptStorage = null)
         {
             _withReceipts = withReceipts;
+            _receiptStorage = receiptStorage!;
             _withWithdrawals = withWithdrawals;
             _flags = flags;
             BlockTree = blockTree;

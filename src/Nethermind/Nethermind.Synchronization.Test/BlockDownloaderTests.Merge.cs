@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -39,14 +40,19 @@ public partial class BlockDownloaderTests
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.Insert, 32, 32)]
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, SyncBatchSize.Max * 8 - 16L)]
-    public async Task Merge_Happy_path(long pivot, long headNumber, int options, int threshold, long insertedBeaconBlocks)
+    public async Task Merge_Happy_path(long beaconPivot, long headNumber, int options, int threshold, long insertedBeaconBlocks)
     {
+        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
+        bool withReceipts = (downloaderOptions & DownloaderOptions.WithReceipts) != 0;
+        int notSyncedTreeStartingBlockNumber = 3;
+
+        InMemoryReceiptStorage? receiptStorage = withReceipts ? new InMemoryReceiptStorage() : null;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
-            .InsertBeaconPivot(pivot)
-            .InsertBeaconHeaders(4, pivot - 1)
-            .InsertBeaconBlocks(pivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1, receiptStorage: receiptStorage)
+            .InsertBeaconPivot(beaconPivot)
+            .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
+            .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
 
         await using IContainer container = CreateMergeNode(blockTrees, new MergeConfig()
@@ -55,10 +61,8 @@ public partial class BlockDownloaderTests
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
-        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
 
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -68,14 +72,18 @@ public partial class BlockDownloaderTests
             responseOptions |= Response.WithTransactions;
         }
 
-        SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions, 16000000);
+        SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions, 16000000, receiptStorage: receiptStorage);
         PeerInfo peerInfo = new(syncPeer);
-        await downloader.Dispatch(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, insertedBeaconBlocks));
+        await downloader.Dispatch(peerInfo, new BlocksRequest(downloaderOptions, threshold), CancellationToken.None);
+
+        long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
+        long expectedDownloadEnd = insertedBeaconBlocks - threshold;
+
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
+        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
 
         int receiptCount = 0;
-        for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
+        for (long i = expectedDownloadStart; i < expectedDownloadEnd; i++)
         {
             if (i % 3 == 0)
             {
@@ -84,7 +92,7 @@ public partial class BlockDownloaderTests
         }
 
         ctx.ReceiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
-        ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(insertedBeaconBlocks);
+        ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(Math.Max(insertedBeaconBlocks - threshold, beaconPivot));
     }
 
     [TestCase(32L, DownloaderOptions.Insert, 32, false)]
