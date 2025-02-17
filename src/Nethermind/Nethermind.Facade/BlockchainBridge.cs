@@ -161,7 +161,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
@@ -224,7 +224,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit),
                 GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
@@ -243,7 +243,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
@@ -515,5 +515,10 @@ namespace Nethermind.Facade
             }
         }
 
+        private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        {
+            if (txResult.Success) return tracerError;
+            return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
+        }
     }
 }

@@ -90,7 +90,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     {
         if (ShouldRunSteps(api))
         {
-            api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+            api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
             api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
         }
@@ -293,7 +293,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
                 _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
-            _cl.Start();
+            await _cl.Start();
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
