@@ -269,6 +269,7 @@ namespace Ethereum.Test.Base
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
                     test.Transaction = Convert(stateJson, testJson.Transaction);
+                    test.ChainId = chainId;
 
                     blockchainTests.Add(test);
                     ++iterationNumber;
@@ -278,7 +279,7 @@ namespace Ethereum.Test.Base
             return blockchainTests;
         }
 
-        public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
+        public static BlockchainTest Convert(string name, BlockchainTestJson testJson, ulong chainId)
         {
             if (testJson.LoadFailure is not null)
             {
@@ -295,6 +296,7 @@ namespace Ethereum.Test.Base
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
             test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
+            test.ChainId = chainId;
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
             if (half is not null)
@@ -356,7 +358,7 @@ namespace Ethereum.Test.Base
                     testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1], chainId);
                 }
 
-                testsByName.Add(Convert(testName, testSpec));
+                testsByName.Add(Convert(testName, testSpec, chainId));
             }
 
             return testsByName;
