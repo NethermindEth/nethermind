@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using BenchmarkDotNet.Attributes;
 using Ethereum.Test.Base;
+using Nethermind.Specs;
 
 namespace Nethermind.EthereumTests.Benchmark
 {
@@ -18,7 +19,7 @@ namespace Nethermind.EthereumTests.Benchmark
         public void Run(string testFile)
         {
             FileTestsSource source = new(testFile);
-            var tests = source.LoadGeneralStateTests();
+            var tests = source.LoadGeneralStateTests(MainnetSpecProvider.Instance.ChainId);
 
             foreach (GeneralStateTest test in tests)
             {
