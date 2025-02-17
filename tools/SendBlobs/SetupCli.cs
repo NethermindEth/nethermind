@@ -11,7 +11,6 @@ using Nethermind.Serialization.Json;
 using System.CommandLine;
 using Ethereum.Test.Base;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace SendBlobs;
@@ -99,7 +98,7 @@ internal static class SetupCli
             }
 
             string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork, MainnetSpecProvider.Instance.ChainId);
+            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork);
 
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
             return sender.SendRandomBlobs(
@@ -351,7 +350,7 @@ internal static class SetupCli
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
 
             string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork, MainnetSpecProvider.Instance.ChainId);
+            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork);
 
             return sender.SendData(
                 data,
