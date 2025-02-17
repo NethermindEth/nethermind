@@ -1258,9 +1258,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null, Hash256? storageAddr = null) =>
-            Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions, storageAddr);
-
         /// <summary>
         /// Run tree visitor
         /// </summary>

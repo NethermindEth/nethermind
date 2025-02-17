@@ -11,7 +11,7 @@ namespace Nethermind.State.Proofs
     /// <summary>
     /// EIP-1186 style proof collector
     /// </summary>
-    public class ProofCollector : ITreeVisitor
+    public class ProofCollector : ITreeVisitor<EmptyContext>
     {
         private int _pathIndex;
 
@@ -33,17 +33,17 @@ namespace Nethermind.State.Proofs
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Hash256 nextNode) => _visitingFilter.Contains(nextNode);
+        public bool ShouldVisit(in EmptyContext _, Hash256 nextNode) => _visitingFilter.Contains(nextNode);
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in EmptyContext _, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
@@ -52,7 +52,7 @@ namespace Nethermind.State.Proofs
             _pathIndex++;
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
@@ -68,14 +68,14 @@ namespace Nethermind.State.Proofs
             _proofBits.Add(node.FullRlp.ToArray());
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
             _pathIndex = 0;
         }
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in EmptyContext _, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }

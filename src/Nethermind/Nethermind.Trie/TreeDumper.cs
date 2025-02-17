@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie
 {
-    public class TreeDumper : ITreeVisitor
+    public class TreeDumper : ITreeVisitor<EmptyContext>
     {
         private readonly StringBuilder _builder = new();
 
@@ -21,12 +21,12 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan { get; init; } = true;
 
-        public bool ShouldVisit(Hash256 nextNode)
+        public bool ShouldVisit(in EmptyContext _, Hash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in EmptyContext _, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
@@ -43,24 +43,24 @@ namespace Nethermind.Trie
         private static string GetIndent(int level) => new('+', level * 2);
         private static string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in EmptyContext _, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             _builder.AppendLine($"{GetIndent(trieVisitContext.Level)}{GetChildIndex(trieVisitContext)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
         {
             _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext)
         {
             _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         private readonly AccountDecoder decoder = new();
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in EmptyContext _, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
@@ -78,7 +78,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in EmptyContext _, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             _builder.AppendLine($"{GetPrefix(trieVisitContext)}CODE {codeHash}");
         }

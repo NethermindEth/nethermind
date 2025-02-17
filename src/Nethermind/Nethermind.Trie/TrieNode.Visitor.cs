@@ -125,11 +125,6 @@ namespace Nethermind.Trie
             }
         }
 
-        internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, ref TreePath path, TrieVisitContext trieVisitContext)
-        {
-            Accept(new ContextNotAwareTreeVisitor(visitor), default, nodeResolver, ref path, trieVisitContext);
-        }
-
         internal void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, TrieVisitContext trieVisitContext)
             where TNodeContext : struct, INodeContext<TNodeContext>
         {
