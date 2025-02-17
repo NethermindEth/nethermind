@@ -56,7 +56,8 @@ public class JsonRpcConfig : IJsonRpcConfig
         "engine_newPayloadV2",
         "engine_newPayloadV3",
         "engine_forkchoiceUpdatedV1",
-        "engine_forkchoiceUpdatedV2"
+        "engine_forkchoiceUpdatedV2",
+        "flashbots_validateBuilderSubmissionV3"
     };
     public string EngineHost { get; set; } = "127.0.0.1";
     public int? EnginePort { get; set; } = null;
