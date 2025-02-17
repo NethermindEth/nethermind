@@ -76,18 +76,17 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     public List<Transaction> BuildUserDepositTransactions(List<ReceiptForRpc> receipts)
     {
         List<Transaction> result = [];
-
         foreach (var receipt in receipts)
         {
-            if (receipt.Status != 1) { continue; }
+            if (receipt.Status != 1) continue;
             foreach (var log in receipt.Logs)
             {
-                if (log.Address != engineParameters.DepositAddress) { continue; }
-                if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) { continue; }
+                if (log.Address != engineParameters.DepositAddress) continue;
+                if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) continue;
 
                 try
                 {
-                    Transaction tx = UnmarshalDepositTransactionFromLogEvent(log);
+                    Transaction tx = DecodeDepositTransactionFromLogEvent(log);
                     result.Add(tx);
                 }
                 catch (Exception e)
@@ -96,7 +95,6 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
                 }
             }
         }
-
         return result;
     }
 
@@ -112,11 +110,11 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
     /// @param opaqueData ABI encoded deposit data to be parsed off-chain.
     event TransactionDeposited(address indexed from, address indexed to, uint256 indexed version, bytes opaqueData);
     */
-    private Transaction UnmarshalDepositTransactionFromLogEvent(LogEntryForRpc log)
+    private static Transaction DecodeDepositTransactionFromLogEvent(LogEntryForRpc log)
     {
         if (log.Topics.Length != 4) throw new ArgumentException($"Expected 4 event topics (address indexed from, address indexed to, uint256 indexed version, bytes opaqueData), got {log.Topics.Length}");
-        if (log.Topics[1].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}"); }
-        if (log.Topics[2].Bytes.Length != 32) { throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}"); }
+        if (log.Topics[1].Bytes.Length != 32) throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}");
+        if (log.Topics[2].Bytes.Length != 32) throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}");
 
         var from = new Address(log.Topics[1].Bytes[^Address.Size..]);
         var to = new Address(log.Topics[2].Bytes[^Address.Size..]);
@@ -159,10 +157,8 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
                 IsOPSystemTransaction = false,
             };
         }
-        else
-        {
-            throw new ArgumentException($"Unknown log event version: {version}");
-        }
+
+        throw new ArgumentException($"Unknown log event version: {version}");
     }
 
     public Transaction[] BuildUpgradeTransactions()
