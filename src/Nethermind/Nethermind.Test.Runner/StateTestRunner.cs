@@ -62,7 +62,7 @@ namespace Nethermind.Test.Runner
         public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new();
-            IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests(_chainId);
+            IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
             foreach (GeneralStateTest test in tests)
             {
                 if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)

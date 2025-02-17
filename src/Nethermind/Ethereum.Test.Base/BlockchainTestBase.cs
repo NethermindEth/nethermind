@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -78,7 +79,10 @@ public abstract class BlockchainTestBase
             TestContext.Out.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-        var genesisSpec = test.ChainId == GnosisSpecProvider.Instance.ChainId ? GnosisSpecProvider.Instance.GenesisSpec : MainnetSpecProvider.Instance.GenesisSpec;
+        test.Network = ChainUtils.AdjustSpecToGnosisChain(test.Network, test.ChainId);
+        test.NetworkAfterTransition = ChainUtils.AdjustSpecToGnosisChain(test.NetworkAfterTransition, test.ChainId);
+
+        var genesisSpec = ChainUtils.GetGenesisSpec(test.ChainId);
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
             [((ForkActivation)0, genesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier

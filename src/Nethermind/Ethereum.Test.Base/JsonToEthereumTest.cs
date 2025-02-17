@@ -23,7 +23,7 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        public static IReleaseSpec ParseSpec(string network, ulong chainId)
+        public static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
@@ -60,9 +60,9 @@ namespace Ethereum.Test.Base
                 "ArrowGlacier" => ArrowGlacier.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
-                "Cancun" => chainId == GnosisSpecProvider.Instance.ChainId ? CancunGnosis.Instance : Cancun.Instance,
+                "Cancun" => Cancun.Instance,
                 "Paris" => Paris.Instance,
-                "Prague" => chainId == GnosisSpecProvider.Instance.ChainId ? PragueGnosis.Instance : Prague.Instance,
+                "Prague" => Prague.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -229,7 +229,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson, ulong chainId)
+        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
         {
             if (testJson.LoadFailure is not null)
             {
@@ -251,7 +251,7 @@ namespace Ethereum.Test.Base
                     }
 
                     test.ForkName = postStateBySpec.Key;
-                    test.Fork = ParseSpec(postStateBySpec.Key, chainId);
+                    test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
                     test.CurrentCoinbase = testJson.Env.CurrentCoinbase;
                     test.CurrentDifficulty = testJson.Env.CurrentDifficulty;
@@ -269,7 +269,6 @@ namespace Ethereum.Test.Base
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
                     test.Transaction = Convert(stateJson, testJson.Transaction);
-                    test.ChainId = chainId;
 
                     blockchainTests.Add(test);
                     ++iterationNumber;
@@ -279,7 +278,7 @@ namespace Ethereum.Test.Base
             return blockchainTests;
         }
 
-        public static BlockchainTest Convert(string name, BlockchainTestJson testJson, ulong chainId)
+        public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
         {
             if (testJson.LoadFailure is not null)
             {
@@ -296,7 +295,6 @@ namespace Ethereum.Test.Base
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
             test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
-            test.ChainId = chainId;
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
             if (half is not null)
@@ -314,7 +312,7 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<GeneralStateTest> Convert(string json, ulong chainId)
+        public static IEnumerable<GeneralStateTest> Convert(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
@@ -322,13 +320,13 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                tests.AddRange(Convert(namedTest.Key, namedTest.Value, chainId));
+                tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 
             return tests;
         }
 
-        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json, ulong chainId)
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
             Dictionary<string, BlockchainTestJson> testsInFile;
             try
@@ -351,14 +349,14 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = ParseSpec(networks[0], chainId);
+                testSpec.EthereumNetwork = ParseSpec(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1], chainId);
+                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                 }
 
-                testsByName.Add(Convert(testName, testSpec, chainId));
+                testsByName.Add(Convert(testName, testSpec));
             }
 
             return testsByName;

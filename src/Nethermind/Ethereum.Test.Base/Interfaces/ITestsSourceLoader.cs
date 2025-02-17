@@ -7,6 +7,6 @@ namespace Ethereum.Test.Base.Interfaces
 {
     public interface ITestSourceLoader
     {
-        IEnumerable<IEthereumTest> LoadTests(ulong chainId = 1);
+        IEnumerable<IEthereumTest> LoadTests();
     }
 }

@@ -20,9 +20,9 @@ namespace Ethereum.Test.Base
             _wildcard = wildcard;
         }
 
-        public IEnumerable<IEthereumTest> LoadTests(ulong chainId = 1)
+        public IEnumerable<IEthereumTest> LoadTests()
         {
-            return _testLoadStrategy.Load(_path, chainId, _wildcard);
+            return _testLoadStrategy.Load(_path);
         }
     }
 }

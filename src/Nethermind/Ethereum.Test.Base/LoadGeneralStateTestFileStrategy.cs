@@ -10,13 +10,13 @@ namespace Ethereum.Test.Base
 {
     public class LoadGeneralStateTestFileStrategy : ITestLoadStrategy
     {
-        public IEnumerable<IEthereumTest> Load(string testName, ulong chainId, string wildcard = null)
+        public IEnumerable<IEthereumTest> Load(string testName, string wildcard = null)
         {
             //in case user wants to give test file other than the ones in ethereum tests submodule
             if (File.Exists(testName))
             {
                 FileTestsSource fileTestsSource = new(testName, wildcard);
-                IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests(chainId);
+                IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
 
                 return tests;
             }
@@ -33,7 +33,7 @@ namespace Ethereum.Test.Base
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
                 try
                 {
-                    IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests(chainId);
+                    IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
 
                     generalStateTests.AddRange(tests);
                 }

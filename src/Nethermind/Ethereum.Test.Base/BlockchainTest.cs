@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 
 namespace Ethereum.Test.Base
 {
@@ -28,7 +29,7 @@ namespace Ethereum.Test.Base
         public Hash256? PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }
         public string? LoadFailure { get; set; }
-        public ulong ChainId { get; set; }
+        public ulong ChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
 
         public override string? ToString()
         {

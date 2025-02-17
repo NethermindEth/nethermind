@@ -26,8 +26,10 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Specs.GnosisForks;
 
 namespace Ethereum.Test.Base
 {
@@ -62,7 +64,9 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            var genesisSpec = test.ChainId == GnosisSpecProvider.Instance.ChainId ? GnosisSpecProvider.Instance.GenesisSpec : MainnetSpecProvider.Instance.GenesisSpec;
+            ChainUtils.AdjustSpecToGnosisChain(test.Fork, test.ChainId);
+
+            var genesisSpec = ChainUtils.GetGenesisSpec(test.ChainId);
             ISpecProvider specProvider =
                 new CustomSpecProvider(test.ChainId, test.ChainId,
                     ((ForkActivation)0, genesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier

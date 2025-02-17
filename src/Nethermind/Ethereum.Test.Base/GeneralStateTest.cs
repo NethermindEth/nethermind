@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs;
 
 namespace Ethereum.Test.Base
 {
@@ -36,7 +37,7 @@ namespace Ethereum.Test.Base
         public ulong? CurrentExcessBlobGas { get; set; }
         public UInt256? ParentBlobGasUsed { get; set; }
         public UInt256? ParentExcessBlobGas { get; set; }
-        public ulong ChainId { get; set; }
+        public ulong ChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
 
         public Hash256? RequestsHash { get; set; }
 

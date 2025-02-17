@@ -20,7 +20,7 @@ namespace Ethereum.Test.Base
             _wildcard = wildcard;
         }
 
-        public IEnumerable<GeneralStateTest> LoadGeneralStateTests(ulong chainId)
+        public IEnumerable<GeneralStateTest> LoadGeneralStateTests()
         {
             try
             {
@@ -35,7 +35,7 @@ namespace Ethereum.Test.Base
                 }
 
                 string json = File.ReadAllText(_fileName);
-                return JsonToEthereumTest.Convert(json, chainId);
+                return JsonToEthereumTest.Convert(json);
             }
             catch (Exception e)
             {
@@ -43,7 +43,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        public IEnumerable<BlockchainTest> LoadBlockchainTests(ulong chainId)
+        public IEnumerable<BlockchainTest> LoadBlockchainTests()
         {
             try
             {
@@ -59,7 +59,7 @@ namespace Ethereum.Test.Base
 
                 string json = File.ReadAllText(_fileName, Encoding.Default);
 
-                return JsonToEthereumTest.ConvertToBlockchainTests(json, chainId);
+                return JsonToEthereumTest.ConvertToBlockchainTests(json);
             }
             catch (Exception e)
             {
