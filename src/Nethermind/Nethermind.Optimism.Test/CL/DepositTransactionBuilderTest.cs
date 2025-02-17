@@ -19,7 +19,7 @@ namespace Nethermind.Optimism.Test.CL;
 [TestFixture]
 public class DepositTransactionBuilderTest
 {
-    private static readonly Hash256 SomeHash = TestItem.KeccakA;
+    private static readonly Hash256 SomeHash = new("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
     private static readonly Address DepositAddress = TestItem.AddressA;
     private static readonly Address SomeAddressA = TestItem.AddressB;
     private static readonly Address SomeAddressB = TestItem.AddressC;
@@ -46,8 +46,6 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_OtherLog()
     {
-        var blockHash = TestItem.KeccakA;
-
         List<ReceiptForRpc> receipts =
         [
             new()
@@ -61,7 +59,7 @@ public class DepositTransactionBuilderTest
                         Address = SomeAddressA,
                     }
                 ],
-                BlockHash = blockHash,
+                BlockHash = SomeHash,
             },
         ];
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
@@ -165,7 +163,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_FailedDeposit()
     {
-        var blockHash = TestItem.KeccakA;
+        var blockHash = SomeHash;
         var from = SomeAddressA;
         var to = SomeAddressB;
 
@@ -213,7 +211,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_SuccessfulDeposit()
     {
-        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var blockHash = SomeHash;
         var from = SomeAddressA;
         var to = SomeAddressB;
 
@@ -278,9 +276,8 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_IsCreation()
     {
-        var blockHash = new Hash256("0x2607730e51b4bbe1cacda2b40d3daac2643c7ed7a917a681fa091e6c9d860c3d");
+        var blockHash = SomeHash;
         var from = SomeAddressA;
-        Address? to = null;
 
         var depositLogEventV0 = new DepositLogEventV0
         {
@@ -288,7 +285,7 @@ public class DepositTransactionBuilderTest
             Mint = 0,
             Value = UInt256.Parse("195000000000000000000"),
             Gas = 8732577,
-            IsCreation = to is null,
+            IsCreation = true,
         };
         var logData = depositLogEventV0.ToBytes();
 
@@ -329,7 +326,7 @@ public class DepositTransactionBuilderTest
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
-            .WithSourceHash(new Hash256("0x4ccd5da9d398a555e3804bb72f147ee03e99c9a1e7e2e031e0960bb8748eb780"))
+            .WithSourceHash(new Hash256("0xa39c0336f8bb13bdeb6cb1a969ee335af770f40048fed5064c1f3becf19ca501"))
             .WithIsOPSystemTransaction(false)
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
@@ -343,7 +340,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_MultipleReceiptsMixedStatus()
     {
-        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var blockHash = SomeHash;
         var from = SomeAddressA;
         var to = SomeAddressB;
 
@@ -431,7 +428,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_SuccessfulDepositMultipleLogs()
     {
-        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var blockHash = SomeHash;
         var from = SomeAddressA;
         var to = SomeAddressB;
 
@@ -536,7 +533,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_FailedDepositMultipleLogs()
     {
-        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var blockHash = SomeHash;
         var from = SomeAddressA;
         var to = SomeAddressB;
 
@@ -608,7 +605,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_SuccessfulDepositNotAllDepositLogs()
     {
-        var blockHash = new Hash256("0x73f947f215a884a09c953ffd171e3a3feab564dd67cfbcbd5ee321143a220533");
+        var blockHash = SomeHash;
         var from_0 = SomeAddressA;
         var to_0 = SomeAddressB;
 
