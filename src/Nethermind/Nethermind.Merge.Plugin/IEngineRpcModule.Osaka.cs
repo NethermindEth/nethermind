@@ -16,7 +16,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns inclusion list based on local mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<byte[][]>> engine_getInclusionList();
+    Task<ResultWrapper<byte[][]>> engine_getInclusionListV1();
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",

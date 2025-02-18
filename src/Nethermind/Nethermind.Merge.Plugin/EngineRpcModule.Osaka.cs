@@ -15,7 +15,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IHandler<byte[][]> _getInclusionListTransactionsHandler;
 
-    public Task<ResultWrapper<byte[][]>> engine_getInclusionList()
+    public Task<ResultWrapper<byte[][]>> engine_getInclusionListV1()
         => _getInclusionListTransactionsHandler.Handle();
 
     /// <summary>
