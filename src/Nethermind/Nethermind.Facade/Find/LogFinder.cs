@@ -275,15 +275,15 @@ namespace Nethermind.Facade.Find
             {
                 try
                 {
-                    var count = 0;
                     foreach (var blockNumber in GetBlockNumbersFor(f, @from, to, cancellationToken))
                     {
                         token.ThrowIfCancellationRequested();
 
                         yield return blockNumber;
 
-                        if (++count >= _maxBlockDepth)
-                            break;
+                        // TODO: is this needed?
+                        // if (++count >= _maxBlockDepth)
+                        //     break;
                     }
                 }
                 finally

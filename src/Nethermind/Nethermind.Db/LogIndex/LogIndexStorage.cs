@@ -142,12 +142,12 @@ namespace Nethermind.Db
             CreateDbKey(keyPrefix, from, dbKey);
             iterator.SeekForPrev(dbKey);
 
-            // Otherwise, find first index for the given key starting at or before `to`
-            // TODO: always achieve in a single seek?
-            if (to != from && !IsInKeyBounds(iterator, keyPrefix))
+            // Otherwise, find first index for the given key
+            // TODO: optimize seeking!
+            if (!IsInKeyBounds(iterator, keyPrefix))
             {
-                CreateDbKey(keyPrefix, to, dbKey);
-                iterator.SeekForPrev(dbKey);
+                iterator.SeekToFirst();
+                iterator.Seek(keyPrefix);
             }
 
             byte[] indexBuffer = ArrayPool<byte>.Shared.Rent(PageSize);
