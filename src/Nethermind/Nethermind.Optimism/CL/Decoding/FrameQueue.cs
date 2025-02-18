@@ -3,8 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Optimism.CL.Decoding;
 
-namespace Nethermind.Optimism.CL.Derivation;
+namespace Nethermind.Optimism.CL.Decoding;
 
 // Compressed batches of L2 txs are split into multiple frames.
 // This class is used to merge these frames back together
@@ -16,6 +17,7 @@ namespace Nethermind.Optimism.CL.Derivation;
 // BuildChannel() - merges all frames together and returns compressed data
 public class FrameQueue : IFrameQueue
 {
+    // Make thread safe
     private UInt128? _channelId;
     private ushort? _numberOfFrames;
     private readonly Dictionary<ushort, Frame> _frames = new();

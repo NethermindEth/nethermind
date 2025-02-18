@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Decoding;
 
 public class FrameDecoder
 {

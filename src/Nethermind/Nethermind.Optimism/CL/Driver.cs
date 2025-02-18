@@ -10,10 +10,10 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
 
@@ -27,56 +27,109 @@ public class Driver : IDisposable
     private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly IL2BlockTree _l2BlockTree;
     private readonly IEthRpcModule _l2EthRpc;
+    private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
+    private readonly IDecodingPipeline _decodingPipeline;
 
-    private readonly IChannelStorage _channelStorage;
+    private readonly Task _mainTask;
 
-    public Driver(IL1Bridge l1Bridge, IEthRpcModule l2EthRpc, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
+    public Driver(IL1Bridge l1Bridge, IEthRpcModule l2EthRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
         _config = config;
         _l1Bridge = l1Bridge;
         _logger = logger;
-        _channelStorage = new ChannelStorage();
         _engineParameters = engineParameters;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
         PayloadAttributesDeriver payloadAttributesDeriver = new(480, _systemConfigDeriver,
             new DepositTransactionBuilder(480, engineParameters), logger);
-        _l2BlockTree = new L2BlockTree();
+        _l2BlockTree = l2BlockTree;
         _l2EthRpc = l2EthRpc;
+        _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
+        _decodingPipeline = new DecodingPipeline(logger);
+
+        _mainTask = new(async () =>
+        {
+            // TODO: cancellation
+            while (true)
+            {
+                if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
+                {
+                    OnL2BlocksDerived(derivedPayloadAttributes);
+                }
+                else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
+                {
+                    ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
+                    // TODO: make it properly
+                    L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
+                    if (l2Parent is not null)
+                    {
+                        await _derivationPipeline.BatchesForProcessing.WriteAsync((l2Parent, decodedBatch));
+                        await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                    }
+                    else
+                    {
+                        if (_l2BlockTree.HeadBlockNumber > parentNumber)
+                        {
+                            _logger.Error($"Old batch. Skipping");
+                            await _decodingPipeline.DecodedBatchesReader.ReadAsync();
+                        }
+                    }
+                }
+                if (_l1Bridge.NewHeadReader.TryRead(out L1Block newHead))
+                {
+                    await OnNewL1Head(newHead);
+                }
+            }
+        });
     }
 
     public void Start()
     {
-        InsertBlock();
-        _channelStorage.OnChannelBuilt += OnChannelBuilt;
-        _derivationPipeline.OnL2BlocksDerived += OnL2BlocksDerived;
-        // _l1Bridge.OnNewL1Head += OnNewL1Head;
+        _decodingPipeline.Start();
+        _derivationPipeline.Start();
+        _mainTask.Start();
     }
 
-    private void OnChannelBuilt(byte[] channelData)
+    private void OnL2BlocksDerived(PayloadAttributesRef payloadAttributes)
     {
-        byte[] decompressed = ChannelDecoder.DecodeChannel(channelData);
-        // TODO: avoid rlpStream here
-        RlpStream rlpStream = new(decompressed);
-        ReadOnlySpan<byte> batchData = rlpStream.DecodeByteArray();
-        BatchV1[] batches = BatchDecoder.Instance.DecodeSpanBatches(ref batchData);
-        _derivationPipeline.ConsumeV1Batches(batches);
-    }
+        var blockResult = _l2EthRpc.eth_getBlockByNumber(new((long)payloadAttributes.Number), true);
 
-    private void OnL2BlocksDerived(OptimismPayloadAttributes[] payloadAttributes, ulong l2ParentNumber)
-    {
-        _logger.Error($"CHECKING PAYLOAD ATTRIBUTES");
-        for (int i = 0; i < 1; i++)
+        if (blockResult.Result != Result.Success)
         {
-            var block = _l2EthRpc.eth_getBlockByNumber(new((long)l2ParentNumber + 1 + i), true).Data;
-            var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
-
-            ComparePayloadAttributes(expectedPayloadAttributes, payloadAttributes[i]);
+            _logger.Error($"Unable to get block by number: {(long)payloadAttributes.Number}");
+            return;
         }
+
+        var block = blockResult.Data;
+        var expectedPayloadAttributes = PayloadAttributesFromBlockForRpc(block);
+
+        bool success = _l2BlockTree.TryAddBlock(new L2Block()
+        {
+            Hash = block.Hash,
+            Number = (ulong)block.Number!.Value,
+            PayloadAttributes = expectedPayloadAttributes,
+            ParentHash = block.ParentHash,
+            SystemConfig = payloadAttributes.SystemConfig,
+            L1BlockInfo = payloadAttributes.L1BlockInfo,
+        });
+
+        if (!success)
+        {
+            _logger.Error($"Unable to put block into block tree");
+            return;
+        }
+        else
+        {
+            _logger.Error($"Adding block into l2blockTree: {block.Hash}");
+        }
+
+        _derivedBlocksVerifier.ComparePayloadAttributes(expectedPayloadAttributes,
+            payloadAttributes.PayloadAttributes, payloadAttributes.Number);
     }
 
     private OptimismPayloadAttributes PayloadAttributesFromBlockForRpc(BlockForRpc block)
     {
+        ArgumentNullException.ThrowIfNull(block);
         OptimismPayloadAttributes result = new()
         {
             NoTxPool = true,
@@ -94,87 +147,35 @@ public class Driver : IDisposable
         return result;
     }
 
-    private void ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual)
+    private ulong CalculateSlotNumber(ulong timestamp)
     {
-        if (expected.NoTxPool != actual.NoTxPool)
-        {
-            _logger.Error($"Invalid NoTxPool. Expected {expected.NoTxPool}, Actual {actual.NoTxPool}");
-        }
-
-        if (expected.EIP1559Params != actual.EIP1559Params)
-        {
-            _logger.Error($"Invalid Eip1559Params");
-        }
-
-        if (expected.GasLimit != actual.GasLimit)
-        {
-            _logger.Error($"Invalid GasLimit. Expected {expected.GasLimit}, Actual {actual.GasLimit}");
-        }
-
-        if (expected.ParentBeaconBlockRoot != actual.ParentBeaconBlockRoot)
-        {
-            _logger.Error($"Invalid ParentBeaconBlockRoot. Expected {expected.ParentBeaconBlockRoot}, Actual {actual.ParentBeaconBlockRoot}");
-        }
-
-        if (expected.PrevRandao != actual.PrevRandao)
-        {
-            _logger.Error($"Invalid PrevRandao. Expected {expected.PrevRandao}, Actual {actual.PrevRandao}");
-        }
-
-        if (expected.SuggestedFeeRecipient != actual.SuggestedFeeRecipient)
-        {
-            _logger.Error($"Invalid SuggestedFeeRecipient. Expected {expected.SuggestedFeeRecipient}, Actual {actual.SuggestedFeeRecipient}");
-        }
-
-        if (expected.Timestamp != actual.Timestamp)
-        {
-            _logger.Error($"Invalid Timestamp. Expected {expected.Timestamp}, Actual {actual.Timestamp}");
-        }
-
-        if (expected.Withdrawals != actual.Withdrawals)
-        {
-            _logger.Error($"Invalid Withdrawals");
-        }
-
-        if (expected.Transactions!.Length != actual.Transactions!.Length)
-        {
-            _logger.Error($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
-        }
-        //
-        for (int i = 1; i < 2; i++)
-        {
-            _logger.Error("HERE0");
-            if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
-            {
-                _logger.Error("HERE");
-                // Transaction expectedTransaction =
-                //     Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
-                //
-
-                Transaction actualTransaction =
-                    Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
-                _logger.Error("HERE2");
-                _logger.Error($"Invalid Transaction {i}. Expected:\n{
-                    BitConverter.ToString(expected.Transactions[i]).ToLower().Replace("-", "")}, Actual:\n{
-                        BitConverter.ToString(actual.Transactions[i]).ToLower().Replace("-", "")}");
-                _logger.Error($"Invalid Transaction. Expected:\n, Actual:\n{actualTransaction}");
-            }
-        }
-        _logger.Error($"CHECKED");
+        // TODO: review
+        const ulong beaconGenesisTimestamp = 1606824023;
+        const ulong l1SlotTime = 12;
+        return (timestamp - beaconGenesisTimestamp) / l1SlotTime;
     }
 
-    public async void OnNewL1Head(BeaconBlock block, ReceiptForRpc[] receipts)
+    private async Task OnNewL1Head(L1Block block)
     {
+        _logger.Error($"New L1 Block. Number {block.Number}");
+        int startingBlobIndex = 0;
         // Filter batch submitter transaction
-        foreach (Transaction transaction in block.Transactions)
+        foreach (L1Transaction transaction in block.Transactions!)
         {
-            if (_engineParameters.BatcherInboxAddress == transaction.To && _engineParameters.BatcherAddress == transaction.SenderAddress)
+            if (transaction.Type == TxType.Blob)
             {
-                if (transaction.Type == TxType.Blob)
+                if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                    _engineParameters.BatcherAddress == transaction.From)
                 {
-                    await ProcessBlobBatcherTransaction(transaction, block.SlotNumber);
+                    await ProcessBlobBatcherTransaction(transaction,
+                        startingBlobIndex, CalculateSlotNumber(block.Timestamp.ToUInt64(null)));
                 }
-                else
+                startingBlobIndex += transaction.BlobVersionedHashes!.Length;
+            }
+            else
+            {
+                if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                    _engineParameters.BatcherAddress == transaction.From)
                 {
                     ProcessCalldataBatcherTransaction(transaction);
                 }
@@ -182,48 +183,23 @@ public class Driver : IDisposable
         }
     }
 
-    private async Task ProcessBlobBatcherTransaction(Transaction transaction, ulong slotNumber)
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
     {
-        BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+        BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
+            startingBlobIndex + transaction.BlobVersionedHashes!.Length);
         while (blobSidecars is null)
         {
-            await Task.Delay(100);
-            blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
+            blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
+                startingBlobIndex + transaction.BlobVersionedHashes.Length);
         }
 
-        for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+        for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
-            for (int j = 0; j < blobSidecars.Length; ++j)
-            {
-                if (blobSidecars[j].BlobVersionedHash.SequenceEqual(transaction.BlobVersionedHashes[i]!))
-                {
-                    byte[] data = BlobDecoder.DecodeBlob(blobSidecars[j]);
-                    Frame[] frames = FrameDecoder.DecodeFrames(data);
-                    _channelStorage.ConsumeFrames(frames);
-                }
-            }
+            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob);
         }
     }
 
-    private void InsertBlock()
-    {
-        var block = _l2EthRpc.eth_getBlockByNumber(new(9739163), true).Data;
-        DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
-        SystemConfig config =
-            _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
-        L2Block nativeBlock = new()
-        {
-            Hash = block.Hash,
-            Number = (ulong)block.Number!.Value,
-            Timestamp = block.Timestamp.ToUInt64(null),
-            ParentHash = block.ParentHash,
-            SystemConfig = config,
-            L1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(tx.Input!, block.ExtraData),
-        };
-        _l2BlockTree.AddBlock(nativeBlock);
-    }
-
-    private void ProcessCalldataBatcherTransaction(Transaction transaction)
+    private void ProcessCalldataBatcherTransaction(L1Transaction transaction)
     {
         if (_logger.IsError)
         {
@@ -235,6 +211,5 @@ public class Driver : IDisposable
 
     public void Dispose()
     {
-        _l1Bridge.OnNewL1Head -= OnNewL1Head;
     }
 }

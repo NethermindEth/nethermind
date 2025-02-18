@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Numerics;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Eth;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
-using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
@@ -20,6 +22,8 @@ public class DerivationPipeline : IDerivationPipeline
     private readonly IL1Bridge _l1Bridge;
     private readonly ILogger _logger;
 
+    private readonly Task _mainTask;
+
     public DerivationPipeline(IPayloadAttributesDeriver payloadAttributesDeriver, IL2BlockTree l2BlockTree,
         IL1Bridge l1Bridge, ILogger logger)
     {
@@ -27,53 +31,86 @@ public class DerivationPipeline : IDerivationPipeline
         _l2BlockTree = l2BlockTree;
         _l1Bridge = l1Bridge;
         _logger = logger;
+        _mainTask = new Task(async () =>
+        {
+            // TODO: cancellation
+            while (true)
+            {
+                (L2Block l2Parent, BatchV1 batch) = await _inputChannel.Reader.ReadAsync();
+                await ConsumeV1Batches(l2Parent, batch);
+            }
+        });
     }
 
-    public async Task ConsumeV1Batches(BatchV1[] batches)
+    public void Start()
     {
-        foreach (BatchV1 batch in batches)
+        _mainTask.Start();
+    }
+
+    private readonly Channel<(L2Block L2Parent, BatchV1 Batch)> _inputChannel = Channel.CreateBounded<(L2Block, BatchV1)>(20);
+    public ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing => _inputChannel.Writer;
+
+    private readonly Channel<PayloadAttributesRef> _outputChannel = Channel.CreateBounded<PayloadAttributesRef>(20);
+    public ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes => _outputChannel.Reader;
+
+    private async Task ConsumeV1Batches(L2Block parent, BatchV1 batch)
+    {
+        var result = await ProcessOneBatch(parent, batch);
+        foreach (PayloadAttributesRef payloadAttributes in result)
         {
-            await ProcessOneBatch(batch);
+            await _outputChannel.Writer.WriteAsync(payloadAttributes);
         }
     }
 
-    private async Task ProcessOneBatch(BatchV1 batch)
+    private async Task<PayloadAttributesRef[]> ProcessOneBatch(L2Block l2Parent, BatchV1 batch)
     {
+        _logger.Error($"Processing batch RelTimestamp: {batch.RelTimestamp}");
+        ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
+        ArgumentNullException.ThrowIfNull(l2Parent);
+        if (expectedParentNumber < l2Parent.Number)
+        {
+            throw new ArgumentException("Old batch");
+        }
+
+        if (!l2Parent.Hash.Bytes.StartsWith(batch.ParentCheck))
+        {
+            _logger.Error($"Unexpected L2Parent. Got: {l2Parent.Hash}, ParentCheck: {batch.ParentCheck.ToHexString()}");
+            throw new ArgumentException("Wrong L2 parent");
+        }
+
         // TODO: proper error handling
         ulong numberOfL1Origins = GetNumberOfBits(batch.OriginBits) + 1;
         ulong lastL1OriginNum = batch.L1OriginNum;
-        BlockForRpc? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
+        L1Block? lastL1Origin = await _l1Bridge.GetBlock(lastL1OriginNum);
         ArgumentNullException.ThrowIfNull(lastL1Origin);
-        if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck))
+        if (!lastL1Origin.Value.Hash.Bytes.StartsWith(batch.L1OriginCheck))
         {
             // TODO: potential L1 reorg
             throw new ArgumentException("Invalid batch origin");
         }
-        BlockForRpc[] l1Origins = new BlockForRpc[numberOfL1Origins];
+        L1Block[] l1Origins = new L1Block[numberOfL1Origins];
         ReceiptForRpc[][] l1Receipts = new ReceiptForRpc[numberOfL1Origins][];
-        l1Origins[numberOfL1Origins - 1] = lastL1Origin;
-        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Hash);
+        l1Origins[numberOfL1Origins - 1] = lastL1Origin.Value;
+        ReceiptForRpc[]? lastReceipts = await _l1Bridge.GetReceiptsByBlockHash(lastL1Origin.Value.Hash);
         ArgumentNullException.ThrowIfNull(lastReceipts);
         l1Receipts[numberOfL1Origins - 1] = lastReceipts;
-        Hash256 parentHash = lastL1Origin.ParentHash;
+        Hash256 parentHash = lastL1Origin.Value.ParentHash;
         for (ulong i = 1; i < numberOfL1Origins; i++)
         {
             // TODO: try to save time here
-            BlockForRpc? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
+            L1Block? l1Origin = await _l1Bridge.GetBlockByHash(parentHash);
             ReceiptForRpc[]? receipts = await _l1Bridge.GetReceiptsByBlockHash(parentHash);
             ArgumentNullException.ThrowIfNull(l1Origin);
             ArgumentNullException.ThrowIfNull(receipts);
-            l1Origins[numberOfL1Origins - i - 1] = l1Origin;
+            l1Origins[numberOfL1Origins - i - 1] = l1Origin.Value;
             l1Receipts[numberOfL1Origins - i - 1] = receipts;
-            parentHash = l1Origin.ParentHash;
+            parentHash = l1Origin.Value.ParentHash;
         }
-
-        L2Block? l2Parent = _l2BlockTree.GetHighestBlock();
-        ArgumentNullException.ThrowIfNull(l2Parent);
 
         var pa = _payloadAttributesDeriver.DerivePayloadAttributes(batch, l2Parent, l1Origins, l1Receipts);
 
-        OnL2BlocksDerived?.Invoke(pa, l2Parent.Number);
+        _logger.Error($"Processed batch RelTimestamp: {batch.RelTimestamp}");
+        return pa;
     }
 
     private ulong GetNumberOfBits(BigInteger number)
@@ -93,6 +130,4 @@ public class DerivationPipeline : IDerivationPipeline
     {
         throw new NotImplementedException();
     }
-
-    public event Action<OptimismPayloadAttributes[], ulong>? OnL2BlocksDerived;
 }

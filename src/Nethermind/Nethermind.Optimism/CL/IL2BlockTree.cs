@@ -6,7 +6,8 @@ namespace Nethermind.Optimism.CL;
 // Stores only derived blocks. No p2p blocks
 public interface IL2BlockTree
 {
+    ulong HeadBlockNumber { get; }
     L2Block? GetHighestBlock();
     L2Block? GetBlockByNumber(ulong number);
-    void AddBlock(L2Block block);
+    bool TryAddBlock(L2Block block);
 }

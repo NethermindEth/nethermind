@@ -11,6 +11,8 @@ public class L2BlockTree : IL2BlockTree
     // TODO: pruning
     private readonly List<L2Block> _blocks = new();
 
+    public ulong HeadBlockNumber => _blocks[_blocks.Count - 1].Number;
+
     public L2Block? GetBlockByNumber(ulong number)
     {
         if (_blocks.Count == 0 || number < _blocks[0].Number)
@@ -25,21 +27,22 @@ public class L2BlockTree : IL2BlockTree
         return _blocks[(int)index];
     }
 
-    public void AddBlock(L2Block block)
+    public bool TryAddBlock(L2Block block)
     {
         if (_blocks.Count == 0)
         {
             _blocks.Add(block);
-            return;
+            return true;
         }
 
-        L2Block parent = _blocks[-1];
+        L2Block parent = _blocks[_blocks.Count - 1];
         if (parent.Number + 1 != block.Number || parent.Hash != block.ParentHash)
         {
-            throw new ArgumentException("Invalid block");
+            return false;
         }
 
         _blocks.Add(block);
+        return true;
     }
 
     public L2Block? GetHighestBlock()

@@ -10,27 +10,8 @@ namespace Nethermind.Optimism.CL;
 
 public interface IBeaconApi
 {
-    // /eth/v2/beacon/blocks/head
-    Task<BeaconBlock?> GetHead();
-
-    // /eth/v2/beacon/blocks/finalized
-    Task<BeaconBlock?> GetFinalized();
-
-    // /eth/v2/beacon/blocks/{slot}
-    Task<BeaconBlock?> GetBySlotNumber(ulong slot);
-
     // /eth/v1/beacon/blob_sidecars/:slot:
-    Task<BlobSidecar[]?> GetBlobSidecars(ulong slot);
-}
-
-public struct BeaconBlock
-{
-    public ulong SlotNumber;
-    public ulong PayloadNumber;
-    public Hash256 ExecutionBlockHash;
-    public Hash256 BeaconBlockHash;
-    public Hash256 PrevRandao;
-    public Transaction[] Transactions;
+    Task<BlobSidecar[]?> GetBlobSidecars(ulong slot, int indexFrom, int indexTo);
 }
 
 public struct BlobSidecar

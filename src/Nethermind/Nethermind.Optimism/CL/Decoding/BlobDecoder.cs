@@ -3,16 +3,16 @@
 
 using System;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.Decoding;
 
 public class BlobDecoder
 {
-    static public byte[] DecodeBlob(BlobSidecar blobSidecar)
+    static public byte[] DecodeBlob(byte[] blob)
     {
         int MaxBlobDataSize = (4 * 31 + 3) * 1024 - 4;
         int BlobSize = 4096 * 32;
-        int length = ((int)blobSidecar.Blob[2] << 16) | ((int)blobSidecar.Blob[3] << 8) |
-                     ((int)blobSidecar.Blob[4]);
+        int length = ((int)blob[2] << 16) | ((int)blob[3] << 8) |
+                     ((int)blob[4]);
         if (length > MaxBlobDataSize)
         {
             throw new Exception("Blob size is too big");
@@ -21,17 +21,17 @@ public class BlobDecoder
         byte[] output = new byte[MaxBlobDataSize];
         for (int i = 0; i < 27; ++i)
         {
-            output[i] = blobSidecar.Blob[i + 5];
+            output[i] = blob[i + 5];
         }
 
         byte[] encodedByte = new byte[4];
         int blobPos = 32;
         int outputPos = 28;
 
-        encodedByte[0] = blobSidecar.Blob[0];
+        encodedByte[0] = blob[0];
         for (int i = 1; i < 4; ++i)
         {
-            (encodedByte[i], outputPos, blobPos) = DecodeFieldElement(blobSidecar.Blob, outputPos, blobPos, output);
+            (encodedByte[i], outputPos, blobPos) = DecodeFieldElement(blob, outputPos, blobPos, output);
         }
 
         outputPos = ReassembleBytes(outputPos, encodedByte, output);
@@ -41,7 +41,7 @@ public class BlobDecoder
             for (int j = 0; j < 4; j++)
             {
                 (encodedByte[j], outputPos, blobPos) =
-                    DecodeFieldElement(blobSidecar.Blob, outputPos, blobPos, output);
+                    DecodeFieldElement(blob, outputPos, blobPos, output);
             }
 
             outputPos = ReassembleBytes(outputPos, encodedByte, output);
@@ -58,7 +58,7 @@ public class BlobDecoder
         output = output[..length];
         for (; blobPos < BlobSize; blobPos++)
         {
-            if (blobSidecar.Blob[blobPos] != 0)
+            if (blob[blobPos] != 0)
             {
                 throw new Exception("Blob excess data");
             }

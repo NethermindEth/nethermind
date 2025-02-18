@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Optimism.Rpc;
+using System.Threading.Channels;
+using Nethermind.Optimism.CL.Decoding;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
 public interface IDerivationPipeline
 {
-    Task ConsumeV1Batches(BatchV1[] batches);
-    Task ConsumeV0Batches(BatchV0[] batches);
-    event Action<OptimismPayloadAttributes[], ulong>? OnL2BlocksDerived;
+    void Start();
+    ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes { get; }
+    ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing { get; }
 }
