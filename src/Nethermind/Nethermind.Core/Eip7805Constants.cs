@@ -7,6 +7,7 @@ public static class Eip7805Constants
 {
     public const int MaxBytesPerInclusionList = 8192;
     // 32 bytes as conservative lower bound for transaction size
-    public const int MinTransactionSizeBytes = 32;
-    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / MinTransactionSizeBytes;
+    public const int MinTransactionSizeBytesLower = 32;
+    public const int MinTransactionSizeBytesUpper = 100;
+    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / MinTransactionSizeBytesLower;
 }

@@ -45,7 +45,7 @@ public class GetInclusionListTransactionsHandler(
             yield return txBytes;
 
             // impossible to fit another tx in the inclusion list
-            if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
+            if (size + Eip7805Constants.MinTransactionSizeBytesUpper > Eip7805Constants.MaxBytesPerInclusionList)
             {
                 yield break;
             }
