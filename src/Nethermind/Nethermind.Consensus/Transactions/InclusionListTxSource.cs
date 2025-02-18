@@ -13,5 +13,6 @@ public class InclusionListTxSource(ulong chainId) : ITxSource
     private readonly EthereumEcdsa _ecdsa = new(chainId);
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
-        => payloadAttributes?.GetInclusionListTransactions(_ecdsa) ?? [];
+        => [];
+        // => payloadAttributes?.GetInclusionListTransactions(_ecdsa) ?? [];
 }

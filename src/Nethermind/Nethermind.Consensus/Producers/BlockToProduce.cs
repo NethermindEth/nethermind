@@ -32,9 +32,8 @@ namespace Nethermind.Consensus.Producers
         public BlockToProduce(BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
-            IEnumerable<Withdrawal>? withdrawals = null,
-            IEnumerable<Transaction>? inclusionListTransactions = null)
-            : base(blockHeader, transactions, uncles, withdrawals, inclusionListTransactions)
+            IEnumerable<Withdrawal>? withdrawals = null)
+            : base(blockHeader, transactions, uncles, withdrawals, null)
         {
         }
 

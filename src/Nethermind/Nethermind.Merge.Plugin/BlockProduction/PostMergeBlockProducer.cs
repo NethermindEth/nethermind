@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
-            return new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals, payloadAttributes?.GetInclusionListTransactions(_specProvider.ChainId));
+            return new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
 
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)

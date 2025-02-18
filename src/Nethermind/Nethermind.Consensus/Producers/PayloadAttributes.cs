@@ -53,10 +53,10 @@ public class PayloadAttributes
             sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
         }
 
-        if (InclusionListTransactions is not null)
-        {
-            sb.Append($", {nameof(InclusionListTransactions)} count: {InclusionListTransactions.Length}");
-        }
+        // if (InclusionListTransactions is not null)
+        // {
+        //     sb.Append($", {nameof(InclusionListTransactions)} count: {InclusionListTransactions.Length}");
+        // }
 
         sb.Append('}');
 
@@ -68,13 +68,13 @@ public class PayloadAttributes
 
     public string GetPayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa = null) => _payloadId ??= ComputePayloadId(parentHeader, ecdsa);
 
-    public IEnumerable<Transaction>? GetInclusionListTransactions(ulong chainId)
-        => GetInclusionListTransactions(new EthereumEcdsa(chainId));
+    // public IEnumerable<Transaction>? GetInclusionListTransactions(ulong chainId)
+    //     => GetInclusionListTransactions(new EthereumEcdsa(chainId));
 
-    public IEnumerable<Transaction>? GetInclusionListTransactions(IEthereumEcdsa ecdsa)
-        => _inclusionListTransactions ??= InclusionListTransactions is null ? null : InclusionListDecoder.Decode(InclusionListTransactions, ecdsa);
+    // public IEnumerable<Transaction>? GetInclusionListTransactions(IEthereumEcdsa ecdsa)
+    //     => _inclusionListTransactions ??= InclusionListTransactions is null ? null : InclusionListDecoder.Decode(InclusionListTransactions, ecdsa);
 
-    private IEnumerable<Transaction>? _inclusionListTransactions;
+    // private IEnumerable<Transaction>? _inclusionListTransactions;
 
     private string ComputePayloadId(BlockHeader parentHeader, IEthereumEcdsa? ecdsa)
     {
@@ -90,8 +90,8 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
-        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list transactions root hash
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
+        // + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list transactions root hash
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -130,15 +130,15 @@ public class PayloadAttributes
             position += Keccak.Size;
         }
 
-        if (InclusionListTransactions is not null)
-        {
-            using ArrayPoolList<Transaction> txs = GetInclusionListTransactions(ecdsa)!.ToPooledList(Eip7805Constants.MaxTransactionsPerInclusionList);
-            Hash256 inclusionListTransactionsRootHash = txs.Count == 0
-                ? PatriciaTree.EmptyTreeHash
-                : new TxTrie(txs.AsSpan()).RootHash;
-            inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-        }
+        // if (InclusionListTransactions is not null)
+        // {
+        //     using ArrayPoolList<Transaction> txs = GetInclusionListTransactions(ecdsa)!.ToPooledList(Eip7805Constants.MaxTransactionsPerInclusionList);
+        //     Hash256 inclusionListTransactionsRootHash = txs.Count == 0
+        //         ? PatriciaTree.EmptyTreeHash
+        //         : new TxTrie(txs.AsSpan()).RootHash;
+        //     inclusionListTransactionsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+        //     position += Keccak.Size;
+        // }
 
         return position;
     }

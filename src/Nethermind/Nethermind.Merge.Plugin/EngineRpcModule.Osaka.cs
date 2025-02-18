@@ -25,8 +25,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions), EngineApiVersions.Osaka);
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Osaka);
+    // public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+    //     => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Osaka);
 
     public Task<ResultWrapper<string?>> engine_updatePayloadWithInclusionListV1(string payloadId, byte[][] inclusionListTransactions)
         => _updatePayloadWithInclusionListHandler.Handle((payloadId, inclusionListTransactions));
