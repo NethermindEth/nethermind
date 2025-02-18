@@ -20,7 +20,7 @@ namespace Nethermind.Trie
         private readonly CancellationToken _cancellationToken;
 
         // Combine both `TreePathContextWithStorage` and `OldStyleTrieVisitContext`
-        public struct Context: INodeContext<Context>
+        public struct Context : INodeContext<Context>
         {
             private TreePathContextWithStorage PathContext;
             private OldStyleTrieVisitContext OldStyleTrieVisitContext;

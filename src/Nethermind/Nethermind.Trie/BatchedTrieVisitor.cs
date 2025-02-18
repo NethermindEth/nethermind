@@ -386,86 +386,86 @@ public class BatchedTrieVisitor<TNodeContext>
         switch (node.NodeType)
         {
             case NodeType.Branch:
-            {
-                _visitor.VisitBranch(nodeContext, node);
-                trieVisitContext.Level++;
-
-                for (int i = 0; i < TrieNode.BranchesCount; i++)
                 {
-                    TrieNode child = node.GetChild(nodeResolver, ref emptyPath, i);
-                    if (child is not null)
-                    {
-                        child.ResolveKey(nodeResolver, ref emptyPath, false);
-                        TNodeContext childContext = nodeContext.Add((byte)i);
-
-                        if (_visitor.ShouldVisit(childContext, child.Keccak!))
-                        {
-                            SmallTrieVisitContext childCtx = trieVisitContext; // Copy
-                            nextToVisit.Add((child, childContext, childCtx));
-                        }
-
-                        if (child.IsPersisted)
-                        {
-                            node.UnresolveChild(i);
-                        }
-                    }
-                }
-
-                break;
-            }
-            case NodeType.Extension:
-            {
-                _visitor.VisitExtension(nodeContext, node);
-                TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
-                child.ResolveKey(nodeResolver, ref emptyPath, false);
-                TNodeContext childContext = nodeContext.Add(node.Key!);
-                if (_visitor.ShouldVisit(childContext, child.Keccak!))
-                {
+                    _visitor.VisitBranch(nodeContext, node);
                     trieVisitContext.Level++;
 
-
-                    nextToVisit.Add((child, childContext, trieVisitContext));
-                }
-
-                break;
-            }
-
-            case NodeType.Leaf:
-            {
-                _visitor.VisitLeaf(nodeContext, node);
-
-                if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
-                {
-                    TNodeContext childContext = nodeContext.Add(node.Key!);
-
-                    Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
-                    if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                    for (int i = 0; i < TrieNode.BranchesCount; i++)
                     {
-                        throw new InvalidDataException("Non storage leaf should be an account");
+                        TrieNode child = node.GetChild(nodeResolver, ref emptyPath, i);
+                        if (child is not null)
+                        {
+                            child.ResolveKey(nodeResolver, ref emptyPath, false);
+                            TNodeContext childContext = nodeContext.Add((byte)i);
+
+                            if (_visitor.ShouldVisit(childContext, child.Keccak!))
+                            {
+                                SmallTrieVisitContext childCtx = trieVisitContext; // Copy
+                                nextToVisit.Add((child, childContext, childCtx));
+                            }
+
+                            if (child.IsPersisted)
+                            {
+                                node.UnresolveChild(i);
+                            }
+                        }
                     }
-                    _visitor.VisitAccount(childContext, node, account);
 
-                    if (account.HasStorage && _visitor.ShouldVisit(childContext, account.StorageRoot))
+                    break;
+                }
+            case NodeType.Extension:
+                {
+                    _visitor.VisitExtension(nodeContext, node);
+                    TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
+                    child.ResolveKey(nodeResolver, ref emptyPath, false);
+                    TNodeContext childContext = nodeContext.Add(node.Key!);
+                    if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
-                        trieVisitContext.IsStorage = true;
-                        TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
                         trieVisitContext.Level++;
 
-                        if (node.TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
-                        {
-                            nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
-                        }
-                        else
-                        {
-                            _visitor.VisitMissingNode(storageContext, account.StorageRoot);
-                        }
 
-                        trieVisitContext.IsStorage = false;
+                        nextToVisit.Add((child, childContext, trieVisitContext));
                     }
+
+                    break;
                 }
 
-                break;
-            }
+            case NodeType.Leaf:
+                {
+                    _visitor.VisitLeaf(nodeContext, node);
+
+                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                    {
+                        TNodeContext childContext = nodeContext.Add(node.Key!);
+
+                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
+                        if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                        {
+                            throw new InvalidDataException("Non storage leaf should be an account");
+                        }
+                        _visitor.VisitAccount(childContext, node, account);
+
+                        if (account.HasStorage && _visitor.ShouldVisit(childContext, account.StorageRoot))
+                        {
+                            trieVisitContext.IsStorage = true;
+                            TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
+                            trieVisitContext.Level++;
+
+                            if (node.TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
+                            {
+                                nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
+                            }
+                            else
+                            {
+                                _visitor.VisitMissingNode(storageContext, account.StorageRoot);
+                            }
+
+                            trieVisitContext.IsStorage = false;
+                        }
+                    }
+
+                    break;
+                }
 
             default:
                 throw new TrieException($"An attempt was made to visit a node {node.Keccak} of type {node.NodeType}");
