@@ -300,7 +300,6 @@ public class InitializeNetwork : IStep
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.MainBlockProcessor is null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
         if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));

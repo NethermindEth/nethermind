@@ -4,7 +4,6 @@
 #nullable enable
 using System;
 using Nethermind.Config;
-using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
