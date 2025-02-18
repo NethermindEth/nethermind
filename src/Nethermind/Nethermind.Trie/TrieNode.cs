@@ -1134,7 +1134,7 @@ namespace Nethermind.Trie
             // }
         }
 
-        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath, out TrieNode? storageRoot)
+        internal bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
 
@@ -1319,7 +1319,7 @@ namespace Nethermind.Trie
             path.TruncateOne();
         }
 
-        private void UnresolveChild(int i)
+        internal void UnresolveChild(int i)
         {
             ref var data = ref _nodeData[i];
             if (IsPersisted)
