@@ -27,8 +27,9 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
     //TODO correct this timestamp!
-    public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
-    public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
+    public const ulong PragueBlockTimestamp = ulong.MaxValue - 3;
+    public const ulong OsakaBlockTimestamp = ulong.MaxValue - 2;
+    public const ulong AmsterdamBlockTimestamp = ulong.MaxValue - 1;
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
@@ -49,7 +50,9 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            _ => Prague.Instance
+            { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
+            { Timestamp: < AmsterdamBlockTimestamp } => Osaka.Instance,
+            _ => Amsterdam.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
