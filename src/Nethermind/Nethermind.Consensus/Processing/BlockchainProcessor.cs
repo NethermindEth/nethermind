@@ -402,8 +402,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            Metrics.RecoveryQueueSize = _queueCount;
-            Metrics.ProcessingQueueSize = _blockQueue.Reader.Count;
+            int blockQueueCount = _blockQueue.Reader.Count;
+            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount, 0);
+            Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
 
