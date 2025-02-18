@@ -180,7 +180,7 @@ public partial class EngineModuleTests
             "[]",
             Keccak.Zero.ToString(true),
             "[]",
-            chain.JsonSerializer.Serialize(inclusionListTransactions));
+            chain.JsonSerializer.Serialize(inclusionListRaw));
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         string expectedNewPayloadResponse = chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
