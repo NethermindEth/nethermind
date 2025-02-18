@@ -48,12 +48,27 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          # Load matrix based on network type (regular or superchain)
-          network_type="${{ github.event.inputs.network_type }}"
-          if [ "$network_type" = "superchain" ]; then
+          # Set network type first so it's available for all steps
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "NETWORK_TYPE=${{ github.event.inputs.network_type }}" >> $GITHUB_ENV
+          else
+            # Default to regular for scheduled and workflow_run triggers
+            echo "NETWORK_TYPE=regular" >> $GITHUB_ENV
+          fi
+
+          # Load matrix based on network type
+          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Loading superchains matrix"
             matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
           else
+            echo "Loading regular networks matrix"
             matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+          fi
+
+          # Validate matrix is not empty
+          if [ "$(echo "$matrix" | jq '. | length')" -eq 0 ]; then
+            echo "Error: Matrix is empty"
+            exit 1
           fi
 
           # Apply network filter if provided
@@ -66,7 +81,11 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg count "$random_count" 'shuffle | .[:($count | tonumber)]')
           fi
 
-          echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
+          # Set matrix output and validate it
+          matrix_json=$(echo "$matrix" | jq -c .)
+          echo "Matrix content: $matrix_json"
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          echo "Matrix length: $(echo "$matrix_json" | jq '. | length')"
 
   create_a_runner:
     needs: [setup-matrix]
@@ -153,7 +172,7 @@ jobs:
         run: |
           echo "Downloading sedge sources..."
           # Use core-superchains branch for superchain networks, core for regular
-          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "${{ matrix.config.network }}" == base-* || "${{ matrix.config.network }}" == op-* || "${{ matrix.config.network }}" == world-* ]]; then
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || [[ "${{ matrix.config.network }}" == base-* || "${{ matrix.config.network }}" == op-* || "${{ matrix.config.network }}" == world-* ]]; then
             git clone https://github.com/NethermindEth/sedge.git sedge --branch core-superchains --single-branch
           else
             git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
@@ -186,7 +205,7 @@ jobs:
           ./build/sedge deps install
 
           # Handle network type detection and setup
-          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             # Superchain network
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
@@ -289,7 +308,7 @@ jobs:
         env:
           NETWORK: ${{ matrix.config.network }}
         run: |
-          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "$NETWORK" == base-* || "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
+          if [ "$network_type" = "superchain" ] || [[ "$NETWORK" == base-* || "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
             python scripts/waitForSyncSuperchains.py
           else
             python scripts/waitForSync.py
@@ -299,9 +318,13 @@ jobs:
         if: failure()
         id: find-and-upload
         run: |      
-          target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
-          cd "$target_dir"
-          cd logs
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || [[ "${{ matrix.config.network }}" == base-* || "${{ matrix.config.network }}" == op-* || "${{ matrix.config.network }}" == world-* ]]; then
+            cd execution-data-op/logs
+          elif [[ "${{ matrix.config.network }}" == taiko-* ]]; then
+            cd execution-data-taiko/logs
+          else
+            cd execution-data/logs
+          fi
           ls
           log_file=$(find . -type f -name "*logs.txt" | head -n 1)
           echo "Found log file: $log_file"
