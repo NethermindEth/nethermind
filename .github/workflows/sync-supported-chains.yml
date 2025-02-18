@@ -8,7 +8,8 @@ on:
       - completed
 
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 1 * *"  # Run all networks on first day of month
+    - cron: "0 0 * * 0"  # Run random subset on Sundays
     
   workflow_dispatch:
     inputs:
@@ -17,9 +18,17 @@ on:
         default: ""
         required: false
       network_filter:
-        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        description: "Filter networks by name (partial or full match)"
         default: ""
-        required: false    
+        required: false
+      network_type:
+        description: "Type of networks to run (regulars or superchain)"
+        default: "regular"
+        required: true
+        type: choice
+        options:
+          - regular
+          - superchain
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -39,10 +48,22 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+          # Load matrix based on network type (regular or superchain)
+          network_type="${{ github.event.inputs.network_type }}"
+          if [ "$network_type" = "superchain" ]; then
+            matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+          else
+            matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+          fi
 
+          # Apply network filter if provided
           if [ -n "${{ github.event.inputs.network_filter }}" ]; then
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
+          # On weekly runs, select random subset
+          elif [ "${{ github.event.schedule }}" = "0 0 * * 0" ]; then
+            random_count=$(( ( RANDOM % 6 ) + 5 ))
+            echo "Running weekly test with $random_count random chains"
+            matrix=$(echo "$matrix" | jq --arg count "$random_count" 'shuffle | .[:($count | tonumber)]')
           fi
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
@@ -131,7 +152,12 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          # Use core-superchains branch for superchain networks, core for regular
+          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "${{ matrix.config.network }}" == base-* || "${{ matrix.config.network }}" == op-* || "${{ matrix.config.network }}" == world-* ]]; then
+            git clone https://github.com/NethermindEth/sedge.git sedge --branch core-superchains --single-branch
+          else
+            git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          fi
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
@@ -159,7 +185,9 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          # Handle network type detection and setup
+          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+            # Superchain network
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
@@ -171,17 +199,16 @@ jobs:
               exit 1
             fi
 
-            if [[ "$network" == base-* ]]; then
-              extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
+            # Extract superchain and network name
+            IFS='-' read -r superchain network_name <<< "$network"
+            if [ -z "$network_name" ]; then
+              network_name="$superchain"
+              superchain=""
             fi
-
-            if [[ "$network" == world-* ]]; then
-              extra_param="--world"
-            fi
-
-            stripped_network="${network#base-}"
-            stripped_network="${stripped_network#op-}"
-            stripped_network="${stripped_network#world-}"
+            
+            # Set environment variables
+            export SUPERCHAIN="$superchain"
+            export NETWORK="$network_name"
 
             mkdir -p execution-data-op/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
@@ -193,14 +220,15 @@ jobs:
             --op-execution opnethermind:$docker_image \
             --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.10.3 \
             --map-all \
-            --network $stripped_network \
+            --chain $SUPERCHAIN \
+            --network $NETWORK \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL \
             --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             $extra_param
           elif [[ "$network" == taiko-* ]]; then
-            if [[ "$network" == *mainnet* ]]; then
+            if [[ "$network" == *alethia* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
               stripped_network="mainnet"
@@ -261,7 +289,11 @@ jobs:
         env:
           NETWORK: ${{ matrix.config.network }}
         run: |
-          python scripts/waitForSync.py
+          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "$NETWORK" == base-* || "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
+            python scripts/waitForSyncSuperchains.py
+          else
+            python scripts/waitForSync.py
+          fi
 
       - name: Get Nethermind Debug Logs
         if: failure()
@@ -291,12 +323,13 @@ jobs:
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+            # All superchains use the same container name
             docker logs sedge-consensus-op-l2-client
           elif [[ "$network" == taiko-* ]]; then
             docker logs sedge-consensus-taikodriver-client
           else
-            docker logs sedge-consensus-client      
+            docker logs sedge-consensus-client
           fi
           
       - name: Check size of DB 
