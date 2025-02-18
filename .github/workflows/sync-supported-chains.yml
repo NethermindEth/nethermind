@@ -81,11 +81,33 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg count "$random_count" 'shuffle | .[:($count | tonumber)]')
           fi
 
+          # Add runner_network field with shortened name for runner interactions
+          # Format is: t-<run_id>-<network>, where run_id is typically 9-10 chars
+          # So we need to ensure: len("t-" + run_id + "-" + network) <= 32
+          # This means network name should be: 32 - 2 - 10 - 1 = 19 chars max
+          matrix_json=$(echo "$matrix" | jq -c '[ .[] | 
+            . + { 
+              "runner_network": (.network | 
+                # First, replace any non-alphanumeric chars with hyphen
+                gsub("[^a-zA-Z0-9]+"; "-") |
+                # Then take first 19 chars if longer
+                if length > 19 then 
+                  .[0:19] | rtrimstr("-")
+                else 
+                  . 
+                end
+              ) 
+            } 
+          ]')
+
           # Set matrix output and validate it
-          matrix_json=$(echo "$matrix" | jq -c .)
           echo "Matrix content: $matrix_json"
           echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
           echo "Matrix length: $(echo "$matrix_json" | jq '. | length')"
+
+          # Print network name mappings for reference
+          echo "Network name mappings:"
+          echo "$matrix_json" | jq -r '.[] | "\(.network) -> \(.runner_network)"'
 
   create_a_runner:
     needs: [setup-matrix]
@@ -108,7 +130,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "create"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -125,7 +147,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
         
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
     timeout-minutes: ${{ matrix.config.timeout }}
     
     steps:
@@ -367,8 +389,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -389,8 +411,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -401,8 +423,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-runner"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
