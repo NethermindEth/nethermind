@@ -57,6 +57,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             // Optimize for single reader concurrency
             SingleReader = true,
+            // Optimize for single writer concurrency (recovery queue)
+            SingleWriter = true,
             // Share thread with request, if waiting
             AllowSynchronousContinuations = true
         });
