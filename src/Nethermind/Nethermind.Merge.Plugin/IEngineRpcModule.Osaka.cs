@@ -25,8 +25,15 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
+        Description = "Updates the payload with the inclusion list transactions.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<string?>> engine_updatePayloadWithInclusionListV1(string payloadId, byte[][] inclusionListTransactions);
+
+    [JsonRpcMethod(
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
+
 }

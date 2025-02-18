@@ -57,6 +57,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_getInclusionListV1)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV5)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_updatePayloadWithInclusionListV1)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
             #endregion
         }
 

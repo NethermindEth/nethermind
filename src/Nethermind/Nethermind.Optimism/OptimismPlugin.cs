@@ -276,6 +276,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
             new GetInclusionListTransactionsHandler(_api.BlockTree, null),
+            new UpdatePayloadWithInclusionListHandler(),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

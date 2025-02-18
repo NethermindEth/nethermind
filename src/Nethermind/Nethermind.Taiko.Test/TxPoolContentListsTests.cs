@@ -79,6 +79,7 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
             Substitute.For<IHandler<byte[][]>>(),
+            Substitute.For<IHandler<(string, byte[][]), string?>>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<ILogManager>(),

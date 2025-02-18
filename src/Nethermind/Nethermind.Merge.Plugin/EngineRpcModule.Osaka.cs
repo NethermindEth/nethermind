@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IHandler<byte[][]> _getInclusionListTransactionsHandler;
-
+    private readonly IHandler<(string, byte[][]), string?> _updatePayloadWithInclusionListHandler;
     public Task<ResultWrapper<byte[][]>> engine_getInclusionListV1()
         => _getInclusionListTransactionsHandler.Handle();
 
@@ -27,4 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Osaka);
+
+    public Task<ResultWrapper<string?>> engine_updatePayloadWithInclusionListV1(string payloadId, byte[][] inclusionListTransactions)
+        => _updatePayloadWithInclusionListHandler.Handle((payloadId, inclusionListTransactions));
 }

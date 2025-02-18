@@ -151,6 +151,7 @@ public partial class EngineModuleTests
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
             new GetInclusionListTransactionsHandler(chain.BlockTree, inclusionListTxSource),
+            new UpdatePayloadWithInclusionListHandler(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
