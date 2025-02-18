@@ -86,7 +86,7 @@
             <div class="max">Max: <span id="maxMemory" class="number"></span> MB</div>
         </div>
     </div>
-    <div id="headBlock" class="container not-active" style="height:240px">
+    <div id="lastestBlock" class="container not-active" style="height:240px">
         <div class="title">Lastest Block</div>
         <div class="not-active-message">Not Synced</div>
         <div style="left: calc(50% - 40px);position: absolute;top: 5px;width: 80px;text-align: center;color: #009CDD;">Gas Target</div>
@@ -121,6 +121,14 @@
             </table>
         </div>
         <div id="block" style="margin-top: 35px;"></div>
+    </div>
+    <div id="recentBlocks" class="container not-active">
+        <div class="title">Recent Blocks</div>
+        <div class="not-active-message">Not Synced</div>
+        <div id="ridgeline-dataLength"></div>
+        <div id="ridgeline-value"></div>
+        <div id="ridgeline-gasUsed"></div>
+        <div id="ridgeline-effectiveGasPrice"></div>
     </div>
     <div id="txPoolFlow" class="container not-active">
         <div class="title">Incoming Transactions</div>

@@ -9,6 +9,7 @@ import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionRece
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
 import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo } from './utilities';
+import { createRidgelinePlot } from './ridgeLine'
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -53,6 +54,26 @@ const blockBlockSize = document.getElementById('blockBlockSize') as HTMLElement;
 const blockTimestamp = document.getElementById('blockTimestamp') as HTMLElement;
 const blockTransactions = document.getElementById('blockTransactions') as HTMLElement;
 const blockBlobs = document.getElementById('blockBlobs') as HTMLElement;
+
+const ridgeDataLength = createRidgelinePlot(
+  d3.select('#ridgeline-dataLength'),
+  (d) => Math.log10( d.dataLength )// numeric field in the TxReceipt
+);
+
+const ridgeValue = createRidgelinePlot(
+  d3.select('#ridgeline-value'),
+  (d) => Math.log10(parseInt(d.value, 16) / 1000000000000000000) // parse from hex
+);
+
+const ridgeGasUsed = createRidgelinePlot(
+  d3.select('#ridgeline-gasUsed'),
+  (d) => Math.log10(parseInt(d.gasUsed, 16))
+);
+
+const ridgeEffectiveGasPrice = createRidgelinePlot(
+  d3.select('#ridgeline-effectiveGasPrice'),
+  (d) => Math.log10(parseInt(d.effectiveGasPrice, 16) / 1000000000)
+);
 
 const ansiConvert = new Convert();
 
@@ -224,7 +245,8 @@ sse.addEventListener("forkChoice", (e) => {
   const data = JSON.parse(e.data) as ForkChoice;
   const number = parseInt(data.head.number, 16);
   if (number !== 0) {
-    document.getElementById("headBlock").classList.remove("not-active");
+    document.getElementById("lastestBlock").classList.remove("not-active");
+    document.getElementById("recentBlocks").classList.remove("not-active");
   }
   const safe = parseInt(data.safe, 16);
   const finalized = parseInt(data.finalized, 16);
@@ -236,6 +258,8 @@ sse.addEventListener("forkChoice", (e) => {
   updateText(finalizedBlockDelta, `(${(finalized - number).toFixed(0)})`);
 
   const block = data.head;
+
+  if (block.tx.length === 0) return;
   // Merge tx & receipts into a single array
   // so each element has { key, size, colorValue, ... } etc.
   // (One data item per transaction)
@@ -267,6 +291,12 @@ sse.addEventListener("forkChoice", (e) => {
       // colorFn
       d => parseInt(d.effectiveGasPrice, 16) * parseInt(d.gasUsed, 16)
   );
+
+  // Update each ridgeline with the new mergedData
+  ridgeDataLength.update(mergedData);
+  ridgeValue.update(mergedData);
+  ridgeGasUsed.update(mergedData);
+  ridgeEffectiveGasPrice.update(mergedData);
 });
 
 let maxCpuPercent = 0;

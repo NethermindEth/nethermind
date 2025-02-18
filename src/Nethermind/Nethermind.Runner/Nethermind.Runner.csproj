@@ -84,6 +84,7 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
+    <None Remove="scripts\ridgeLine.ts" />
     <None Remove="scripts\treeMap.ts" />
     <None Remove="scripts\types.ts" />
     <None Remove="scripts\utilities.ts" />
@@ -102,6 +103,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <TypeScriptCompile Include="scripts\ridgeLine.ts" />
     <TypeScriptCompile Include="scripts\treeMap.ts" />
     <TypeScriptCompile Include="scripts\types.ts" />
     <TypeScriptCompile Include="scripts\utilities.ts" />
