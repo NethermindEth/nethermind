@@ -1344,7 +1344,7 @@ namespace Nethermind.Trie
                 if (TryGetRootRef(out TrieNode rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
-                    rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext, long.MaxValue);
+                    rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
                 }
             }
             // Full db scan
@@ -1358,7 +1358,7 @@ namespace Nethermind.Trie
             {
                 TreePath emptyPath = TreePath.Empty;
                 visitor.VisitTree(default, rootHash);
-                long? total = rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext, long.MaxValue);
+                long? total = rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }
 

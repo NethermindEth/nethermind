@@ -21,15 +21,17 @@ namespace Nethermind.Trie
     partial class TrieNode
     {
         internal long Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver,
-            ref TreePath path, TrieVisitContext trieVisitContext, long subtreeCountHintT) where TNodeContext : struct, INodeContext<TNodeContext>
+            ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext>
         {
-            return new TrieNodeTraverser<TNodeContext>(visitor).Accept(this, nodeContext, nodeResolver, ref path, trieVisitContext, subtreeCountHintT);
+            return new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext).Accept(this, nodeContext, nodeResolver, ref path, trieVisitContext, long.MaxValue);
         }
     }
 
-    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor) where TNodeContext : struct, INodeContext<TNodeContext>
+    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext>
     {
         private static readonly AccountDecoder _accountDecoder = new();
+        private ConcurrencyController? _threadLimiter = null;
+        public ConcurrencyController ConcurrencyController => _threadLimiter ??= new ConcurrencyController(trieVisitContext.MaxDegreeOfParallelism);
 
         private const long MinSubtreeSizeToParallelize = 1024 * 1024;
         internal long Accept(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, TrieVisitContext trieVisitContext, long subtreeCountHintT)
@@ -56,90 +58,6 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                     {
-                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        long VisitChild(ref TreePath path, int i, TrieNode child, ITrieNodeResolver resolver, ITreeVisitor<TNodeContext> v, in TNodeContext nodeContext, TrieVisitContext context, long subtreeCountHint)
-                        {
-                            long actualSubtreeSize = 0;
-                            int previousPathLength = node.AppendChildPath(ref path, i);
-                            child.ResolveKey(resolver, ref path, false);
-                            TNodeContext childContext = nodeContext.Add((byte)i);
-                            if (v.ShouldVisit(childContext, child.Keccak!))
-                            {
-                                actualSubtreeSize += Accept(child, childContext, resolver, ref path, context, subtreeCountHint);
-                            }
-                            path.TruncateMut(previousPathLength);
-
-                            if (child.IsPersisted)
-                            {
-                                node.UnresolveChild(i);
-                            }
-
-                            return actualSubtreeSize;
-                        }
-
-                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        long VisitSingleThread(ref TreePath parentPath, ITreeVisitor<TNodeContext> treeVisitor, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
-                        {
-                            long actualSubtreeSize = 0;
-                            // single threaded route
-                            for (int i = 0; i < TrieNode.BranchesCount; i++)
-                            {
-                                TrieNode? childNode = node.GetChild(trieNodeResolver, ref parentPath, i);
-                                if (childNode is null) continue;
-                                actualSubtreeSize += VisitChild(ref parentPath, i, childNode, trieNodeResolver, treeVisitor, nodeContext, visitContext, subtreeCountHint);
-                            }
-
-                            return actualSubtreeSize;
-                        }
-
-                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        long VisitMultiThread(TreePath parentPath, ITreeVisitor<TNodeContext> treeVisitor, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
-                        {
-                            // we need to preallocate children
-                            TNodeContext contextCopy = nodeContext;
-
-                            long actualSubtreeSize = 0;
-                            ArrayPoolList<Task<long>>? tasks = null;
-                            for (int i = 0; i < TrieNode.BranchesCount; i++)
-                            {
-                                TrieNode? childNode = node.GetChild(trieNodeResolver, ref parentPath, i);
-                                if (childNode is null) continue;
-
-                                if (i < TrieNode.BranchesCount - 1 && subtreeCountHint > MinSubtreeSizeToParallelize && visitContext.ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
-                                {
-                                    tasks ??= new ArrayPoolList<Task<long>>(TrieNode.BranchesCount);
-
-                                    // we need to have separate context for each thread as context tracks level and branch child index
-                                    TrieVisitContext childContext = visitContext.Clone();
-                                    tasks.Add(SpawnChildVisit(parentPath, i, childNode, returner, childContext, subtreeCountHint));
-                                }
-                                else
-                                {
-                                    long childSubtreeSize = VisitChild(ref parentPath, i, childNode, trieNodeResolver, treeVisitor, contextCopy, visitContext, subtreeCountHint);
-                                    subtreeCountHint = childSubtreeSize;
-                                    actualSubtreeSize += childSubtreeSize;
-                                }
-                            }
-
-                            if (tasks is { Count: > 0 })
-                            {
-                                foreach (var childSubtreeSize in Task.WhenAll((ReadOnlySpan<Task<long>>)tasks.AsSpan()).Result)
-                                {
-                                    actualSubtreeSize += childSubtreeSize;
-                                }
-                                tasks.Dispose();
-                            }
-
-                            return actualSubtreeSize;
-
-                            Task<long> SpawnChildVisit(TreePath closureParentPath, int i, TrieNode childNode, ConcurrencyController.Slot slotReturner, TrieVisitContext childContext, long subtreeCountHint) =>
-                                Task.Run(() =>
-                                {
-                                    using ConcurrencyController.Slot _ = slotReturner;
-
-                                    return VisitChild(ref closureParentPath, i, childNode, trieNodeResolver, treeVisitor, contextCopy, childContext, subtreeCountHint);
-                                });
-                        }
 
                         visitor.VisitBranch(nodeContext, node);
                         trieVisitContext.AddVisited();
@@ -151,17 +69,17 @@ namespace Nethermind.Trie
                         // Top level state split to 16^3 while storage is 16, which should be ok for large contract in most case.
                         if (trieVisitContext.MaxDegreeOfParallelism != 1 && subtreeCountHintT > MinSubtreeSizeToParallelize && (trieVisitContext.IsStorage ? path.Length <= 1 : path.Length <= 2))
                         {
-                            actualSubtreeSize += VisitMultiThread(path, visitor, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
+                            actualSubtreeSize += VisitMultiThread(node, path, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
                         }
                         else
                         {
                             if (visitor.IsRangeScan)
                             {
-                                actualSubtreeSize += VisitAllSingleThread(node, ref path, visitor, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
+                                actualSubtreeSize += VisitAllSingleThread(node, ref path, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
                             }
                             else
                             {
-                                actualSubtreeSize += VisitSingleThread(ref path, visitor, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
+                                actualSubtreeSize += VisitSingleThread(node, ref path, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
                             }
                         }
 
@@ -244,7 +162,7 @@ namespace Nethermind.Trie
             return actualSubtreeSize;
         }
 
-        private long VisitAllSingleThread(TrieNode currentNode, ref TreePath path, ITreeVisitor<TNodeContext> visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
+        private long VisitAllSingleThread(TrieNode currentNode, ref TreePath path, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
         {
             long actualSubtreeSize = 0;
             TrieNode?[] output = new TrieNode?[TrieNode.BranchesCount];
@@ -266,6 +184,94 @@ namespace Nethermind.Trie
 
             return actualSubtreeSize;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private long VisitChild(TrieNode parentNode, int childIdx, ref TreePath childPath, TrieNode child, ITrieNodeResolver resolver, in TNodeContext nodeContext, TrieVisitContext context, long subtreeCountHint)
+        {
+            long actualSubtreeSize = 0;
+            child.ResolveKey(resolver, ref childPath, false);
+            TNodeContext childContext = nodeContext.Add((byte)childIdx);
+            if (visitor.ShouldVisit(childContext, child.Keccak!))
+            {
+                actualSubtreeSize += Accept(child, childContext, resolver, ref childPath, context, subtreeCountHint);
+            }
+
+            if (child.IsPersisted)
+            {
+                parentNode.UnresolveChild(childIdx);
+            }
+
+            return actualSubtreeSize;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private long VisitSingleThread(TrieNode node, ref TreePath parentPath, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
+        {
+            long actualSubtreeSize = 0;
+            // single threaded route
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                TrieNode? childNode = node.GetChild(trieNodeResolver, ref parentPath, i);
+                if (childNode is null) continue;
+                int previousPathLength = node.AppendChildPath(ref parentPath, i);
+                actualSubtreeSize += VisitChild(node, i, ref parentPath, childNode, trieNodeResolver, nodeContext, visitContext, subtreeCountHint);
+                parentPath.TruncateMut(previousPathLength);
+            }
+
+            return actualSubtreeSize;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private long VisitMultiThread(TrieNode node, TreePath path, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
+        {
+            // we need to preallocate children
+            TNodeContext contextCopy = nodeContext;
+
+            long actualSubtreeSize = 0;
+            ArrayPoolList<Task<long>>? tasks = null;
+            path.AppendMut(0);
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                path.SetLast(i);
+                TrieNode? childNode = node.GetChildWithChildPath(trieNodeResolver, ref path, i);
+                if (childNode is null) continue;
+
+                if (i < TrieNode.BranchesCount - 1 && subtreeCountHint > MinSubtreeSizeToParallelize && ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
+                {
+                    tasks ??= new ArrayPoolList<Task<long>>(TrieNode.BranchesCount);
+
+                    // we need to have separate context for each thread as context tracks level and branch child index
+                    TrieVisitContext childContext = visitContext.Clone();
+                    tasks.Add(SpawnChildVisit(node, path, i, childNode, contextCopy, trieNodeResolver, returner, childContext, subtreeCountHint));
+                }
+                else
+                {
+                    long childSubtreeSize = VisitChild(node, i, ref path, childNode, trieNodeResolver, contextCopy, visitContext, subtreeCountHint);
+                    subtreeCountHint = childSubtreeSize;
+                    actualSubtreeSize += childSubtreeSize;
+                }
+            }
+            path.TruncateOne();
+
+            if (tasks is { Count: > 0 })
+            {
+                foreach (var childSubtreeSize in Task.WhenAll((ReadOnlySpan<Task<long>>)tasks.AsSpan()).Result)
+                {
+                    actualSubtreeSize += childSubtreeSize;
+                }
+                tasks.Dispose();
+            }
+
+            return actualSubtreeSize;
+        }
+
+        private Task<long> SpawnChildVisit(TrieNode parent, TreePath childPath, int childIdx, TrieNode childNode, TNodeContext contextCopy, ITrieNodeResolver trieNodeResolver, ConcurrencyController.Slot slotReturner, TrieVisitContext childContext, long subtreeCountHint) =>
+            Task.Run(() =>
+            {
+                using ConcurrencyController.Slot _ = slotReturner;
+
+                return VisitChild(parent, childIdx, ref childPath, childNode, trieNodeResolver, contextCopy, childContext, subtreeCountHint);
+            });
 
     }
 }
