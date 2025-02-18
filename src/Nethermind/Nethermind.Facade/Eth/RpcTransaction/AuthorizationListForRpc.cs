@@ -64,7 +64,7 @@ public class AuthorizationListForRpc
             (ulong)tuple.ChainId,
             tuple.Address,
             tuple.Nonce,
-            new Signature(tuple.R, tuple.S, (ulong)tuple.YParity))
+            new Signature(tuple.R, tuple.S, (ulong)tuple.YParity + Signature.VOffset))
         ).ToArray();
 
     public class JsonConverter : JsonConverter<AuthorizationListForRpc>

@@ -20,7 +20,7 @@ namespace Ethereum.Test.Base
             _wildcard = wildcard;
         }
 
-        public IEnumerable<IEthereumTest> LoadTests()
+        public IEnumerable<EthereumTest> LoadTests()
         {
             return _testLoadStrategy.Load(_path, _wildcard);
         }

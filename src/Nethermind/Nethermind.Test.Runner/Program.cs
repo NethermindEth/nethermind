@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
+using Nethermind.Specs;
 
 namespace Nethermind.Test.Runner;
 
@@ -58,7 +59,8 @@ internal class Program
             Options.ExcludeMemory,
             Options.ExcludeStack,
             Options.Wait,
-            Options.Stdin
+            Options.Stdin,
+            Options.GnosisTest,
         ];
         rootCommand.SetAction(Run);
 
@@ -81,7 +83,7 @@ internal class Program
 
         if (parseResult.GetValue(Options.Stdin))
             input = Console.ReadLine();
-        ulong chainId = parseResult.GetValue(Options.GnosisTest) ? 100ul : 1ul;
+        ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
 
 
         while (!string.IsNullOrWhiteSpace(input))
