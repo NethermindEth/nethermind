@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base
 {
     public class LoadGeneralStateTestFileStrategy : ITestLoadStrategy
     {
-        public IEnumerable<IEthereumTest> Load(string testName, string? wildcard = null)
+        public IEnumerable<EthereumTest> Load(string testName, string? wildcard = null)
         {
             //in case user wants to give test file other than the ones in ethereum tests submodule
             if (File.Exists(testName))

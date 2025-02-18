@@ -79,13 +79,11 @@ public abstract class BlockchainTestBase
             TestContext.Out.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
         Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-        test.Network = ChainUtils.AdjustSpecToGnosisChain(test.Network, test.ChainId);
-        test.NetworkAfterTransition = ChainUtils.AdjustSpecToGnosisChain(test.NetworkAfterTransition, test.ChainId);
-
-        var genesisSpec = ChainUtils.GetGenesisSpec(test.ChainId);
+        test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
+        test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            [((ForkActivation)0, genesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
         if (test.NetworkAfterTransition is not null)
         {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));

@@ -7,14 +7,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 
 namespace Ethereum.Test.Base
 {
-    public class BlockchainTest : IEthereumTest
+    public class BlockchainTest : EthereumTest
     {
-        public string? Category { get; set; }
-        public string? Name { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }
@@ -28,8 +25,6 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }
-        public string? LoadFailure { get; set; }
-        public ulong ChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
 
         public override string? ToString()
         {

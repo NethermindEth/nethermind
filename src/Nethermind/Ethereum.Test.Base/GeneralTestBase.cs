@@ -64,12 +64,11 @@ namespace Ethereum.Test.Base
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
-            ChainUtils.AdjustSpecToGnosisChain(test.Fork, test.ChainId);
+            test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
-            var genesisSpec = ChainUtils.GetGenesisSpec(test.ChainId);
             ISpecProvider specProvider =
                 new CustomSpecProvider(test.ChainId, test.ChainId,
-                    ((ForkActivation)0, genesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
 
             if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)

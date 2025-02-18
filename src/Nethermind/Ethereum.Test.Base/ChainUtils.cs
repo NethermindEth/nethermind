@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base;
 
 public class ChainUtils
 {
-    public static IReleaseSpec? AdjustSpecToGnosisChain(IReleaseSpec? spec, ulong chainId)
+    public static IReleaseSpec? ResolveSpec(IReleaseSpec? spec, ulong chainId)
     {
         if (chainId != GnosisSpecProvider.Instance.ChainId)
         {
@@ -28,10 +28,4 @@ public class ChainUtils
 
         return spec;
     }
-
-    public static IReleaseSpec GetGenesisSpec(ulong chainId)
-    {
-        return chainId == GnosisSpecProvider.Instance.ChainId ? GnosisSpecProvider.Instance.GenesisSpec : MainnetSpecProvider.Instance.GenesisSpec;
-    }
-
 }
