@@ -24,12 +24,12 @@ namespace Nethermind.Trie
         internal void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver,
             ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext>
         {
-            new TrieNodeTraverser<TNodeContext>(visitor, new VisitingOptions())
+            new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext)
                 .Accept(this, nodeContext, nodeResolver, ref path, trieVisitContext.IsStorage);
         }
     }
 
-    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, VisitingOptions options) where TNodeContext : struct, INodeContext<TNodeContext>
+    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options) where TNodeContext : struct, INodeContext<TNodeContext>
     {
         private static readonly AccountDecoder _accountDecoder = new();
         private int _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
