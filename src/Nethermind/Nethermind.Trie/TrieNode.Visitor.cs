@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -20,118 +18,29 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
-    public partial class TrieNode
+    partial class TrieNode
     {
-        /// <summary>
-        /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
-        /// `nextToVisit`. Also, it assume the node is already resolved.
-        /// </summary>
-        internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
-            where TNodeContext : struct, INodeContext<TNodeContext>
+        internal long Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver,
+            ref TreePath path, TrieVisitContext trieVisitContext, long subtreeCountHintT) where TNodeContext : struct, INodeContext<TNodeContext>
         {
-            // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
-            // which should only be used with hash keys.
-            TreePath emptyPath = TreePath.Empty;
-            switch (NodeType)
-            {
-                case NodeType.Branch:
-                    {
-                        visitor.VisitBranch(nodeContext, this);
-                        trieVisitContext.Level++;
-
-                        for (int i = 0; i < BranchesCount; i++)
-                        {
-                            TrieNode child = GetChild(nodeResolver, ref emptyPath, i);
-                            if (child is not null)
-                            {
-                                child.ResolveKey(nodeResolver, ref emptyPath, false);
-                                TNodeContext childContext = nodeContext.Add((byte)i);
-
-                                if (visitor.ShouldVisit(childContext, child.Keccak!))
-                                {
-                                    SmallTrieVisitContext childCtx = trieVisitContext; // Copy
-                                    nextToVisit.Add((child, childContext, childCtx));
-                                }
-
-                                if (child.IsPersisted)
-                                {
-                                    UnresolveChild(i);
-                                }
-                            }
-                        }
-
-                        break;
-                    }
-                case NodeType.Extension:
-                    {
-                        visitor.VisitExtension(nodeContext, this);
-                        TrieNode child = GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        child.ResolveKey(nodeResolver, ref emptyPath, false);
-                        TNodeContext childContext = nodeContext.Add(Key!);
-                        if (visitor.ShouldVisit(childContext, child.Keccak!))
-                        {
-                            trieVisitContext.Level++;
-
-
-                            nextToVisit.Add((child, childContext, trieVisitContext));
-                        }
-
-                        break;
-                    }
-
-                case NodeType.Leaf:
-                    {
-                        visitor.VisitLeaf(nodeContext, this);
-
-                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
-                        {
-                            TNodeContext childContext = nodeContext.Add(Key!);
-
-                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Value.AsSpan());
-                            if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
-                            {
-                                throw new InvalidDataException("Non storage leaf should be an account");
-                            }
-                            visitor.VisitAccount(childContext, this, account);
-
-                            if (account.HasStorage && visitor.ShouldVisit(childContext, account.StorageRoot))
-                            {
-                                trieVisitContext.IsStorage = true;
-                                TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
-                                trieVisitContext.Level++;
-
-                                if (TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
-                                {
-                                    nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
-                                }
-                                else
-                                {
-                                    visitor.VisitMissingNode(storageContext, account.StorageRoot);
-                                }
-
-                                trieVisitContext.IsStorage = false;
-                            }
-                        }
-
-                        break;
-                    }
-
-                default:
-                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
-            }
+            return new TrieNodeTraverser<TNodeContext>(visitor).Accept(this, nodeContext, nodeResolver, ref path, trieVisitContext, subtreeCountHintT);
         }
+    }
+
+    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor) where TNodeContext : struct, INodeContext<TNodeContext>
+    {
+        private static readonly AccountDecoder _accountDecoder = new();
 
         private const long MinSubtreeSizeToParallelize = 1024 * 1024;
-        internal long Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, TrieVisitContext trieVisitContext, long subtreeCountHintT)
-            where TNodeContext : struct, INodeContext<TNodeContext>
+        internal long Accept(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, TrieVisitContext trieVisitContext, long subtreeCountHintT)
         {
             try
             {
-                ResolveNode(nodeResolver, path);
+                node.ResolveNode(nodeResolver, path);
             }
             catch (TrieException)
             {
-                visitor.VisitMissingNode(nodeContext, Keccak);
+                visitor.VisitMissingNode(nodeContext, node.Keccak);
                 return 1;
             }
 
@@ -141,9 +50,9 @@ namespace Nethermind.Trie
                 subtreeCountHintT--;
             }
 
-            ResolveKey(nodeResolver, ref path, trieVisitContext.Level == 0);
+            node.ResolveKey(nodeResolver, ref path, trieVisitContext.Level == 0);
 
-            switch (NodeType)
+            switch (node.NodeType)
             {
                 case NodeType.Branch:
                     {
@@ -151,18 +60,18 @@ namespace Nethermind.Trie
                         long VisitChild(ref TreePath path, int i, TrieNode child, ITrieNodeResolver resolver, ITreeVisitor<TNodeContext> v, in TNodeContext nodeContext, TrieVisitContext context, long subtreeCountHint)
                         {
                             long actualSubtreeSize = 0;
-                            int previousPathLength = AppendChildPath(ref path, i);
+                            int previousPathLength = node.AppendChildPath(ref path, i);
                             child.ResolveKey(resolver, ref path, false);
                             TNodeContext childContext = nodeContext.Add((byte)i);
                             if (v.ShouldVisit(childContext, child.Keccak!))
                             {
-                                actualSubtreeSize += child.Accept(v, childContext, resolver, ref path, context, subtreeCountHint);
+                                actualSubtreeSize += Accept(child, childContext, resolver, ref path, context, subtreeCountHint);
                             }
                             path.TruncateMut(previousPathLength);
 
                             if (child.IsPersisted)
                             {
-                                UnresolveChild(i);
+                                node.UnresolveChild(i);
                             }
 
                             return actualSubtreeSize;
@@ -173,9 +82,9 @@ namespace Nethermind.Trie
                         {
                             long actualSubtreeSize = 0;
                             // single threaded route
-                            for (int i = 0; i < BranchesCount; i++)
+                            for (int i = 0; i < TrieNode.BranchesCount; i++)
                             {
-                                TrieNode? childNode = GetChild(trieNodeResolver, ref parentPath, i);
+                                TrieNode? childNode = node.GetChild(trieNodeResolver, ref parentPath, i);
                                 if (childNode is null) continue;
                                 actualSubtreeSize += VisitChild(ref parentPath, i, childNode, trieNodeResolver, treeVisitor, nodeContext, visitContext, subtreeCountHint);
                             }
@@ -191,14 +100,14 @@ namespace Nethermind.Trie
 
                             long actualSubtreeSize = 0;
                             ArrayPoolList<Task<long>>? tasks = null;
-                            for (int i = 0; i < BranchesCount; i++)
+                            for (int i = 0; i < TrieNode.BranchesCount; i++)
                             {
-                                TrieNode? childNode = GetChild(trieNodeResolver, ref parentPath, i);
+                                TrieNode? childNode = node.GetChild(trieNodeResolver, ref parentPath, i);
                                 if (childNode is null) continue;
 
-                                if (i < BranchesCount - 1 && subtreeCountHint > MinSubtreeSizeToParallelize && visitContext.ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
+                                if (i < TrieNode.BranchesCount - 1 && subtreeCountHint > MinSubtreeSizeToParallelize && visitContext.ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
                                 {
-                                    tasks ??= new ArrayPoolList<Task<long>>(BranchesCount);
+                                    tasks ??= new ArrayPoolList<Task<long>>(TrieNode.BranchesCount);
 
                                     // we need to have separate context for each thread as context tracks level and branch child index
                                     TrieVisitContext childContext = visitContext.Clone();
@@ -232,30 +141,7 @@ namespace Nethermind.Trie
                                 });
                         }
 
-                        static long VisitAllSingleThread(TrieNode currentNode, ref TreePath path, ITreeVisitor<TNodeContext> visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
-                        {
-                            long actualSubtreeSize = 0;
-                            TrieNode?[] output = new TrieNode?[BranchesCount];
-                            currentNode.ResolveAllChildBranch(nodeResolver, ref path, output);
-                            path.AppendMut(0);
-                            for (int i = 0; i < 16; i++)
-                            {
-                                if (output[i] is null) continue;
-                                TrieNode child = output[i];
-                                path.SetLast(i);
-                                child.ResolveKey(nodeResolver, ref path, false);
-                                TNodeContext childContext = nodeContext.Add((byte)i);
-                                if (visitor.ShouldVisit(childContext, child.Keccak!))
-                                {
-                                    actualSubtreeSize += child.Accept(visitor, childContext, nodeResolver, ref path, visitContext, subtreeCountHint);
-                                }
-                            }
-                            path.TruncateOne();
-
-                            return actualSubtreeSize;
-                        }
-
-                        visitor.VisitBranch(nodeContext, this);
+                        visitor.VisitBranch(nodeContext, node);
                         trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
@@ -271,7 +157,7 @@ namespace Nethermind.Trie
                         {
                             if (visitor.IsRangeScan)
                             {
-                                actualSubtreeSize += VisitAllSingleThread(this, ref path, visitor, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
+                                actualSubtreeSize += VisitAllSingleThread(node, ref path, visitor, nodeContext, nodeResolver, trieVisitContext, childSubTreeHint);
                             }
                             else
                             {
@@ -285,16 +171,16 @@ namespace Nethermind.Trie
 
                 case NodeType.Extension:
                     {
-                        visitor.VisitExtension(nodeContext, this);
+                        visitor.VisitExtension(nodeContext, node);
                         trieVisitContext.AddVisited();
-                        TrieNode child = GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        int previousPathLength = AppendChildPath(ref path, 0);
+                        TrieNode child = node.GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
+                        int previousPathLength = node.AppendChildPath(ref path, 0);
                         child.ResolveKey(nodeResolver, ref path, false);
-                        TNodeContext childContext = nodeContext.Add(Key!);
+                        TNodeContext childContext = nodeContext.Add(node.Key!);
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             trieVisitContext.Level++;
-                            actualSubtreeSize += child.Accept(visitor, childContext, nodeResolver, ref path, trieVisitContext, subtreeCountHintT);
+                            actualSubtreeSize += Accept(child, childContext, nodeResolver, ref path, trieVisitContext, subtreeCountHintT);
                             trieVisitContext.Level--;
                         }
                         path.TruncateMut(previousPathLength);
@@ -304,29 +190,29 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(nodeContext, this);
+                        visitor.VisitLeaf(nodeContext, node);
 
                         trieVisitContext.AddVisited();
 
-                        TNodeContext leafContext = nodeContext.Add(Key!);
+                        TNodeContext leafContext = nodeContext.Add(node.Key!);
 
                         if (!trieVisitContext.IsStorage && visitor.ExpectAccounts) // can combine these conditions
                         {
-                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Value.AsSpan());
+                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
                             if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
                                 throw new InvalidDataException("Non storage leaf should be an account");
                             }
-                            visitor.VisitAccount(leafContext, this, account);
+                            visitor.VisitAccount(leafContext, node, account);
 
                             if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
                             {
                                 trieVisitContext.Level++;
 
-                                if (TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
+                                if (node.TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
                                 {
                                     Hash256 storageAccount;
-                                    using (path.ScopedAppend(Key))
+                                    using (path.ScopedAppend(node.Key))
                                     {
                                         storageAccount = path.Path.ToCommitment();
                                     }
@@ -335,7 +221,7 @@ namespace Nethermind.Trie
 
                                     TNodeContext storageContext = leafContext.AddStorage(storageAccount);
                                     TreePath emptyPath = TreePath.Empty;
-                                    actualSubtreeSize += storageRoot!.Accept(visitor, storageContext, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, trieVisitContext, subtreeCountHintT);
+                                    actualSubtreeSize += Accept(storageRoot!, storageContext, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, trieVisitContext, subtreeCountHintT);
 
                                     trieVisitContext.IsStorage = false;
                                 }
@@ -352,10 +238,34 @@ namespace Nethermind.Trie
                     }
 
                 default:
-                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
+                    throw new TrieException($"An attempt was made to visit a node {node.Keccak} of type {node.NodeType}");
             }
 
             return actualSubtreeSize;
         }
+
+        private long VisitAllSingleThread(TrieNode currentNode, ref TreePath path, ITreeVisitor<TNodeContext> visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, TrieVisitContext visitContext, long subtreeCountHint)
+        {
+            long actualSubtreeSize = 0;
+            TrieNode?[] output = new TrieNode?[TrieNode.BranchesCount];
+            currentNode.ResolveAllChildBranch(nodeResolver, ref path, output);
+            path.AppendMut(0);
+            for (int i = 0; i < 16; i++)
+            {
+                if (output[i] is null) continue;
+                TrieNode child = output[i];
+                path.SetLast(i);
+                child.ResolveKey(nodeResolver, ref path, false);
+                TNodeContext childContext = nodeContext.Add((byte)i);
+                if (visitor.ShouldVisit(childContext, child.Keccak!))
+                {
+                    actualSubtreeSize += Accept(child, childContext, nodeResolver, ref path, visitContext, subtreeCountHint);
+                }
+            }
+            path.TruncateOne();
+
+            return actualSubtreeSize;
+        }
+
     }
 }

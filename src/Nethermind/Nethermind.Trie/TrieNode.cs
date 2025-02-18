@@ -1264,7 +1264,7 @@ namespace Nethermind.Trie
         /// <param name="tree"></param>
         /// <param name="path"></param>
         /// <param name="output"></param>
-        private void ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode?[] output)
+        internal void ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode?[] output)
         {
             RlpFactory rlp = _rlp;
             if (rlp is null)
