@@ -47,14 +47,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         new UnboundedChannelOptions()
         {
             // Optimize for single reader concurrency
-            SingleReader = true
+            SingleReader = true,
+            // Share thread with request, if waiting
+            AllowSynchronousContinuations = true
         });
 
     private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
-            SingleReader = true
+            SingleReader = true,
+            // Share thread with request, if waiting
+            AllowSynchronousContinuations = true
         });
 
     private bool _recoveryComplete = false;
@@ -396,7 +400,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            Metrics.RecoveryQueueSize = _recoveryQueue.Reader.Count;
+            Metrics.RecoveryQueueSize = _queueCount;
             Metrics.ProcessingQueueSize = _blockQueue.Reader.Count;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
