@@ -1358,7 +1358,7 @@ namespace Nethermind.Trie
             {
                 TreePath emptyPath = TreePath.Empty;
                 visitor.VisitTree(default, rootHash);
-                long? total = rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
+                rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }
 

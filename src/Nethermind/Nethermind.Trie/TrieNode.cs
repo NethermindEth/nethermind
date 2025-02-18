@@ -1264,8 +1264,9 @@ namespace Nethermind.Trie
         /// <param name="tree"></param>
         /// <param name="path"></param>
         /// <param name="output"></param>
-        internal void ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode?[] output)
+        internal int ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, Span<TrieNode?> output)
         {
+            int chCount = 0;
             RlpFactory rlp = _rlp;
             if (rlp is null)
             {
@@ -1273,10 +1274,12 @@ namespace Nethermind.Trie
                 for (int i = 0; i < 16; i++)
                 {
                     path.SetLast(i);
-                    output[i] = GetChildWithChildPath(tree, ref path, i);
+                    var n = GetChildWithChildPath(tree, ref path, i);
+                    if (n is not null) chCount++;
+                    output[i] = n;
                 }
                 path.TruncateOne();
-                return;
+                return chCount;
             }
 
             ValueRlpStream rlpStream = rlp.GetRlpStream();
@@ -1302,6 +1305,7 @@ namespace Nethermind.Trie
                             path.SetLast(i);
                             Hash256 keccak = rlpStream.DecodeKeccak();
                             TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                            chCount++;
                             output[i] = child;
 
                             break;
@@ -1311,12 +1315,15 @@ namespace Nethermind.Trie
                             ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             rlpStream.SkipItem();
+                            chCount++;
                             output[i] = child;
                             break;
                         }
                 }
             }
             path.TruncateOne();
+
+            return chCount;
         }
 
         internal void UnresolveChild(int i)
