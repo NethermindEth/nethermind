@@ -8,12 +8,13 @@ bad_logs = {"Exception": 1, "Missing node found!": 1}
 good_logs = {"Processed": 0, "Stats after finishing state": 0}
 required_count = {"Processed": 20, "Stats after finishing state": 1}
 
-if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia"}:
+if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta"}:
     good_logs["Synced Chain Head"] = 0
     required_count["Synced Chain Head"] = 20
 
 container_mapping = {
     "base-": "sedge-execution-op-l2-client",
+    "world-": "sedge-execution-op-l2-client",
     "op-": "sedge-execution-op-l2-client",
     "taiko-": "sedge-execution-taiko-client",
 }
