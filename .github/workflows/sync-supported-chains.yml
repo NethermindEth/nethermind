@@ -39,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      network_type: ${{ steps.set-matrix.outputs.network_type }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,7 +52,9 @@ jobs:
           # Set network type and load appropriate matrix
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # For manual runs, use the specified network type
-            echo "NETWORK_TYPE=${{ github.event.inputs.network_type }}" >> $GITHUB_ENV
+            network_type="${{ github.event.inputs.network_type }}"
+            echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+            echo "network_type=$network_type" >> $GITHUB_OUTPUT
             if [ "${{ github.event.inputs.network_type }}" = "superchain" ]; then
               echo "Loading superchains matrix for workflow_dispatch"
               matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
@@ -62,14 +65,18 @@ jobs:
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             if [ "${{ github.event.schedule }}" = "0 0 1 * *" ]; then
               # First day of month: Run both regular and superchain networks
-              echo "NETWORK_TYPE=superchain" >> $GITHUB_ENV
+              network_type="superchain"
+              echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+              echo "network_type=$network_type" >> $GITHUB_OUTPUT
               echo "Loading both matrices for monthly run"
               regular_matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
               superchain_matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
               matrix=$(echo "$regular_matrix" "$superchain_matrix" | jq -s 'add')
             else
               # Sunday runs: Regular networks + random subset of superchain networks
-              echo "NETWORK_TYPE=superchain" >> $GITHUB_ENV
+              network_type="superchain"
+              echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+              echo "network_type=$network_type" >> $GITHUB_OUTPUT
               echo "Loading regular networks and random superchain subset for weekly run"
               regular_matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
               superchain_matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
@@ -80,7 +87,9 @@ jobs:
             fi
           else
             # Default to regular for workflow_run triggers
-            echo "NETWORK_TYPE=regular" >> $GITHUB_ENV
+            network_type="regular"
+            echo "NETWORK_TYPE=$network_type" >> $GITHUB_ENV
+            echo "network_type=$network_type" >> $GITHUB_OUTPUT
             echo "Loading regular networks matrix for workflow_run"
             matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
           fi
@@ -144,6 +153,8 @@ jobs:
     outputs:
       runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
       machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
+    env:
+      NETWORK_TYPE: ${{ needs.setup-matrix.outputs.network_type }}
     steps:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
@@ -174,6 +185,8 @@ jobs:
     name: "Run sync of ${{ matrix.config.network }} chain"
     runs-on: t-${{ github.run_id }}-${{ matrix.config.runner_network }}
     timeout-minutes: ${{ matrix.config.timeout }}
+    env:
+      NETWORK_TYPE: ${{ needs.setup-matrix.outputs.network_type }}
     
     steps:
       - name: Authenticate App
