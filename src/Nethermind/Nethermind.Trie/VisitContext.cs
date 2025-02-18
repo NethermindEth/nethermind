@@ -3,9 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie
 {
@@ -47,7 +45,6 @@ namespace Nethermind.Trie
     public class TrieVisitContext : IDisposable
     {
         private readonly int _maxDegreeOfParallelism = 1;
-        private int _visitedNodes;
 
         public int MaxDegreeOfParallelism
         {
@@ -58,25 +55,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public int Level { get; internal set; }
         public bool IsStorage { get; set; }
-
-        public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
 
         public void Dispose()
         {
-        }
-
-        public void AddVisited()
-        {
-            int visitedNodes = Interlocked.Increment(ref _visitedNodes);
-
-            // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
-            if (visitedNodes % 100_000_000 == 0)
-            {
-                GC.Collect();
-            }
-
         }
     }
 
@@ -85,7 +67,6 @@ namespace Nethermind.Trie
     {
         public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
         {
-            Level = (byte)trieVisitContext.Level;
             IsStorage = trieVisitContext.IsStorage;
         }
 
@@ -126,15 +107,6 @@ namespace Nethermind.Trie
                     _flags = (byte)(_flags & ~ExpectAccountsFlag);
                 }
             }
-        }
-
-        public readonly TrieVisitContext ToVisitContext()
-        {
-            return new TrieVisitContext()
-            {
-                Level = Level,
-                IsStorage = IsStorage,
-            };
         }
     }
 }
