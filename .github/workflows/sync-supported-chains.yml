@@ -8,8 +8,8 @@ on:
       - completed
 
   schedule:
-    - cron: "0 0 1 * *"  # Run all networks on first day of month
-    - cron: "0 0 * * 0"  # Run random subset on Sundays
+    - cron: "0 0 1 * *"  # Run regular and superchain networks on first day of month
+    - cron: "0 0 * * 0"  # Run random superchain subset on Sundays and regular chains
     
   workflow_dispatch:
     inputs:
@@ -48,20 +48,40 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          # Set network type first so it's available for all steps
+          # Set network type and load appropriate matrix
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # For manual runs, use the specified network type
             echo "NETWORK_TYPE=${{ github.event.inputs.network_type }}" >> $GITHUB_ENV
+            if [ "${{ github.event.inputs.network_type }}" = "superchain" ]; then
+              echo "Loading superchains matrix for workflow_dispatch"
+              matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+            else
+              echo "Loading regular networks matrix for workflow_dispatch"
+              matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+            fi
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "${{ github.event.schedule }}" = "0 0 1 * *" ]; then
+              # First day of month: Run both regular and superchain networks
+              echo "NETWORK_TYPE=superchain" >> $GITHUB_ENV
+              echo "Loading both matrices for monthly run"
+              regular_matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+              superchain_matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+              matrix=$(echo "$regular_matrix" "$superchain_matrix" | jq -s 'add')
+            else
+              # Sunday runs: Regular networks + random subset of superchain networks
+              echo "NETWORK_TYPE=superchain" >> $GITHUB_ENV
+              echo "Loading regular networks and random superchain subset for weekly run"
+              regular_matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+              superchain_matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
+              random_count=$(( ( RANDOM % 6 ) + 5 ))
+              echo "Selecting $random_count random superchain networks"
+              superchain_subset=$(echo "$superchain_matrix" | jq --arg count "$random_count" 'shuffle | .[:($count | tonumber)]')
+              matrix=$(echo "$regular_matrix" "$superchain_subset" | jq -s 'add')
+            fi
           else
-            # Default to regular for scheduled and workflow_run triggers
+            # Default to regular for workflow_run triggers
             echo "NETWORK_TYPE=regular" >> $GITHUB_ENV
-          fi
-
-          # Load matrix based on network type
-          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            echo "Loading superchains matrix"
-            matrix=$(cat nethermind/scripts/workflow_config/sync_superchains_matrix.json)
-          else
-            echo "Loading regular networks matrix"
+            echo "Loading regular networks matrix for workflow_run"
             matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
           fi
 
@@ -232,7 +252,7 @@ jobs:
           ./build/sedge deps install
 
           # Handle network type detection and setup
-          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ] || ([[ "$network" == *-mainnet || "$network" == *-sepolia ]]); then
             # Superchain network
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
@@ -306,6 +326,11 @@ jobs:
           else
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
+
+            # Extract base network name (e.g. mainnet from hashkeychain-mainnet)
+            IFS='-' read -r -a network_parts <<< "$network"
+            base_network="${network_parts[-1]}"
+            echo "Using base network: $base_network"
           
             ./build/sedge generate \
             --logging none \
@@ -316,7 +341,7 @@ jobs:
             --map-all \
             --no-mev-boost \
             --no-validator \
-            --network ${{ matrix.config.network }} \
+            --network $base_network \
             --el-extra-flag Sync.NonValidatorNode=true \
             --el-extra-flag Sync.DownloadBodiesInFastSync=false \
             --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -335,7 +360,7 @@ jobs:
         env:
           NETWORK: ${{ matrix.config.network }}
         run: |
-          if [ "$network_type" = "superchain" ] || [[ "$NETWORK" == base-* || "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ]; then
             python scripts/waitForSyncSuperchains.py
           else
             python scripts/waitForSync.py
@@ -373,7 +398,7 @@ jobs:
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
-          if [ "${{ github.event.inputs.network_type }}" = "superchain" ] || [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [ "${{ env.NETWORK_TYPE }}" = "superchain" ]; then
             # All superchains use the same container name
             docker logs sedge-consensus-op-l2-client
           elif [[ "$network" == taiko-* ]]; then
