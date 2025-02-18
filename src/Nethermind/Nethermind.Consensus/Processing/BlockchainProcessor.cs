@@ -467,6 +467,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         Hash256? invalidBlockHash = null;
         Block[]? processedBlocks;
+        tracer = new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true });
+
         try
         {
             processedBlocks = _blockProcessor.Process(
@@ -475,6 +477,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 options,
                 tracer);
             error = null;
+
+            if (processingBranch.BlocksToProcess.Any(b=>b.Number ==1136))
+            {
+                BlockTraceDumper.LogDiagnosticTrace(tracer, processingBranch.BlocksToProcess.First().Hash, _logger);
+            }
         }
         catch (InvalidBlockException ex)
         {
