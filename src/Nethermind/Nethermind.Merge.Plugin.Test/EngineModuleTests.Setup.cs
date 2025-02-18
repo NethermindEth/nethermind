@@ -93,6 +93,10 @@ public partial class EngineModuleTests
         chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.PoSSwitcher, chain.LogManager);
         chain.BeaconSync.AllowBeaconHeaderSync();
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
+
+        TxPoolTxSourceFactory txPoolTxSourceFactory = new(chain.TxPool, chain.SpecProvider, chain.TransactionComparerProvider, new BlocksConfig(), chain.LogManager);
+        TxPoolTxSource inclusionListTxSource = txPoolTxSourceFactory.Create();
+
         return new EngineRpcModule(
             new GetPayloadV1Handler(
                 chain.PayloadPreparationService!,
@@ -122,6 +126,7 @@ public partial class EngineModuleTests
                 invalidChainTracker,
                 chain.BeaconSync,
                 chain.LogManager,
+                chain.SpecProvider.ChainId,
                 newPayloadTimeout,
                 storeReceipts: true,
                 newPayloadCacheSize),
@@ -145,6 +150,8 @@ public partial class EngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetInclusionListTransactionsHandler(chain.BlockTree, inclusionListTxSource),
+            new UpdatePayloadWithInclusionListHandler(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);

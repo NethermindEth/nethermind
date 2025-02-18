@@ -123,7 +123,8 @@ namespace Nethermind.Consensus.Producers
             ILogManager logManager)
         {
             TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
-            return additionalTxSource.Then(txPoolSource);
+            InclusionListTxSource inclusionListTxSource = new(_specProvider.ChainId);
+            return additionalTxSource.Then(txPoolSource).Then(inclusionListTxSource);
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
@@ -132,13 +133,7 @@ namespace Nethermind.Consensus.Producers
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
-        {
-            ITxFilterPipeline txSourceFilterPipeline = CreateTxSourceFilter(blocksConfig);
-            return new TxPoolTxSource(txPool, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
-        }
-
-        protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>
-            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, blocksConfig);
+            => new TxPoolTxSourceFactory(txPool, _specProvider, transactionComparerProvider, blocksConfig, logManager).Create();
 
         protected virtual BlockProcessor CreateBlockProcessor(
             IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
