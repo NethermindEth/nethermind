@@ -82,19 +82,24 @@ jobs:
           fi
 
           # Add runner_network field with shortened name for runner interactions
-          # Format is: t-<run_id>-<network>, where run_id is typically 9-10 chars
+          # Format is: t-<run_id>-<network>, where run_id can be up to 20 chars
           # So we need to ensure: len("t-" + run_id + "-" + network) <= 32
-          # This means network name should be: 32 - 2 - 10 - 1 = 19 chars max
+          # This means network name should be: 32 - 2 - 20 - 1 = 9 chars max
           matrix_json=$(echo "$matrix" | jq -c '[ .[] | 
             . + { 
               "runner_network": (.network | 
                 # First, replace any non-alphanumeric chars with hyphen
                 gsub("[^a-zA-Z0-9]+"; "-") |
-                # Then take first 19 chars if longer
-                if length > 19 then 
-                  .[0:19] | rtrimstr("-")
-                else 
-                  . 
+                # Then create a short but recognizable name
+                split("-") | 
+                # For each part, take first 3 chars, join with hyphens
+                map(if length > 3 then .[0:3] else . end) |
+                join("-") |
+                # Ensure total length <= 9
+                if length > 9 then
+                  .[0:9] | rtrimstr("-")
+                else
+                  .
                 end
               ) 
             } 
