@@ -16,6 +16,7 @@ public interface IEthApi
     Task<L1Block?> GetBlockByHash(Hash256 blockHash, bool fullTxs);
     Task<L1Block?> GetBlockByNumber(ulong blockNumber, bool fullTxs);
     Task<L1Block?> GetHead(bool fullTxs);
+    Task<L1Block?> GetFinalized(bool fullTxs);
 }
 
 public struct L1Block

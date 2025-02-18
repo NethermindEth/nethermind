@@ -41,4 +41,9 @@ public class EthereumEthApi : IEthApi
     {
         return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", BlockParameter.Latest, fullTxs);
     }
+
+    public Task<L1Block?> GetFinalized(bool fullTxs)
+    {
+        return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", BlockParameter.Finalized, fullTxs);
+    }
 }

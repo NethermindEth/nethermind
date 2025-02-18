@@ -75,9 +75,9 @@ public class Driver : IDisposable
                         }
                     }
                 }
-                if (_l1Bridge.NewHeadReader.TryRead(out (L1Block Block, ReceiptForRpc[]) newHead))
+                if (_l1Bridge.NewHeadReader.TryRead(out L1Block newHead))
                 {
-                    await OnNewL1Head(newHead.Block);
+                    await OnNewL1Head(newHead);
                 }
             }
         });

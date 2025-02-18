@@ -2,17 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Microsoft.ClearScript.JavaScript;
-using Nethermind.Blockchain.Find;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
@@ -61,9 +56,9 @@ public class OptimismCL : IDisposable
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
     }
 
-    public void Start()
+    public async void Start()
     {
-        SetupTest();
+        await SetupTest();
         _l1Bridge.Start();
         _driver.Start();
         // _p2p.Start();
@@ -76,7 +71,7 @@ public class OptimismCL : IDisposable
         _driver.Dispose();
     }
 
-    private async void SetupTest()
+    private async Task SetupTest()
     {
         var block = _l2EthRpc.eth_getBlockByNumber(new(9739163), true).Data;
         DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
