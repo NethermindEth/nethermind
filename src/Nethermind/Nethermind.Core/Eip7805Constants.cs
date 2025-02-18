@@ -6,6 +6,7 @@ namespace Nethermind.Core;
 public static class Eip7805Constants
 {
     public const int MaxBytesPerInclusionList = 8192;
-    // 32 bytes as conservative lower bound for transaction size, used for allocating buffers
-    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / 32;
+    // 32 bytes as conservative lower bound for transaction size
+    public const int MinTransactionSizeBytes = 32;
+    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / MinTransactionSizeBytes;
 }

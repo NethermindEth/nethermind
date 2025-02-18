@@ -34,12 +34,21 @@ public class GetInclusionListTransactionsHandler(
         foreach (Transaction tx in txs)
         {
             byte[] txBytes = InclusionListDecoder.Encode(tx);
+
+            // skip tx if it's too big to fit in the inclusion list
+            if (size + txBytes.Length > Eip7805Constants.MaxBytesPerInclusionList)
+            {
+                continue;
+            }
+
             size += txBytes.Length;
-            if (size > Eip7805Constants.MaxBytesPerInclusionList)
+            yield return txBytes;
+
+            // impossible to fit another tx in the inclusion list
+            if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
             {
                 yield break;
             }
-            yield return txBytes;
         }
     }
 }
