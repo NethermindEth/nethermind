@@ -19,17 +19,18 @@ namespace Nethermind.Trie
         private readonly ILogger _logger;
         private readonly CancellationToken _cancellationToken;
 
+        // Combine both `TreePathContextWithStorage` and `OldStyleTrieVisitContext`
         public struct Context: INodeContext<Context>
         {
             private TreePathContextWithStorage PathContext;
             private OldStyleTrieVisitContext OldStyleTrieVisitContext;
 
-            public Hash256? Storage => PathContext.Storage;
-            public TreePath Path => PathContext.Path;
-            public bool IsStorage => OldStyleTrieVisitContext.IsStorage;
-            public int Level => OldStyleTrieVisitContext.Level;
+            public readonly Hash256? Storage => PathContext.Storage;
+            public readonly TreePath Path => PathContext.Path;
+            public readonly bool IsStorage => OldStyleTrieVisitContext.IsStorage;
+            public readonly int Level => OldStyleTrieVisitContext.Level;
 
-            public Context Add(ReadOnlySpan<byte> nibblePath)
+            public readonly Context Add(ReadOnlySpan<byte> nibblePath)
             {
                 return new Context()
                 {
@@ -38,7 +39,7 @@ namespace Nethermind.Trie
                 };
             }
 
-            public Context Add(byte nibble)
+            public readonly Context Add(byte nibble)
             {
                 return new Context()
                 {
@@ -47,7 +48,7 @@ namespace Nethermind.Trie
                 };
             }
 
-            public Context AddStorage(in ValueHash256 storage)
+            public readonly Context AddStorage(in ValueHash256 storage)
             {
                 return new Context()
                 {

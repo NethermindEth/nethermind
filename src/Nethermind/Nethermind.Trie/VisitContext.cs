@@ -7,38 +7,25 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
-    public struct OldStyleTrieVisitContext : INodeContext<OldStyleTrieVisitContext>
+    public readonly struct OldStyleTrieVisitContext(int level, bool isStorage, int? branchChildIndex) : INodeContext<OldStyleTrieVisitContext>
     {
-        public int Level;
-        public bool IsStorage;
-        public int? BranchChildIndex;
+        public readonly int Level = level;
+        public readonly bool IsStorage = isStorage;
+        public readonly int? BranchChildIndex= branchChildIndex;
 
         public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
         {
-            return this with
-            {
-                BranchChildIndex = null,
-                Level = Level + 1,
-            };
+            return new(Level + 1, IsStorage, null);
         }
 
         public OldStyleTrieVisitContext Add(byte nibble)
         {
-            return this with
-            {
-                BranchChildIndex = nibble,
-                Level = Level + 1,
-            };
+            return new(Level + 1, IsStorage, nibble);
         }
 
         public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage)
         {
-            return new OldStyleTrieVisitContext
-            {
-                BranchChildIndex = null,
-                IsStorage = true,
-                Level = Level + 1
-            };
+            return new (Level + 1, true, null);
         }
     }
 
