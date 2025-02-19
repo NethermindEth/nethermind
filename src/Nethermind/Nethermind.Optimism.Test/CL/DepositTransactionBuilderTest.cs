@@ -729,15 +729,16 @@ public class DepositTransactionBuilderTest
         UInt64 sequenceNumber = 1;
 
         Transaction expected = Build.A.Transaction
+            .WithType(TxType.DepositTx)
             .WithData([.._L1BlockInfo.DepositsCompleteBytes4])
             .WithGasLimit((long)_L1BlockInfo.DepositsCompleteGas) // WARNING: Dangerous cast
             .WithIsOPSystemTransaction(false)
             .WithValue(0)
-            .WithSenderAddress(_L1BlockInfo.L1InfoDepositerAddress)
-            .WithSourceHash(new Hash256([
-                131, 51, 71, 6, 18, 49, 59, 196, 175, 75, 208, 175, 85, 42, 52, 228, 71, 15, 124, 177, 199, 37, 232, 30,
-                240, 145, 73, 18, 159, 83, 25, 20
-            ]))
+            .WithSenderAddress(_L1BlockInfo.DepositerAddress)
+            .WithTo(_L1BlockInfo.BlockAddress)
+            .WithSourceHash(new Hash256("0x8333470612313bc4af4bd0af552a34e4470f7cb1c725e81ef09149129f531914"))
+            .WithGasPrice(0)
+            .WithMaxPriorityFeePerGas(0)
             .TestObject;
 
         List<Transaction> txs = _builder.BuildForceIncludeTransactions(sequenceNumber, block);
