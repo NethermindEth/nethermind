@@ -90,6 +90,11 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
+        }
+
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
         {
             db.Set(key, value, flags);

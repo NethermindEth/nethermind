@@ -175,7 +175,12 @@ namespace Nethermind.Db
 
         public IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
         }
     }
 }

@@ -97,5 +97,10 @@ namespace Nethermind.Db
         {
             return _memDb.GetIterator(ref options);
         }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

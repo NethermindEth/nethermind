@@ -17,6 +17,9 @@ namespace Nethermind.Db
         IIterator<byte[], byte[]> GetIterator(bool isTailing = false);
         IIterator<byte[], byte[]> GetIterator(ref IteratorOptions options);
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
+
+        // TODO: move to IWriteOnlyKeyValueStore?
+        void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
     public ref struct IteratorOptions

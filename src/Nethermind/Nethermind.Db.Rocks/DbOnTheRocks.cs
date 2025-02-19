@@ -553,6 +553,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
+        // TODO: add config value proper way
+        if (optionsAsDict.TryGetValue("merge_operator", out var mergeOperator))
+        {
+            options.SetMergeOperator(CustomMergeOperators.All[mergeOperator]);
+        }
+
         #endregion
 
         #region read-write options
@@ -807,6 +813,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
     {
         SetWithColumnFamily(key, null, value, writeFlags);
+    }
+
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, null, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    internal void MergeWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, cf, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
@@ -1145,6 +1185,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             Set(key, value, null, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            Merge(key, value, null, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+            _rocksBatch.Merge(key, value, cf);
+            _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
         }
 
         private void FlushOnTooManyWrites()
@@ -1713,6 +1768,53 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             {
                 Interlocked.Exchange(ref Iterator, null)?.Dispose();
             }
+        }
+    }
+
+    // TODO: find better location
+    private static class CustomMergeOperators
+    {
+        public static readonly IReadOnlyDictionary<string, MergeOperator> All = new Dictionary<string, MergeOperator>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Concatenate", MergeOperators.Create("Concatenate", ConcatenatePartialMerge, ConcatenateFullMerge) }
+        };
+
+        private static byte[] ConcatenateMerge(ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            // TODO: does Get involve IO request? if yes - use single Get per operand
+            var resultLength = existingValue.Length;
+            for (int i = 0; i < operands.Count; i++)
+            {
+                resultLength += operands.Get(i).Length;
+            }
+
+            // TODO: can ArrayPool be used?
+            var result = new byte[resultLength];
+            existingValue.CopyTo(result);
+
+            var shift = existingValue.Length;
+            for (int i = 0; i < operands.Count; i++)
+            {
+                ReadOnlySpan<byte> operand = operands.Get(i);
+                operand.CopyTo(result.AsSpan(shift..));
+                shift += operand.Length;
+            }
+
+            success = true;
+            return result;
+        }
+
+        private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            if (!hasExistingValue)
+                existingValue = ReadOnlySpan<byte>.Empty;
+
+            return ConcatenateMerge(existingValue, operands, out success);
+        }
+
+        private static byte[] ConcatenatePartialMerge(ReadOnlySpan<byte> key, MergeOperators.OperandsEnumerator operands, out bool success)
+        {
+            return ConcatenateMerge(ReadOnlySpan<byte>.Empty, operands, out success);
         }
     }
 }

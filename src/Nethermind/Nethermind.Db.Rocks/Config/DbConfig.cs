@@ -236,9 +236,10 @@ public class DbConfig : IDbConfig
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
     // TODO: cleanup & optimize settings
-    public string? LogIndexStorageDbRocksDbOptions { get; set; } = "";
-    public string? LogIndexStorageDefaultDbRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageDbRocksDbOptions { get; set; } =
+        "merge_operator=concatenate;";
     public string? LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
+    public string? LogIndexStorageDefaultDbRocksDbOptions { get; set; } = "";
     public string? LogIndexStorageDefaultDbAdditionalRocksDbOptions { get; set; } = "";
     public string? LogIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
     public string? LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";

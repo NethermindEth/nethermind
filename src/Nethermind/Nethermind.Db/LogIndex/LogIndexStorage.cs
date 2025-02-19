@@ -592,6 +592,7 @@ namespace Nethermind.Db
                 }
             }
 
+            // TODO: use ISpanDeserializer?
             if (iterator.Valid() && // Found key is less than or equal to the requested one
                 iterator.Key().AsSpan()[..keyPrefix.Length].SequenceEqual(keyPrefix))
             {

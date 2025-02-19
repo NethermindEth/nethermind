@@ -27,6 +27,7 @@ public interface IFilePagesPool : IAsyncDisposable
     ValueTask StartAsync();
     ValueTask StopAsync();
 
+    // TODO: consider returning FixedSizeFileStore or other IFileStore implementation?
     ValueTask<long> TakePageAsync();
     ValueTask ReturnPageAsync(long offset);
 }
