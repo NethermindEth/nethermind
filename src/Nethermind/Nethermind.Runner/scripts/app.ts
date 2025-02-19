@@ -9,7 +9,7 @@ import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionRece
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
 import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo } from './utilities';
-import { createRidgelinePlot } from './ridgeLine'
+import { createRollingBoxPlot } from './boxPlot'
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -55,24 +55,31 @@ const blockTimestamp = document.getElementById('blockTimestamp') as HTMLElement;
 const blockTransactions = document.getElementById('blockTransactions') as HTMLElement;
 const blockBlobs = document.getElementById('blockBlobs') as HTMLElement;
 
-const ridgeDataLength = createRidgelinePlot(
-  d3.select('#ridgeline-dataLength'),
-  (d) => Math.log10( d.dataLength )// numeric field in the TxReceipt
-);
+//const ridgeDataLength = createRidgelinePlot(
+//  d3.select('#ridgeline-dataLength'),
+//  (d) => Math.log10( d.dataLength )// numeric field in the TxReceipt
+//);
 
-const ridgeValue = createRidgelinePlot(
-  d3.select('#ridgeline-value'),
-  (d) => Math.log10(parseInt(d.value, 16) / 1000000000000000000) // parse from hex
-);
+//const ridgeValue = createRidgelinePlot(
+//  d3.select('#ridgeline-value'),
+//  (d) => Math.log10(parseInt(d.value, 16) / 1000000000000000000) // parse from hex
+//);
 
-const ridgeGasUsed = createRidgelinePlot(
-  d3.select('#ridgeline-gasUsed'),
-  (d) => Math.log10(parseInt(d.gasUsed, 16))
-);
+//const ridgeGasUsed = createRidgelinePlot(
+//  d3.select('#ridgeline-gasUsed'),
+//  (d) => Math.log10(parseInt(d.gasUsed, 16))
+//);
 
-const ridgeEffectiveGasPrice = createRidgelinePlot(
-  d3.select('#ridgeline-effectiveGasPrice'),
-  (d) => Math.log10(parseInt(d.effectiveGasPrice, 16) / 1000000000)
+//const ridgeEffectiveGasPrice = createRidgelinePlot(
+//  d3.select('#ridgeline-effectiveGasPrice'),
+//  (d) => Math.log10(parseInt(d.effectiveGasPrice, 16) / 1000000000)
+//);
+
+// Create a rolling box plot instance for effectiveGasPrice
+const boxPlotEGP = createRollingBoxPlot(
+  document.getElementById('boxplot-effectiveGasPrice'),
+  (d) => parseInt(d.effectiveGasPrice, 16) / 1_000_000_000, // convert to gwei
+  36 // Keep up to 36 blocks
 );
 
 const ansiConvert = new Convert();
@@ -246,7 +253,7 @@ sse.addEventListener("forkChoice", (e) => {
   const number = parseInt(data.head.number, 16);
   if (number !== 0) {
     document.getElementById("lastestBlock").classList.remove("not-active");
-    document.getElementById("recentBlocks").classList.remove("not-active");
+    //document.getElementById("recentBlocks").classList.remove("not-active");
   }
   const safe = parseInt(data.safe, 16);
   const finalized = parseInt(data.finalized, 16);
@@ -292,11 +299,9 @@ sse.addEventListener("forkChoice", (e) => {
       d => parseInt(d.effectiveGasPrice, 16) * parseInt(d.gasUsed, 16)
   );
 
-  // Update each ridgeline with the new mergedData
-  ridgeDataLength.update(mergedData);
-  ridgeValue.update(mergedData);
-  ridgeGasUsed.update(mergedData);
-  ridgeEffectiveGasPrice.update(mergedData);
+  // Update the rolling box plot for this block
+  // passing the blockNum as well:
+  boxPlotEGP.update(mergedData, number);
 });
 
 let maxCpuPercent = 0;
@@ -322,11 +327,11 @@ sse.addEventListener("system", (e) => {
 
   updateText(cpuTime, formatDec(cpuPercent));
   updateText(maxCpuTime, formatDec(maxCpuPercent));
-  sparkline(sparkCpu, seriesTotalCpu, 300, 100, 60);
+  sparkline(sparkCpu, seriesTotalCpu, 150, 100, 60);
 
   updateText(memory, format(memoryMb));
   updateText(maxMemory, format(maxMemoryMb));
-  sparkline(sparkMemory, seriesMemory, 300, 100, 60);
+  sparkline(sparkMemory, seriesMemory, 150, 100, 60);
 });
 
 let logs: string[] = [];
@@ -364,3 +369,7 @@ requestAnimationFrame(appendLogs);
 function scrollLogs() {
   nodeLog.scrollTop = nodeLog.scrollHeight;
 }
+// On window resize
+window.addEventListener('resize', () => {
+  boxPlotEGP.resize();
+});

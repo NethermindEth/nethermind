@@ -69,22 +69,25 @@
         </div>
     </div>
     <div style="display: flex;flex-wrap: nowrap;justify-content: space-between;">
-        <div class="container" style="width: 300px;padding: 0 8px;">
-            <div class="title">Cpu</div>
-            <div style="height:100px" id="sparkCpu"></div>
-            <div class="large">
-                <span id="cpuTime" class="number"></span> %
-            </div>
-            <div class="max">Max: <span id="maxCpuTime" class="number"></span> %</div>
+      <div class="container" style="width: 168px;padding: 0 8px;">
+        <div class="title">Cpu</div>
+        <div style="height: 100px; width: 150px;" id="sparkCpu"></div>
+        <div class="large">
+          <span id="cpuTime" class="number"></span> %
         </div>
-        <div class="container" style="width: 300px;padding: 0 8px;">
-            <div class="title">Memory</div>
-            <div style="height:100px" id="sparkMemory"></div>
-            <div class="large">
-                <span id="memory" class="number"></span> MB
-            </div>
-            <div class="max">Max: <span id="maxMemory" class="number"></span> MB</div>
+        <div class="max">Max: <span id="maxCpuTime" class="number"></span> %</div>
+      </div>
+      <div class="container" id="boxplot-effectiveGasPrice" style=" width: calc(100vw - 400px); padding: 0 8px; max-width: calc(100vw - 400px); padding: 0 8px;">
+        <div class="title gasPrices">Gas Prices</div>
+      </div>
+      <div class="container" style="width: 168px; padding: 0 8px;">
+        <div class="title">Memory</div>
+        <div style="height:100px;width: 150px;" id="sparkMemory"></div>
+        <div class="large">
+          <span id="memory" class="number"></span> MB
         </div>
+        <div class="max">Max: <span id="maxMemory" class="number"></span> MB</div>
+      </div>
     </div>
     <div id="lastestBlock" class="container not-active" style="height:240px">
         <div class="title">Lastest Block</div>
@@ -121,14 +124,6 @@
             </table>
         </div>
         <div id="block" style="margin-top: 35px;"></div>
-    </div>
-    <div id="recentBlocks" class="container not-active">
-        <div class="title">Recent Blocks</div>
-        <div class="not-active-message">Not Synced</div>
-        <div id="ridgeline-dataLength"></div>
-        <div id="ridgeline-value"></div>
-        <div id="ridgeline-gasUsed"></div>
-        <div id="ridgeline-effectiveGasPrice"></div>
     </div>
     <div id="txPoolFlow" class="container not-active">
         <div class="title">Incoming Transactions</div>

@@ -263,3 +263,10 @@ th {
   height: 42px;
   margin-left: -50px;
 }
+.title.gasPrices {
+  left: calc(50% - 35px);
+  width: 70px;
+  border-bottom-left-radius: 8px;
+  border-left: 1px solid #555;
+  text-align: center;
+}
