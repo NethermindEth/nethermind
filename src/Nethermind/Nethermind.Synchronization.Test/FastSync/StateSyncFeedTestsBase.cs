@@ -10,6 +10,7 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -111,11 +112,10 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
-                .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, null))
-                .AddModule(new TestSynchronizerModule(new TestSyncConfig()
+                .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
                 {
                     FastSync = true
-                }))
+                })))
                 .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
                 {
                     syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout

@@ -305,7 +305,6 @@ public class SynchronizerTests
             }
             IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig);
             ContainerBuilder builder = new ContainerBuilder()
-                .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, null))
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
