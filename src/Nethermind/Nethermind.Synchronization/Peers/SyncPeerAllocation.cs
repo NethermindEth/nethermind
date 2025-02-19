@@ -28,8 +28,8 @@ namespace Nethermind.Synchronization.Peers
 
         public bool HasPeer => Current is not null;
 
-        public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts)
-            : this(new StaticStrategy(peerInfo), contexts, null)
+        public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts, Lock? allocationLock = null)
+            : this(new StaticStrategy(peerInfo), contexts, allocationLock)
         {
         }
 

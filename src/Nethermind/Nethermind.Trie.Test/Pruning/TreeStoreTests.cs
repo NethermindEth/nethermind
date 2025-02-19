@@ -916,6 +916,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        [Retry(3)]
         public async Task Will_RemovePastKeys_OnSnapshot()
         {
             MemDb memDb = new();

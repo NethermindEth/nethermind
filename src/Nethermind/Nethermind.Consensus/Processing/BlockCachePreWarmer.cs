@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -22,10 +23,15 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, int concurrency, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
+    private int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+
+    public BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, IBlocksConfig blocksConfig, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : this(envFactory, specProvider, blocksConfig.PreWarmStateConcurrency, logManager, preBlockCaches)
+    {
+    }
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
@@ -37,10 +43,9 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
             }
 
-            var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
-            if (!IsGenesisBlock(parentStateRoot) && physicalCoreCount > 2 && !cancellationToken.IsCancellationRequested)
+            if (!IsGenesisBlock(parentStateRoot) && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
-                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = physicalCoreCount - 1, CancellationToken = cancellationToken };
+                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, spec, systemAccessLists, this);
