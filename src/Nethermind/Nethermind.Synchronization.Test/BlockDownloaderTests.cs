@@ -43,7 +43,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.Test;
 
-[Parallelizable(ParallelScope.Children)]
+[Parallelizable(ParallelScope.All)]
 public partial class BlockDownloaderTests
 {
     [TestCase(1L, DownloaderOptions.Process, 0)]
