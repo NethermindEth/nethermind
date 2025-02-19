@@ -394,7 +394,7 @@ namespace Nethermind.TxPool
                 Metrics.BlobTransactionsInBlock = blobTxs;
                 Metrics.BlobsInBlock = blobs;
 
-                Metrics.TransactionsSourcedPrivateOrderflow += notInMempoool;
+                Metrics.TransactionsSourcedPrivateOrderFlow += notInMempoool;
                 Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempoool;
             }
         }

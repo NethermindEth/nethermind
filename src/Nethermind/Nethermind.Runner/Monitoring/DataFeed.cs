@@ -209,7 +209,7 @@ public class DataFeed
                     TxPool.Metrics.PendingTransactionsPassedFiltersButCannotReplace,
                     TxPool.Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,
                     TxPool.Metrics.PendingTransactionsEvicted,
-                    TxPool.Metrics.TransactionsSourcedPrivateOrderflow,
+                    TxPool.Metrics.TransactionsSourcedPrivateOrderFlow,
                     TxPool.Metrics.TransactionsSourcedMemPool,
                     TxPool.Metrics.TransactionsReorged
             )
