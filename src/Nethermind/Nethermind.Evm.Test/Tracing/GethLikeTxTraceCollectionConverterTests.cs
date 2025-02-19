@@ -42,7 +42,8 @@ public class GethLikeTxTraceCollectionConverterTests
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
-            JsonDocument.Parse(expected).RootElement));
+            JsonDocument.Parse(expected).RootElement),
+            result);
     }
 
     [Test]
@@ -84,7 +85,7 @@ public class GethLikeTxTraceCollectionConverterTests
             new GethLikeTxTrace { Gas = 1, ReturnValue = [0x01], TxHash = null },
             """
             {
-                "result": { "gas": 1, "failed": false, "returnValue": "01", "structLogs": [] },
+                "result": { "gas": 1, "failed": false, "returnValue": "0x01", "structLogs": [] },
                 "txHash": null
             }
             """
@@ -93,7 +94,7 @@ public class GethLikeTxTraceCollectionConverterTests
             new GethLikeTxTrace { Gas = 2, ReturnValue = [0x02], TxHash = Hash256.Zero },
             """
             {
-                "result": { "gas": 2, "failed": false, "returnValue": "02", "structLogs": [] },
+                "result": { "gas": 2, "failed": false, "returnValue": "0x02", "structLogs": [] },
                 "txHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
             """
@@ -102,7 +103,7 @@ public class GethLikeTxTraceCollectionConverterTests
             new GethLikeTxTrace { Gas = 3, ReturnValue = [0x03], TxHash = Keccak.Compute("A") },
             """
             {
-                "result": { "gas": 3, "failed": false, "returnValue": "03", "structLogs": [] },
+                "result": { "gas": 3, "failed": false, "returnValue": "0x03", "structLogs": [] },
                 "txHash": "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
             }
             """

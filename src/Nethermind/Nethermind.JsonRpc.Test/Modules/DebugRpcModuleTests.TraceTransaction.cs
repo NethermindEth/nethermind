@@ -118,7 +118,7 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(
             transferTransaction,
             new GethTraceOptions(),
-            """{"jsonrpc":"2.0","result":{"gas":21000,"failed":false,"returnValue":"","structLogs":[]},"id":67}"""
+            """{"jsonrpc":"2.0","result":{"gas":21000,"failed":false,"returnValue":"0x","structLogs":[]},"id":67}"""
         )
         { TestName = "Transfer with blockMemoryTracer" };
 
@@ -208,7 +208,7 @@ public partial class DebugRpcModuleTests
                 "result": {
                     "gas": 55278,
                     "failed": false,
-                    "returnValue": "",
+                    "returnValue": "0x",
                     "structLogs": [
                         {
                             "pc": 0,

@@ -136,7 +136,7 @@ public partial class DebugRpcModuleTests
                         "result": {
                             "gas": 87700,
                             "failed": false,
-                            "returnValue": "",
+                            "returnValue": "0x",
                             "structLogs": [
                                 { "pc": 0, "op": "PUSH32", "gas": 46536,  "gasCost": 3, "depth": 1,  "error": null,  "stack": [], "storage": {} },
                                 { "pc": 33, "op": "PUSH1", "gas": 46533,  "gasCost": 3, "depth": 1,  "error": null, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000"], "storage": {} },
@@ -159,7 +159,7 @@ public partial class DebugRpcModuleTests
                         "result": {
                             "gas": 56141,
                             "failed": false,
-                            "returnValue": "",
+                            "returnValue": "0x",
                             "structLogs": [
                                 { "pc": 0, "op": "PUSH1", "gas": 46480,  "gasCost": 3, "depth": 1,  "error": null,  "stack": [], "storage": {} },
                                 { "pc": 2, "op": "PUSH1", "gas": 46477,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0"], "storage": {} },

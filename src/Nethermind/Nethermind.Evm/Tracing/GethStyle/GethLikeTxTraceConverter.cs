@@ -111,7 +111,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         JsonSerializer.Serialize(writer, value.Failed, options);
 
         writer.WritePropertyName("returnValue"u8);
-        ByteArrayConverter.Convert(writer, value.ReturnValue, skipLeadingZeros: false, addHexPrefix: false);
+        JsonSerializer.Serialize(writer, value.ReturnValue, options);
 
         writer.WritePropertyName("structLogs"u8);
         JsonSerializer.Serialize(writer, value.Entries, options);

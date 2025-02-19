@@ -30,7 +30,8 @@ public class GethLikeTxTraceConverterTests
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
-            JsonDocument.Parse(json).RootElement));
+            JsonDocument.Parse(json).RootElement),
+            result);
     }
 
     [TestCaseSource(nameof(CustomValueTracerResults))]
@@ -45,7 +46,8 @@ public class GethLikeTxTraceConverterTests
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
-            JsonDocument.Parse(expected).RootElement));
+            JsonDocument.Parse(expected).RootElement),
+            result);
     }
 
     [Test]
@@ -75,7 +77,7 @@ public class GethLikeTxTraceConverterTests
     {
         yield return [
             new GethLikeTxTrace { Gas = 1, ReturnValue = [0x01] },
-            """{ "gas": 1, "failed": false, "returnValue": "01", "structLogs": [] }"""];
+            """{ "gas": 1, "failed": false, "returnValue": "0x01", "structLogs": [] }"""];
         yield return [
             new GethLikeTxTrace
             {
@@ -112,7 +114,7 @@ public class GethLikeTxTraceConverterTests
             {
               "gas" : 100,
               "failed" : false,
-              "returnValue" : "010203",
+              "returnValue" : "0x010203",
               "structLogs" : [ {
                 "pc" : 0,
                 "op" : "STOP",
