@@ -267,6 +267,29 @@ namespace Nethermind.State.Proofs
                     }
                 }
             }
+            else
+            {
+                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArray()));
+                bool isPathMatched = IsPathMatched(node, _fullAccountPath);
+                if (isPathMatched)
+                {
+                    _accountProof.Nonce = account.Nonce;
+                    _accountProof.Balance = account.Balance;
+                    _accountProof.StorageRoot = account.StorageRoot;
+                    _accountProof.CodeHash = account.CodeHash;
+
+                    if (_fullStoragePaths.Length > 0)
+                    {
+                        _nodeToVisitFilter.Add(_accountProof.StorageRoot);
+                        _storageNodeInfos[_accountProof.StorageRoot] = new StorageNodeInfo();
+                        _storageNodeInfos[_accountProof.StorageRoot].PathIndex = 0;
+                        for (int i = 0; i < _fullStoragePaths.Length; i++)
+                        {
+                            _storageNodeInfos[_accountProof.StorageRoot].StorageIndices.Add(i);
+                        }
+                    }
+                }
+            }
 
             _pathTraversalIndex = 0;
         }
@@ -286,32 +309,10 @@ namespace Nethermind.State.Proofs
             return isPathMatched;
         }
 
+        private readonly AccountDecoder _accountDecoder = new();
+
         public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account)
         {
-            if (account.HasCode)
-            {
-                throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
-            }
-
-            bool isPathMatched = IsPathMatched(node, _fullAccountPath);
-            if (isPathMatched)
-            {
-                _accountProof.Nonce = account.Nonce;
-                _accountProof.Balance = account.Balance;
-                _accountProof.StorageRoot = account.StorageRoot;
-                _accountProof.CodeHash = account.CodeHash;
-
-                if (_fullStoragePaths.Length > 0)
-                {
-                    _nodeToVisitFilter.Add(_accountProof.StorageRoot);
-                    _storageNodeInfos[_accountProof.StorageRoot] = new StorageNodeInfo();
-                    _storageNodeInfos[_accountProof.StorageRoot].PathIndex = 0;
-                    for (int i = 0; i < _fullStoragePaths.Length; i++)
-                    {
-                        _storageNodeInfos[_accountProof.StorageRoot].StorageIndices.Add(i);
-                    }
-                }
-            }
         }
     }
 }
