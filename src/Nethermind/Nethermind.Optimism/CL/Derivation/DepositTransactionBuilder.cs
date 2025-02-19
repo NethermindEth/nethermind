@@ -31,9 +31,6 @@ public static class DepositEvent
 public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameters engineParameters)
 {
     private const int SystemTxDataLengthEcotone = 164;
-    private static readonly string DepositEventABI = "TransactionDeposited(address,address,uint256,bytes)";
-    private static readonly Hash256 DepositEventABIHash = Keccak.Compute(DepositEventABI);
-    private static readonly Hash256 DepositEventVersion0 = Hash256.Zero;
 
     public Transaction BuildL1InfoTransaction(L1BlockInfo blockInfo)
     {
@@ -82,7 +79,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             foreach (var log in receipt.Logs)
             {
                 if (log.Address != engineParameters.DepositAddress) continue;
-                if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) continue;
+                if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
 
                 try
                 {
@@ -139,7 +136,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         }
 
         var version = log.Topics[3];
-        if (version == DepositEventVersion0)
+        if (version == DepositEvent.Version0)
         {
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
             var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
