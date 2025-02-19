@@ -313,7 +313,6 @@ namespace Nethermind.State.Proofs
 
         public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account)
         {
-            throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }
     }
 }
