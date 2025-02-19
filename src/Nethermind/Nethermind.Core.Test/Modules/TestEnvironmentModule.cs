@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using Autofac;
 using Nethermind.Blockchain;
@@ -91,12 +92,12 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
                 syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
                 syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
-                syncConfig.MaxProcessingThreads = 4;
+                syncConfig.MaxProcessingThreads = Math.Min(8, Environment.ProcessorCount);
                 return syncConfig;
             })
             .AddDecorator<IBlocksConfig>((_, blocksConfig) =>
             {
-                blocksConfig.PreWarmStateConcurrency = 4;
+                blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
                 return blocksConfig;
             })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
