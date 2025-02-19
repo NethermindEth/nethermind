@@ -58,8 +58,10 @@ public class BlockTreeOverlay : IBlockTree
     public AddBlockResult Insert(Block block,
         BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
-        WriteFlags bodiesWriteFlags = WriteFlags.None) =>
-        _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
+        WriteFlags blockWriteFlags = WriteFlags.None) =>
+        _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, blockWriteFlags);
+
+    public void Flush(FlushReason reason) => _overlayTree.Flush(reason);
 
     public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
