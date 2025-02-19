@@ -43,16 +43,6 @@ public class BlockchainProcessorTests
             public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                stateReader.When(it =>
-                        it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Hash256>(), Arg.Any<VisitingOptions>()))
-                    .Do((info =>
-                    {
-                        // Simulate state root check
-                        ITreeVisitor visitor = (ITreeVisitor)info[0];
-                        Hash256 stateRoot = (Hash256)info[1];
-                        if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
-                    }));
-
                 stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
             }
 

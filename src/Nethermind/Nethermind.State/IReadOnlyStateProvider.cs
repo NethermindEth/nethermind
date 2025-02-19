@@ -25,7 +25,7 @@ namespace Nethermind.State
         /// <param name="visitor">Visitor to run.</param>
         /// <param name="stateRoot">Root to run on.</param>
         /// <param name="visitingOptions">Options to run visitor.</param>
-        void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
+        void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
 
         bool AccountExists(Address address);
 
