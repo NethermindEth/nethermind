@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Healing;
-using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -78,7 +75,15 @@ public class WorldStateManager : IWorldStateManager
 
     public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
 
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    public IWorldState CreateResettableWorldState()
+    {
+        return new WorldState(
+            _readOnlyTrieStore,
+            _readaOnlyCodeCb,
+            _logManager);
+    }
+
+    public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
         return preBlockCaches is not null
@@ -87,10 +92,7 @@ public class WorldStateManager : IWorldStateManager
                 _readaOnlyCodeCb,
                 _logManager,
                 preBlockCaches)
-            : new WorldState(
-                _readOnlyTrieStore,
-                _readaOnlyCodeCb,
-                _logManager);
+            : CreateResettableWorldState();
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()
