@@ -1085,7 +1085,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             return;
 
-            (Hash256, Hash256) SetupStartingState() {
+            (Hash256, Hash256) SetupStartingState()
+            {
                 WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 worldState.StateRoot = Keccak.EmptyTreeHash;
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
