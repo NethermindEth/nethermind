@@ -266,21 +266,33 @@ public partial class BlockTreeTests
                 int splitVariant = 0,
                 int splitFrom = 0,
                 int syncedSplitVariant = 0,
-                int syncedSplitFrom = 0
+                int syncedSplitFrom = 0,
+                IReceiptStorage? receiptStorage = null
             )
             {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
                 NotSyncedTreeBuilder = Build.A.BlockTree()
-                    .WithSpecProvider(testSpecProvider)
+                    .WithSpecProvider(testSpecProvider);
+                if (receiptStorage is not null)
+                {
+                    NotSyncedTreeBuilder = NotSyncedTreeBuilder.WithTransactions(receiptStorage);
+                }
+                NotSyncedTreeBuilder = NotSyncedTreeBuilder
                     .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
                 NotSyncedTree = NotSyncedTreeBuilder.TestObject;
 
                 if (syncedTreeSize > 0)
                 {
                     _syncedTreeBuilder = Build.A.BlockTree()
-                        .WithSpecProvider(testSpecProvider)
+                        .WithSpecProvider(testSpecProvider);
+
+                    if (receiptStorage is not null)
+                    {
+                        _syncedTreeBuilder = _syncedTreeBuilder.WithTransactions(receiptStorage);
+                    }
+                    _syncedTreeBuilder = _syncedTreeBuilder
                         .OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
 
                     SyncedTree = _syncedTreeBuilder.TestObject;
