@@ -110,8 +110,8 @@
   </ItemGroup>
 
   <Target Name="JsBuild" BeforeTargets="PreBuildEvent">
-    <Exec Command="yarn build:dev" Condition="'$(Configuration)'=='Debug'" />
-    <Exec Command="yarn build:release" Condition="'$(Configuration)'=='Release'" />
+    <Exec Command="corepack yarn build:dev" Condition="'$(Configuration)'=='Debug'" />
+    <Exec Command="corepack yarn build:release" Condition="'$(Configuration)'=='Release'" />
   </Target>
   
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">

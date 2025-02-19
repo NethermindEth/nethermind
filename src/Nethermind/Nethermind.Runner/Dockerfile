@@ -15,6 +15,10 @@ EXPOSE 8545 8551 30303
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - 
+RUN apt-get install -y nodejs
+RUN corepack enable 
+
 WORKDIR /src
 
 COPY Directory.*.props .
@@ -22,15 +26,11 @@ COPY nuget.config .
 COPY Nethermind.*/Nethermind.*.csproj Nethermind.*/
 
 RUN dotnet restore Nethermind.Runner/Nethermind.Runner.csproj
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - 
-RUN apt-get install -y nodejs
-RUN corepack enable 
 
 COPY . .
 
 WORKDIR /src/Nethermind.Runner
 
-RUN yarn install
 RUN dotnet build Nethermind.Runner.csproj -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
