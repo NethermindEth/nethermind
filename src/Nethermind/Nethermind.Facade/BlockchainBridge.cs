@@ -15,6 +15,8 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
@@ -29,6 +31,7 @@ using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Facade.Tracing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade
@@ -165,15 +168,32 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTracer, TTrace>(
+            BlockHeader header,
+            SimulatePayload<TransactionWithSourceDetails> payload,
+            CancellationToken cancellationToken,
+            ITracerFactory<TTracer, TTrace> tracerFactory)
+            where TTracer : class, IBlockTracer<TTrace>
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(simulateOutputTracer);
-            SimulateOutput result = new();
+            TTracer tracer = tracerFactory.CreateTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.SetOtherTracer(tracer);
+
+            SimulateOutput<TTrace> result = new();
+
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                // if (tracer is not SimulateBlockTracer<TTrace> validatedTracer)
+                // {
+                //     throw new InvalidOperationException($"Unsupported tracer type: {typeof(TTracer).Name}");
+                // }
+
+                if (!_simulateBridgeHelper.TrySimulate<TTracer>(
+                        header,
+                        payload,
+                        tracer,
+                        new CancellationBlockTracer(receiptsTracer, cancellationToken),
+                        out string error))
                 {
                     result.Error = error;
                 }
@@ -187,9 +207,9 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.Items = simulateOutputTracer.Results;
-            return result;
+            return new SimulateOutput<TTrace> { Items = tracer.BuildResult() };
         }
+
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
@@ -431,6 +451,68 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        public class SimulateBlockTracerFactory : ITracerFactory<SimulateBlockTracer, SimulateBlockResult<SimulateCallResult>>
+        {
+            public SimulateBlockTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            {
+                return new SimulateBlockTracer(traceTransfers, returnFullTransactionObjects, specProvider);
+            }
+        }
+
+        public class GethLikeBlockMemoryTracerFactory(GethTraceOptions options)
+            : ITracerFactory<TraceSimulateTracer<GethLikeTxTrace>, SimulateBlockResult<GethLikeTxTrace>>
+        {
+            public TraceSimulateTracer<GethLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            {
+                return new TraceSimulateTracer<GethLikeTxTrace>(new GethLikeBlockMemoryTracer(options), specProvider);
+            }
+        }
+
+        public class ParityLikeBlockTracerFactory(ParityTraceTypes types) : ITracerFactory<TraceSimulateTracer<ParityLikeTxTrace>, SimulateBlockResult<ParityLikeTxTrace>>
+        {
+            public TraceSimulateTracer<ParityLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
+            {
+                return new TraceSimulateTracer<ParityLikeTxTrace>(new ParityLikeBlockTracer(types), specProvider);
+            }
+        }
+
+        public class TraceSimulateTracer<TTrace>(IBlockTracer<TTrace> inner, ISpecProvider specProvider) : IBlockTracer<SimulateBlockResult<TTrace>>
+        {
+            private readonly List<SimulateBlockResult<TTrace>> _results = new();
+            private Block _currentBlock;
+
+            public IReadOnlyList<SimulateBlockResult<TTrace>> BuildResult() => _results;
+
+            public bool IsTracingRewards => inner.IsTracingRewards;
+
+            public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+            {
+                inner.ReportReward(author, rewardType, rewardValue);
+            }
+
+            public void StartNewBlockTrace(Block block)
+            {
+                _currentBlock = block;
+                inner.StartNewBlockTrace(block);
+            }
+
+            public ITxTracer StartNewTxTrace(Transaction? tx)
+            {
+                return inner.StartNewTxTrace(tx);
+            }
+
+            public void EndTxTrace()
+            {
+                inner.EndTxTrace();
+            }
+
+            public void EndBlockTrace()
+            {
+                inner.EndBlockTrace();
+                _results.Add(new SimulateBlockResult<TTrace>(_currentBlock, false, specProvider) { Calls = inner.BuildResult() });
+            }
         }
 
         private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)

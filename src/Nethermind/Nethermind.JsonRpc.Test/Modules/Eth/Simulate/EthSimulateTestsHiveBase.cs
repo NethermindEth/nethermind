@@ -72,7 +72,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
         SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine($"current test: {name}");
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
 
         Console.WriteLine();
