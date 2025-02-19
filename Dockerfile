@@ -9,7 +9,7 @@ ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - 
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 
 RUN apt-get install -y nodejs
 RUN npm install -g yarn
 
