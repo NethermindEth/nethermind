@@ -96,6 +96,7 @@ namespace Nethermind.Merge.Plugin
             if (TerminalTotalDifficulty is null)
                 return;
 
+            // Infer from sync config should not matter if the sync pivot in blocktree moved.
             // pivot post TTD, so we know FinalTotalDifficulty
             if (_syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {

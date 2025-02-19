@@ -174,7 +174,7 @@ namespace Nethermind.Core.Test.Caching
         public void Beyond_capacity_lru_parallel()
         {
             LruKeyCache<AddressAsKey> cache = new(Capacity, Capacity / 2, "test");
-            Parallel.For(0, Environment.ProcessorCount * 8, (iter) =>
+            Parallel.For(0, Math.Min(Environment.ProcessorCount * 8, 64), (iter) =>
             {
                 for (int ii = 0; ii < Capacity; ii++)
                 {

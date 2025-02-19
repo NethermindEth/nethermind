@@ -38,14 +38,14 @@ namespace Nethermind.Blockchain.Synchronization
         private string _pivotNumber = "0";
         public string PivotNumber
         {
-            get => FastSync || SnapSync ? _pivotNumber : "0";
+            get => FastSync ? _pivotNumber : "0";
             set => _pivotNumber = value;
         }
 
         private string? _pivotHash;
         public string? PivotHash
         {
-            get => FastSync || SnapSync ? _pivotHash : null;
+            get => FastSync ? _pivotHash : null;
             set => _pivotHash = value;
         }
         public int MaxAttemptsToUpdatePivot { get; set; } = int.MaxValue;

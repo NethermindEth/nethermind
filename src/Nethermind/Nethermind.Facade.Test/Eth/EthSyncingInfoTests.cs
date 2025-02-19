@@ -4,9 +4,8 @@
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
@@ -90,16 +89,16 @@ namespace Nethermind.Facade.Test.Eth
             ISyncConfig syncConfig = new SyncConfig
             {
                 FastSync = true,
-                AncientBodiesBarrier = 800,
-                // AncientBodiesBarrierCalc = Max(1, Min(Pivot, BodiesBarrier)) = BodiesBarrier = 800
-                AncientReceiptsBarrier = 900,
-                // AncientReceiptsBarrierCalc = Max(1, Min(Pivot, Max(BodiesBarrier, ReceiptsBarrier))) = ReceiptsBarrier = 900
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
-                PivotNumber = "1000"
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.SyncPivot.Returns((1000, Hash256.Zero));
+
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            syncPointers.AncientBodiesBarrier.Returns(800);
+            syncPointers.AncientReceiptsBarrier.Returns(900);
+
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingreceipts);

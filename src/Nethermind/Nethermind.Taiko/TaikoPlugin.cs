@@ -206,7 +206,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _syncConfig,
                 _api.PoSSwitcher,
                 _beaconSync,
                 _beaconPivot,
@@ -276,7 +275,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
+        _beaconPivot = new BeaconPivot(_api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
@@ -306,7 +305,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             _syncConfig,
             _blockCacheService,
             _beaconSync,
-            _api.DbProvider.MetadataDb,
             _api.LogManager);
         _beaconSync.AllowBeaconHeaderSync();
 

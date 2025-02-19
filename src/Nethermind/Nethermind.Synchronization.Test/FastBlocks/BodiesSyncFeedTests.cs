@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -43,19 +44,8 @@ public class BodiesSyncFeedTests
 
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
-        _syncPointers = new MemorySyncPointers();
-        _syncingToBlockTree = Build.A.BlockTree()
-            .WithBlocksDb(_blocksDb)
-            .TestObject;
-
-        for (int i = 1; i < 100; i++)
-        {
-            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
-            _syncingToBlockTree.Insert(block.Header);
-        }
 
         _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
-
         _syncConfig = new TestSyncConfig()
         {
             FastSync = true,
@@ -64,6 +54,19 @@ public class BodiesSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
+
+        _syncingToBlockTree = Build.A.BlockTree()
+            .WithSyncConfig(_syncConfig)
+            .WithBlocksDb(_blocksDb)
+            .TestObject;
+
+        _syncPointers = new MemorySyncPointers(_syncingToBlockTree, _syncConfig);
+
+        for (int i = 1; i < 100; i++)
+        {
+            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+            _syncingToBlockTree.Insert(block.Header);
+        }
 
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
@@ -201,6 +204,9 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
+
+        _syncingToBlockTree.UpdateSyncPivot((AncientBarrierInConfig + 1_000_000, Keccak.Zero), IBlockTree.SyncPivotUpdateReason.PivotUpdator);
+
         _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());

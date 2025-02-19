@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
@@ -29,11 +30,11 @@ public class StateSyncPivotTest
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindHeader(Arg.Any<long>())
             .Returns(static (ci) => Build.A.BlockHeader.WithNumber((long)ci[0]).TestObject);
+        blockTree.SyncPivot.Returns((syncPivot, Hash256.Zero));
 
         Synchronization.FastSync.StateSyncPivot stateSyncPivot = new Synchronization.FastSync.StateSyncPivot(blockTree,
             new TestSyncConfig()
             {
-                PivotNumber = syncPivot.ToString(),
                 FastSync = true,
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,

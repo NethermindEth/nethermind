@@ -333,7 +333,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
-                    _syncConfig,
                     _poSSwitcher,
                     _beaconSync,
                     _beaconPivot,
@@ -400,7 +399,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
 
             // ToDo strange place for validators initialization
-            _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
+            _beaconPivot = new BeaconPivot(_api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
 
             MergeHeaderValidator headerValidator = new(
                     _poSSwitcher,
@@ -457,7 +456,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _syncConfig,
                 _blockCacheService,
                 _beaconSync,
-                _api.DbProvider.MetadataDb,
                 _api.LogManager);
         }
 
