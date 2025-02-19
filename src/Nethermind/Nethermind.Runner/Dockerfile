@@ -30,6 +30,7 @@ COPY . .
 
 WORKDIR /src/Nethermind.Runner
 
+RUN yarn install
 RUN dotnet build Nethermind.Runner.csproj -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
