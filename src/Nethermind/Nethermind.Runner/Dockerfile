@@ -22,6 +22,9 @@ COPY nuget.config .
 COPY Nethermind.*/Nethermind.*.csproj Nethermind.*/
 
 RUN dotnet restore Nethermind.Runner/Nethermind.Runner.csproj
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - 
+RUN apt-get install -y nodejs
+RUN corepack enable 
 
 COPY . .
 
