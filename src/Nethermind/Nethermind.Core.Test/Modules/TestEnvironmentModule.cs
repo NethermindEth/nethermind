@@ -91,7 +91,13 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
                 syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
                 syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
+                syncConfig.MaxProcessingThreads = 4;
                 return syncConfig;
+            })
+            .AddDecorator<IBlocksConfig>((_, blocksConfig) =>
+            {
+                blocksConfig.PreWarmStateConcurrency = 4;
+                return blocksConfig;
             })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {

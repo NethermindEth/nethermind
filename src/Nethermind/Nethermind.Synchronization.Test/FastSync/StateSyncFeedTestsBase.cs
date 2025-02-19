@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -110,11 +111,16 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
+                .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, null))
                 .AddModule(new TestSynchronizerModule(new TestSyncConfig()
                 {
-                    SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
                     FastSync = true
                 }))
+                .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
+                {
+                    syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
+                    return syncConfig;
+                })
                 .AddSingleton<ILogManager>(_logManager)
                 .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
                 .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)

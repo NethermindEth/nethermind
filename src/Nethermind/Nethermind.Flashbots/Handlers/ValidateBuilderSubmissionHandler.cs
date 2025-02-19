@@ -206,7 +206,7 @@ public class ValidateSubmissionHandler
 
         UInt256 feeRecipientBalanceBefore = currentState.HasStateForRoot(currentState.StateRoot) ? (currentState.AccountExists(feeRecipient) ? currentState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
-        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(_readOnlyTxProcessingEnvFactory, _specProvider, _logManager);
+        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(_readOnlyTxProcessingEnvFactory, _specProvider, 0, _logManager);
 
         BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor, _flashbotsConfig.EnablePreWarmer ? preWarmer : null);
 

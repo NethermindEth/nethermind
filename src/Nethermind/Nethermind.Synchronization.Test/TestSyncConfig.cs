@@ -13,5 +13,6 @@ public class TestSyncConfig : SyncConfig
         MultiSyncModeSelectorLoopTimerMs = 1;
         SyncDispatcherEmptyRequestDelayMs = 1;
         SyncDispatcherAllocateTimeoutMs = 1;
+        MaxProcessingThreads = 4;
     }
 }
