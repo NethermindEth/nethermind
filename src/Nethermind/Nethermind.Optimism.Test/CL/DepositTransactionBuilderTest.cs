@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
 using NUnit.Framework;
@@ -716,5 +717,33 @@ public class DepositTransactionBuilderTest
 
         depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
         depositTransactions[1].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data?.ToArray());
+    }
+
+    [Test]
+    public void DeriveForceInclude_ValidTransaction()
+    {
+        var block = new BlockForRpc
+        {
+            Hash = SomeHash,
+        };
+        UInt64 sequenceNumber = 1;
+
+        Transaction expected = Build.A.Transaction
+            .WithData([.._L1BlockInfo.DepositsCompleteBytes4])
+            .WithGasLimit((long)_L1BlockInfo.DepositsCompleteGas) // WARNING: Dangerous cast
+            .WithIsOPSystemTransaction(false)
+            .WithValue(0)
+            .WithSenderAddress(_L1BlockInfo.L1InfoDepositerAddress)
+            .WithSourceHash(new Hash256([
+                131, 51, 71, 6, 18, 49, 59, 196, 175, 75, 208, 175, 85, 42, 52, 228, 71, 15, 124, 177, 199, 37, 232, 30,
+                240, 145, 73, 18, 159, 83, 25, 20
+            ]))
+            .TestObject;
+
+        List<Transaction> txs = _builder.BuildForceIncludeTransactions(sequenceNumber, block);
+
+        txs.Count.Should().Be(1);
+        txs[0].Should().BeEquivalentTo(expected, config => config.Excluding(x => x.Data));
+        txs[0].Data?.ToArray().Should().BeEquivalentTo(expected.Data?.ToArray());
     }
 }
