@@ -37,7 +37,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_NoDeposits()
     {
-        List<ReceiptForRpc> receipts = [];
+        ReceiptForRpc[] receipts = [];
         List<Transaction> depositTransactions = _builder.BuildUserDepositTransactions(receipts);
 
         depositTransactions.Count.Should().Be(0);
@@ -46,7 +46,7 @@ public class DepositTransactionBuilderTest
     [Test]
     public void DeriveUserDeposits_OtherLog()
     {
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -146,7 +146,7 @@ public class DepositTransactionBuilderTest
     [TestCaseSource(nameof(InvalidLogFormatTestCases))]
     public void DeriveUserDeposits_ThrowsOnInvalidLogFormat(LogEntryForRpc log)
     {
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -177,7 +177,7 @@ public class DepositTransactionBuilderTest
         };
         var logData = depositLogEventV0.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -225,7 +225,7 @@ public class DepositTransactionBuilderTest
         };
         var logData = depositLogEventV0.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -289,7 +289,7 @@ public class DepositTransactionBuilderTest
         };
         var logData = depositLogEventV0.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -354,7 +354,7 @@ public class DepositTransactionBuilderTest
         };
         var logData = depositLogEventV0.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -452,7 +452,7 @@ public class DepositTransactionBuilderTest
         };
         var logData_1 = depositLogEventV0_1.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -557,7 +557,7 @@ public class DepositTransactionBuilderTest
         };
         var logData_1 = depositLogEventV0_1.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {
@@ -632,7 +632,7 @@ public class DepositTransactionBuilderTest
         };
         var logData_1 = depositLogEventV0_1.ToBytes();
 
-        List<ReceiptForRpc> receipts =
+        ReceiptForRpc[] receipts =
         [
             new()
             {

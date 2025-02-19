@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -70,7 +71,7 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
             if (isNewOrigin)
             {
                 payloadAttributes = BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origins[originIdx],
-                currentSystemConfig, systemTransaction, i, txIdx);
+                currentSystemConfig, systemTransaction, l1Receipts[originIdx], i, txIdx);
             }
             else
             {
@@ -91,17 +92,19 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
     }
 
     private OptimismPayloadAttributes BuildFirstBlockInEpoch(BatchV1 batch, ulong l2ParentTimestamp,
-        L1Block l1Origin, SystemConfig systemConfig, Transaction systemTransaction, int blockIdx, ulong txsFrom)
+        L1Block l1Origin, SystemConfig systemConfig, Transaction systemTransaction, ReceiptForRpc[] l1OriginReceipts, int blockIdx, ulong txsFrom)
     {
-        // Transaction[] userDepositTxs = _depositTransactionBuilder.BuildUserDepositTransactions();
+        List<Transaction> transactions = new();
+        transactions.AddRange(_depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts));
         // Transaction[] upgradeTxs = _depositTransactionBuilder.BuildUpgradeTransactions();
         // Transaction[] forceIncludeTxs = _depositTransactionBuilder.BuildForceIncludeTransactions();
         Transaction[] userTransactions = BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx]);
+        transactions.AddRange(userTransactions);
 
         // Transaction[] allTxs = new[] { systemTransaction }.Concat(userDepositTxs).Concat(upgradeTxs)
         //     .Concat(forceIncludeTxs).Concat(userTransactions).ToArray();
 
-        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, userTransactions);
+        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, transactions.ToArray());
     }
 
     private OptimismPayloadAttributes BuildRegularBlock(BatchV1 batch, ulong l2ParentTimestamp,

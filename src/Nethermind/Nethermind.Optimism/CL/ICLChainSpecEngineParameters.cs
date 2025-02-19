@@ -12,7 +12,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public Address? BatcherAddress { get; set; }
     public Address SystemTransactionSender { get; set; } = new("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001");
     public Address SystemTransactionTo { get; set; } = new("0x4200000000000000000000000000000000000015");
-    public required Address DepositAddress { get; init; }
+    public Address? DepositAddress { get; init; } // aka OptimismPortalProxy
     public Address? SequencerP2PAddress { get; set; }
     public string[]? Nodes { get; set; }
     public Address? L1SystemConfigAddress { get; set; }

@@ -73,7 +73,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         };
     }
 
-    public List<Transaction> BuildUserDepositTransactions(List<ReceiptForRpc> receipts)
+    public List<Transaction> BuildUserDepositTransactions(ReceiptForRpc[] receipts)
     {
         List<Transaction> result = [];
         foreach (var receipt in receipts)
