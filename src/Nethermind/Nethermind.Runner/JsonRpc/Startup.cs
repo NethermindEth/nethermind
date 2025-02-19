@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
@@ -135,10 +136,14 @@ public class Startup
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
+
+                endpoints.MapDataFeeds(app.ApplicationServices.GetRequiredService<INethermindApi>());
             }
         });
 
-        app.Run(async ctx =>
+        app.MapWhen(
+            (ctx) => ctx.Request.ContentType?.Contains("application/json") ?? false,
+            builder => builder.Run(async ctx =>
         {
             var method = ctx.Request.Method;
             if (method is not "POST" and not "GET")
@@ -167,7 +172,7 @@ public class Startup
                 }
             }
 
-            if (method == "GET")
+            if (method == "GET" && !(ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal)))
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
@@ -294,7 +299,13 @@ public class Startup
                 await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
-        });
+        }));
+
+        if (healthChecksConfig.Enabled)
+        {
+            app.UseDefaultFiles();
+            app.UseStaticFiles();
+        }
     }
 
     /// <summary>

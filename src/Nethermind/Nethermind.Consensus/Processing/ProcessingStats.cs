@@ -16,9 +16,24 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
+    public class BlockStatistics
+    {
+        public long BlockCount { get; internal set; }
+        public long BlockFrom { get; internal set; }
+        public long BlockTo { get; internal set; }
+        public double ProcessingMs { get; internal set; }
+        public double SlotMs { get; internal set; }
+        public double MgasPerSecond { get; internal set; }
+        public float MinGas { get; internal set; }
+        public float MedianGas { get; internal set; }
+        public float AveGas { get; internal set; }
+        public float MaxGas { get; internal set; }
+        public long GasLimit { get; internal set; }
+    }
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats : IThreadPoolWorkItem
     {
+        public event EventHandler<BlockStatistics>? NewProcessingStatistics;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
@@ -195,23 +210,39 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
+            long chunkTx = Metrics.Transactions - _lastTotalTx;
+            long chunkCalls = _currentCallOps - _lastCallOps;
+            long chunkEmptyCalls = _currentEmptyCalls - _lastEmptyCalls;
+            long chunkCreates = _currentCreatesOps - _lastCreateOps;
+            long chunkSload = _currentSLoadOps - _lastSLoadOps;
+            long chunkSstore = _currentSStoreOps - _lastSStoreOps;
+            long contractsAnalysed = _currentContractsAnalyzed - _lastContractsAnalyzed;
+            long cachedContractsUsed = _currentCachedContractsUsed - _lastCachedContractsUsed;
+            double txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1_000_000.0;
+            double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
+            double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
+            double runMs = (_runMicroseconds == 0 ? -1 : _runMicroseconds / 1000.0);
+            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
+            string mgasColor = whiteText;
+
+            NewProcessingStatistics?.Invoke(this, new BlockStatistics()
+            {
+                BlockCount = chunkBlocks,
+                BlockFrom = block.Number - chunkBlocks + 1,
+                BlockTo = block.Number,
+
+                ProcessingMs = chunkMs,
+                SlotMs = runMs,
+                MgasPerSecond = mgasPerSecond,
+                MinGas = Evm.Metrics.BlockMinGasPrice,
+                MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
+                AveGas = Evm.Metrics.BlockAveGasPrice,
+                MaxGas = Evm.Metrics.BlockMaxGasPrice,
+                GasLimit = block.GasLimit
+            });
+
             if (_logger.IsInfo)
             {
-                long chunkTx = Metrics.Transactions - _lastTotalTx;
-                long chunkCalls = _currentCallOps - _lastCallOps;
-                long chunkEmptyCalls = _currentEmptyCalls - _lastEmptyCalls;
-                long chunkCreates = _currentCreatesOps - _lastCreateOps;
-                long chunkSload = _currentSLoadOps - _lastSLoadOps;
-                long chunkSstore = _currentSStoreOps - _lastSStoreOps;
-                long contractsAnalysed = _currentContractsAnalyzed - _lastContractsAnalyzed;
-                long cachedContractsUsed = _currentCachedContractsUsed - _lastCachedContractsUsed;
-                double txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1_000_000.0;
-                double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
-                double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
-                double runMs = (_runMicroseconds == 0 ? -1 : _runMicroseconds / 1000.0);
-                string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
-                string mgasColor = whiteText;
-
                 if (chunkBlocks > 1)
                 {
                     _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");

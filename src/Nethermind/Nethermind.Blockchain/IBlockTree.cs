@@ -170,6 +170,7 @@ namespace Nethermind.Blockchain
         /// the whole branch.
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
+        event EventHandler<ForkChoice> OnForkChoiceUpdated;
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
@@ -178,5 +179,12 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+
+        public readonly struct ForkChoice(Block? head, long safe, long finalized)
+        {
+            public readonly Block? Head => head;
+            public readonly long Safe => safe;
+            public readonly long Finalized => finalized;
+        }
     }
 }
