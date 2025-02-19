@@ -26,7 +26,8 @@ public class ShutterBlockImprovementContextFactory(
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
+        DateTimeOffset startDateTime,
+        CancellationToken cancellationToken = default) =>
         new ShutterBlockImprovementContext(blockProducer,
                                            shutterTxSource,
                                            shutterConfig,
@@ -36,7 +37,8 @@ public class ShutterBlockImprovementContextFactory(
                                            payloadAttributes,
                                            startDateTime,
                                            slotLength,
-                                           logManager);
+                                           logManager,
+                                           cancellationToken);
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
@@ -50,7 +52,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private CancellationTokenSource? _cancellationTokenSource;
+    private CancellationToken _cancellationToken;
     private readonly ILogger _logger;
     private readonly IBlockProducer _blockProducer;
     private readonly IShutterTxSignal _txSignal;
@@ -71,7 +73,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         TimeSpan slotLength,
-        ILogManager logManager)
+        ILogManager logManager,
+        CancellationToken cancellationToken = default)
     {
         if (slotLength == TimeSpan.Zero)
         {
@@ -80,7 +83,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         _slotTimestampMs = payloadAttributes.Timestamp * 1000;
 
-        _cancellationTokenSource = new CancellationTokenSource();
+        _cancellationToken = cancellationToken;
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger();
@@ -98,7 +101,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        _cancellationToken.TryDispose();
     }
 
     private async Task<Block?> ImproveBlock()
@@ -134,10 +137,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
-        ObjectDisposedException.ThrowIf(_cancellationTokenSource is null, this);
-
         using var txTimeout = new CancellationTokenSource((int)waitTime);
-        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource!.Token, txTimeout.Token);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, txTimeout.Token);
 
         try
         {
@@ -166,7 +167,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     private async Task BuildBlock()
     {
-        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationTokenSource!.Token);
+        Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, _cancellationToken);
         if (result is not null)
         {
             CurrentBestBlock = result;

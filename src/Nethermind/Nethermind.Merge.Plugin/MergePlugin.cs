@@ -328,8 +328,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
             TxPoolTxSourceFactory txPoolTxSourceFactory = new(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _blocksConfig, _api.LogManager);
-            TxPoolTxSource inclusionListTxSource = txPoolTxSourceFactory.Create();
-
+            TxPoolTxSource txPoolTxSource = txPoolTxSourceFactory.Create();
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -371,8 +370,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
-                new GetInclusionListTransactionsHandler(_api.BlockTree, inclusionListTxSource),
-                new UpdatePayloadWithInclusionListHandler(),
+                new GetInclusionListTransactionsHandler(_api.BlockTree, txPoolTxSource),
+                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, inclusionListTxSource),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);
