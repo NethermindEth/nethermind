@@ -122,7 +122,7 @@ public static class BlobTransactionForRpcTests
         json.GetProperty("yParity").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        
+
         // Assert deserialization-only are not serialized
         json.TryGetProperty("blobs", out _).Should().BeFalse();
     }
