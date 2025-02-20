@@ -33,7 +33,7 @@ public class ShutterApi : IShutterApi
     public readonly IShutterKeyValidator KeyValidator;
     public readonly IShutterEon Eon;
     public readonly ShutterTxLoader TxLoader;
-    public readonly ShutterTime Time;
+    public readonly SlotTime Time;
     public ShutterTxSource TxSource { get; }
     public IShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
@@ -157,6 +157,6 @@ public class ShutterApi : IShutterApi
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
 
-    protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected virtual SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }
