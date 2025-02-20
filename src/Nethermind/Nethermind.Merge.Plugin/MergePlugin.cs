@@ -17,6 +17,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -54,6 +55,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
+    private InclusionListTxSource? _inclusionListTxSource = null;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -108,6 +110,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.PoSSwitcher = _poSSwitcher;
             _api.DisposeStack.Push(_invalidChainTracker);
             _blockFinalizationManager = new ManualBlockFinalizationManager();
+            _inclusionListTxSource = new InclusionListTxSource(_api.SpecProvider.ChainId);
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
@@ -371,7 +374,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
                 new GetInclusionListTransactionsHandler(_api.BlockTree, txPoolTxSource),
-                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, inclusionListTxSource),
+                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);

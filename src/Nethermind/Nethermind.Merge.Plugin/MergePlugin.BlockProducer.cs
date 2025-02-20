@@ -45,7 +45,7 @@ namespace Nethermind.Merge.Plugin
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource);
+                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource.Then(_inclusionListTxSource));
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
