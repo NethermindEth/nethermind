@@ -211,7 +211,7 @@ public static class IlAnalyzer
                 jumpdests.Add(codeData.Item1[i].ProgramCounter);
             }
 
-            if (codeData.Item1[i].IsStateful)
+            if (codeData.Item1[i].IsBlocking)
             {
                 int endSegment = i + (config.IsFullAotEnabled ? 1 : 0);
                 segments.Add(AnalyzeSegment(codeData.Item1, startSegment..endSegment));
@@ -364,7 +364,7 @@ public static class IlAnalyzer
                     }
 
                     subSegment.LeftOutStack = currentStackSize;
-                    if (op.IsTerminating || op.IsJump || op.IsCallOrCreate ||op.Operation is Instruction.GAS)
+                    if (op.IsTerminating || op.IsJump || op.IsBlocking ||op.Operation is Instruction.GAS)
                     {
                         if (op.Operation is not Instruction.GAS)
                         {

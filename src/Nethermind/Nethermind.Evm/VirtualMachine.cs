@@ -84,7 +84,7 @@ public class VirtualMachine : IVirtualMachine
             IsPatternMatchingEnabled = false,
 
             AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = true,
+            BakeInTracingInAotModes = false,
 
             FullAotThreshold = 5,
             PatternMatchingThreshold = int.MaxValue,
@@ -140,7 +140,7 @@ public class VirtualMachine : IVirtualMachine
             ExceptionType = exceptionType;
         }
 
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
             Output = output;
@@ -661,7 +661,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-            CallResult callResult = new(output, success, !success);
+            CallResult callResult = new(output.ToArray(), success, !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
@@ -699,6 +699,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsEmpty)
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+            }
+
+            if (vmState.Env.CodeInfo.IlInfo.IsEmpty)
+            {
+                IlAnalyzer.Analyse(env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
             }
         }
 
@@ -754,7 +759,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 switch(chunkExecutionState.ContractState)
                 {
                     case ContractState.Return or ContractState.Revert:
-                       return new CallResult(_returnDataBuffer, null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                       return new CallResult(_returnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
                     case ContractState.Failed:
                         return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
                     default:
@@ -1913,12 +1918,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 case Instruction.CREATE2:
                     {
                         Metrics.IncrementCreates();
-                        if (!UpdateGas(GasCostOf.Create, ref gasAvailable)) goto OutOfGas;
-
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
+                        if (!UpdateGas(GasCostOf.Create, ref gasAvailable)) goto OutOfGas;
                         if (!stack.PopUInt256(out UInt256 value) ||
                             !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
                             !stack.PopUInt256(out UInt256 initCodeLength))
@@ -1975,18 +1979,14 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         UInt256 callValue;
                         switch (instruction)
                         {
-                            case Instruction.CALL:
-                                if (stack.PopUInt256(out UInt256 value))
-                                {
-                                    callValue = value;
-                                }
-                                else
-                                {
-                                    goto StackUnderflow;
-                                }
+                            case Instruction.STATICCALL:
+                                callValue = UInt256.Zero;
+                                break;
+                            case Instruction.DELEGATECALL:
+                                callValue = env.Value;
                                 break;
                             default:
-                                callValue = UInt256.Zero;
+                                if (!stack.PopUInt256(out callValue)) goto StackUnderflow;
                                 break;
                         }
 
@@ -2323,9 +2323,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
         Metrics.IncrementCalls();
-
-        if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
-            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, true, state, spec, tracer)) return EvmExceptionType.OutOfGas;
 
