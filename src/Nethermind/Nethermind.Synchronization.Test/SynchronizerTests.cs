@@ -247,6 +247,11 @@ public class SynchronizerTests
         {
             throw new NotImplementedException();
         }
+
+        public override string ToString()
+        {
+            return ClientId;
+        }
     }
 
     private WhenImplementation When => new(_synchronizerType);
@@ -743,7 +748,7 @@ public class SynchronizerTests
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_reorg_based_on_total_difficulty()
     {
         if (WithTTD(_synchronizerType)) { return; }

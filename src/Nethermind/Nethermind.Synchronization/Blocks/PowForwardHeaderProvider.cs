@@ -4,14 +4,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -33,7 +32,10 @@ public class PowForwardHeaderProvider(
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
     private const int MinCachedHeaderBatchSize = 32;
-    private IPeerAllocationStrategy _bestPeerAllocationStrategy = new BlocksSyncPeerAllocationStrategy(0);
+
+    private IPeerAllocationStrategy _bestPeerAllocationStrategy =
+        new TotalDiffStrategy(new BlocksSyncPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
 
@@ -46,13 +48,28 @@ public class PowForwardHeaderProvider(
                 OnNewBestPeer(peerInfo);
             }
 
+            if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
+
             // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
             // TODO: Unit test this mechanism.
             IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
-            if (headers is not null) return headers;
+            if (headers is not null)
+            {
+                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[1].ToString(BlockHeader.Format.Short)}");
+                return headers;
+            }
 
             headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
-            if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) _lastResponseBatch = headers;
+            if (headers is not null)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headers.Count} header from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[^1].ToString(BlockHeader.Format.Short)}");
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"No header received");
+            }
+
+            if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) _lastResponseBatch = headers.ToPooledList(headers.Count);
             return headers;
         }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
     }
@@ -86,6 +103,7 @@ public class PowForwardHeaderProvider(
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
     {
+        if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer}, new best peer: {newBestPeer}");
         if (newBestPeer?.HeadHash != _currentBestPeer?.HeadHash)
         {
             ClearLastResponseBatch();
@@ -140,13 +158,9 @@ public class PowForwardHeaderProvider(
         }
     }
 
-    public void IncrementNumber()
+    public virtual void OnSuggestBlock(BlockTreeSuggestOptions options, Block currentBlock, AddBlockResult addResult)
     {
         _currentNumber += 1;
-    }
-
-    public virtual void OnBlockAdded(Block currentBlock)
-    {
     }
 
     private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockZero, ref long currentNumber)
@@ -257,10 +271,6 @@ public class PowForwardHeaderProvider(
             throw new AggregateException(exceptions);
         }
         cancellation.ThrowIfCancellationRequested();
-    }
-
-    public virtual void TryUpdateTerminalBlock(BlockHeader currentHeader)
-    {
     }
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)

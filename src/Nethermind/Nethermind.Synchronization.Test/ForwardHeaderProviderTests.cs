@@ -188,26 +188,6 @@ public partial class ForwardHeaderProviderTests
         await headerTask.Should().ThrowAsync<EthSyncException>();
     }
 
-    [Test]
-    public async Task Throws_on_invalid_header()
-    {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(Always.Invalid));
-        Context ctx = node.Resolve<Context>();
-
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
-
-        PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000);
-        ctx.ConfigureBestPeer(peerInfo);
-
-        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        await headerTask.Should().ThrowAsync<EthSyncException>();
-    }
-
     private class SlowSealValidator : ISealValidator
     {
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)

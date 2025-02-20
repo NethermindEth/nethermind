@@ -3,20 +3,14 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks;
 
 public interface IForwardHeaderProvider
 {
-    // Needed to know what is the terminal block so in fast sync, for each
-    // header, it calls this.
-    void TryUpdateTerminalBlock(BlockHeader currentHeader);
     Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation);
-
-    // Can these two be combined?
-    void OnBlockAdded(Block currentBlock);
-    void IncrementNumber();
+    void OnSuggestBlock(BlockTreeSuggestOptions blockTreeSuggestOptions, Block currentBlock, AddBlockResult addResult);
 }

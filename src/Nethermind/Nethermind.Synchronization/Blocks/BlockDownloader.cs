@@ -31,7 +31,6 @@ namespace Nethermind.Synchronization.Blocks
         public static readonly TimeSpan SyncBatchDownloadTimeUpperBound = TimeSpan.FromMilliseconds(8000);
         public static readonly TimeSpan SyncBatchDownloadTimeLowerBound = TimeSpan.FromMilliseconds(5000);
 
-        private readonly ISyncFeed<BlocksRequest> _feed;
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
         private readonly ISyncReport _syncReport;
@@ -45,7 +44,6 @@ namespace Nethermind.Synchronization.Blocks
         protected SyncBatchSize _syncBatchSize;
 
         public BlockDownloader(
-            ISyncFeed<BlocksRequest?>? feed,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
             ISyncReport? syncReport,
@@ -57,7 +55,6 @@ namespace Nethermind.Synchronization.Blocks
             ILogManager? logManager,
             SyncBatchSize? syncBatchSize = null)
         {
-            _feed = feed;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -177,8 +174,6 @@ namespace Nethermind.Synchronization.Blocks
 
                         blocksSynced++;
                     }
-
-                    _forwardHeaderProvider.IncrementNumber();
                 }
 
                 if (blocksSynced > 0)
@@ -220,9 +215,6 @@ namespace Nethermind.Synchronization.Blocks
                 if (!shouldProcess)
                 {
                     _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                    // Needed to know if a block is the terminal block.
-                    // Not needed if not processing for some reason.
-                    _forwardHeaderProvider.TryUpdateTerminalBlock(currentBlock.Header);
                 }
 
                 if (downloadReceipts)
@@ -241,8 +233,6 @@ namespace Nethermind.Synchronization.Blocks
                         }
                     }
                 }
-
-                _forwardHeaderProvider.OnBlockAdded(currentBlock);
                 handled = true;
             }
 
@@ -250,6 +240,8 @@ namespace Nethermind.Synchronization.Blocks
             {
                 _blockTree.UpdateMainChain(new[] { currentBlock }, false);
             }
+
+            _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
 
             return handled;
         }

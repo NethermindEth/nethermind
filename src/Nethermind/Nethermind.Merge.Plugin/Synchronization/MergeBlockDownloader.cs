@@ -24,7 +24,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public MergeBlockDownloader(
             IBeaconPivot beaconPivot,
-            ISyncFeed<BlocksRequest?>? feed,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
             ISyncReport? syncReport,
@@ -35,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IForwardHeaderProvider forwardHeaderProvider,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
-            : base(feed, blockTree, blockValidator, syncReport, receiptStorage,
+            : base(blockTree, blockValidator, syncReport, receiptStorage,
                 specProvider, betterPeerStrategy, fullStateFinder, forwardHeaderProvider, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

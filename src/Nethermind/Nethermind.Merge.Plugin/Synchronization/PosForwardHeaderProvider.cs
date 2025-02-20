@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -57,8 +56,10 @@ public class PosForwardHeaderProvider(
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
     }
 
-    public override void TryUpdateTerminalBlock(BlockHeader currentHeader)
+    private void TryUpdateTerminalBlock(BlockHeader currentHeader)
     {
+        // Needed to know what is the terminal block so in fast sync, for each
+        // header, it calls this.
         poSSwitcher.TryUpdateTerminalBlock(currentHeader);
     }
 
@@ -89,13 +90,25 @@ public class PosForwardHeaderProvider(
         return response;
     }
 
-    public override void OnBlockAdded(Block currentBlock)
+    public override void OnSuggestBlock(BlockTreeSuggestOptions options, Block currentBlock, AddBlockResult addResult)
     {
-        if ((beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+        base.OnSuggestBlock(options, currentBlock, addResult);
+
+        if ((options & BlockTreeSuggestOptions.ShouldProcess) == 0)
         {
-            // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
-            // already processed header starting from `ProcessDestination`.
-            beaconPivot.ProcessDestination = currentBlock.Header;
+            // Needed to know if a block is the terminal block.
+            // Not needed if not processing for some reason.
+            TryUpdateTerminalBlock(currentBlock.Header);
+        }
+
+        if (addResult == AddBlockResult.Added)
+        {
+            if ((beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+            {
+                // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
+                // already processed header starting from `ProcessDestination`.
+                beaconPivot.ProcessDestination = currentBlock.Header;
+            }
         }
     }
 }
