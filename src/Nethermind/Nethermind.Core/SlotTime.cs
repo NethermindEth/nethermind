@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Core;
 
-public class SlotTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
+public readonly struct SlotTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
 {
     public class SlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
 
