@@ -52,7 +52,7 @@ public class OptimismCL : IDisposable
             _logger, _cancellationTokenSource.Token);
         _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _cancellationTokenSource.Token, logManager);
         _l2BlockTree = new L2BlockTree();
-        _driver = new Driver(_l1Bridge, _l2EthRpc, _l2BlockTree, config, engineParameters, _logger);
+        _driver = new Driver(_l1Bridge, _l2EthRpc, engineRpcModule, _l2BlockTree, config, engineParameters, _logger);
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
     }
 

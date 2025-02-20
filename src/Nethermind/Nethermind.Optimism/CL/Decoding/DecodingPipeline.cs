@@ -38,8 +38,8 @@ public class DecodingPipeline : IDecodingPipeline
         });
     }
 
-    private readonly Channel<byte[]> _inputChannel = Channel.CreateBounded<byte[]>(20);
-    private readonly Channel<BatchV1> _outputChannel = Channel.CreateBounded<BatchV1>(20);
+    private readonly Channel<byte[]> _inputChannel = Channel.CreateUnbounded<byte[]>();
+    private readonly Channel<BatchV1> _outputChannel = Channel.CreateUnbounded<BatchV1>();
 
     public ChannelWriter<byte[]> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<BatchV1> DecodedBatchesReader => _outputChannel.Reader;

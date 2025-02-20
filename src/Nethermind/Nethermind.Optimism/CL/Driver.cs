@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
@@ -29,10 +29,11 @@ public class Driver : IDisposable
     private readonly IEthRpcModule _l2EthRpc;
     private readonly IDerivedBlocksVerifier _derivedBlocksVerifier;
     private readonly IDecodingPipeline _decodingPipeline;
+    private readonly IExecutionEngineManager _executionEngineManager;
 
     private readonly Task _mainTask;
 
-    public Driver(IL1Bridge l1Bridge, IEthRpcModule l2EthRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
+    public Driver(IL1Bridge l1Bridge, IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
         _config = config;
         _l1Bridge = l1Bridge;
@@ -46,6 +47,9 @@ public class Driver : IDisposable
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
         _decodingPipeline = new DecodingPipeline(logger);
+        _executionEngineManager = new ExecutionEngineManager(engineRpc, l2EthRpc, logger);
+
+        _executionEngineManager.Initialize();
 
         _mainTask = new(async () =>
         {
@@ -54,10 +58,11 @@ public class Driver : IDisposable
             {
                 if (_derivationPipeline.DerivedPayloadAttributes.TryRead(out var derivedPayloadAttributes))
                 {
-                    OnL2BlocksDerived(derivedPayloadAttributes);
+                    await OnL2BlocksDerived(derivedPayloadAttributes);
                 }
                 else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
                 {
+                    // TODO: decodingPipeline can read data directly
                     ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
                     // TODO: make it properly
                     L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
@@ -90,8 +95,10 @@ public class Driver : IDisposable
         _mainTask.Start();
     }
 
-    private void OnL2BlocksDerived(PayloadAttributesRef payloadAttributes)
+    private async Task OnL2BlocksDerived(PayloadAttributesRef payloadAttributes)
     {
+        await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
+
         var blockResult = _l2EthRpc.eth_getBlockByNumber(new((long)payloadAttributes.Number), true);
 
         if (blockResult.Result != Result.Success)
@@ -120,7 +127,7 @@ public class Driver : IDisposable
         }
         else
         {
-            _logger.Error($"Adding block into l2blockTree: {block.Hash}");
+            _logger.Error($"Adding block into l2blockTree: {block.Number}, {block.Hash}");
         }
 
         _derivedBlocksVerifier.ComparePayloadAttributes(expectedPayloadAttributes,
@@ -181,6 +188,7 @@ public class Driver : IDisposable
                 }
             }
         }
+        _logger.Error($"Exit OnNewL1Head");
     }
 
     private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
@@ -23,8 +24,10 @@ public class EthereumL1Bridge : IL1Bridge
     private ulong _currentHeadNumber = 0;
     private Hash256? _currentHeadHash = null;
     private ulong _currentFinalizedNumber;
+    private Hash256? _currentFinalizedHash = null;
 
-    public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config, CancellationToken cancellationToken, ILogManager logManager)
+    public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config,
+        CancellationToken cancellationToken, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         _config = config;
@@ -39,8 +42,8 @@ public class EthereumL1Bridge : IL1Bridge
 
 
     // TODO: remove receipts
-    private readonly Channel<L1Block> NewHeadChannel = Channel.CreateBounded<L1Block>(20);
-    public ChannelReader<L1Block> NewHeadReader => NewHeadChannel.Reader;
+    private readonly Channel<L1Block> _newHeadChannel = Channel.CreateBounded<L1Block>(20);
+    public ChannelReader<L1Block> NewHeadReader => _newHeadChannel.Reader;
 
 
     private async void HeadUpdateLoop()
@@ -54,7 +57,8 @@ public class EthereumL1Bridge : IL1Bridge
             int numberOfMissingBlocks = (int)newHeadNumber - (int)_currentHeadNumber - 1;
             if (numberOfMissingBlocks > 64)
             {
-                _logger.Error($"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHeadNumber}, new head number: {newHeadNumber}");
+                _logger.Error(
+                    $"Long head update. Number of missing blocks: {numberOfMissingBlocks}, current head number: {_currentHeadNumber}, new head number: {newHeadNumber}");
                 // Try to build up instead of rolling back
                 // At this point we already got blocks up until _currentHead.
                 // if _currentHead was not reorged => we need blocks from _currentHead up to newHead
@@ -74,7 +78,7 @@ public class EthereumL1Bridge : IL1Bridge
                     await RollBack(newHead.Hash, newHeadNumber, _currentHeadNumber);
                 }
 
-                _currentFinalizedNumber = newFinalized.Number;
+                SetFinalized(newFinalized);
             }
             else if (numberOfMissingBlocks > 0)
             {
@@ -95,7 +99,8 @@ public class EthereumL1Bridge : IL1Bridge
     private async Task WriteBlock(L1Block block)
     {
         _logger.Error($"Writing block. Number: {block.Number}, Hash: {block.Hash}");
-        await NewHeadChannel.Writer.WriteAsync(block, _cancellationToken);
+        ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
+        await _newHeadChannel.Writer.WriteAsync(block, _cancellationToken);
     }
 
     private async Task TryUpdateFinalized()
@@ -103,11 +108,17 @@ public class EthereumL1Bridge : IL1Bridge
         if (_currentHeadNumber - _currentFinalizedNumber >= 64)
         {
             L1Block newFinalized = await GetFinalized();
-            if (newFinalized.Number != _currentFinalizedNumber)
-            {
-                _logger.Error($"New finalized block. Number: {newFinalized.Number}, Hash: {newFinalized.Hash}");
-                _currentFinalizedNumber = newFinalized.Number;
-            }
+            SetFinalized(newFinalized);
+        }
+    }
+
+    private void SetFinalized(L1Block newFinalized)
+    {
+        if (newFinalized.Hash != _currentFinalizedHash)
+        {
+            _logger.Error($"New finalized head signal. Number: {newFinalized.Number}, Hash: {newFinalized.Hash}");
+            _currentFinalizedHash = newFinalized.Hash;
+            _currentFinalizedNumber = newFinalized.Number;
         }
     }
 
@@ -167,6 +178,7 @@ public class EthereumL1Bridge : IL1Bridge
             _logger.Warn($"Unable to get L1 block by block number({blockNumber})");
             result = await _ethL1Api.GetBlockByNumber(blockNumber, true);
         }
+
         CacheBlock(result.Value);
         return result.Value;
     }
@@ -191,6 +203,7 @@ public class EthereumL1Bridge : IL1Bridge
         {
             return cachedBlock;
         }
+
         L1Block? result = await _ethL1Api.GetBlockByHash(blockHash, true);
         while (result is null)
         {
@@ -208,6 +221,7 @@ public class EthereumL1Bridge : IL1Bridge
         {
             return cachedReceipts;
         }
+
         ReceiptForRpc[]? result = await _ethL1Api.GetReceiptsByHash(blockHash);
         while (result is null)
         {
@@ -227,6 +241,7 @@ public class EthereumL1Bridge : IL1Bridge
             _logger.Warn($"Unable to get L1 head");
             result = await _ethL1Api.GetHead(true);
         }
+
         CacheBlock(result.Value);
         return result.Value;
     }
@@ -239,6 +254,7 @@ public class EthereumL1Bridge : IL1Bridge
             _logger.Warn($"Unable to get finalized L1 block");
             result = await _ethL1Api.GetFinalized(true);
         }
+
         CacheBlock(result.Value);
         return result.Value;
     }
@@ -249,5 +265,6 @@ public class EthereumL1Bridge : IL1Bridge
         _currentFinalizedNumber = blockNumber;
         _currentHeadNumber = blockNumber;
         _currentHeadHash = blockHash;
+        _currentFinalizedHash = blockHash;
     }
 }

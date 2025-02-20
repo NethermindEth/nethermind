@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 
@@ -61,6 +63,18 @@ public class DerivedBlocksVerifier : IDerivedBlocksVerifier
         if (expected.Transactions!.Length != actual.Transactions!.Length)
         {
             _logger.Error($"Invalid Transactions.Length. Expected {expected.Transactions!.Length}, Actual {actual.Transactions!.Length}");
+        }
+        else
+        {
+            // for (int i = 0; i < expected.Transactions.Length; ++i)
+            // {
+            //     if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
+            //     {
+            //         _logger.Error($"Invalid transaction");
+            //         _logger.Error($"Expected: {expected.Transactions[i].ToHexString()}");
+            //         _logger.Error($"Actual: {actual.Transactions[i].ToHexString()}");
+            //     }
+            // }
         }
         _logger.Error($"CHECKED number {blockNumber}");
     }

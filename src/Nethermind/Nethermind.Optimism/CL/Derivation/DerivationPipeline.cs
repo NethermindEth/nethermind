@@ -50,7 +50,7 @@ public class DerivationPipeline : IDerivationPipeline
     private readonly Channel<(L2Block L2Parent, BatchV1 Batch)> _inputChannel = Channel.CreateBounded<(L2Block, BatchV1)>(20);
     public ChannelWriter<(L2Block L2Parent, BatchV1 Batch)> BatchesForProcessing => _inputChannel.Writer;
 
-    private readonly Channel<PayloadAttributesRef> _outputChannel = Channel.CreateBounded<PayloadAttributesRef>(20);
+    private readonly Channel<PayloadAttributesRef> _outputChannel = Channel.CreateUnbounded<PayloadAttributesRef>();
     public ChannelReader<PayloadAttributesRef> DerivedPayloadAttributes => _outputChannel.Reader;
 
     private async Task ConsumeV1Batches(L2Block parent, BatchV1 batch)
