@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -19,7 +20,6 @@ namespace Nethermind.Synchronization.Blocks;
 
 public class PowForwardHeaderProvider(
     ISealValidator sealValidator,
-    IBlockValidator blockValidator,
     IBlockTree blockTree,
     ISyncPeerPool syncPeerPool,
     ILogManager logManager
@@ -32,27 +32,75 @@ public class PowForwardHeaderProvider(
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
+    private const int MinCachedHeaderBatchSize = 32;
     private IPeerAllocationStrategy _bestPeerAllocationStrategy = new BlocksSyncPeerAllocationStrategy(0);
     private PeerInfo? _currentBestPeer;
+    private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
 
     public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation)
     {
-        return syncPeerPool.AllocateAndRun((peerInfo) =>
+        return syncPeerPool.AllocateAndRun(async (peerInfo) =>
         {
             if (peerInfo != _currentBestPeer)
             {
                 OnNewBestPeer(peerInfo);
             }
 
-            return GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
+            // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
+            // TODO: Unit test this mechanism.
+            IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
+            if (headers is not null) return headers;
+
+            headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
+            if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) _lastResponseBatch = headers;
+            return headers;
         }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
     }
 
-    public void OnNewBestPeer(PeerInfo newBestPeer)
+    private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch()
     {
+        if (_lastResponseBatch is null) return null;
+
+        long currentNumber = _currentNumber;
+        ArrayPoolList<BlockHeader>? newResponse = null;
+        for (int i = 0; i < _lastResponseBatch.Count; i++)
+        {
+            if (_lastResponseBatch[i].Number != currentNumber) continue;
+
+            newResponse ??= new ArrayPoolList<BlockHeader>(_lastResponseBatch.Count - i);
+            newResponse.Add(_lastResponseBatch[i]);
+        }
+
+        if (newResponse is null || newResponse.Count <= MinCachedHeaderBatchSize)
+        {
+            _lastResponseBatch.Dispose();
+            _lastResponseBatch = null;
+            newResponse?.Dispose();
+            return null;
+        }
+
+        _lastResponseBatch.Dispose();
+        _lastResponseBatch = newResponse;
+        return _lastResponseBatch;
+    }
+
+    private void OnNewBestPeer(PeerInfo newBestPeer)
+    {
+        if (newBestPeer?.HeadHash != _currentBestPeer?.HeadHash)
+        {
+            ClearLastResponseBatch();
+        }
+
+        // TODO: Is there a (fast) way to know if the new peer's head has the parent of last peer?
         _ancestorLookupLevel = 0;
         _currentNumber = Math.Max(0, Math.Min(blockTree.BestKnownNumber, newBestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
         _currentBestPeer = newBestPeer;
+    }
+
+    private void ClearLastResponseBatch()
+    {
+        _lastResponseBatch?.Dispose();
+        _lastResponseBatch = null;
     }
 
     private async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeaders, CancellationToken cancellation)
@@ -192,11 +240,6 @@ public class PowForwardHeaderProvider(
                 {
                     if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                     throw new EthSyncException("Peer sent a block with an invalid seal");
-                }
-                if (!blockValidator.Validate(header))
-                {
-                    if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
-                    throw new EthSyncException("Peer sent a block with an invalid header");
                 }
             }
             catch (Exception e)

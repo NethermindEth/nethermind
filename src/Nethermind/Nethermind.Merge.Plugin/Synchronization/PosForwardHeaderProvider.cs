@@ -22,11 +22,10 @@ public class PosForwardHeaderProvider(
     IPoSSwitcher poSSwitcher,
     IBeaconPivot beaconPivot,
     ISealValidator sealValidator,
-    IBlockValidator blockValidator,
     IBlockTree blockTree,
     ISyncPeerPool syncPeerPool,
     ILogManager logManager
-) : PowForwardHeaderProvider(sealValidator, blockValidator, blockTree, syncPeerPool, logManager)
+) : PowForwardHeaderProvider(sealValidator, blockTree, syncPeerPool, logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
     private readonly IBlockTree _blockTree = blockTree;
