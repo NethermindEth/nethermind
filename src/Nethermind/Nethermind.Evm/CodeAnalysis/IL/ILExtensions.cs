@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis.IL;
-using Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Org.BouncyCastle.Tls;
@@ -21,7 +20,6 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using static Nethermind.Evm.CodeAnalysis.IL.CompilerModes.PartialAOT.PartialAOT;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using Label = Sigil.Label;
 

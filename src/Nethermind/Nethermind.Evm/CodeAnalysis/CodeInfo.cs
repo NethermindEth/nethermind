@@ -22,7 +22,7 @@ namespace Nethermind.Evm.CodeAnalysis
         // IL-EVM
         private int _callCount;
 
-        public void NoticeExecution(IlAnalyzer analyzer, IVMConfig vmConfig, ILogger logger)
+        public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
             int[] maxThresholds = [vmConfig.PartialAotThreshold, vmConfig.PartialAotThreshold, vmConfig.PatternMatchingThreshold];
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.CodeAnalysis
             if (mode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
                 return;
 
-            analyzer.Enqueue(this, mode, vmConfig, logger);
+            IlAnalyzer.Enqueue(this, mode, vmConfig, logger);
 
         }
 

@@ -16,16 +16,18 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-public interface IPrecompiledContract
-{
-    public bool MoveNext(
-        EvmState env,
-        IWorldState state,
-        ref long gasAvailable,
-        ref int programCounter,
-        ref int stackHead, ref Word stackHeadRef,
-        ref ReadOnlyMemory<byte> returnDataBuffer,
-        ITxTracer tracer, ILogger logger,
-        ref ILChunkExecutionState result); // it returns true if current staet is HALTED or FINISHED and Sets Current.CallResult in case of CALL or CREATE
-
-}
+public delegate bool PrecompiledContract(
+    ContractMetadata contractMetadata,
+    ISpecProvider specProvider,
+    IBlockhashProvider blockhashProvider,
+    ICodeInfoRepository codeInfoProvider,
+    EvmState env,
+    IWorldState state,
+    ref long gasAvailable,
+    ref int programCounter,
+    ref int stackHead,
+    ref Word stackHeadRef,
+    ref ReadOnlyMemory<byte> returnDataBuffer,
+    ITxTracer tracer,
+    ILogger logger,
+    ref ILChunkExecutionState result);

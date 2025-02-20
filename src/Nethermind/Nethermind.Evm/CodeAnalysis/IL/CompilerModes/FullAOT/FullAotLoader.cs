@@ -12,24 +12,19 @@ using System.Reflection.Emit;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using static Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT.FullAOT;
 using Nethermind.Logging;
 using System.Threading;
 using Nethermind.Core;
 
-namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes.FullAOT;
-internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
+namespace Nethermind.Evm.CodeAnalysis.IL.CompilerModes;
+internal class FullAotEnvLoader : EnvLoader<PrecompiledContract>
 {
-    private TypeBuilder _contractDynamicType;
 
-    public const string PROP_SPEC_PROVIDER = "SpecProvider";
-    public const string PROP_BLOCKHASH_PROVIDER = "BlockhashProvider";
-    public const string PROP_CODEINFO_REPOSITORY = "codeInfoRepository";
-    public const string PROP_MACHINECODE = "machineCode";
-    public const string PROP_IMMEDIATES_DATA = "EmbeddedData";
-
-    public const int IMPLICIT_THIS_INDEX = 0;
-    public const int REF_EVMSTATE_INDEX = IMPLICIT_THIS_INDEX + 1;
+    public const int OBJ_CONTRACTMETADATA_INDEX = 0;
+    public const int OBJ_SPECPROVIDER_INDEX = OBJ_CONTRACTMETADATA_INDEX + 1;
+    public const int OBJ_BLOCKHASHPROVIDER_INDEX = OBJ_SPECPROVIDER_INDEX + 1;
+    public const int OBJ_CODEINFOPROVIDER_INDEX = OBJ_BLOCKHASHPROVIDER_INDEX + 1;
+    public const int REF_EVMSTATE_INDEX = OBJ_CODEINFOPROVIDER_INDEX + 1;
     public const int OBJ_WORLDSTATE_INDEX = REF_EVMSTATE_INDEX + 1;
     public const int REF_GASAVAILABLE_INDEX = OBJ_WORLDSTATE_INDEX + 1;
     public const int REF_PROGRAMCOUNTER_INDEX = REF_GASAVAILABLE_INDEX + 1;
@@ -42,36 +37,13 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 
     public Dictionary<string, FieldBuilder> Fields { get; } = new();
 
-    public FullAotEnvLoader(TypeBuilder contractDynamicType, ContractMetadata contractMetadata) 
-    {
-        _contractDynamicType = contractDynamicType;
-
-        FieldBuilder fieldBuilder;
-
-        PropertyBuilder specProviderProp = _contractDynamicType.EmitProperty<ISpecProvider>(PROP_SPEC_PROVIDER, true, true, out fieldBuilder);
-        Fields.Add(PROP_SPEC_PROVIDER, fieldBuilder);
-
-        PropertyBuilder blockhashProviderProp = _contractDynamicType.EmitProperty<IBlockhashProvider>(PROP_BLOCKHASH_PROVIDER, true, true, out fieldBuilder);
-        Fields.Add(PROP_BLOCKHASH_PROVIDER, fieldBuilder);
-
-        PropertyBuilder immediatesDataProp = _contractDynamicType.EmitProperty<byte[][]>(PROP_IMMEDIATES_DATA, true, true, out fieldBuilder);
-        Fields.Add(PROP_IMMEDIATES_DATA, fieldBuilder);
-
-        PropertyBuilder codeInfoRepositoryProp = _contractDynamicType.EmitProperty<ICodeInfoRepository>(PROP_CODEINFO_REPOSITORY, true, true, out fieldBuilder);
-        Fields.Add(PROP_CODEINFO_REPOSITORY, fieldBuilder);
-
-        PropertyBuilder machineCodeProp = _contractDynamicType.EmitProperty<ReadOnlyMemory<byte>>(PROP_MACHINECODE, true, true, out fieldBuilder);
-        Fields.Add(PROP_MACHINECODE, fieldBuilder);
-    }
-
-
-    public void CacheBlockContext(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals)
+    public void CacheBlockContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
         LoadBlockContext(il, locals, false);
         locals.TryDeclareLocal("blockContext", typeof(BlockExecutionContext));
         locals.TryStoreLocal("blockContext");
     }
-    public override void LoadBlockContext(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadBlockContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         string blockContext = "blockContext";
         if (locals.TryLoadLocal(blockContext, loadAddress))
@@ -89,23 +61,22 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadBlockhashProvider(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadBlockhashProvider(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
-        if(loadAddress)
-            il.LoadFieldAddress(Fields[PROP_BLOCKHASH_PROVIDER]);
+        if (loadAddress)
+            il.LoadArgumentAddress(OBJ_BLOCKHASHPROVIDER_INDEX);
         else
-            il.LoadField(Fields[PROP_BLOCKHASH_PROVIDER]);
+            il.LoadArgument(OBJ_BLOCKHASHPROVIDER_INDEX);
     }
 
-    public void CacheCalldata(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals)
+    public void CacheCalldata(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
         LoadCalldata(il, locals, false);
         locals.TryDeclareLocal("calldata", typeof(ReadOnlyMemory<byte>));
         locals.TryStoreLocal("calldata");
     }
 
-    public override void LoadCalldata(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadCalldata(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         string calldata = "calldata";
 
@@ -124,11 +95,9 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadChainId(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadChainId(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
-        // load spec provider
-        il.LoadField(Fields[PROP_SPEC_PROVIDER]);
+        il.LoadArgument(OBJ_SPECPROVIDER_INDEX);
         il.CallVirtual(typeof(ISpecProvider).GetProperty(nameof(ISpecProvider.ChainId), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
 
         if(loadAddress)
@@ -138,34 +107,29 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadCodeInfoRepository(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadCodeInfoRepository(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
         if (loadAddress)
-        {
-            il.LoadFieldAddress(Fields[PROP_CODEINFO_REPOSITORY]);
-        }
+            il.LoadArgumentAddress(OBJ_CODEINFOPROVIDER_INDEX);
         else
-        {
-            il.LoadField(Fields[PROP_CODEINFO_REPOSITORY]);
-        }
+            il.LoadArgument(OBJ_CODEINFOPROVIDER_INDEX);
     }
 
-    public override void LoadCurrStackHead(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadCurrStackHead(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         il.LoadArgument(REF_STACKHEADREF_INDEX);
         if (!loadAddress)
             il.LoadObject<Word>();
     }
 
-    public void CacheEnv(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals)
+    public void CacheEnv(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
         LoadEnv(il, locals, false);
         locals.TryDeclareLocal("env", typeof(ExecutionEnvironment));
         locals.TryStoreLocal("env");
     }
 
-    public override void LoadEnv(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadEnv(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         string env = "env";
 
@@ -182,23 +146,26 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadGasAvailable(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadGasAvailable(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         il.LoadArgument(REF_GASAVAILABLE_INDEX);
         if (!loadAddress)
             il.LoadObject<long>();
     }
 
-    public override void LoadImmediatesData(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadImmediatesData(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
-        if (loadAddress)
-            il.LoadFieldAddress(Fields[PROP_IMMEDIATES_DATA]);
-        else
-            il.LoadField(Fields[PROP_IMMEDIATES_DATA]);
+        il.LoadArgument(OBJ_CONTRACTMETADATA_INDEX);
+        il.Call(typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.EmbeddedData), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
+        if(loadAddress)
+        {
+            using Local local = il.DeclareLocal<byte[][]>();
+            il.StoreLocal(local);
+            il.LoadLocalAddress(local);
+        }
     }
 
-    public override void LoadLogger(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadLogger(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_LOGGER_INDEX);
@@ -206,16 +173,21 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             il.LoadArgument(OBJ_LOGGER_INDEX);
     }
 
-    public override void LoadMachineCode(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadMachineCode(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
+        il.LoadArgument(OBJ_CONTRACTMETADATA_INDEX);
+        il.Call(typeof(ContractMetadata).GetProperty(nameof(ContractMetadata.TargetCodeInfo), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
+        il.Call(typeof(CodeInfo).GetProperty(nameof(CodeInfo.MachineCode), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
+
         if (loadAddress)
-            il.LoadFieldAddress(Fields[PROP_MACHINECODE]);
-        else
-            il.LoadField(Fields[PROP_MACHINECODE]);
+        {
+            using Local local = il.DeclareLocal<ReadOnlyMemory<byte>>();
+            il.StoreLocal(local);
+            il.LoadLocalAddress(local);
+        }
     }
 
-    public override void LoadMemory(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadMemory(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         LoadVmState(il, locals, false);
         il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Memory), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
@@ -223,28 +195,28 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             il.LoadObject<EvmPooledMemory>();
     }
 
-    public override void LoadProgramCounter(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadProgramCounter(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         il.LoadArgument(REF_PROGRAMCOUNTER_INDEX);
         if (!loadAddress)
             il.LoadObject<int>();
     }
 
-    public override void LoadResult(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadResult(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         il.LoadArgument(REF_CURRENT_STATE);
         if (!loadAddress)
             il.LoadObject<ILChunkExecutionState>();
     }
 
-    public void CacheSpec(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals)
+    public void CacheSpec(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
         LoadSpec(il, locals, false);
         locals.TryDeclareLocal("spec", typeof(IReleaseSpec));
         locals.TryStoreLocal("spec");
     }
 
-    public override void LoadSpec(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadSpec(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         string spec = "spec";
 
@@ -253,8 +225,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             return;
         }
 
-        il.LoadArgument(IMPLICIT_THIS_INDEX);
-        il.LoadField(Fields[PROP_SPEC_PROVIDER]);
+        il.LoadArgument(OBJ_SPECPROVIDER_INDEX);
 
         LoadHeader(il, locals, false);
         il.Call(typeof(SpecProviderExtensions).GetMethod(nameof(SpecProviderExtensions.GetSpec), [typeof(ISpecProvider), typeof(BlockHeader)]));
@@ -268,21 +239,21 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
 
     }
 
-    public override void LoadStackHead(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadStackHead(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         il.LoadArgument(REF_STACKHEAD_INDEX);
         if (!loadAddress)
             il.LoadObject<int>();
     }
 
-    public void CacheTxContext(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals)
+    public void CacheTxContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals)
     {
         LoadTxContext(il, locals, false);
         locals.TryDeclareLocal("txContext", typeof(TxExecutionContext));
         locals.TryStoreLocal("txContext");
     }
 
-    public override void LoadTxContext(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadTxContext(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         string txContext = "txContext";
 
@@ -301,7 +272,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadTxTracer(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadTxTracer(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_TXTRACER_INDEX);
@@ -309,7 +280,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             il.LoadArgument(OBJ_TXTRACER_INDEX);
     }
 
-    public override void LoadVmState(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadVmState(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         if(loadAddress)
         {
@@ -321,7 +292,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadWorldState(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadWorldState(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_WORLDSTATE_INDEX);
@@ -329,7 +300,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
             il.LoadArgument(OBJ_WORLDSTATE_INDEX);
     }
 
-    public override void LoadReturnDataBuffer(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadReturnDataBuffer(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         il.LoadArgument(REF_RETURNDATABUFFER_INDEX);
         if (!loadAddress)
@@ -338,7 +309,7 @@ internal class FullAotEnvLoader : EnvLoader<MoveNextDelegate>
         }
     }
 
-    public override void LoadHeader(Emit<MoveNextDelegate> il, Locals<MoveNextDelegate> locals, bool loadAddress)
+    public override void LoadHeader(Emit<PrecompiledContract> il, Locals<PrecompiledContract> locals, bool loadAddress)
     {
         LoadBlockContext(il, locals, true);
         il.Call(typeof(BlockExecutionContext).GetProperty(nameof(BlockExecutionContext.Header), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
