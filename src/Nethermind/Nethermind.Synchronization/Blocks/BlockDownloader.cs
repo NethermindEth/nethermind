@@ -44,12 +44,6 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ILogger _logger;
         protected SyncBatchSize _syncBatchSize;
 
-        private bool _cancelDueToBetterPeer;
-        protected AllocationWithCancellation _allocationWithCancellation = new(null, new CancellationTokenSource());
-        protected bool HasBetterPeer => _allocationWithCancellation.IsCancellationRequested;
-
-        protected int _sinceLastTimeout;
-
         public BlockDownloader(
             ISyncFeed<BlocksRequest?>? feed,
             IBlockTree? blockTree,
@@ -109,19 +103,12 @@ namespace Nethermind.Synchronization.Blocks
             }
             _previousBestPeer = bestPeer;
 
-            try
-            {
-                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+            SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
 
-                if (_logger.IsDebug) _logger.Debug("Downloading bodies");
-                await DownloadBlocks(bestPeer, blocksRequest, cancellation)
-                    .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
-                if (_logger.IsDebug) _logger.Debug("Finished downloading bodies");
-            }
-            finally
-            {
-                _allocationWithCancellation.Dispose();
-            }
+            if (_logger.IsDebug) _logger.Debug("Downloading bodies");
+            await DownloadBlocks(bestPeer, blocksRequest, cancellation)
+                .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
+            if (_logger.IsDebug) _logger.Debug("Finished downloading bodies");
         }
 
         private async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
@@ -146,7 +133,6 @@ namespace Nethermind.Synchronization.Blocks
             IOwnedReadOnlyList<BlockHeader?>? headers = null;
             while ((headers = await _forwardHeaderProvider.GetBlockHeaders(bestPeer, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation)) is not null)
             {
-                if (HasBetterPeer) break;
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
@@ -510,18 +496,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     break;
                 case { IsCanceled: true }:
-                    if (_cancelDueToBetterPeer)
-                    {
-                        _cancelDueToBetterPeer = false;
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
-                        if (peerInfo is not null) // fix this for node data sync
-                        {
-                            InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
-                        }
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
 
                     break;
                 case { IsCompletedSuccessfully: true } t:
@@ -551,96 +526,6 @@ namespace Nethermind.Synchronization.Blocks
             if (downloadTime < SyncBatchDownloadTimeLowerBound)
             {
                 _syncBatchSize.Expand();
-            }
-        }
-
-        public void OnAllocate(SyncPeerAllocation allocation)
-        {
-            CancellationTokenSource cancellation = new();
-            _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
-
-            allocation.Cancelled += AllocationOnCancelled;
-            allocation.Replaced += AllocationOnReplaced;
-        }
-
-        public void BeforeFree(SyncPeerAllocation allocation)
-        {
-            allocation.Cancelled -= AllocationOnCancelled;
-            allocation.Replaced -= AllocationOnReplaced;
-        }
-
-        private void AllocationOnCancelled(object? sender, AllocationChangeEventArgs e)
-        {
-            AllocationWithCancellation allocationWithCancellation = _allocationWithCancellation;
-            if (allocationWithCancellation.Allocation != sender)
-            {
-                return;
-            }
-
-            allocationWithCancellation.Cancel();
-        }
-
-        private void AllocationOnReplaced(object? sender, AllocationChangeEventArgs e)
-        {
-            if (e.Previous is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Allocating {e.Current} for the blocks sync allocation");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"Replacing {e.Previous} with {e.Current} for the blocks sync allocation.");
-            }
-
-            if (e.Previous is not null)
-            {
-                _cancelDueToBetterPeer = true;
-                _allocationWithCancellation.Cancel();
-            }
-
-            PeerInfo? newPeer = e.Current;
-            BlockHeader? bestSuggested = _blockTree.BestSuggestedHeader;
-            if (_betterPeerStrategy.Compare(bestSuggested, newPeer?.SyncPeer) < 0)
-            {
-                _feed.Activate();
-            }
-        }
-
-        protected struct AllocationWithCancellation : IDisposable
-        {
-            public AllocationWithCancellation(SyncPeerAllocation allocation, CancellationTokenSource cancellation)
-            {
-                Allocation = allocation;
-                Cancellation = cancellation;
-                _isDisposed = false;
-            }
-
-            private CancellationTokenSource Cancellation { get; }
-            public readonly bool IsCancellationRequested => Cancellation.IsCancellationRequested;
-            public SyncPeerAllocation Allocation { get; }
-
-            public readonly void Cancel()
-            {
-                lock (Cancellation)
-                {
-                    if (!_isDisposed)
-                    {
-                        Cancellation.Cancel();
-                    }
-                }
-            }
-
-            private bool _isDisposed;
-
-            public void Dispose()
-            {
-                lock (Cancellation)
-                {
-                    if (!_isDisposed)
-                    {
-                        _isDisposed = true;
-                        Cancellation.Dispose();
-                    }
-                }
             }
         }
     }
