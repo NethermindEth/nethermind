@@ -37,6 +37,8 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Stats;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 
 namespace Nethermind.Synchronization.Test;
@@ -59,18 +61,18 @@ public partial class ForwardHeaderProviderTests
     [TestCase(SyncBatchSize.Max * 8, 32, 64, 0, 63)]
     public async Task Happy_path(long headNumber, int skipLastN, int maxHeader, int expectedStartNumber, int expectedEndNumber)
     {
-        await using IContainer node = CreateNode();
-        Context ctx = node.Resolve<Context>();
-        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-
         long chainLength = headNumber + 1;
         SyncPeerMock syncPeer = new(chainLength, false, Response.AllCorrect);
-
         PeerInfo peerInfo = new(syncPeer);
+
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        ctx.ConfigureBestPeer(syncPeer);
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
-        forwardHeader.OnNewBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(peerInfo, skipLastN, maxNHeader, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(skipLastN, maxNHeader, CancellationToken.None);
         headers?[0]?.Number.Should().Be(expectedStartNumber);
         headers?[^1]?.Number.Should().Be(expectedEndNumber);
     }
@@ -88,8 +90,7 @@ public partial class ForwardHeaderProviderTests
 
         Response blockResponseOptions = Response.AllCorrect;
         SyncPeerMock syncPeer = new(2048 + 1, false, blockResponseOptions);
-
-        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(syncPeer);
 
         Block block1024 = Build.A.Block.WithParent(ctx.BlockTree.Head!).WithDifficulty(ctx.BlockTree.Head!.Difficulty + 1).TestObject;
         Block block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
@@ -103,8 +104,7 @@ public partial class ForwardHeaderProviderTests
             Assert.That(syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash), i.ToString());
         }
 
-        forwardHeader.OnNewBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         headers?[0]?.Number.Should().Be(1019);
         headers?[^1]?.Number.Should().Be(1146);
     }
@@ -121,10 +121,8 @@ public partial class ForwardHeaderProviderTests
 
         Response responseOptions = Response.AllCorrect;
         SyncPeerMock syncPeer = new(2072 + 1, true, responseOptions);
-
-        PeerInfo peerInfo = new(syncPeer);
-        forwardHeader.OnNewBestPeer(peerInfo);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        ctx.ConfigureBestPeer(syncPeer);
+        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         await headerTask.Should().ThrowAsync<EthSyncException>();
     }
 
@@ -144,8 +142,9 @@ public partial class ForwardHeaderProviderTests
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.HeadNumber.Returns(headNumber);
 
-        forwardHeader.OnNewBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         headers?[0]?.Number.Should().Be(0);
         headers?[^1]?.Number.Should().Be(headNumber);
     }
@@ -162,10 +161,10 @@ public partial class ForwardHeaderProviderTests
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.HeadNumber.Returns(1024);
+        ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         await headerTask.Should().ThrowAsync<EthSyncException>();
     }
 
@@ -182,10 +181,10 @@ public partial class ForwardHeaderProviderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000);
+        ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         await headerTask.Should().ThrowAsync<EthSyncException>();
     }
 
@@ -202,10 +201,10 @@ public partial class ForwardHeaderProviderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1000);
+        ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         await headerTask.Should().ThrowAsync<EthSyncException>();
     }
 
@@ -314,9 +313,11 @@ public partial class ForwardHeaderProviderTests
 
         CancellationTokenSource cancellation = new();
         cancellation.CancelAfter(100);
+
+        ctx.ConfigureBestPeer(peerInfo);
+
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(peerInfo, 0, 128, cancellation.Token);
+        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, cancellation.Token);
         await headerTask.Should().ThrowAsync<OperationCanceledException>();
     }
 
@@ -337,10 +338,10 @@ public partial class ForwardHeaderProviderTests
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(511);
+        ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        await forwardHeader.GetBlockHeaders(peerInfo, 0, 128, default);
+        await forwardHeader.GetBlockHeaders(0, 128, default);
 
         sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
         sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
@@ -432,11 +433,10 @@ public partial class ForwardHeaderProviderTests
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = new ThrowingPeer(1000, UInt256.MaxValue);
-        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(syncPeer);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(peerInfo, 0, 128, default);
+        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, default);
         await headerTask.Should().ThrowAsync<Exception>();
     }
 
@@ -492,6 +492,27 @@ public partial class ForwardHeaderProviderTests
         public IBlockTree BlockTree => scope.Resolve<IBlockTree>();
         public InMemoryReceiptStorage ReceiptStorage => scope.Resolve<InMemoryReceiptStorage>();
         public ISyncPeerPool PeerPool => scope.Resolve<ISyncPeerPool>();
+
+        public void ConfigureBestPeer(ISyncPeer syncPeer)
+        {
+            PeerInfo peerInfo = new(syncPeer);
+            ConfigureBestPeer(peerInfo);
+        }
+
+        public void ConfigureBestPeer(PeerInfo peerInfo)
+        {
+            IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
+
+            peerAllocationStrategy
+                .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
+                .Returns(peerInfo);
+            SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.ForwardHeader, null);
+            peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), BlockTree);
+
+            PeerPool
+                .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
+                .Returns(Task.FromResult(peerAllocation));
+        }
     }
 
     private class SyncPeerMock : ISyncPeer

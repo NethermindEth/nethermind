@@ -15,6 +15,7 @@ namespace Nethermind.Synchronization.Peers
         Blocks = 7,
         State = 8,
         Snap = 16,
+        ForwardHeader = 32,
         All = Headers | Bodies | Receipts | Blocks | State | Snap
     }
 }

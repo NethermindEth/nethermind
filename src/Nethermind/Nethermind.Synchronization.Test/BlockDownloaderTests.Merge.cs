@@ -74,6 +74,7 @@ public partial class BlockDownloaderTests
 
         SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions, 16000000, receiptStorage: receiptStorage);
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
         await downloader.Dispatch(peerInfo, new BlocksRequest(downloaderOptions, threshold), CancellationToken.None);
 
         long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
@@ -121,6 +122,7 @@ public partial class BlockDownloaderTests
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
         await downloader.Dispatch(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
@@ -158,6 +160,7 @@ public partial class BlockDownloaderTests
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
         await downloader.Dispatch(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
     }
@@ -185,6 +188,7 @@ public partial class BlockDownloaderTests
 
         SyncPeerMock syncPeer = new(syncedTree, false, responseOptions, 16000000);
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
         BlocksRequest blocksRequest = new BlocksRequest(DownloaderOptions.Process, blocksToIgnore);
         await downloader.Dispatch(peerInfo, blocksRequest, CancellationToken.None);
 
@@ -237,6 +241,7 @@ public partial class BlockDownloaderTests
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
 
         Block? lastBestSuggestedBlock = null;
 
@@ -363,19 +368,8 @@ public partial class BlockDownloaderTests
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 34000000);
-        PeerInfo peerInfo = new(syncPeer);
 
-        IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-        peerAllocationStrategy
-            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-            .Returns(peerInfo);
-        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
-        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
-
-        ctx.PeerPool
-            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
-            .Returns(Task.FromResult(peerAllocation));
+        ctx.ConfigureBestPeer(syncPeer);
 
         SyncFeedComponent<BlocksRequest> fastSyncFeedComponent = ctx.FastSyncFeedComponent;
         fastSyncFeedComponent.Feed.Activate();
@@ -431,6 +425,7 @@ public partial class BlockDownloaderTests
         syncPeer.HeadNumber.Returns(_ => syncPeerInternal.HeadNumber);
 
         PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
 
         int threshold = 2;
         await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, threshold), CancellationToken.None);

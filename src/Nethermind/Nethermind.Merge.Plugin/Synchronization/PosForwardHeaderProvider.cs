@@ -24,8 +24,9 @@ public class PosForwardHeaderProvider(
     ISealValidator sealValidator,
     IBlockValidator blockValidator,
     IBlockTree blockTree,
+    ISyncPeerPool syncPeerPool,
     ILogManager logManager
-) : PowForwardHeaderProvider(sealValidator, blockValidator, blockTree, logManager)
+) : PowForwardHeaderProvider(sealValidator, blockValidator, blockTree, syncPeerPool, logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
     private readonly IBlockTree _blockTree = blockTree;
@@ -35,18 +36,15 @@ public class PosForwardHeaderProvider(
         return beaconPivot.BeaconPivotExists() == false && poSSwitcher.HasEverReachedTerminalBlock() == false;
     }
 
-    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeader, CancellationToken cancellation)
+    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeader, CancellationToken cancellation)
     {
         if (ShouldUsePreMerge())
         {
-            return base.GetBlockHeaders(bestPeer, skipLastN, maxHeader, cancellation);
+            return base.GetBlockHeaders(skipLastN, maxHeader, cancellation);
         }
 
-        if (_logger.IsDebug)
-            _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-        int headersToRequest = Math.Min(maxHeader, bestPeer.MaxHeadersPerRequest());
-        BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, skipLastN);
+        // TODO: Previously it does not get block more than best peer's head number. Why?
+        BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(maxHeader, long.MaxValue, skipLastN);
         if (headers is null || headers.Length <= 1)
         {
             if (_logger.IsTrace)

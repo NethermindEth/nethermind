@@ -54,9 +54,8 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
-        PeerInfo peerInfo = new(syncPeer);
-        forwardHeader.OnNewBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        ctx.ConfigureBestPeer(syncPeer);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         headers?[0]?.Number.Should().Be(expectedFirstBlock);
         headers?[^1]?.Number.Should().Be(expectedLastBlock);
     }
@@ -92,8 +91,8 @@ public partial class ForwardHeaderProviderTests
         PeerInfo peerInfo = new(syncPeer);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(peerInfo, 0, 128, CancellationToken.None);
+        ctx.ConfigureBestPeer(syncPeer);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         headers?[^1]?.Number.Should().Be(expectedBestKnownNumber);
 
 
@@ -122,8 +121,8 @@ public partial class ForwardHeaderProviderTests
         PeerInfo peerInfo = new(syncPeer);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        forwardHeader.OnNewBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(peerInfo, blocksToIgnore, 128, CancellationToken.None);
+        ctx.ConfigureBestPeer(peerInfo);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
         headers?[^1]?.Number.Should().Be(expectedBestKnownNumber);
     }
 

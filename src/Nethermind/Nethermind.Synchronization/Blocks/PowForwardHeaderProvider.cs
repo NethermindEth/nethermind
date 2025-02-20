@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks;
 
@@ -20,6 +21,7 @@ public class PowForwardHeaderProvider(
     ISealValidator sealValidator,
     IBlockValidator blockValidator,
     IBlockTree blockTree,
+    ISyncPeerPool syncPeerPool,
     ILogManager logManager
 ) : IForwardHeaderProvider
 {
@@ -30,7 +32,30 @@ public class PowForwardHeaderProvider(
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-    public virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeaders, CancellationToken cancellation)
+    private IPeerAllocationStrategy _bestPeerAllocationStrategy = new BlocksSyncPeerAllocationStrategy(0);
+    private PeerInfo? _currentBestPeer;
+
+    public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation)
+    {
+        return syncPeerPool.AllocateAndRun((peerInfo) =>
+        {
+            if (peerInfo != _currentBestPeer)
+            {
+                OnNewBestPeer(peerInfo);
+            }
+
+            return GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
+        }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
+    }
+
+    public void OnNewBestPeer(PeerInfo newBestPeer)
+    {
+        _ancestorLookupLevel = 0;
+        _currentNumber = Math.Max(0, Math.Min(blockTree.BestKnownNumber, newBestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
+        _currentBestPeer = newBestPeer;
+    }
+
+    private async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeaders, CancellationToken cancellation)
     {
         while (true)
         {
@@ -65,12 +90,6 @@ public class PowForwardHeaderProvider(
 
             return headers;
         }
-    }
-
-    public void OnNewBestPeer(PeerInfo bestPeer)
-    {
-        _ancestorLookupLevel = 0;
-        _currentNumber = Math.Max(0, Math.Min(blockTree.BestKnownNumber, bestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
     }
 
     public void IncrementNumber()

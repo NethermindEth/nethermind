@@ -125,13 +125,12 @@ namespace Nethermind.Synchronization.Blocks
             bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            _forwardHeaderProvider.OnNewBestPeer(bestPeer);
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             long bestProcessedBlock = 0;
 
             IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await _forwardHeaderProvider.GetBlockHeaders(bestPeer, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation)) is not null)
+            while ((headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation)) is not null)
             {
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 

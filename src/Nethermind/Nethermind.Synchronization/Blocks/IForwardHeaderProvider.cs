@@ -14,8 +14,7 @@ public interface IForwardHeaderProvider
     // Needed to know what is the terminal block so in fast sync, for each
     // header, it calls this.
     void TryUpdateTerminalBlock(BlockHeader currentHeader);
-    Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeaders, CancellationToken cancellation);
-    void OnNewBestPeer(PeerInfo bestPeer);
+    Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation);
 
     // Can these two be combined?
     void OnBlockAdded(Block currentBlock);
