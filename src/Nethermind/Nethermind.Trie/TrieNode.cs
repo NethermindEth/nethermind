@@ -932,13 +932,13 @@ namespace Nethermind.Trie
             else if (_nodeData is LeafData leafData)
             {
                 TrieNode? storageRoot = leafData.StorageRoot;
-                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
+                if (resolveStorageRoot && (storageRoot is not null || TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {leafData.StorageRoot} of {this}");
                     Hash256 storagePathAddr;
                     using (currentPath.ScopedAppend(Key))
                     {
-                        if (currentPath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                        if (currentPath.Length != 64) throw new Exception($"unexpected storage path length. Total nibble count should add up to 64. Got {currentPath.Length}.");
                         storagePathAddr = currentPath.Path.ToCommitment();
                     }
 
