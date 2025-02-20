@@ -7,6 +7,6 @@ namespace Ethereum.Test.Base.Interfaces
 {
     public interface ITestLoadStrategy
     {
-        IEnumerable<IEthereumTest> Load(string testDirectoryName, string wildcard = null);
+        IEnumerable<EthereumTest> Load(string testDirectoryName, string wildcard = null);
     }
 }
