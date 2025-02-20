@@ -2370,7 +2370,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         envLoader.LoadSpec(method, locals, false);
                         envLoader.LoadTxTracer(method, locals, false);
                         if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
                             method.Call(selfDestructTracing);
+                        }
                         else
                         {
                             method.Call(selfDestructNotTracing);
@@ -2392,7 +2394,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         envLoader.LoadGasAvailable(method, locals, true);
                         method.LoadLocal(locals.gasAvailable);
                         method.StoreIndirect<long>();
-                        method.FakeBranch(escapeLabels.exitLabel); ;
+                        method.FakeBranch(escapeLabels.exitLabel);
 
                         method.MarkLabel(happyPath);
                         envLoader.LoadResult(method, locals, true);
@@ -2437,17 +2439,20 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
                         method.Call(Word.GetAddress);
 
-                        // load callvalue
-                        if (instruction is Instruction.CALL)
+                        if(instruction is Instruction.DELEGATECALL)
+                        {
+                            envLoader.LoadEnv(method, locals, false);
+                            method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
+                        }
+                        else if (instruction is Instruction.STATICCALL)
+                        {
+                            method.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
+                        }
+                        else
                         {
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
                             method.Call(Word.GetUInt256);
                         }
-                        else
-                        {
-                            method.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                        }
-
                         // load dataoffset
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
                         method.Call(Word.GetUInt256);
@@ -2533,7 +2538,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(toPushToStack);
                         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
-                        method.BranchIfTrue(hasNoItemsToPush);
+                        method.BranchIfFalse(hasNoItemsToPush);
 
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
                         method.LoadLocalAddress(toPushToStack);
@@ -2665,7 +2670,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(toPushToStack);
                         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.HasValue)).GetGetMethod());
-                        method.BranchIfTrue(hasNoItemsToPush);
+                        method.BranchIfFalse(hasNoItemsToPush);
 
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
                         method.LoadLocalAddress(toPushToStack);

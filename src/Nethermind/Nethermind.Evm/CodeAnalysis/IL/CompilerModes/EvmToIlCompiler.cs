@@ -26,10 +26,10 @@ internal static class Precompiler
     {
         // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
-        var method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        var method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: true);
 
         localJumpdests = EmitSegmentBody(method, metadata, segmentIndex, config);
-        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
+        ExecuteSegment dynEmitedDelegate = method.CreateDelegate(OptimizationOptions.All & (~OptimizationOptions.EnableBranchPatching));
 
         return new PrecompiledChunk
         {
@@ -42,10 +42,10 @@ internal static class Precompiler
     {
         // code is optimistic assumes locals.stackHeadRef underflow and locals.stackHeadRef overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : remove dependency on ILEVMSTATE and move out all arguments needed to function signature
-        var method = Emit<PrecompiledContract>.NewDynamicMethod(contractName, doVerify: true, strictBranchVerification: true);
+        var method = Emit<PrecompiledContract>.NewDynamicMethod(contractName, doVerify: false, strictBranchVerification: true);
 
         EmitMoveNext(method, metadata, config);
-        PrecompiledContract dynEmitedDelegate = method.CreateDelegate();
+        PrecompiledContract dynEmitedDelegate = method.CreateDelegate(OptimizationOptions.All & (~OptimizationOptions.EnableBranchPatching));
         return dynEmitedDelegate;
     }
 
@@ -310,8 +310,6 @@ internal static class Precompiler
             method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
             method.Branch(exit);
         }
-
-        method.CreateDelegate(OptimizationOptions.All);
     }
     
     private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, ContractMetadata contractMetadata, int segmentIndex, IVMConfig config)

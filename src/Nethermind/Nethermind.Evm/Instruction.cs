@@ -379,10 +379,9 @@ namespace Nethermind.Evm
         public int ProgramCounter => pc;
         public int? Arguments { get; set; } = argumentIndex;
         public readonly bool IsTerminating => instruction.IsTerminating();
-        public readonly bool IsStateful => instruction.IsStateful();
         public readonly bool IsInvalid => instruction.IsInvalid();
         public readonly bool IsJump => instruction.IsJump();
-        public readonly bool IsCallOrCreate => instruction == Instruction.CALL || instruction == Instruction.DELEGATECALL || instruction == Instruction.CALLCODE || instruction == Instruction.CREATE || instruction == Instruction.CREATE2 || instruction == Instruction.STATICCALL;
+        public readonly bool IsBlocking => instruction.IsCall() || instruction.IsCreate();
     }
 
     public static class InstructionExtensions
@@ -395,12 +394,23 @@ namespace Nethermind.Evm
             Instruction.SELFDESTRUCT => true,
             _ => !Enum.IsDefined<Instruction>(instruction)
         };
-        public static bool IsStateful(this Instruction instruction) => instruction switch
+
+        public static bool IsCall(this Instruction instruction) => instruction switch
         {
-            Instruction.CREATE or Instruction.CREATE2 => true,
-            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
-            _ => false,
+            Instruction.CALL => true,
+            Instruction.CALLCODE => true,
+            Instruction.DELEGATECALL => true,
+            Instruction.STATICCALL => true,
+            _ => false
         };
+
+        public static bool IsCreate(this Instruction instruction) => instruction switch
+        {
+            Instruction.CREATE => true,
+            Instruction.CREATE2 => true,
+            _ => false
+        };
+
         public static bool IsJump(this Instruction instruction) => instruction switch
         {
             Instruction.JUMP => true,
