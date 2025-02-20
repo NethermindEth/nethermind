@@ -231,15 +231,15 @@ public class PaprikaStateFactory : IStateFactory
     class State : IState
     {
         private readonly IWorldState _wrapped;
-        private readonly PaprikaStateFactory _factory;
-        private readonly IPreCommitPrefetcher? _prefetch;
+        private IPreCommitPrefetcher? _prefetch;
         private readonly HashSet<int> _prefetched;
+        private readonly bool _shouldPrefetch;
 
         public State(IWorldState wrapped, PaprikaStateFactory factory, bool prefetchMerkle)
         {
             _wrapped = wrapped;
-            _factory = factory;
-            _prefetch = prefetchMerkle && factory.Prefetch ? _wrapped.OpenPrefetcher() : null;
+            _shouldPrefetch = prefetchMerkle && factory.Prefetch;
+            _prefetch = _shouldPrefetch ? _wrapped.OpenPrefetcher() : null;
             _prefetched = new HashSet<int>();
         }
 
@@ -327,9 +327,16 @@ public class PaprikaStateFactory : IStateFactory
         public void Commit(long blockNumber)
         {
             _wrapped.Commit((uint)blockNumber);
+            if (_shouldPrefetch)
+            {
+                _prefetch = _wrapped.OpenPrefetcher();
+            }
         }
 
-        public void Reset() => _wrapped.Reset();
+        public void Reset()
+        {
+            _wrapped.Reset();
+        }
 
         public Hash256 StateRoot => Convert(_wrapped.Hash);
 
