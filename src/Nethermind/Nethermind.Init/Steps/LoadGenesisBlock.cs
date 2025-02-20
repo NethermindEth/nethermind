@@ -39,15 +39,15 @@ namespace Nethermind.Init.Steps
                 throw new StepDependencyException();
             }
 
-            IWorldState worldState = _api.WorldStateManager!.GlobalWorldState!;
+            IMainProcessingContext mainProcessingContext = _api.MainProcessingContext!;
 
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                Load(worldState);
+                Load(mainProcessingContext);
             }
 
-            ValidateGenesisHash(expectedGenesisHash, worldState);
+            ValidateGenesisHash(expectedGenesisHash, mainProcessingContext.WorldState);
 
             if (!_initConfig.ProcessingEnabled)
             {
@@ -56,19 +56,17 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        protected virtual void Load(IWorldState worldState)
+        protected virtual void Load(IMainProcessingContext mainProcessingContext)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.MainProcessingContext is null) throw new StepDependencyException(nameof(_api.MainProcessingContext));
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                worldState,
-                _api.MainProcessingContext.TransactionProcessor)
+                mainProcessingContext.WorldState,
+                mainProcessingContext.TransactionProcessor)
                 .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);

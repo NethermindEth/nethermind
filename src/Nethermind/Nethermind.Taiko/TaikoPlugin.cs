@@ -33,6 +33,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
+using Nethermind.State;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Taiko;
@@ -154,7 +155,9 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
+        // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IMainProcessingContext mainScope = _api.MainProcessingContext!;
 
         BlockProcessor blockProcessor =
             new(_api.SpecProvider,
@@ -163,8 +166,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
                 scope.WorldState,
                 _api.ReceiptStorage,
-                scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+                mainScope.TransactionProcessor,
+                new BeaconBlockRootHandler(mainScope.TransactionProcessor, mainScope.WorldState),
                 new BlockhashStore(_api.SpecProvider, scope.WorldState),
                 _api.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));

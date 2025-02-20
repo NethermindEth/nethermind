@@ -3,9 +3,15 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Api;
 
-public record MainProcessingContext(ITransactionProcessor TransactionProcessor, IBlockProcessor BlockProcessor, IBlockchainProcessor BlockchainProcessor) : IMainProcessingContext
+public record MainProcessingContext(
+    ITransactionProcessor TransactionProcessor,
+    IBlockProcessor BlockProcessor,
+    IBlockchainProcessor BlockchainProcessor,
+    IWorldState WorldState
+) : IMainProcessingContext
 {
 }

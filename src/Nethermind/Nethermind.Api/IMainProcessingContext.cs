@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Api;
 
@@ -18,4 +19,5 @@ public interface IMainProcessingContext
     ITransactionProcessor TransactionProcessor { get; }
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
+    IWorldState WorldState { get; }
 }
