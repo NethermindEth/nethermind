@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -21,9 +22,10 @@ public class PosForwardHeaderProvider(
     IPoSSwitcher poSSwitcher,
     IBeaconPivot beaconPivot,
     ISealValidator sealValidator,
+    IBlockValidator blockValidator,
     IBlockTree blockTree,
     ILogManager logManager
-) : PowForwardHeaderProvider(sealValidator, blockTree, logManager)
+) : PowForwardHeaderProvider(sealValidator, blockValidator, blockTree, logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
     private readonly IBlockTree _blockTree = blockTree;

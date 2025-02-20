@@ -78,7 +78,7 @@ public class MergeSynchronizerModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .Add<IForwardHeaderProvider, PosForwardHeaderProvider>()
+            .AddSingleton<IForwardHeaderProvider, PosForwardHeaderProvider>()
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()

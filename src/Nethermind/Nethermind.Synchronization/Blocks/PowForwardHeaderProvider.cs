@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
@@ -17,6 +18,7 @@ namespace Nethermind.Synchronization.Blocks;
 
 public class PowForwardHeaderProvider(
     ISealValidator sealValidator,
+    IBlockValidator blockValidator,
     IBlockTree blockTree,
     ILogManager logManager
 ) : IForwardHeaderProvider
@@ -49,6 +51,7 @@ public class PowForwardHeaderProvider(
             if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
+            // TODO: Check how TTD is updated without inserting to block.
             IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
             if (headers.Count < 2)
             {
@@ -171,6 +174,11 @@ public class PowForwardHeaderProvider(
                     if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                     throw new EthSyncException("Peer sent a block with an invalid seal");
                 }
+                if (!blockValidator.Validate(header))
+                {
+                    if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
+                    throw new EthSyncException("Peer sent a block with an invalid header");
+                }
             }
             catch (Exception e)
             {
@@ -186,6 +194,7 @@ public class PowForwardHeaderProvider(
             if (_logger.IsDebug) _logger.Debug("Seal validation failure");
             throw new AggregateException(exceptions);
         }
+        cancellation.ThrowIfCancellationRequested();
     }
 
     public virtual void TryUpdateTerminalBlock(BlockHeader currentHeader)
