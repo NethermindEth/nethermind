@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -77,9 +78,17 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             if (_logger.IsDebug)
                 _logger.Debug("Skip block improvement because of NoTxPool payload attribute.");
 
+            PayloadStore payloadStore = new()
+            {
+                Id = payloadId,
+                CurrentBestBlock = currentBestBlock,
+                StartDateTime = startDateTime,
+                PayloadAttributes = payloadAttributes,
+                Header = parentHeader,
+                ImprovementContext = new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime),
+            };
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
-            _payloadStorage.TryAdd(payloadId,
-                new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
+            _payloadStorage.TryAdd(payloadId, payloadStore);
         }
         else
         {

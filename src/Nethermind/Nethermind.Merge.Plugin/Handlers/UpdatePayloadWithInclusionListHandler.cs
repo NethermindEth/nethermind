@@ -7,12 +7,12 @@ using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class UpdatePayloadWithInclusionListHandler(PayloadPreparationService payloadPreparationService, InclusionListTxSource inclusionListTxSource)
+public class UpdatePayloadWithInclusionListHandler(IPayloadPreparationService payloadPreparationService, InclusionListTxSource? inclusionListTxSource)
     : IHandler<(string payloadId, byte[][] inclusionListTransactions), string?>
 {
     public ResultWrapper<string?> Handle((string payloadId, byte[][] inclusionListTransactions) args)
     {
-        inclusionListTxSource.Set(args.inclusionListTransactions);
+        inclusionListTxSource?.Set(args.inclusionListTransactions);
         payloadPreparationService.ForceRebuildPayload(args.payloadId);
         return ResultWrapper<string?>.Success(args.payloadId);
     }

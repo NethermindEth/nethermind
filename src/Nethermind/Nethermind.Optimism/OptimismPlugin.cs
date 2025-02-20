@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -34,7 +32,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
@@ -276,7 +273,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
             new GetInclusionListTransactionsHandler(_api.BlockTree, null),
-            new UpdatePayloadWithInclusionListHandler(),
+            new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload
