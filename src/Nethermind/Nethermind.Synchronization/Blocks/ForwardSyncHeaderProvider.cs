@@ -1,0 +1,186 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Logging;
+using Nethermind.Synchronization.Peers;
+
+namespace Nethermind.Synchronization.Blocks;
+
+public class ForwardSyncHeaderProvider(
+    IPosTransitionHook _posTransitionHook,
+    ISealValidator _sealValidator,
+    IBlockTree _blockTree,
+    ILogManager logManager): IForwardSyncHeaderProvider
+{
+    private ILogger _logger = logManager.GetClassLogger<ForwardSyncHeaderProvider>();
+    private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
+    private int _ancestorLookupLevel;
+    private long _currentNumber;
+    private readonly Random _rnd = new();
+    private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
+
+    public virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, int maxHeaders, CancellationToken cancellation)
+    {
+        while (true)
+        {
+            if (!_posTransitionHook.ImprovementRequirementSatisfied(bestPeer)) return null;
+            if (_currentNumber > bestPeer!.HeadNumber) return null;
+
+            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+
+            long upperDownloadBoundary = bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+            long blocksLeft = upperDownloadBoundary - _currentNumber;
+            int headersToRequest = (int)Math.Min(blocksLeft + 1, maxHeaders);
+            if (headersToRequest <= 1)
+            {
+                return null;
+            }
+
+            headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
+            if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
+
+            cancellation.ThrowIfCancellationRequested();
+            IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
+            if (headers.Count < 2)
+            {
+                // Peer dont have new header
+                headers.Dispose();
+                return null;
+            }
+
+            // Remember, we start downloading from currentNumber+1
+            if (!CheckAncestorJump(bestPeer, headers[1], ref _currentNumber)) continue;
+
+            return headers;
+        }
+    }
+
+    public void OnNewBestPeer(PeerInfo bestPeer)
+    {
+        _ancestorLookupLevel = 0;
+        _currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
+    }
+
+    public void IncrementNumber()
+    {
+        _currentNumber += 1;
+    }
+
+    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockZero, ref long currentNumber)
+    {
+        bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
+        if (!parentIsKnown)
+        {
+            _ancestorLookupLevel++;
+            if (_ancestorLookupLevel >= _ancestorJumps.Length)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
+                throw new EthSyncException("Peer with inconsistent chain in sync");
+            }
+
+            int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
+            currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
+            return false;
+        }
+        _ancestorLookupLevel = 0;
+        return true;
+    }
+
+    private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+    {
+        _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
+
+        IOwnedReadOnlyList<BlockHeader> headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
+        cancellation.ThrowIfCancellationRequested();
+        headers = _posTransitionHook.FilterPosHeader(headers);
+
+        ValidateSeals(headers, cancellation);
+        ValidateBatchConsistencyAndSetParents(peer, headers);
+        return headers;
+    }
+
+    private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
+    {
+        // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
+        // so we need to confirm that the blocks form a valid subchain
+        for (int i = 1; i < headers.Count; i++)
+        {
+            if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
+                throw new EthSyncException("Peer sent an inconsistent block list");
+            }
+
+            if (headers[i] is null)
+            {
+                break;
+            }
+
+            if (i != 1) // because we will never set TotalDifficulty on the first block?
+            {
+                headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
+            }
+        }
+    }
+
+    protected void ValidateSeals(IReadOnlyList<BlockHeader?> headers, CancellationToken cancellation)
+    {
+        if (_logger.IsTrace) _logger.Trace("Starting seal validation");
+        ConcurrentQueue<Exception> exceptions = new();
+        int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Count - 2));
+        Parallel.For(0, headers.Count, (i, state) =>
+        {
+            if (cancellation.IsCancellationRequested)
+            {
+                if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
+                state.Stop();
+                return;
+            }
+
+            BlockHeader? header = headers[i];
+            if (header is null)
+            {
+                return;
+            }
+
+            try
+            {
+                bool lastBlock = i == headers.Count - 1;
+                // PoSSwitcher can't determine if a block is a terminal block if TD is missing due to another
+                // problem. In theory, this should not be a problem, but additional seal check does no harm.
+                bool terminalBlock = !lastBlock
+                                     && headers.Count > 1
+                                     && headers[i + 1].Difficulty == 0
+                                     && headers[i].Difficulty != 0;
+                bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
+                if (!_sealValidator.ValidateSeal(header, forceValidation))
+                {
+                    if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
+                    throw new EthSyncException("Peer sent a block with an invalid seal");
+                }
+            }
+            catch (Exception e)
+            {
+                exceptions.Enqueue(e);
+                state.Stop();
+            }
+        });
+
+        if (_logger.IsTrace) _logger.Trace("Seal validation complete");
+
+        if (!exceptions.IsEmpty)
+        {
+            if (_logger.IsDebug) _logger.Debug("Seal validation failure");
+            throw new AggregateException(exceptions);
+        }
+    }
+}

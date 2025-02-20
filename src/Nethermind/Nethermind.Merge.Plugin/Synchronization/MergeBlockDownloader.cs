@@ -9,8 +9,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -27,7 +25,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-        private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly BlockDownloader _preMergeBlockDownloader;
 
@@ -35,25 +32,22 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
-            ISyncPeerPool? syncPeerPool,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
-            ISealValidator? sealValidator,
+            IForwardSyncHeaderProvider forwardSyncHeaderProvider,
             ISyncReport? syncReport,
             IReceiptStorage? receiptStorage,
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
-            IChainLevelHelper chainLevelHelper,
             IFullStateFinder fullStateFinder,
             IPosTransitionHook posTransitionHook,
             BlockDownloader preMergeBlockDownloader,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
-            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
+            : base(feed, blockTree, blockValidator, forwardSyncHeaderProvider, syncReport, receiptStorage,
                 specProvider, betterPeerStrategy, fullStateFinder, posTransitionHook, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _chainLevelHelper = chainLevelHelper ?? throw new ArgumentNullException(nameof(chainLevelHelper));
             _poSSwitcher = posSwitcher ?? throw new ArgumentNullException(nameof(posSwitcher));
             _preMergeBlockDownloader = preMergeBlockDownloader;
             _beaconPivot = beaconPivot;
@@ -76,26 +70,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
 
             await base.Dispatch(bestPeer, blocksRequest, cancellation);
-        }
-
-        protected override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
-        {
-            if (_logger.IsDebug)
-                _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-            int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-            BlockHeader?[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-            if (headers is null || headers.Length <= 1)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace("Chain level helper got no headers suggestion");
-                return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(null);
-            }
-
-            // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
-            ValidateSeals(headers!, cancellation);
-
-            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
         }
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
