@@ -16,6 +16,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -95,7 +96,7 @@ public partial class EngineModuleTests
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
 
         TxPoolTxSourceFactory txPoolTxSourceFactory = new(chain.TxPool, chain.SpecProvider, chain.TransactionComparerProvider, new BlocksConfig(), chain.LogManager);
-        TxPoolTxSource inclusionListTxSource = txPoolTxSourceFactory.Create();
+        TxPoolTxSource txPoolTxSource = txPoolTxSourceFactory.Create();
 
         return new EngineRpcModule(
             new GetPayloadV1Handler(
@@ -150,8 +151,8 @@ public partial class EngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
-            new GetInclusionListTransactionsHandler(chain.BlockTree, inclusionListTxSource),
-            new UpdatePayloadWithInclusionListHandler(),
+            new GetInclusionListTransactionsHandler(chain.BlockTree, txPoolTxSource),
+            new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
@@ -214,6 +215,7 @@ public partial class EngineModuleTests
         public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
@@ -247,7 +249,7 @@ public partial class EngineModuleTests
                 LogManager,
                 ExecutionRequestsProcessor);
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(InclusionListTxSource);
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
