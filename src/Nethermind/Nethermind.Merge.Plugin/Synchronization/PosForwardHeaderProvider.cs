@@ -1,0 +1,102 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
+using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.Peers;
+
+namespace Nethermind.Merge.Plugin.Synchronization;
+
+public class PosForwardHeaderProvider(
+    IChainLevelHelper chainLevelHelper,
+    IPoSSwitcher poSSwitcher,
+    IBeaconPivot beaconPivot,
+    ISealValidator sealValidator,
+    IBlockTree blockTree,
+    ILogManager logManager
+) : PowForwardHeaderProvider(sealValidator, blockTree, logManager)
+{
+    private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
+    private readonly IBlockTree _blockTree = blockTree;
+
+    private bool ShouldUsePreMerge()
+    {
+        return beaconPivot.BeaconPivotExists() == false && poSSwitcher.HasEverReachedTerminalBlock() == false;
+    }
+
+    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeader, CancellationToken cancellation)
+    {
+        if (ShouldUsePreMerge())
+        {
+            return base.GetBlockHeaders(bestPeer, skipLastN, maxHeader, cancellation);
+        }
+
+        if (_logger.IsDebug)
+            _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+
+        int headersToRequest = Math.Min(maxHeader, bestPeer.MaxHeadersPerRequest());
+        BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, skipLastN);
+        if (headers is null || headers.Length <= 1)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace("Chain level helper got no headers suggestion");
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(null);
+        }
+
+        // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
+        ValidateSeals(headers!, cancellation);
+
+        return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
+    }
+
+    public override void TryUpdateTerminalBlock(BlockHeader currentHeader)
+    {
+        poSSwitcher.TryUpdateTerminalBlock(currentHeader);
+    }
+
+    // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
+    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
+    {
+        return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) &&
+               poSSwitcher.HasEverReachedTerminalBlock() == false;
+    }
+
+    protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)
+    {
+        // Override PoW's RequestHeaders so that it won't request beyond PoW.
+        // This fixes `Incremental Sync` hive test.
+        if (response.Count > 0)
+        {
+            BlockHeader lastBlockHeader = response[^1];
+            bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
+            if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
+            {
+                using IOwnedReadOnlyList<BlockHeader> oldResponse = response;
+                response = response
+                    .TakeWhile(header => !poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
+                    .ToPooledList(response.Count);
+                if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
+            }
+        }
+        return response;
+    }
+
+    public override void OnBlockAdded(Block currentBlock)
+    {
+        if ((beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+        {
+            // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
+            // already processed header starting from `ProcessDestination`.
+            beaconPivot.ProcessDestination = currentBlock.Header;
+        }
+    }
+}

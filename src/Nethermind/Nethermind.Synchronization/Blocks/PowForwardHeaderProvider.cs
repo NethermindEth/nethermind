@@ -15,29 +15,29 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks;
 
-public class ForwardSyncHeaderProvider(
-    IPosTransitionHook _posTransitionHook,
-    ISealValidator _sealValidator,
-    IBlockTree _blockTree,
-    ILogManager logManager): IForwardSyncHeaderProvider
+public class PowForwardHeaderProvider(
+    ISealValidator sealValidator,
+    IBlockTree blockTree,
+    ILogManager logManager
+) : IForwardHeaderProvider
 {
-    private ILogger _logger = logManager.GetClassLogger<ForwardSyncHeaderProvider>();
+    private ILogger _logger = logManager.GetClassLogger<PowForwardHeaderProvider>();
     private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
     private int _ancestorLookupLevel;
     private long _currentNumber;
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-    public virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, int maxHeaders, CancellationToken cancellation)
+    public virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, int skipLastN, int maxHeaders, CancellationToken cancellation)
     {
         while (true)
         {
-            if (!_posTransitionHook.ImprovementRequirementSatisfied(bestPeer)) return null;
+            if (!ImprovementRequirementSatisfied(bestPeer)) return null;
             if (_currentNumber > bestPeer!.HeadNumber) return null;
 
-            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {blockTree.BestKnownNumber})");
 
-            long upperDownloadBoundary = bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+            long upperDownloadBoundary = bestPeer.HeadNumber - skipLastN;
             long blocksLeft = upperDownloadBoundary - _currentNumber;
             int headersToRequest = (int)Math.Min(blocksLeft + 1, maxHeaders);
             if (headersToRequest <= 1)
@@ -67,7 +67,7 @@ public class ForwardSyncHeaderProvider(
     public void OnNewBestPeer(PeerInfo bestPeer)
     {
         _ancestorLookupLevel = 0;
-        _currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
+        _currentNumber = Math.Max(0, Math.Min(blockTree.BestKnownNumber, bestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
     }
 
     public void IncrementNumber()
@@ -75,9 +75,13 @@ public class ForwardSyncHeaderProvider(
         _currentNumber += 1;
     }
 
+    public virtual void OnBlockAdded(Block currentBlock)
+    {
+    }
+
     private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockZero, ref long currentNumber)
     {
-        bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
+        bool parentIsKnown = blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
         if (!parentIsKnown)
         {
             _ancestorLookupLevel++;
@@ -97,11 +101,11 @@ public class ForwardSyncHeaderProvider(
 
     private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
     {
-        _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
+        sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
 
         IOwnedReadOnlyList<BlockHeader> headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
         cancellation.ThrowIfCancellationRequested();
-        headers = _posTransitionHook.FilterPosHeader(headers);
+        headers = FilterPosHeader(headers);
 
         ValidateSeals(headers, cancellation);
         ValidateBatchConsistencyAndSetParents(peer, headers);
@@ -162,7 +166,7 @@ public class ForwardSyncHeaderProvider(
                                      && headers[i + 1].Difficulty == 0
                                      && headers[i].Difficulty != 0;
                 bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
-                if (!_sealValidator.ValidateSeal(header, forceValidation))
+                if (!sealValidator.ValidateSeal(header, forceValidation))
                 {
                     if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                     throw new EthSyncException("Peer sent a block with an invalid seal");
@@ -182,5 +186,19 @@ public class ForwardSyncHeaderProvider(
             if (_logger.IsDebug) _logger.Debug("Seal validation failure");
             throw new AggregateException(exceptions);
         }
+    }
+
+    public virtual void TryUpdateTerminalBlock(BlockHeader currentHeader)
+    {
+    }
+
+    protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
+    {
+        return bestPeer!.TotalDifficulty > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
+    }
+
+    protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers)
+    {
+        return headers;
     }
 }

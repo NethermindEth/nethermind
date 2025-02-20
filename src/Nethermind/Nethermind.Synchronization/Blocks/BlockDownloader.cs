@@ -40,9 +40,8 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISpecProvider _specProvider;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly IFullStateFinder _fullStateFinder;
-        private readonly IPosTransitionHook _posTransitionHook;
+        private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ILogger _logger;
-        private readonly IForwardSyncHeaderProvider _headerProvider;
         protected SyncBatchSize _syncBatchSize;
 
         private bool _cancelDueToBetterPeer;
@@ -55,26 +54,24 @@ namespace Nethermind.Synchronization.Blocks
             ISyncFeed<BlocksRequest?>? feed,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
-            IForwardSyncHeaderProvider forwardSyncHeaderProvider,
             ISyncReport? syncReport,
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IFullStateFinder fullStateFinder,
-            IPosTransitionHook posTransitionHook,
+            IForwardHeaderProvider forwardHeaderProvider,
             ILogManager? logManager,
             SyncBatchSize? syncBatchSize = null)
         {
             _feed = feed;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _headerProvider = forwardSyncHeaderProvider ?? throw new ArgumentNullException(nameof(forwardSyncHeaderProvider));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
-            _posTransitionHook = posTransitionHook;
+            _forwardHeaderProvider = forwardHeaderProvider;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
@@ -141,13 +138,13 @@ namespace Nethermind.Synchronization.Blocks
             bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            _headerProvider.OnNewBestPeer(bestPeer);
+            _forwardHeaderProvider.OnNewBestPeer(bestPeer);
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             long bestProcessedBlock = 0;
 
             IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await _headerProvider.GetBlockHeaders(bestPeer, blocksRequest, _syncBatchSize.Current, cancellation)) is not null)
+            while ((headers = await _forwardHeaderProvider.GetBlockHeaders(bestPeer, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation)) is not null)
             {
                 if (HasBetterPeer) break;
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -196,7 +193,7 @@ namespace Nethermind.Synchronization.Blocks
                         blocksSynced++;
                     }
 
-                    _headerProvider.IncrementNumber();
+                    _forwardHeaderProvider.IncrementNumber();
                 }
 
                 if (blocksSynced > 0)
@@ -240,7 +237,7 @@ namespace Nethermind.Synchronization.Blocks
                     _blockTree.UpdateMainChain(new[] { currentBlock }, false);
                     // Needed to know if a block is the terminal block.
                     // Not needed if not processing for some reason.
-                    _posTransitionHook.TryUpdateTerminalBlock(currentBlock.Header);
+                    _forwardHeaderProvider.TryUpdateTerminalBlock(currentBlock.Header);
                 }
 
                 if (downloadReceipts)
@@ -260,7 +257,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                OnBlockAdded(currentBlock);
+                _forwardHeaderProvider.OnBlockAdded(currentBlock);
                 handled = true;
             }
 
@@ -272,10 +269,6 @@ namespace Nethermind.Synchronization.Blocks
             return handled;
         }
 
-
-        protected virtual void OnBlockAdded(Block currentBlock)
-        {
-        }
 
         private async Task<(bool shouldProcess, TxReceipt[]?[]? receipts)> ReceiptEdgeCase(
             PeerInfo bestPeer,
