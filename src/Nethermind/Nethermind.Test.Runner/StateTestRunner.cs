@@ -52,11 +52,11 @@ namespace Nethermind.Test.Runner
         {
             foreach (var entry in txTrace.Entries)
             {
-                Console.Error.WriteLine(_serializer.Serialize(entry));
+                Console.Out.WriteLine(_serializer.Serialize(entry));
             }
 
-            Console.Error.WriteLine(_serializer.Serialize(txTrace.Result));
-            Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
+            Console.Out.WriteLine(_serializer.Serialize(txTrace.Result));
+            Console.Out.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
         public IEnumerable<EthereumTestResult> RunTests()
