@@ -18,7 +18,7 @@ public class ShutterBlockImprovementContextFactory(
     IBlockProducer blockProducer,
     ShutterTxSource shutterTxSource,
     IShutterConfig shutterConfig,
-    ShutterTime time,
+    SlotTime time,
     ILogManager logManager,
     TimeSpan slotLength) : IBlockImprovementContextFactory
 {
@@ -55,7 +55,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     private readonly IBlockProducer _blockProducer;
     private readonly IShutterTxSignal _txSignal;
     private readonly IShutterConfig _shutterConfig;
-    private readonly ShutterTime _time;
+    private readonly SlotTime _time;
     private readonly BlockHeader _parentHeader;
     private readonly PayloadAttributes _payloadAttributes;
     private readonly ulong _slotTimestampMs;
@@ -65,7 +65,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         IBlockProducer blockProducer,
         IShutterTxSignal shutterTxSignal,
         IShutterConfig shutterConfig,
-        ShutterTime time,
+        SlotTime time,
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
@@ -111,7 +111,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         {
             (slot, offset) = _time.GetBuildingSlotAndOffset(_slotTimestampMs);
         }
-        catch (ShutterTime.ShutterSlotCalulationException e)
+        catch (SlotTime.SlotCalulationException e)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             await BuildBlock();

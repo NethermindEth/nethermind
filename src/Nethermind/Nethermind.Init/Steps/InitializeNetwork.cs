@@ -300,7 +300,6 @@ public class InitializeNetwork : IStep
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.MainBlockProcessor is null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
         if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));
@@ -351,6 +350,9 @@ public class InitializeNetwork : IStep
 
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
+
+        _api.TrustedNodesManager = new TrustedNodesManager(initConfig.TrustedNodesPath, _api.LogManager);
+        await _api.TrustedNodesManager.InitAsync();
 
         // ToDo: PeersDB is registered outside dbProvider
         string dbName = INetworkStorage.PeerDb;
@@ -417,9 +419,9 @@ public class InitializeNetwork : IStep
         }
 
         CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
-            ? new(_api.StaticNodesManager, nodesLoader)
-            : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
-        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
+            ? new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader)
+            : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
             _api.PeerPool,

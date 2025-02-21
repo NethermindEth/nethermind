@@ -31,5 +31,6 @@ namespace Nethermind.State.Snap
     {
         public PathWithAccount PathAndAccount { get; set; }
         public ValueHash256 StorageStartingHash { get; set; }
+        public ValueHash256 StorageHashLimit { get; set; }
     }
 }
