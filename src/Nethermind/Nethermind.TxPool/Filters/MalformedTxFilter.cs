@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Filters
             {
                 Metrics.PendingTransactionsMalformed++;
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
-                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction: {result}.");
+                if (logger.IsInfo) logger.Info($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction: {result}");
                 return AcceptTxResult.Invalid;
             }
 
