@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Nethermind.Api;
 using Nethermind.Runner.Monitoring;
-using Nethermind.TxPool;
 
 namespace Nethermind.Runner;
 
@@ -19,7 +18,7 @@ public static class DataFeedExtensions
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(api);
 
-        _dataFeed = new DataFeed(api);
+        _dataFeed = new DataFeed(api.TxPool, api.SpecProvider, api.ReceiptFinder, api.BlockTree, api.SyncPeerPool, api.BlockchainProcessor);
 
         endpoints.MapGet("/data/events", _dataFeed.ProcessingFeed);
     }

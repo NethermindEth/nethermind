@@ -40,20 +40,29 @@ public class DataFeed
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly BlockDecoder _blockDecoder = new();
 
-    public DataFeed(INethermindApi api)
+    public DataFeed(
+        ITxPool txPool,
+        ISpecProvider specProvider,
+        IReceiptFinder receiptFinder,
+        IBlockTree blockTree,
+        ISyncPeerPool syncPeerPool,
+        IBlockchainProcessor blockchainProcessor)
     {
-        _txPool = api.TxPool;
-        _blockTree = api.BlockTree;
-        _specProvider = api.SpecProvider;
-        _receiptFinder = api.ReceiptFinder;
-        _syncPeerPool = api.SyncPeerPool;
+        ArgumentNullException.ThrowIfNull(txPool);
+        ArgumentNullException.ThrowIfNull(syncPeerPool);
+        ArgumentNullException.ThrowIfNull(receiptFinder);
+        ArgumentNullException.ThrowIfNull(blockTree);
+        ArgumentNullException.ThrowIfNull(syncPeerPool);
+        ArgumentNullException.ThrowIfNull(blockchainProcessor);
 
-        ArgumentNullException.ThrowIfNull(_txPool);
-        ArgumentNullException.ThrowIfNull(_blockTree);
-        ArgumentNullException.ThrowIfNull(_syncPeerPool);
+        _txPool = txPool;
+        _specProvider = specProvider;
+        _receiptFinder = receiptFinder;
+        _blockTree = blockTree;
+        _syncPeerPool = syncPeerPool;
 
-        api.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
-        _blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
+        blockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
+        blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
         _ = SystemStatsRefresh();
