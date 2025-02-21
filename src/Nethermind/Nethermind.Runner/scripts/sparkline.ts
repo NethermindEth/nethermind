@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-import * as d3 from './lib/d3.js';
+import * as d3 from 'd3';
 export interface Datum {
   t: number; // e.g., timestamp in ms or any ascending numeric index
   v: number; // the actual numeric value

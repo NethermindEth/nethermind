@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-import * as d3 from './lib/d3.js';
+import * as d3 from 'd3';
 import {
   sankey as d3Sankey,
   sankeyLinkHorizontal,
   sankeyCenter,
   SankeyLayout
-} from './lib/d3-sankey.js';
+} from 'd3-sankey';
 import { TxPool, ILink, INode } from './types';
 import { SankeyNode, SankeyLink } from './sankeyTypes';
 
