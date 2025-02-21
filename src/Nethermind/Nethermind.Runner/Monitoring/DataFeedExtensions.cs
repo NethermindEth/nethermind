@@ -4,6 +4,7 @@
 using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -18,16 +19,17 @@ public static class DataFeedExtensions
 {
     private static DataFeed _dataFeed;
 
-    public static void MapDataFeeds(
-        this IEndpointRouteBuilder endpoints,
-        ITxPool txPool,
-        ISpecProvider specProvider,
-        IReceiptFinder receiptFinder,
-        IBlockTree blockTree,
-        ISyncPeerPool syncPeerPool,
-        IBlockchainProcessor blockchainProcessor)
+    public static void MapDataFeeds(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
+        IServiceProvider services = endpoints.ServiceProvider;
+
+        ITxPool txPool = services.GetRequiredService<ITxPool>();
+        ISpecProvider specProvider = services.GetRequiredService<ISpecProvider>();
+        IReceiptFinder receiptFinder = services.GetRequiredService<IReceiptFinder>();
+        IBlockTree blockTree = services.GetRequiredService<IBlockTree>();
+        ISyncPeerPool syncPeerPool = services.GetRequiredService<ISyncPeerPool>();
+        IBlockchainProcessor blockchainProcessor = services.GetRequiredService<IBlockchainProcessor>();
 
         _dataFeed = new DataFeed(txPool, specProvider, receiptFinder, blockTree, syncPeerPool, blockchainProcessor);
 

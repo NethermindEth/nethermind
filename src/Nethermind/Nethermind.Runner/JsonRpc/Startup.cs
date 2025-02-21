@@ -144,14 +144,7 @@ public class Startup
                 }
 
                 var services = app.ApplicationServices;
-                endpoints.MapDataFeeds(
-                    services.GetRequiredService<ITxPool>(),
-                    services.GetRequiredService<ISpecProvider>(),
-                    services.GetRequiredService<IReceiptFinder>(),
-                    services.GetRequiredService<IBlockTree>(),
-                    services.GetRequiredService<ISyncPeerPool>(),
-                    services.GetRequiredService<IBlockchainProcessor>()
-                );
+                endpoints.MapDataFeeds();
             }
         });
 
