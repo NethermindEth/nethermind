@@ -287,8 +287,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (processedBlock is null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+                    if (error is not null && error.Contains("invalid inclusion list"))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
+                        BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InvalidInclusionList, error));
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                        BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+                    }
                 }
                 else
                 {
@@ -442,6 +450,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     Metrics.BadBlocksByNethermindNodes++;
                 }
             }
+            catch (InvalidInclusionListException) { }
             catch (Exception ex)
             {
                 BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
@@ -511,7 +520,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             processedBlocks = null;
         }
-
+        catch (InvalidInclusionListException ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Invalid inclusion list for block {ex.Block} {ex}");
+            error = ex.Message;
+            processedBlocks = null;
+            // should delete block? return in processedBlocks?
+        }
         finally
         {
             if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))

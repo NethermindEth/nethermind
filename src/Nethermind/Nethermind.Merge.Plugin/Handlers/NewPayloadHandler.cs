@@ -238,6 +238,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Syncing;
         }
 
+        if (result == ValidationResult.InvalidInclusionList)
+        {
+            if (_logger.IsInfo) _logger.Info($"Invalid inclusion list. Result of {requestStr}.");
+            return NewPayloadV1Result.InvalidInclusionList(block.Hash);
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
     }
@@ -344,6 +350,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 {
                     ProcessingResult.Success => ValidationResult.Valid,
                     ProcessingResult.ProcessingError => ValidationResult.Invalid,
+                    ProcessingResult.InvalidInclusionList => ValidationResult.InvalidInclusionList,
                     _ => null
                 };
 
@@ -478,6 +485,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         Invalid,
         Valid,
-        Syncing
+        Syncing,
+        InvalidInclusionList
     }
 }

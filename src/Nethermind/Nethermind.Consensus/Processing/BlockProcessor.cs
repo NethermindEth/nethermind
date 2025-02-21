@@ -300,13 +300,19 @@ public partial class BlockProcessor(
     {
         block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
 
-        if (
-            !options.ContainsFlag(ProcessingOptions.NoValidation) &&
-            (!_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error) ||
-            !_inclusionListValidator.ValidateInclusionList(block, out error)))
+        if (!options.ContainsFlag(ProcessingOptions.NoValidation))
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
-            throw new InvalidBlockException(suggestedBlock, error);
+            if (!_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
+            {
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
+                throw new InvalidBlockException(suggestedBlock, error);
+            }
+
+            if (!_inclusionListValidator.ValidateInclusionList(block, out error))
+            {
+                // todo: not throw exception but continue processing?
+                throw new InvalidInclusionListException(suggestedBlock, error);
+            }
         }
 
         // Block is valid, copy the account changes as we use the suggested block not the processed one
