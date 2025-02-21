@@ -1,5 +1,4 @@
 
-#define ILVM_DEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -76,24 +75,7 @@ public class VirtualMachine : IVirtualMachine
         IVMConfig vmConfig = null)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-#if ILVM_DEBUG
-        _vmConfig = new VMConfig
-        {
-            IsPartialAotEnabled = false,
-            IsFullAotEnabled = true,
-            IsPatternMatchingEnabled = false,
-
-            AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = logger.IsTrace,
-
-            FullAotThreshold = 5,
-            PatternMatchingThreshold = int.MaxValue,
-            AnalysisQueueMaxSize = 8,
-            PartialAotThreshold = int.MaxValue,
-        };
-#else
         _vmConfig = vmConfig ?? new VMConfig();
-#endif
         _evm = logger.IsTrace
             ? _vmConfig.IsVmOptimizationEnabled
                 ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger)
@@ -194,25 +176,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-
-#if ILVM_DEBUG
-        _vmConfig = new VMConfig
-        {
-            IsPartialAotEnabled = false,
-            IsFullAotEnabled = true,
-            IsPatternMatchingEnabled = false,
-
-            AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = true,
-
-            FullAotThreshold = 5,
-            PatternMatchingThreshold = int.MaxValue,
-            AnalysisQueueMaxSize = 8,
-            PartialAotThreshold = int.MaxValue,
-        };
-#else
         _vmConfig = vmConfig;
-#endif
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -700,11 +664,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
-
-            if (vmState.Env.CodeInfo.IlInfo.IsEmpty)
-            {
-                IlAnalyzer.Analyse(env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
-            }
         }
 
         if (env.CodeInfo.MachineCode.Length == 0)
@@ -804,13 +763,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
-
-#if ILVM_DEBUG
-        if (env.CodeInfo.IlInfo.IsEmpty)
-        {
-            //IlAnalyzer.Analyse(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
-        }
-#endif
 
         bool isRevert = false;
 #if DEBUG
