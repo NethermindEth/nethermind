@@ -14,11 +14,6 @@ namespace Nethermind.Trie
         private readonly int _maxDegreeOfParallelism = 1;
 
         /// <summary>
-        /// Should visit accounts.
-        /// </summary>
-        public bool ExpectAccounts { get; init; } = true;
-
-        /// <summary>
         /// Maximum number of threads that will be used to visit the trie.
         /// </summary>
         public int MaxDegreeOfParallelism
