@@ -359,18 +359,16 @@ namespace Nethermind.TxPool
                     eip7702Txs++;
                 }
 
-                bool isKnown = true;
-                if (!IsKnown(txHash))
+                bool isKnown = IsKnown(txHash);
+                if (!isKnown)
                 {
                     discoveredForHashCache++;
-                    isKnown = false;
                 }
 
-                bool isPending = true;
-                if (!RemoveIncludedTransaction(blockTx))
+                bool isPending = RemoveIncludedTransaction(blockTx);
+                if (!isPending)
                 {
                     discoveredForPendingTxs++;
-                    isPending = false;
                 }
 
                 if (!isKnown && !isPending)
