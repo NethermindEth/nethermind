@@ -105,7 +105,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo = new CodeInfo(code, codeSource);
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
@@ -126,7 +126,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        CodeInfo codeInfo = new(code);
+        CodeInfo codeInfo = new(code, codeOwner);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
@@ -146,7 +146,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
         state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
-        _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+        _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer, codeSource));
     }
 
     /// <summary>
@@ -252,6 +252,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             codeInfo = Get(codeHash);
             return codeInfo is not null;
+        }
+
+        public void Clear()
+        {
+            foreach (ClockCache<ValueHash256, CodeInfo> cache in _caches)
+            {
+                cache.Clear();
+            }
         }
     }
 }
