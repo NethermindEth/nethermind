@@ -12,8 +12,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 {
     public class ParityLikeTxTrace
     {
-        public string? Error { get; set; }
-
         public byte[]? Output { get; set; }
 
         public Hash256? BlockHash { get; set; }

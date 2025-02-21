@@ -198,7 +198,7 @@ public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBl
         ITracerFactory<IBlockTracer<SimulateBlockResult<TTrace>>, SimulateBlockResult<TTrace>> tracerFactory =
             typeof(TTrace) == typeof(ParityLikeTxTrace)
                 ? (ITracerFactory<IBlockTracer<SimulateBlockResult<TTrace>>, SimulateBlockResult<TTrace>>)
-                new BlockchainBridge.ParityLikeBlockTracerFactory(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)
+                new ParityLikeBlockTracerFactory(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)
                 : throw new NotSupportedException($"Tracer for {typeof(TTrace).Name} is not supported.");
 
         SimulateOutput<SimulateBlockResult<TTrace>>? results = 
@@ -208,16 +208,16 @@ public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBl
 
 
 
-        // foreach (SimulateBlockResult<TTrace> result in results.Items)
-        // {
-        //     foreach (TTrace? call in result.Calls)
-        //     {
-        //         if (call is ISimulateResult result && result.Error is not null && result.Error.Message != "")
-        //         {
-        //             result.Error.Code = ErrorCodes.ExecutionError;
-        //         }
-        //     }
-        // }
+        foreach (SimulateBlockResult<TTrace> result in results.Items)
+        {
+            foreach (TTrace? call in result.Calls)
+            {
+                if (call is ISimulateResult simulateResult && simulateResult.Error is not null && simulateResult.Error.Message != "")
+                {
+                    simulateResult.Error.Code = ErrorCodes.ExecutionError;
+                }
+            }
+        }
 
         if (results.Error is not null)
         {

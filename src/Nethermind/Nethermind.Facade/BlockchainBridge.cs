@@ -183,11 +183,6 @@ namespace Nethermind.Facade
 
             try
             {
-                // if (tracer is not SimulateBlockTracer<TTrace> validatedTracer)
-                // {
-                //     throw new InvalidOperationException($"Unsupported tracer type: {typeof(TTracer).Name}");
-                // }
-
                 if (!_simulateBridgeHelper.TrySimulate<TTracer>(
                         header,
                         payload,
@@ -451,68 +446,6 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
-        }
-
-        public class SimulateBlockTracerFactory : ITracerFactory<SimulateBlockTracer, SimulateBlockResult<SimulateCallResult>>
-        {
-            public SimulateBlockTracer CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
-            {
-                return new SimulateBlockTracer(traceTransfers, returnFullTransactionObjects, specProvider);
-            }
-        }
-
-        public class GethLikeBlockMemoryTracerFactory(GethTraceOptions options)
-            : ITracerFactory<TraceSimulateTracer<GethLikeTxTrace>, SimulateBlockResult<GethLikeTxTrace>>
-        {
-            public TraceSimulateTracer<GethLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
-            {
-                return new TraceSimulateTracer<GethLikeTxTrace>(new GethLikeBlockMemoryTracer(options), specProvider);
-            }
-        }
-
-        public class ParityLikeBlockTracerFactory(ParityTraceTypes types) : ITracerFactory<TraceSimulateTracer<ParityLikeTxTrace>, SimulateBlockResult<ParityLikeTxTrace>>
-        {
-            public TraceSimulateTracer<ParityLikeTxTrace> CreateTracer(bool traceTransfers, bool returnFullTransactionObjects, ISpecProvider specProvider)
-            {
-                return new TraceSimulateTracer<ParityLikeTxTrace>(new ParityLikeBlockTracer(types), specProvider);
-            }
-        }
-
-        public class TraceSimulateTracer<TTrace>(IBlockTracer<TTrace> inner, ISpecProvider specProvider) : IBlockTracer<SimulateBlockResult<TTrace>>
-        {
-            private readonly List<SimulateBlockResult<TTrace>> _results = new();
-            private Block _currentBlock;
-
-            public IReadOnlyList<SimulateBlockResult<TTrace>> BuildResult() => _results;
-
-            public bool IsTracingRewards => inner.IsTracingRewards;
-
-            public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
-            {
-                inner.ReportReward(author, rewardType, rewardValue);
-            }
-
-            public void StartNewBlockTrace(Block block)
-            {
-                _currentBlock = block;
-                inner.StartNewBlockTrace(block);
-            }
-
-            public ITxTracer StartNewTxTrace(Transaction? tx)
-            {
-                return inner.StartNewTxTrace(tx);
-            }
-
-            public void EndTxTrace()
-            {
-                inner.EndTxTrace();
-            }
-
-            public void EndBlockTrace()
-            {
-                inner.EndBlockTrace();
-                _results.Add(new SimulateBlockResult<TTrace>(_currentBlock, false, specProvider) { Calls = inner.BuildResult() });
-            }
         }
 
         private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
