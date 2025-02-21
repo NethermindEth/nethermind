@@ -49,6 +49,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="Microsoft.TypeScript.MSBuild" Version="5.7.3" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
+    <PackageVersion Include="Microsoft.Web.LibraryManager.Build" Version="2.1.175" />
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.4" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.1.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.4.0" />
