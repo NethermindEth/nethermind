@@ -29,6 +29,7 @@ public class SyncDispatcherTests
     private class TestSyncPeerPool : ISyncPeerPool
     {
         private readonly SemaphoreSlim _peerSemaphore;
+        private readonly Lock _lock = new Lock();
 
         public TestSyncPeerPool(int peerCount = 1)
         {
@@ -41,11 +42,11 @@ public class SyncDispatcherTests
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
-            await _peerSemaphore.WaitAsync();
+            await _peerSemaphore.WaitAsync(cancellationToken);
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.ClientId.Returns("Nethermind");
             syncPeer.TotalDifficulty.Returns(UInt256.One);
-            SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts);
+            SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
             allocation.AllocateBestPeer(
                 Substitute.For<IEnumerable<PeerInfo>>(),
                 Substitute.For<INodeStatsManager>(),
@@ -274,6 +275,9 @@ public class SyncDispatcherTests
     [Test]
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
+        using CancellationTokenSource cts = new();
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
         TestDownloader downloader = new TestDownloader();
@@ -284,16 +288,16 @@ public class SyncDispatcherTests
             new TestSyncPeerPool(),
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
-        Task executorTask = dispatcher.Start(CancellationToken.None);
+        Task executorTask = dispatcher.Start(cts.Token);
 
         // Load some requests
         syncFeed.Activate();
-        await Task.Delay(100);
+        await Task.Delay(100, cts.Token);
         syncFeed.Finish();
 
         // Dispose
         Task disposeTask = Task.Run(() => dispatcher.DisposeAsync());
-        await Task.Delay(100);
+        await Task.Delay(100, cts.Token);
 
         disposeTask.IsCompletedSuccessfully.Should().BeFalse();
 

@@ -297,10 +297,6 @@ public class SynchronizerTests
 
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
-            syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
-            syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
-            syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
-
             MergeConfig mergeConfig = new();
             if (WithTTD(synchronizerType))
             {
