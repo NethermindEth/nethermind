@@ -19,7 +19,7 @@ public static class DataFeedExtensions
     private static DataFeed _dataFeed;
 
     public static void MapDataFeeds(
-        this IEndpointRouteBuilder endpoints, 
+        this IEndpointRouteBuilder endpoints,
         ITxPool txPool,
         ISpecProvider specProvider,
         IReceiptFinder receiptFinder,
