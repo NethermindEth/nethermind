@@ -14,7 +14,8 @@ using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork),
+        typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
         private readonly IApiWithBlockchain _api;
@@ -26,23 +27,15 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockProductionPolicy is null)
+                throw new StepDependencyException(nameof(_api.BlockProductionPolicy));
+
+            if (!_api.BlockProductionPolicy.ShouldStartBlockProduction())
             {
-                _api.BlockProducer = BuildProducer();
-
-                _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
-
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy(static (p) => p.Priority))
-                {
-                    _api.BlockProducerRunner = wrapperPlugin.InitBlockProducerRunner(_api.BlockProducerRunner);
-                }
+                return Task.CompletedTask;
             }
 
-            return Task.CompletedTask;
-        }
-
-        protected virtual IBlockProducer BuildProducer()
-        {
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
                 _api.BlockTree!,
@@ -56,24 +49,28 @@ namespace Nethermind.Init.Steps
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
-            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
-
-            if (consensusPlugin is not null)
-            {
-                IBlockProducerFactory blockProducerFactory = consensusPlugin;
-
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy(static (p) => p.Priority))
-                {
-                    blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
-                }
-
-                return blockProducerFactory.InitBlockProducer();
-            }
-            else
+            if (consensusPlugin is null)
             {
                 throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
             }
+
+            IBlockProducerFactory blockProducerFactory = consensusPlugin;
+            IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin;
+
+            foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins()
+                         .OrderBy(static (p) => p.Priority))
+            {
+                blockProducerFactory =
+                    new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
+                blockProducerRunnerFactory =
+                    new ConsensusWrapperToBlockProducerRunnerFactoryAdapter(wrapperPlugin, blockProducerRunnerFactory);
+            }
+
+            _api.BlockProducer = blockProducerFactory.InitBlockProducer();
+            _api.BlockProducerRunner = blockProducerRunnerFactory.InitBlockProducerRunner(_api.BlockProducer);
+
+            return Task.CompletedTask;
         }
 
         private class ConsensusWrapperToBlockProducerFactoryAdapter(
@@ -83,6 +80,16 @@ namespace Nethermind.Init.Steps
             public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
             {
                 return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, additionalTxSource);
+            }
+        }
+
+        private class ConsensusWrapperToBlockProducerRunnerFactoryAdapter(
+            IConsensusWrapperPlugin consensusWrapperPlugin,
+            IBlockProducerRunnerFactory baseBlockProducerRunnerFactory) : IBlockProducerRunnerFactory
+        {
+            public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+            {
+                return consensusWrapperPlugin.InitBlockProducerRunner(baseBlockProducerRunnerFactory, blockProducer);
             }
         }
     }
