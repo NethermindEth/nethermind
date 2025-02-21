@@ -2,7 +2,7 @@
   "profiles": {
     "State Test": {
       "commandName": "Project",
-      "commandLineArgs": "-i statetest1.json"
+      "commandLineArgs": "-t -i statetest1.json"
     },
     "Gnosis State Test": {
       "commandName": "Project",
