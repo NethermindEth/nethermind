@@ -589,57 +589,57 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
+        BlockParameter fromBlock = filter.FromBlock;
+        BlockParameter toBlock = filter.ToBlock;
+
         // because of lazy evaluation of enumerable, we need to do the validation here first
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        SearchResult<BlockHeader> fromBlockResult;
-        SearchResult<BlockHeader> toBlockResult;
-
-        if (filter.FromBlock == filter.ToBlock)
-        {
-            fromBlockResult = toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
-        }
-        else
-        {
-            toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
-
-            if (toBlockResult.IsError)
-            {
-                timeout.Dispose();
-                return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(toBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            fromBlockResult = _blockFinder.SearchForHeader(filter.FromBlock);
-        }
-
-        if (fromBlockResult.IsError)
+        if (!TryFindOrUseLatest(_blockFinder, ref toBlock, out SearchResult<BlockHeader> toBlockResult, out long sourceToBlockNumber))
         {
             timeout.Dispose();
-            return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(fromBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+            return FailWithNoHeadersSyncedYet(toBlockResult);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        BlockHeader fromBlock = fromBlockResult.Object!;
-        BlockHeader toBlock = toBlockResult.Object!;
+        SearchResult<BlockHeader> fromBlockResult;
+        long sourceFromBlockNumber;
 
-        long fromBlockNumber = fromBlock.Number;
-        long toBlockNumber = toBlock.Number;
-
-        if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
+        if (fromBlock == toBlock)
+        {
+            fromBlockResult = toBlockResult;
+            sourceFromBlockNumber = sourceToBlockNumber;
+        }
+        else if (!TryFindOrUseLatest(_blockFinder, ref fromBlock, out fromBlockResult, out sourceFromBlockNumber))
         {
             timeout.Dispose();
-
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
+            return FailWithNoHeadersSyncedYet(fromBlockResult);
         }
+
+        if (sourceFromBlockNumber > sourceToBlockNumber)
+        {
+            timeout.Dispose();
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {sourceFromBlockNumber} is later than to block {sourceToBlockNumber}.", ErrorCodes.InvalidParams);
+        }
+
+        if (_blockFinder.Head?.Number is not null && sourceFromBlockNumber > _blockFinder.Head.Number)
+        {
+            timeout.Dispose();
+            return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        BlockHeader fromBlockHeader = fromBlockResult.Object;
+        BlockHeader toBlockHeader = toBlockResult.Object;
 
         try
         {
-            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
+            LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
-            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
+            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
 
@@ -663,6 +663,33 @@ public partial class EthRpcModule(
         catch (ResourceNotFoundException exception)
         {
             return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+        }
+
+        ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
+            => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+
+        static bool TryFindOrUseLatest(IBlockFinder blockFinder, ref BlockParameter blockParameter, out SearchResult<BlockHeader> blockResult, out long sourceBlockNumber)
+        {
+            blockResult = blockFinder.SearchForHeader(blockParameter);
+
+            if (blockResult.IsError)
+            {
+                sourceBlockNumber = blockParameter.Type is BlockParameterType.BlockNumber ? blockParameter.BlockNumber.Value : 0;
+
+                if (blockParameter.Type is BlockParameterType.BlockNumber &&
+                    blockFinder.Head?.Number is not null &&
+                    blockFinder.Head.Number < blockParameter.BlockNumber)
+                {
+                    blockParameter = new BlockParameter(BlockParameterType.Latest);
+                    blockResult = blockFinder.SearchForHeader(blockParameter);
+                    return !blockResult.IsError;
+                }
+
+                return false;
+            }
+
+            sourceBlockNumber = blockResult.Object.Number;
+            return true;
         }
     }
 
