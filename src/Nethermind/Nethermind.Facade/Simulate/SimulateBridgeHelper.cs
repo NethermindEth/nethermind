@@ -56,22 +56,25 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public bool TrySimulate(
+    public bool TrySimulate<TTracer>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
-        IBlockTracer tracer,
-        [NotNullWhen(false)] out string? error) =>
-        TrySimulate(parent, payload, simulateOutputTracer, tracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
+        TTracer tracer,
+        IBlockTracer blockTracer,
+        [NotNullWhen(false)] out string? error)
+        where TTracer : class
+    {
+        return TrySimulate(parent, payload, tracer, blockTracer, simulateProcessingEnvFactory.Create(payload.Validation), out error);
+    }
 
-
-    private bool TrySimulate(
+    private bool TrySimulate<TTracer>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateBlockTracer simulateOutputTracer,
-        IBlockTracer tracer,
+        TTracer tracer,
+        IBlockTracer blockTracer,
         SimulateReadOnlyBlocksProcessingEnv env,
         [NotNullWhen(false)] out string? error)
+        where TTracer : class
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -87,7 +90,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
             {
                 nonceCache.Clear();
 
-                BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec); //currentSpec is still parent spec
+                BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec);
                 spec = env.SpecProvider.GetSpec(callHeader);
                 PrepareState(callHeader, parent, blockCall, env.WorldState, env.CodeInfoRepository, spec);
                 Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, stateProvider, nonceCache);
@@ -106,10 +109,15 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 suggestedBlocks[0] = currentBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
+                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, blockTracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
-                CheckMisssingAndSetTracedDefaults(simulateOutputTracer, processedBlock);
+
+                // if (tracer is SimulateBlockTracer simulateBlockTracer)
+                // {
+                //     CheckMisssingAndSetTracedDefaults(simulateBlockTracer.Results, processedBlock);
+                // }
+
 
                 parent = processedBlock.Header;
             }
@@ -117,18 +125,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
         error = null;
         return true;
-    }
-
-    private static void CheckMisssingAndSetTracedDefaults(SimulateBlockTracer simulateOutputTracer, Block processedBlock)
-    {
-        SimulateBlockResult current = simulateOutputTracer.Results.Last();
-        current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;
-        current.ParentBeaconBlockRoot = processedBlock.ParentBeaconBlockRoot ?? Hash256.Zero;
-        current.TransactionsRoot = processedBlock.Header.TxRoot;
-        current.WithdrawalsRoot = processedBlock.WithdrawalsRoot ?? Keccak.EmptyTreeHash;
-        current.ExcessBlobGas = processedBlock.ExcessBlobGas ?? 0;
-        current.Withdrawals = processedBlock.Withdrawals ?? [];
-        current.Author = null;
     }
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)

@@ -15,6 +15,8 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
@@ -29,6 +31,7 @@ using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Facade.Tracing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade
@@ -165,15 +168,27 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTracer, TTrace>(
+            BlockHeader header,
+            SimulatePayload<TransactionWithSourceDetails> payload,
+            CancellationToken cancellationToken,
+            ITracerFactory<TTracer, TTrace> tracerFactory)
+            where TTracer : class, IBlockTracer<TTrace>
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(simulateOutputTracer);
-            SimulateOutput result = new();
+            TTracer tracer = tracerFactory.CreateTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.SetOtherTracer(tracer);
+
+            SimulateOutput<TTrace> result = new();
+
             try
             {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
+                if (!_simulateBridgeHelper.TrySimulate<TTracer>(
+                        header,
+                        payload,
+                        tracer,
+                        new CancellationBlockTracer(receiptsTracer, cancellationToken),
+                        out string error))
                 {
                     result.Error = error;
                 }
@@ -187,9 +202,9 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.Items = simulateOutputTracer.Results;
-            return result;
+            return new SimulateOutput<TTrace> { Items = tracer.BuildResult() };
         }
+
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {

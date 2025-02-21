@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -29,14 +31,20 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
     private readonly BlockDecoder _blockDecoder;
+    private readonly IBlockchainBridge _blockchainBridge;
+    private readonly ulong _secondsPerSlot;
+    private readonly IBlockFinder _blockFinder;
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
+    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot, IBlockFinder? blockFinder)
     {
         _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logger = logManager.GetClassLogger();
         _blockDecoder = new BlockDecoder();
+        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -379,4 +387,14 @@ public class DebugRpcModule : IDebugRpcModule
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _jsonRpcConfig.BuildTimeoutCancellationToken();
+
+    /// <summary>
+    /// Simulate transactions using ParityLikeBlockTracer
+    /// </summary>
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
+    {
+        return new SimulateTxExecutor<GethLikeTxTrace> (_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
+            .Execute(payload, blockParameter);
+    }
 }
