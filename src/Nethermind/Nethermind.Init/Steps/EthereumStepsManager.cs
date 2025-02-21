@@ -66,7 +66,6 @@ namespace Nethermind.Init.Steps
                 if (step is null)
                     throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.");
                 stepInfoMap.Add(step.GetType(), stepInfo);
-               
                 ref List<StepWrapper>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(stepBaseTypeMap, stepInfo.StepBaseType, out bool keyExists);
                 list ??= new List<StepWrapper>();
                 list.Add(new StepWrapper(step));
