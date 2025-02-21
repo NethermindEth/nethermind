@@ -12,7 +12,7 @@
       "ES2024",
       "dom"
     ],
-    "outFile": "wwwroot/js/nethermind.js"
+    "outFile": "wwwroot/js"
   },
   "include": [
     "scripts/**/*"

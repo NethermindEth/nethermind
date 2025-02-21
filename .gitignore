@@ -404,5 +404,5 @@ FodyWeavers.xsd
 ## Nethermind
 keystore/
 /.githooks
-nethermind.js
-*.js.map
+bundle.js
+src/Nethermind/Nethermind.Runner/wwwroot/js.map

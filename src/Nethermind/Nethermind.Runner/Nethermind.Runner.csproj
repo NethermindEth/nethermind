@@ -25,10 +25,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.TypeScript.MSBuild">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="Pyroscope" />
@@ -70,14 +66,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <TypeScriptCompile Include="scripts\boxPlot.ts" />
-    <TypeScriptCompile Include="scripts\peerPie.ts" />
-    <TypeScriptCompile Include="scripts\treeMap.ts" />
-    <TypeScriptCompile Include="scripts\types.ts" />
-    <TypeScriptCompile Include="scripts\utilities.ts" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Content Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -111,8 +99,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="wwwroot/js/" />
+    <Folder Include="wwwroot\js\" />
   </ItemGroup>
+
+  <ItemGroup>
+    <TypeScriptCompile Include="scripts\boxPlot.ts" />
+    <TypeScriptCompile Include="scripts\peerPie.ts" />
+    <TypeScriptCompile Include="scripts\treeMap.ts" />
+    <TypeScriptCompile Include="scripts\types.ts" />
+    <TypeScriptCompile Include="scripts\utilities.ts" />
+  </ItemGroup>
+
+  <Target Name="JsBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="yarn build:dev" Condition="'$(Configuration)'=='Debug'" />
+    <Exec Command="yarn build:release" Condition="'$(Configuration)'=='Release'" />
+  </Target>
   
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
