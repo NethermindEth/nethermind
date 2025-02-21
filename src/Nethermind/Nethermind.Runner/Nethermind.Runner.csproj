@@ -111,7 +111,7 @@
   </ItemGroup>
 
   <Target Name="JsBuild" BeforeTargets="PreBuildEvent">
-    <Exec Command="npm install" Condition="'$(Configuration)'=='Debug'" />
+    <Exec Command="npm install" />
     <Exec Command="npm run build:dev" Condition="'$(Configuration)'=='Debug'" />
     <Exec Command="npm run build:release" Condition="'$(Configuration)'=='Release'" />
   </Target>
