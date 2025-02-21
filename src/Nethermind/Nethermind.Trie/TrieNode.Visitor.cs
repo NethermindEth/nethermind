@@ -175,7 +175,7 @@ namespace Nethermind.Trie
             currentNode.ResolveAllChildBranch(nodeResolver, ref path, output.AsSpan());
 
             path.AppendMut(0);
-            for (int i = 0; i < 16; i++)
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 if (output[i] is null) continue;
                 TrieNode child = output[i];
