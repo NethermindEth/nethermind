@@ -43,11 +43,23 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>();
+    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
+        new UnboundedChannelOptions()
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+        });
+
+    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
+        new BoundedChannelOptions(MaxProcessingQueueSize)
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+            // Optimize for single writer concurrency (recovery queue)
+            SingleWriter = true,
+        });
+
     private bool _recoveryComplete = false;
-
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(MaxProcessingQueueSize);
-
     private int _queueCount;
 
     private readonly ProcessingStats _stats;
@@ -386,8 +398,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            Metrics.RecoveryQueueSize = _recoveryQueue.Reader.Count;
-            Metrics.ProcessingQueueSize = _blockQueue.Reader.Count;
+            int blockQueueCount = _blockQueue.Reader.Count;
+            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount, 0);
+            Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
 
