@@ -84,7 +84,7 @@ public class VirtualMachine : IVirtualMachine
             IsPatternMatchingEnabled = false,
 
             AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = false,
+            BakeInTracingInAotModes = logger.IsTrace,
 
             FullAotThreshold = 5,
             PatternMatchingThreshold = int.MaxValue,

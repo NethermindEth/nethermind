@@ -152,7 +152,7 @@ public static class ReleaseSpecEmit
     {
         foreach (var segment in metadata.Segments)
         {
-            foreach (var subSegment in segment.SubSegments.Values)
+            foreach (var subSegment in segment.SubSegments.Values.Where(subs => subs.IsReachable))
             {
                 locals.TryDeclareLocal(subSegment.GetHashCode().ToString(), typeof(Nullable<bool>));
             }

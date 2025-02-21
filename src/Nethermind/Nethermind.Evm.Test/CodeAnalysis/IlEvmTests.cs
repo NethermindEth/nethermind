@@ -2073,7 +2073,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void All_Stateless_Opcodes_Are_Covered_in_JIT_Tests()
+        public void All_Opcodes_Are_Covered_in_JIT_Tests()
         {
             List<Instruction> instructions = System.Enum.GetValues<Instruction>().ToList();
 
@@ -2084,7 +2084,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             List<Instruction> notCovered = new List<Instruction>();
             foreach (var opcode in instructions)
             {
-                if (!opcode.IsStateful() && !tests.Contains(opcode))
+                if (!tests.Contains(opcode))
                 {
                     notCovered.Add(opcode);
                 }

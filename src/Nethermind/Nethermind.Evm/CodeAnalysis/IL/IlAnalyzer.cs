@@ -375,6 +375,7 @@ public static class IlAnalyzer
 
                             subSegment.StaticGasSubSegmentes[costStart] = coststack; // remember the stackHeadRef chain of opcodes
                             subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
+
                             metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
                             subsegmentStart = pc + 1;

@@ -2241,25 +2241,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
                             method.BranchIfTrue(pushZeroLabel);
 
-                            using Local delegateAddress = method.DeclareLocal<Address>();
-                            envLoader.LoadCodeInfoRepository(method, locals, false);
-                            envLoader.LoadWorldState(method, locals, false);
-                            method.LoadLocal(locals.address);
-                            method.LoadLocalAddress(delegateAddress);
-                            method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.TryGetDelegation), [typeof(IWorldState), typeof(Address), typeof(Address).MakeByRefType()]));
-                            method.BranchIfFalse(pushhashcodeLabel);
-
-                            envLoader.LoadWorldState(method, locals, false);
-                            method.LoadLocal(delegateAddress);
-                            method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
-                            method.BranchIfFalse(pushZeroLabel);
-
-                            envLoader.LoadWorldState(method, locals, false);
-                            method.LoadLocal(delegateAddress);
-                            method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
-                            method.BranchIfTrue(pushZeroLabel);
-
-                            method.MarkLabel(pushhashcodeLabel);
                             method.CleanAndLoadWord(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             envLoader.LoadCodeInfoRepository(method, locals, false);
                             envLoader.LoadWorldState(method, locals, false);
@@ -2371,7 +2352,16 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         envLoader.LoadTxTracer(method, locals, false);
                         if (ilCompilerConfig.BakeInTracingInAotModes)
                         {
+                            Label skipNonTracingCall = method.DefineLabel();
+                            Label skipTracingCall = method.DefineLabel();
+                            envLoader.LoadTxTracer(method, locals, false);
+                            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+                            method.BranchIfFalse(skipTracingCall);
                             method.Call(selfDestructTracing);
+                            method.Branch(skipNonTracingCall);
+                            method.MarkLabel(skipTracingCall);
+                            method.Call(selfDestructNotTracing);
+                            method.MarkLabel(skipNonTracingCall);
                         }
                         else
                         {
@@ -2475,8 +2465,18 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.LoadLocalAddress(newStateToExe);
 
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        if (ilCompilerConfig.BakeInTracingInAotModes){
+                            Label skipNonTracingCall = method.DefineLabel();
+                            Label skipTracingCall = method.DefineLabel();
+                            envLoader.LoadTxTracer(method, locals, false);
+                            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+                            method.BranchIfFalse(skipTracingCall);
                             method.Call(callMethodTracign);
+                            method.Branch(skipNonTracingCall);
+                            method.MarkLabel(skipTracingCall);
+                            method.Call(callMethodNotTracing);
+                            method.MarkLabel(skipNonTracingCall);
+                        }
                         else
                         {
                             method.Call(callMethodNotTracing);
@@ -2607,7 +2607,18 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadLocalAddress(newStateToExe);
 
                         if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
+                            Label skipNonTracingCall = method.DefineLabel();
+                            Label skipTracingCall = method.DefineLabel();
+                            envLoader.LoadTxTracer(method, locals, false);
+                            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+                            method.BranchIfFalse(skipTracingCall);
                             method.Call(callMethodTracign);
+                            method.Branch(skipNonTracingCall);
+                            method.MarkLabel(skipTracingCall);
+                            method.Call(callMethodNotTracing);
+                            method.MarkLabel(skipNonTracingCall);
+                        }
                         else
                         {
                             method.Call(callMethodNotTracing);

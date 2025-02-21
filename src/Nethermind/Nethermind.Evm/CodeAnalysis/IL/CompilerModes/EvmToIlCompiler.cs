@@ -96,6 +96,10 @@ internal static class Precompiler
         method.LoadConstant((int)ContractState.Halted);
         method.BranchIfEqual(isContinuation);
 
+
+        // just hotwire
+        bool hasEmittedJump = false;
+
         foreach (var segmentMetadata in contractMetadata.Segments)
         {
             method.MarkLabel(jumpDestinations[segmentMetadata.Boundaries.Start.Value] = method.DefineLabel());
@@ -105,12 +109,12 @@ internal static class Precompiler
 
             SubSegmentMetadata currentSegment = default;
 
-
-
             // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
             for (var i = 0; i < segmentMetadata.Segment.Length; i++)
             {
                 OpcodeInfo op = segmentMetadata.Segment[i];
+
+                hasEmittedJump |= op.IsJump;
 
                 if (op.Operation is Instruction.JUMPDEST)
                 {
@@ -126,15 +130,15 @@ internal static class Precompiler
                     {
                         currentSegment = segmentMetadata.SubSegments[i];
 
-                        if (currentSegment.RequiresOpcodeCheck)
-                        {
-                            method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
-                        }
-
                         if (!currentSegment.IsReachable)
                         {
                             i = currentSegment.End;
                             continue;
+                        }
+
+                        if (currentSegment.RequiresOpcodeCheck)
+                        {
+                            method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
 
                         // and we emit failure for failing jumpless segment at start 
@@ -212,10 +216,16 @@ internal static class Precompiler
                 {
                     UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
                 }
-            }
 
+
+                if (op.IsTerminating && !hasEmittedJump)
+                {
+                    goto exitLoops;
+                }
+            }
         }
 
+        exitLoops:
         method.MarkLabel(ret);
         // we get locals.stackHeadRef size
         envLoader.LoadStackHead(method, locals, true);
@@ -463,6 +473,7 @@ internal static class Precompiler
             }
         }
 
+        
         Label jumpIsLocal = method.DefineLabel();
         Label jumpIsNotLocal = method.DefineLabel();
         Local isEphemeralJump = method.DeclareLocal<bool>();
