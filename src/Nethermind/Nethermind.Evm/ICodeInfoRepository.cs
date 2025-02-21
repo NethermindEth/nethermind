@@ -23,6 +23,8 @@ public interface ICodeInfoRepository
 
 public static class CodeInfoRepositoryExtensions
 {
-    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-        => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
+    public static CodeInfo GetCachedCodeInfoFollowsDelegation(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+        => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out _);
+    public static CodeInfo GetCachedCodeInfoDoesntFollowsDelegation(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+        => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, false, vmSpec, out _);
 }
