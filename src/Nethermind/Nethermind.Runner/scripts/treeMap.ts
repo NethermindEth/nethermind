@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-import * as d3 from 'd3';
+import * as d3 from './lib/d3.js';
 
 /**
  * Builds or updates a treemap in a given <svg> element.
