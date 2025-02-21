@@ -107,6 +107,7 @@ namespace Nethermind.Init.Steps
                         _api.LogManager,
                         _api.WorldStateManager!.GlobalWorldState),
                     _api.SpecProvider!,
+                    blocksConfig,
                     _api.LogManager,
                     preBlockCaches)
                 : null;
