@@ -406,3 +406,4 @@ keystore/
 /.githooks
 nethermind.js
 *.js.map
+/src/Nethermind/Nethermind.Runner/scripts/lib

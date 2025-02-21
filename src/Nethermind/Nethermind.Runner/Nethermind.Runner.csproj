@@ -96,11 +96,11 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
+    <TypeScriptCompile Remove="node_modules\**" />
     <None Remove="scripts\boxPlot.ts" />
     <None Remove="scripts\treeMap.ts" />
     <None Remove="scripts\types.ts" />
     <None Remove="scripts\utilities.ts" />
-    <None Include="package.json" />
     <None Include="tsconfig.json" />
     <Content Update="wwwroot\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

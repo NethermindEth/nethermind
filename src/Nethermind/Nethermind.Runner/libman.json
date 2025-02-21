@@ -1,0 +1,19 @@
+{
+  "version": "3.0",
+  "defaultProvider": "cdnjs",
+  "defaultDestination": "scripts/lib",
+  "libraries": [
+    {
+      "library": "d3@7.9.0",
+      "files": [ "d3.js" ]
+    },
+    {
+      "library": "d3-sankey@0.12.3",
+      "files": [ "d3-sankey.js" ]
+    },
+    {
+      "library": "ansi-to-html@0.7.2",
+      "files": [ "ansi_to_html.min.js" ]
+    }
+  ]
+}
