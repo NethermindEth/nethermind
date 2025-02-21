@@ -298,12 +298,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
     }
 
-    public IBlockProducerRunner CreateBlockProducerRunner()
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
     {
         return new StandardBlockProducerRunner(
             DefaultBlockProductionTrigger,
             _api!.BlockTree!,
-            _api.BlockProducer!);
+            blockProducer);
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

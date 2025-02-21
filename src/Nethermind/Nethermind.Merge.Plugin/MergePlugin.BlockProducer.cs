@@ -55,17 +55,27 @@ namespace Nethermind.Merge.Plugin
             return _api.BlockProducer!;
         }
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner)
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunnerFactory baseRunnerFactory, IBlockProducer blockProducer)
         {
             if (MergeEnabled)
             {
-                // The trigger can be different, so need to stop the old block production runner at this point.
+                IMergeBlockProducer mergeBlockProducer = blockProducer as IMergeBlockProducer
+                    ?? throw new ArgumentException("Merge enabled, but block producer is not IMergeBlockProducer");
+
+                IBlockProducer preMergeBlockProducer = mergeBlockProducer.PreMergeBlockProducer
+                    ?? throw new ArgumentException("Merge enabled, but pre-merge block producer is null");
+                // IBlockProducer postMergeBlockProducer = mergeBlockProducer.PostMergeBlockProducer;
+
+                IBlockProducerRunner baseRunner = baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer);
+
+                // TODO: Why is mergeBlockProducer used instead of postMergeBlockProducer?
                 StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
-                    _api.ManualBlockProductionTrigger, _api.BlockTree!, _api.BlockProducer!);
+                    _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
+
                 return new MergeBlockProducerRunner(baseRunner, postMergeRunner, _poSSwitcher);
             }
 
-            return baseRunner;
+            return baseRunnerFactory.InitBlockProducerRunner(blockProducer);
         }
 
         // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin
