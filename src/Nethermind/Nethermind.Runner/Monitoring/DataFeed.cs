@@ -52,7 +52,7 @@ public class DataFeed
         ArgumentNullException.ThrowIfNull(_blockTree);
         ArgumentNullException.ThrowIfNull(_syncPeerPool);
 
-        api.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
+        api.MainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
         _blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
