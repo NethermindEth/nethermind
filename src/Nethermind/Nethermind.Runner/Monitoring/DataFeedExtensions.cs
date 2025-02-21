@@ -4,8 +4,13 @@
 using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
-using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Specs;
 using Nethermind.Runner.Monitoring;
+using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Runner;
 
@@ -13,12 +18,18 @@ public static class DataFeedExtensions
 {
     private static DataFeed _dataFeed;
 
-    public static void MapDataFeeds(this IEndpointRouteBuilder endpoints, INethermindApi api)
+    public static void MapDataFeeds(
+        this IEndpointRouteBuilder endpoints, 
+        ITxPool txPool,
+        ISpecProvider specProvider,
+        IReceiptFinder receiptFinder,
+        IBlockTree blockTree,
+        ISyncPeerPool syncPeerPool,
+        IBlockchainProcessor blockchainProcessor)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
-        ArgumentNullException.ThrowIfNull(api);
 
-        _dataFeed = new DataFeed(api.TxPool, api.SpecProvider, api.ReceiptFinder, api.BlockTree, api.SyncPeerPool, api.BlockchainProcessor);
+        _dataFeed = new DataFeed(txPool, specProvider, receiptFinder, blockTree, syncPeerPool, blockchainProcessor);
 
         endpoints.MapGet("/data/events", _dataFeed.ProcessingFeed);
     }

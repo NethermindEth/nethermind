@@ -76,7 +76,12 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
                     s.AddSingleton(_rpcAuthentication);
-                    s.AddSingleton(_api);
+                    s.AddSingleton(_api.TxPool);
+                    s.AddSingleton(_api.SpecProvider);
+                    s.AddSingleton(_api.ReceiptFinder);
+                    s.AddSingleton(_api.BlockTree);
+                    s.AddSingleton(_api.SyncPeerPool);
+                    s.AddSingleton(_api.BlockchainProcessor);
                     foreach (var plugin in _api.Plugins.OfType<INethermindServicesPlugin>())
                     {
                         plugin.AddServices(s);

@@ -23,15 +23,21 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Specs;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Runner.JsonRpc;
 
@@ -137,7 +143,15 @@ public class Startup
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
 
-                endpoints.MapDataFeeds(app.ApplicationServices.GetRequiredService<INethermindApi>());
+                var services = app.ApplicationServices;
+                endpoints.MapDataFeeds(
+                    services.GetRequiredService<ITxPool>(),
+                    services.GetRequiredService<ISpecProvider>(),
+                    services.GetRequiredService<IReceiptFinder>(),
+                    services.GetRequiredService<IBlockTree>(),
+                    services.GetRequiredService<ISyncPeerPool>(),
+                    services.GetRequiredService<IBlockchainProcessor>()
+                );
             }
         });
 
@@ -266,7 +280,7 @@ public class Startup
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
 
-                            Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
+                            Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
 
                             // There should be only one response because we don't expect multiple JSON tokens in the request
                             break;
@@ -283,7 +297,7 @@ public class Startup
                 }
                 finally
                 {
-                    Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                 }
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
