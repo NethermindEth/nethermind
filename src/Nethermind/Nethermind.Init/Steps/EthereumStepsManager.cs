@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -65,14 +66,10 @@ namespace Nethermind.Init.Steps
                 if (step is null)
                     throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.");
                 stepInfoMap.Add(step.GetType(), stepInfo);
-                if (stepBaseTypeMap.ContainsKey(stepInfo.StepBaseType))
-                {
-                    stepBaseTypeMap[stepInfo.StepBaseType].Add(new StepWrapper(step));
-                }
-                else
-                {
-                    stepBaseTypeMap.Add(stepInfo.StepBaseType, new List<StepWrapper>() { new StepWrapper(step) });
-                }
+               
+                ref List<StepWrapper>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(stepBaseTypeMap, stepInfo.StepBaseType, out bool keyExists);
+                list ??= new List<StepWrapper>();
+                list.Add(new StepWrapper(step));
             }
             List<Task> allRequiredSteps = new();
             foreach (List<StepWrapper> steps in stepBaseTypeMap.Values)
