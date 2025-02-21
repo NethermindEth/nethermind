@@ -104,6 +104,7 @@
 
   <ItemGroup>
     <TypeScriptCompile Include="scripts\boxPlot.ts" />
+    <TypeScriptCompile Include="scripts\peerPie.ts" />
     <TypeScriptCompile Include="scripts\treeMap.ts" />
     <TypeScriptCompile Include="scripts\types.ts" />
     <TypeScriptCompile Include="scripts\utilities.ts" />

@@ -5,11 +5,12 @@ import * as d3 from 'd3';
 import Convert = require('ansi-to-html');
 import { formatDuration } from './format';
 import { sparkline, Datum } from './sparkline';
-import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionReceipt } from './types';
+import { NodeData, INode, TxPool, Processed, ForkChoice, System, TransactionReceipt, Peer } from './types';
 import { TxPoolFlow } from './txPoolFlow';
 import { updateTreemap } from './treeMap'
-import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo } from './utilities';
+import { formatUnixTimestamp, formatBytes, parseExtraData, getNetworkName, getNetworkLogo, getNodeType } from './utilities';
 import { createRollingBoxPlot } from './boxPlot'
+import { updatePieChart } from './peerPie'
 
 // Grab DOM elements
 const txPoolValue = document.getElementById('txPoolValue') as HTMLElement;
@@ -302,6 +303,30 @@ sse.addEventListener("forkChoice", (e) => {
   // Update the rolling box plot for this block
   // passing the blockNum as well:
   boxPlotEGP.update(mergedData, number);
+});
+
+sse.addEventListener("peers", (e) => {
+  const data = JSON.parse(e.data) as Peer[];
+
+  // e.data is a JSON array of Peer objects
+  const peersArray = JSON.parse(e.data) as Peer[];
+
+  // Aggregate by clientType
+  const countsByType: Record<string, number> = {};
+
+  peersArray.forEach((peer) => {
+    const nodeType = getNodeType(peer.clientType);
+    countsByType[nodeType] = (countsByType[nodeType] || 0) + 1;
+  });
+
+  // Convert to an array for D3
+  const peers = Object.entries(countsByType).map(([type, count]) => ({
+    type,
+    count
+  }));
+
+  // Now update the chart
+  updatePieChart(peers);
 });
 
 let maxCpuPercent = 0;

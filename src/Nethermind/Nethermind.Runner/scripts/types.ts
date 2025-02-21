@@ -103,3 +103,10 @@ export interface System {
   privilegedPercent: number;
   workingSet: number;
 }
+
+export interface Peer {
+  contexts: number;
+  clientType: number;
+  version: number;
+  head: number;
+}

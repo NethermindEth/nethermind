@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
@@ -14,15 +15,17 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Runner.Monitoring.TransactionPool;
 using Nethermind.Serialization.Json;
-using Nethermind.TxPool;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Monitoring;
 
@@ -34,6 +37,7 @@ public class DataFeed
     private readonly ISpecProvider _specProvider;
     private readonly IReceiptFinder _receiptFinder;
     private readonly IBlockTree _blockTree;
+    private readonly ISyncPeerPool _syncPeerPool;
     private readonly BlockDecoder _blockDecoder = new();
 
     public DataFeed(INethermindApi api)
@@ -42,15 +46,18 @@ public class DataFeed
         _blockTree = api.BlockTree;
         _specProvider = api.SpecProvider;
         _receiptFinder = api.ReceiptFinder;
+        _syncPeerPool = api.SyncPeerPool;
 
         ArgumentNullException.ThrowIfNull(_txPool);
         ArgumentNullException.ThrowIfNull(_blockTree);
+        ArgumentNullException.ThrowIfNull(_syncPeerPool);
 
         api.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
         _blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
         _ = SystemStatsRefresh();
+        _ = StartPeersRefresh();
     }
 
     public async Task ProcessingFeed(HttpContext ctx, CancellationToken ct)
@@ -98,7 +105,8 @@ public class DataFeed
         processed,
         txLinks,
         forkChoice,
-        system
+        system,
+        peers
     }
 
     class ChannelEntry
@@ -125,6 +133,7 @@ public class DataFeed
         _ = ChannelSubscribe(EntryType.forkChoice, () => _forkChoice.Task, channel, ct);
         _ = ChannelSubscribe(EntryType.txLinks, () => _txFlow.Task, channel, ct);
         _ = ChannelSubscribe(EntryType.system, () => _systemStats.Task, channel, ct);
+        _ = ChannelSubscribe(EntryType.peers, () => _peers.Task, channel, ct);
     }
 
     private byte[] GetNodeData()
@@ -183,6 +192,40 @@ public class DataFeed
         _lastCpuUsage = cpuUsage;
 
         return JsonSerializer.SerializeToUtf8Bytes(stats, JsonSerializerOptions.Web);
+    }
+
+    TaskCompletionSource<byte[]> _peers = new();
+    private async Task StartPeersRefresh()
+    {
+        _lastCpuUsage = Environment.CpuUsage;
+        _lastTimeStamp = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            var data = await GetPeersTask(delayMs: 1000);
+            var peers = _peers;
+            _peers = new();
+            peers.TrySetResult(data);
+        }
+    }
+
+    private async Task<byte[]> GetPeersTask(int delayMs)
+    {
+        await Task.Delay(delayMs);
+
+        var allPeers = _syncPeerPool.AllPeers;
+        List<PeerForWeb> peers = [];
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
+        {
+            peers.Add(new PeerForWeb
+            {
+                Contexts = peer.AllocatedContexts,
+                ClientType = peer.PeerClientType,
+                Version = peer.SyncPeer.ProtocolVersion,
+                Head = peer.HeadNumber
+            });
+        }
+
+        return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
     }
 
     private async Task<byte[]> GetTxFlowTask(int delayMs)
@@ -354,6 +397,13 @@ public class DataFeed
     private class WithdrawalForWeb
     {
 
+    }
+    private class PeerForWeb
+    {
+        public AllocationContexts Contexts { get; set; }
+        public NodeClientType ClientType { get; set; }
+        public int Version { get; set; }
+        public long Head { get; set; }
     }
 
     TaskCompletionSource<byte[]> _log = new();

@@ -37,11 +37,15 @@ export function createRollingBoxPlot(
   }
   const innerHeight = height - margin.top - margin.bottom;
 
-  // We'll maintain an array of block data:
-  // { xIndex, blockNumber, stats, values[] }
+  // We'll store up to maxHistory blocks:
+  //   { xIndex, blockNumber, stats: {min,q1,median,q3,max,whiskerLow,whiskerHigh}, values[] }
   const blocks: any[] = [];
 
-  // xScale: domain is [0..maxHistory-1], so we have maxHistory "slots".
+  // We'll store the median of the oldest block that got removed so the next new block
+  // can still compare to it (if it effectively "replaces" that xIndex).
+  let lastRemovedMedian: number | undefined;
+
+  // X scale: domain is [0..maxHistory-1]
   const xScale = d3
     .scaleBand<number>()
     .domain(d3.range(maxHistory))
@@ -49,14 +53,14 @@ export function createRollingBoxPlot(
     .paddingInner(0.3)
     .paddingOuter(0.1);
 
-  // yScale: dynamic domain based on whiskers, fixed range.
+  // Y scale
   const yScale = d3.scaleLinear().range([innerHeight, 0]);
 
   function transition() {
     return d3.transition().duration(750);
   }
 
-  // Compute basic box-plot stats with Tukey whiskers
+  // Compute box-plot stats with Tukey whiskers
   function computeBoxStats(values: number[]) {
     if (!values.length) {
       return {
@@ -79,6 +83,7 @@ export function createRollingBoxPlot(
 
     const whiskerLow = Math.max(min, q1 - 1.5 * iqr);
     const whiskerHigh = Math.min(max, q3 + 1.5 * iqr);
+
     return { min, q1, median, q3, max, whiskerLow, whiskerHigh };
   }
 
@@ -88,30 +93,28 @@ export function createRollingBoxPlot(
    * @param blockNum numeric block number (or label)
    */
   function update(mergedData: any[], blockNum: number) {
-    // 1) Extract data
+    // 1) Extract & compute stats
     const values = mergedData.map(accessor).filter((v) => Number.isFinite(v) && v >= 0);
     const stats = computeBoxStats(values);
 
-    // 2) Placement logic
+    // 2) If we haven't filled up yet, place new block at xIndex=blocks.length
     if (blocks.length < maxHistory) {
-      // Not full yet => place new block at xIndex = blocks.length
       const xIndex = blocks.length;
-      blocks.push({
-        xIndex,
-        blockNumber: blockNum,
-        stats,
-        values,
-      });
+      blocks.push({ xIndex, blockNumber: blockNum, stats, values });
     } else {
-      // Already at max => shift everything left
+      // We have max blocks => SHIFT left
       blocks.forEach((b) => {
         b.xIndex -= 1;
       });
-      // Remove any that now have xIndex < 0
+      // If the oldest block is now xIndex<0, remove it but remember its median
       while (blocks.length && blocks[0].xIndex < 0) {
-        blocks.shift();
+        const removed = blocks.shift();
+        if (removed) {
+          // store its median so the new block can compare
+          lastRemovedMedian = removed.stats.median;
+        }
       }
-      // New block at xIndex = maxHistory - 1
+      // Insert the new block at xIndex = maxHistory -1 (the right-most slot)
       blocks.push({
         xIndex: maxHistory - 1,
         blockNumber: blockNum,
@@ -124,7 +127,7 @@ export function createRollingBoxPlot(
     const globalWhiskerHigh = d3.max(blocks, (b) => b.stats.whiskerHigh) || 1;
     yScale.domain([0, globalWhiskerHigh]);
 
-    // 4) Data bind
+    // 4) Data binding
     let boxGroups = g.selectAll<SVGGElement, any>(".box-group").data(blocks, (d: any) => d.xIndex);
 
     // EXIT
@@ -144,18 +147,23 @@ export function createRollingBoxPlot(
 
     // Whisker line
     enterGroups.append("line").attr("class", "whisker-line").attr("stroke", "#aaa");
-    // Box
+
+    // Box (Q1->Q3)
     enterGroups
       .append("rect")
       .attr("class", "box-rect")
       .attr("stroke", "white")
-      .attr("fill", "gray")
-      .attr("fill-opacity", 1);
-    // Median
+      .attr("fill", "gray");
+
+    // Median line
     enterGroups.append("line").attr("class", "median-line").attr("stroke", "#ccc").attr("stroke-width", 1);
-    // Caps
+
+    // Whisker caps
     enterGroups.append("line").attr("class", "whisker-cap lower").attr("stroke", "#aaa");
     enterGroups.append("line").attr("class", "whisker-cap upper").attr("stroke", "#aaa");
+
+    // Points group
+    enterGroups.append("g").attr("class", "points-group");
 
     // MERGE
     boxGroups = enterGroups.merge(boxGroups);
@@ -165,26 +173,32 @@ export function createRollingBoxPlot(
       .transition(transition())
       .attr("transform", (d) => `translate(${xScale(d.xIndex) || 0},0) scale(1,1)`);
 
-    // Render shapes
+    // 5) RENDER each box
     boxGroups.each(function (blockData) {
       const sel = d3.select(this);
       const s = blockData.stats;
       const bw = xScale.bandwidth();
 
-      // -------------- COLOR LOGIC BASED ON MEDIAN -------------
-      // Find the previous block in `blocks` with xIndex = blockData.xIndex - 1
-      let fillColor = "gray"; // default
-      const prev = blocks.find((b) => b.xIndex === blockData.xIndex - 1);
-      if (prev) {
-        if (s.median > prev.stats.median) {
-          // Higher median => red tinge
+      // ================= Color logic (red if median > prev, green if < prev) ===============
+      // We'll find the block with xIndex = blockData.xIndex -1
+      // If none, we'll use lastRemovedMedian if present and we're at xIndex=0
+      let prevMedian: number | undefined;
+      const prevBlock = blocks.find((b) => b.xIndex === blockData.xIndex - 1);
+      if (prevBlock) {
+        prevMedian = prevBlock.stats.median;
+      } else if (blockData.xIndex === 0 && lastRemovedMedian !== undefined) {
+        // compare with the block that just fell off
+        prevMedian = lastRemovedMedian;
+      }
+
+      let fillColor = "gray";
+      if (prevMedian !== undefined) {
+        if (s.median > prevMedian) {
           fillColor = "rgb(127, 63, 63)";
-        } else if (s.median < prev.stats.median) {
-          // Lower median => green tinge
-          fillColor = "rgb(82, 127, 63)";
+        } else if (s.median < prevMedian) {
+          fillColor = "rgb(82, 127, 63)"; // green tinge
         } else {
-          // Same median => keep it gray
-          fillColor = "rgb(127,127,127)";
+          fillColor = "rgb(127,127,127)"; // same median => neutral
         }
       }
 
@@ -197,6 +211,7 @@ export function createRollingBoxPlot(
         .attr("y1", yScale(s.whiskerLow))
         .attr("y2", yScale(s.whiskerHigh));
 
+      // Box rect
       sel
         .select<SVGRectElement>(".box-rect")
         .transition(transition())
@@ -206,6 +221,7 @@ export function createRollingBoxPlot(
         .attr("height", Math.max(0, yScale(s.q1) - yScale(s.q3)))
         .attr("fill", fillColor);
 
+      // Median line
       sel
         .select<SVGLineElement>(".median-line")
         .transition(transition())
@@ -214,6 +230,7 @@ export function createRollingBoxPlot(
         .attr("y1", yScale(s.median))
         .attr("y2", yScale(s.median));
 
+      // Whisker caps
       sel
         .select<SVGLineElement>(".whisker-cap.lower")
         .transition(transition())
@@ -231,7 +248,7 @@ export function createRollingBoxPlot(
         .attr("y2", yScale(s.whiskerHigh));
     });
 
-    // Axes
+    // 6) Draw Axes
     g.selectAll(".y-axis").remove();
     g.selectAll(".x-axis").remove();
 
@@ -256,21 +273,43 @@ export function createRollingBoxPlot(
       .attr("transform", `translate(0,${innerHeight})`)
       .call(xAxis);
 
-    // Hide overlapping x-axis labels if band too small
     const bw = xScale.bandwidth();
     if (bw < 25) {
       xAxisSel.selectAll<SVGGElement, number>(".tick").each(function (_tickVal, i) {
-        if (i /3 % 2 !== 0) d3.select(this).remove();
+        if (i / 2 % 2 !== 0) d3.select(this).remove();
       });
     }
     xAxisSel.call((sel) => {
       sel.selectAll("text").attr("fill", "white");
       sel.selectAll("line,path").attr("stroke", "white");
     });
+
+    // 7) Draw a median trend line across all blocks
+    g.selectAll(".median-trend").remove();
+
+    // We'll create a line from left to right connecting each block's median
+    // Sort by xIndex so the line is left -> right
+    const sortedBlocks = blocks.filter((b) => b.xIndex >= 0).sort((a, b) => a.xIndex - b.xIndex);
+
+    const lineGen = d3
+      .line<any>()
+      // use the band center: xScale(d.xIndex) + band/2
+      .x((d) => (xScale(d.xIndex) ?? 0) + bw / 2)
+      .y((d) => yScale(d.stats.median))
+      .curve(d3.curveMonotoneX); // a smooth curve, or use d3.curveLinear for straight lines
+
+    g.append("path")
+      .attr("class", "median-trend")
+      .datum(sortedBlocks)
+      .attr("fill", "none")
+      .attr("stroke", "#FFA726")
+      .attr("stroke-width", 2)
+      .transition(transition())
+      .attr("d", lineGen);
   }
 
   /**
-   * resize() - call on window/container resize to recalc width
+   * resize() - call on window/container resize
    */
   function resize() {
     width = element.getBoundingClientRect().width;
@@ -281,7 +320,7 @@ export function createRollingBoxPlot(
   }
 
   /**
-   * redraw() - repositions existing boxes/axes without changing data
+   * redraw() - repositions boxes/axes/trend line without altering data
    */
   function redraw() {
     g.selectAll(".box-group")
@@ -323,6 +362,25 @@ export function createRollingBoxPlot(
       sel.selectAll("text").attr("fill", "white");
       sel.selectAll("line,path").attr("stroke", "white");
     });
+
+    // Re-draw median trend line
+    g.selectAll(".median-trend").remove();
+
+    const sortedBlocks = blocks.filter((b) => b.xIndex >= 0).sort((a, b) => a.xIndex - b.xIndex);
+    const bw2 = xScale.bandwidth();
+    const lineGen = d3
+      .line<any>()
+      .x((d) => (xScale(d.xIndex) ?? 0) + bw2 / 2)
+      .y((d) => yScale(d.stats.median))
+      .curve(d3.curveMonotoneX);
+
+    g.append("path")
+      .attr("class", "median-trend")
+      .datum(sortedBlocks)
+      .attr("fill", "none")
+      .attr("stroke", "#FFA726")
+      .attr("stroke-width", 2)
+      .attr("d", lineGen);
   }
 
   return {

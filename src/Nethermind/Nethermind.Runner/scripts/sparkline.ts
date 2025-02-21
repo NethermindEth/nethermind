@@ -63,7 +63,7 @@ export function sparkline(
         .append('path')
         .attr('class', 'sparkline-path')
         .attr('fill', 'none')
-        .attr('stroke', 'steelblue')
+        .attr('stroke', '#00bff2')
         .attr('stroke-width', 1.5);
 
       // Group for y-axis (one-time creation):

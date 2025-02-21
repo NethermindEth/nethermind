@@ -270,10 +270,12 @@ function hexStringToUint8Array(hex: string): Uint8Array {
 }
 
 const networks = {
+  "Mainnet": "Ethereum mainnet",
   "1": "Ethereum mainnet",
   "8453": "Base mainnet"
 }
 const logos = {
+  "Mainnet": "ethereum-logo.svg",
   "1": "ethereum-logo.svg",
   "8453": "base-logo.svg"
 }
@@ -283,4 +285,21 @@ export function getNetworkName(network: string) {
 }
 export function getNetworkLogo(network: string) {
   return logos[network] || "unknown.png";
+}
+
+const clientTypes = [
+  "Unknown",
+  "Besu",
+  "Geth",
+  "Nethermind",
+  "Parity",
+  "OpenEthereum",
+  "Trinity",
+  "Erigon",
+  "Reth",
+  "Nimbus",
+  "EthereumJS"
+];
+export function getNodeType(clientType: number) {
+  return clientTypes[clientType] || "Unknown";
 }
