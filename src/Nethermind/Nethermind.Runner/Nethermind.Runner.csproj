@@ -111,8 +111,9 @@
   </ItemGroup>
 
   <Target Name="JsBuild" BeforeTargets="PreBuildEvent">
-    <Exec Command="yarn build:dev" Condition="'$(Configuration)'=='Debug'" />
-    <Exec Command="yarn build:release" Condition="'$(Configuration)'=='Release'" />
+    <Exec Command="npm install" Condition="'$(Configuration)'=='Debug'" />
+    <Exec Command="npm run build:dev" Condition="'$(Configuration)'=='Debug'" />
+    <Exec Command="npm run build:release" Condition="'$(Configuration)'=='Release'" />
   </Target>
   
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">

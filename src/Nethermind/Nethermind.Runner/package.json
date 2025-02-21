@@ -7,18 +7,17 @@
   "license": "LGPL-3.0-only",
   "private": true,
   "scripts": {
-    "build:dev": "yarn && esbuild scripts/app.ts --sourcemap=inline --bundle --outfile=wwwroot/js/bundle.js",
-    "build:release": "yarn && esbuild scripts/app.ts --minify --bundle --outfile=wwwroot/js/bundle.js"
+    "build:dev": "esbuild scripts/app.ts --sourcemap=inline --bundle --outfile=wwwroot/js/bundle.js",
+    "build:release": "esbuild scripts/app.ts --minify --bundle --outfile=wwwroot/js/bundle.js"
   },
   "devDependencies": {
     "@types/d3": "7.4.3",
-    "esbuild": "0.24.2",
-    "typescript": "5.7.3",
-    "yarn": "1.22.22"
+    "esbuild": "^0.25.0",
+    "typescript": "5.7.3"
   },
   "dependencies": {
+    "ansi-to-html": "0.7.2",
     "d3": "7.9.0",
-    "d3-sankey": "0.12.3",
-    "ansi-to-html": "0.7.2"
+    "d3-sankey": "0.12.3"
   }
 }
