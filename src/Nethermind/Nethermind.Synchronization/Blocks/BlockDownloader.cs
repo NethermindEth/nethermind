@@ -135,7 +135,8 @@ namespace Nethermind.Synchronization.Blocks
                 long startTime = Stopwatch.GetTimestamp();
                 await RequestBodies(bestPeer, cancellation, context);
 
-                if (downloadReceipts)
+                shouldProcess = ReceiptEdgeCase(bestProcessedBlock, context, shouldProcess);
+                if (context.DownloadReceipts)
                 {
                     if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                     await RequestReceipts(bestPeer, cancellation, context);
@@ -162,8 +163,6 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     Block currentBlock = blocks[blockIndex];
-                    long blockNumber = currentBlock.Number;
-                    (shouldProcess, receipts) = await ReceiptEdgeCase(bestPeer, cancellation, blockNumber, bestProcessedBlock, context, shouldProcess, receipts);
                     PreValidate(bestPeer, context, blockIndex);
                     if (SuggestBlock(bestPeer, currentBlock, blockIndex, shouldProcess, context.DownloadReceipts, receipts))
                     {
@@ -246,39 +245,34 @@ namespace Nethermind.Synchronization.Blocks
             return handled;
         }
 
-
-        private async Task<(bool shouldProcess, TxReceipt[]?[]? receipts)> ReceiptEdgeCase(
-            PeerInfo bestPeer,
-            CancellationToken cancellation,
-            long currentBlockNumber,
+        private bool ReceiptEdgeCase(
             long bestProcessedBlock,
             BlockDownloadContext context,
-            bool shouldProcess,
-            TxReceipt[]?[]? receipts)
+            bool shouldProcess)
         {
-            if (shouldProcess)
+            if (shouldProcess && !context.DownloadReceipts)
             {
+                long firstBlock = context.Blocks[0].Number;
+                // TODO: Double check this condition
                 // An edge case where we already have the state but are still downloading preceding blocks.
                 // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
                 // Therefore, we detect this situation and switch from processing to receipts downloading.
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                bool toBeProcessedHasNoProcessedParent = currentBlockNumber > (bestProcessedBlock + 1);
+                bool toBeProcessedHasNoProcessedParent = firstBlock > (bestProcessedBlock + 1);
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
                 if (isFastSyncTransition)
                 {
                     long bestFullState = _fullStateFinder.FindBestFullState();
-                    shouldProcess = currentBlockNumber > bestFullState && bestFullState != 0;
-                    if (!shouldProcess && !context.DownloadReceipts)
+                    shouldProcess = firstBlock > bestFullState && bestFullState != 0;
+                    if (!shouldProcess)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlockNumber}, bestFullState: {bestFullState}, trying to load receipts");
+                        if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlock}, bestFullState: {bestFullState}, trying to load receipts");
                         context.SetDownloadReceipts();
-                        await RequestReceipts(bestPeer, cancellation, context);
-                        receipts = context.ReceiptsForBlocks;
                     }
                 }
             }
 
-            return (shouldProcess, receipts);
+            return shouldProcess;
         }
 
         private void PreValidate(PeerInfo bestPeer, BlockDownloadContext blockDownloadContext, int blockIndex)
