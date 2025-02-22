@@ -29,11 +29,13 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        CancellationToken cancellationToken = default)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        using var timeoutTokenSource = new CancellationTokenSource((int)timeout.TotalMilliseconds);
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutTokenSource.Token);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _cancellationTokenSource.Token);

@@ -13,6 +13,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -24,7 +25,7 @@ public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutio
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
+public class ExecutionPayload() : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
     public UInt256 BaseFeePerGas { get; set; }
 
@@ -105,6 +106,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -136,7 +144,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
     {
         try
         {

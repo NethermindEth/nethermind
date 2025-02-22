@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -62,6 +61,8 @@ public partial class BlockProcessor(
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
+    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -130,7 +131,6 @@ public partial class BlockProcessor(
 
                 Block processedBlock;
                 TxReceipt[] receipts;
-
                 if (prewarmCancellation is not null)
                 {
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
@@ -285,6 +285,7 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts);
@@ -296,6 +297,7 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
+
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
@@ -305,6 +307,17 @@ public partial class BlockProcessor(
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+    }
+
+    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            return true;
+        }
+
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+        return _inclusionListValidator.ValidateInclusionList(block);
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Producers;
@@ -12,5 +13,6 @@ public interface IBlockImprovementContextFactory
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime);
+        DateTimeOffset startDateTime,
+        CancellationToken cancellationToken = default);
 }

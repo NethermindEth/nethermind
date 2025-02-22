@@ -151,6 +151,10 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
+    public void ForceRebuildPayload(string payloadId)
+    {
+        throw new NotImplementedException();
+    }
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }
