@@ -13,10 +13,9 @@ public interface IInclusionListValidator
     /// </summary>
     /// <param name="inclusionListTransactions">The inclusion list transactions to validate.</param>
     /// <param name="block">The block to validate.</param>
-    /// <param name="error">The validation error message if any.</param>
     /// <returns>
     /// <c>true</c> if the block's inclusion list is satisfied according to EIP-7805;
     /// otherwise, <c>false</c>.
     /// </returns>
-    bool ValidateInclusionList(Block block, out string? error);
+    bool ValidateInclusionList(Block block);
 }

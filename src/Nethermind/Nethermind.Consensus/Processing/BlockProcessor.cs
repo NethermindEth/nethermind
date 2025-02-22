@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -84,8 +83,10 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, out bool invalidInclusionList)
     {
+        invalidInclusionList = false;
+
         if (suggestedBlocks.Count == 0) return [];
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -132,10 +133,9 @@ public partial class BlockProcessor(
 
                 Block processedBlock;
                 TxReceipt[] receipts;
-
                 if (prewarmCancellation is not null)
                 {
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts, invalidInclusionList) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
@@ -147,7 +147,7 @@ public partial class BlockProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts, invalidInclusionList) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
                 processedBlocks[i] = processedBlock;
@@ -279,7 +279,7 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private (Block Block, TxReceipt[] Receipts, bool InvalidInclusionList) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -287,37 +287,40 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+        bool invalidInclusionList = ValidateInclusionList(suggestedBlock, block, options);
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts);
         }
 
-        return (block, receipts);
+        return (block, receipts, invalidInclusionList);
     }
 
     // TODO: block processor pipeline
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
-        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
 
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation))
+        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
-            if (!_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
-            {
-                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
-                throw new InvalidBlockException(suggestedBlock, error);
-            }
-
-            if (!_inclusionListValidator.ValidateInclusionList(block, out error))
-            {
-                // todo: not throw exception but continue processing?
-                throw new InvalidInclusionListException(suggestedBlock, error);
-            }
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
+            throw new InvalidBlockException(suggestedBlock, error);
         }
 
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+    }
+
+    private bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            return true;
+        }
+
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+        return _inclusionListValidator.ValidateInclusionList(block);
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>

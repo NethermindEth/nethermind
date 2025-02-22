@@ -439,7 +439,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.Root,
                     processingBranch.BlocksToProcess,
                     options,
-                    blockTracer);
+                    blockTracer,
+                    out bool _);
             }
             catch (InvalidBlockException ex)
             {
@@ -450,7 +451,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     Metrics.BadBlocksByNethermindNodes++;
                 }
             }
-            catch (InvalidInclusionListException) { }
             catch (Exception ex)
             {
                 BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
@@ -482,8 +482,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.Root,
                 processingBranch.BlocksToProcess,
                 options,
-                tracer);
-            error = null;
+                tracer,
+                out bool invalidInclusionList);
+            error = invalidInclusionList ? "Invalid inclusion list." : null;
         }
         catch (InvalidBlockException ex)
         {
@@ -519,13 +520,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
 
             processedBlocks = null;
-        }
-        catch (InvalidInclusionListException ex)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid inclusion list for block {ex.Block} {ex}");
-            error = ex.Message;
-            processedBlocks = null;
-            // should delete block? return in processedBlocks?
         }
         finally
         {

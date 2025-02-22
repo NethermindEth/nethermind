@@ -18,13 +18,11 @@ public class InclusionListValidator(
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
-    public bool ValidateInclusionList(Block block, out string? error) =>
-        ValidateInclusionList(block, _specProvider.GetSpec(block.Header), out error);
+    public bool ValidateInclusionList(Block block) =>
+        ValidateInclusionList(block, _specProvider.GetSpec(block.Header));
 
-    public bool ValidateInclusionList(Block block, IReleaseSpec spec, out string? error)
+    public bool ValidateInclusionList(Block block, IReleaseSpec spec)
     {
-        error = null;
-
         if (!spec.InclusionListsEnabled)
         {
             return true;
@@ -32,7 +30,6 @@ public class InclusionListValidator(
 
         if (block.InclusionListTransactions is null)
         {
-            error = "Block did not have inclusion list";
             return false;
         }
 
@@ -60,7 +57,6 @@ public class InclusionListValidator(
             bool couldIncludeTx = _transactionProcessor.BuildUp(tx, new(block.Header, spec), NullTxTracer.Instance);
             if (couldIncludeTx)
             {
-                error = "Block excludes valid inclusion list transaction";
                 return false;
             }
         }

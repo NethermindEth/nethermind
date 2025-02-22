@@ -24,7 +24,8 @@ namespace Nethermind.Consensus.Processing
             Hash256 newBranchStateRoot,
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+            IBlockTracer blockTracer,
+            out bool invalidInclusionList);
 
         /// <summary>
         /// Fired when a branch is being processed.

@@ -329,7 +329,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     }
 
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
-        IBlockTracer blockTracer)
+        IBlockTracer blockTracer, out bool invalidInclusionList)
     {
         if (DelayMs > 0)
         {
@@ -341,7 +341,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
             throw ExceptionToThrow;
         }
 
-        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
+        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer, out invalidInclusionList);
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
