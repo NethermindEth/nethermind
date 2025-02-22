@@ -113,6 +113,11 @@ public class BlockchainProcessorTests
                 }
             }
 
+            public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+            {
+                throw new NotImplementedException();
+            }
+
             public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;

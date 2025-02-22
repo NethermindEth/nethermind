@@ -15,10 +15,14 @@ namespace Nethermind.Consensus.Processing
 
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
-        public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, out bool invalidInclusionList)
+        public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
-            invalidInclusionList = false;
             return suggestedBlocks.ToArray();
+        }
+
+        public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+        {
+            throw new NotImplementedException();
         }
 
         public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing

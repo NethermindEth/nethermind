@@ -10,6 +10,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -287,16 +288,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (processedBlock is null)
                 {
-                    if (error is not null && error.Contains("invalid inclusion list"))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
-                        BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InvalidInclusionList, error));
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                        BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+                }
+                else if (!_blockProcessor.ValidateInclusionList(block, processedBlock, blockRef.ProcessingOptions))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Invalid inclusion list for block {block.ToString(Block.Format.Full)}");
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InvalidInclusionList, error));
                 }
                 else
                 {
@@ -439,8 +437,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.Root,
                     processingBranch.BlocksToProcess,
                     options,
-                    blockTracer,
-                    out bool _);
+                    blockTracer);
             }
             catch (InvalidBlockException ex)
             {
@@ -482,9 +479,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.Root,
                 processingBranch.BlocksToProcess,
                 options,
-                tracer,
-                out bool invalidInclusionList);
-            error = invalidInclusionList ? "Invalid inclusion list." : null;
+                tracer);
+            error = null;
         }
         catch (InvalidBlockException ex)
         {

@@ -83,10 +83,8 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, out bool invalidInclusionList)
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
-        invalidInclusionList = false;
-
         if (suggestedBlocks.Count == 0) return [];
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -135,7 +133,7 @@ public partial class BlockProcessor(
                 TxReceipt[] receipts;
                 if (prewarmCancellation is not null)
                 {
-                    (processedBlock, receipts, invalidInclusionList) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
@@ -147,7 +145,7 @@ public partial class BlockProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts, invalidInclusionList) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
                 processedBlocks[i] = processedBlock;
@@ -279,7 +277,7 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts, bool InvalidInclusionList) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -287,14 +285,13 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-        bool invalidInclusionList = ValidateInclusionList(suggestedBlock, block, options);
 
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts);
         }
 
-        return (block, receipts, invalidInclusionList);
+        return (block, receipts);
     }
 
     // TODO: block processor pipeline
@@ -312,7 +309,7 @@ public partial class BlockProcessor(
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
-    private bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
     {
         if (options.ContainsFlag(ProcessingOptions.NoValidation))
         {

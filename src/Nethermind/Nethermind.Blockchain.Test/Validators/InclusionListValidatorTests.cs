@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
@@ -52,9 +51,8 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
         Assert.That(isValid, Is.True);
-        Assert.That(error, Is.Null);
     }
 
     [Test]
@@ -67,12 +65,8 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
-        Assert.Multiple(() =>
-        {
-            Assert.That(isValid, Is.True);
-            Assert.That(error, Is.Null);
-        });
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        Assert.That(isValid, Is.True);
     }
 
     [Test]
@@ -87,12 +81,8 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
-        Assert.Multiple(() =>
-        {
-            Assert.That(isValid, Is.False);
-            Assert.That(error, Is.EqualTo("Block excludes valid inclusion list transaction"));
-        });
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        Assert.That(isValid, Is.False);
     }
 
     [Test]
@@ -103,11 +93,7 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        bool isValid = _inclusionListValidator.ValidateInclusionList(block, out string? error);
-        Assert.Multiple(() =>
-        {
-            Assert.That(isValid, Is.False);
-            Assert.That(error, Is.EqualTo("Block did not have inclusion list"));
-        });
+        bool isValid = _inclusionListValidator.ValidateInclusionList(block);
+        Assert.That(isValid, Is.False);
     }
 }
