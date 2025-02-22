@@ -126,16 +126,17 @@ namespace Nethermind.Synchronization.Blocks
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             long bestProcessedBlock = 0;
 
-            IOwnedReadOnlyList<BlockHeader?>? headers = null;
-            while ((headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation)) is not null)
+            while (true)
             {
+                IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation);
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                if (headers is null || headers.Count <= 1) return blocksSynced;
 
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
                 long startTime = Stopwatch.GetTimestamp();
                 await RequestBodies(bestPeer, cancellation, context);
 
-                shouldProcess = ReceiptEdgeCase(bestProcessedBlock, context, shouldProcess);
+                (shouldProcess, downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[0].Number, shouldProcess, downloadReceipts);
                 if (context.DownloadReceipts)
                 {
                     if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -164,7 +165,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     Block currentBlock = blocks[blockIndex];
                     PreValidate(bestPeer, context, blockIndex);
-                    if (SuggestBlock(bestPeer, currentBlock, blockIndex, shouldProcess, context.DownloadReceipts, receipts))
+                    if (SuggestBlock(bestPeer, currentBlock, blockIndex == 0, shouldProcess, context.DownloadReceipts, receipts?[blockIndex]))
                     {
                         if (shouldProcess)
                         {
@@ -177,18 +178,14 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.TargetValue = bestPeer.HeadNumber;
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
                 }
                 else
                 {
                     break;
                 }
-
-                headers?.Dispose();
             }
 
-            headers?.Dispose();
             return blocksSynced;
         }
 
@@ -201,15 +198,15 @@ namespace Nethermind.Synchronization.Blocks
         private bool SuggestBlock(
             PeerInfo bestPeer,
             Block currentBlock,
-            int blockIndex,
+            bool isFirstInBatch,
             bool shouldProcess,
             bool downloadReceipts,
-            TxReceipt[]?[]? receipts)
+            TxReceipt[]? receipts)
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
-            if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
+            if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
                 if (!shouldProcess)
                 {
@@ -218,10 +215,9 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (downloadReceipts)
                 {
-                    TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                    if (contextReceiptsForBlock is not null)
+                    if (receipts is not null)
                     {
-                        _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
+                        _receiptStorage.Insert(currentBlock, receipts);
                     }
                     else
                     {
@@ -245,14 +241,15 @@ namespace Nethermind.Synchronization.Blocks
             return handled;
         }
 
-        private bool ReceiptEdgeCase(
+        private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
             long bestProcessedBlock,
-            BlockDownloadContext context,
-            bool shouldProcess)
+            long firstBlockNumber,
+            bool shouldProcess,
+            bool shouldDownloadReceipt)
         {
-            if (shouldProcess && !context.DownloadReceipts)
+            if (shouldProcess && !shouldDownloadReceipt)
             {
-                long firstBlock = context.Blocks[0].Number;
+                long firstBlock = firstBlockNumber;
                 // TODO: Double check this condition
                 // An edge case where we already have the state but are still downloading preceding blocks.
                 // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
@@ -267,12 +264,12 @@ namespace Nethermind.Synchronization.Blocks
                     if (!shouldProcess)
                     {
                         if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlock}, bestFullState: {bestFullState}, trying to load receipts");
-                        context.SetDownloadReceipts();
+                        shouldDownloadReceipt = true;
                     }
                 }
             }
 
-            return shouldProcess;
+            return (shouldProcess, shouldDownloadReceipt);
         }
 
         private void PreValidate(PeerInfo bestPeer, BlockDownloadContext blockDownloadContext, int blockIndex)

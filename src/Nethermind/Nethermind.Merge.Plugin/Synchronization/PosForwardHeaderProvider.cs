@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -23,11 +24,13 @@ public class PosForwardHeaderProvider(
     ISealValidator sealValidator,
     IBlockTree blockTree,
     ISyncPeerPool syncPeerPool,
+    ISyncReport syncReport,
     ILogManager logManager
-) : PowForwardHeaderProvider(sealValidator, blockTree, syncPeerPool, logManager)
+) : PowForwardHeaderProvider(sealValidator, blockTree, syncPeerPool, syncReport, logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
     private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISyncReport _syncReport = syncReport;
 
     private bool ShouldUsePreMerge()
     {
@@ -40,6 +43,8 @@ public class PosForwardHeaderProvider(
         {
             return base.GetBlockHeaders(skipLastN, maxHeader, cancellation);
         }
+
+        _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(beaconPivot.PivotNumber, beaconPivot.PivotDestinationNumber);
 
         // TODO: Previously it does not get block more than best peer's head number. Why?
         BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(maxHeader, long.MaxValue, skipLastN);

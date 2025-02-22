@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.Blocks;
 
@@ -21,6 +22,7 @@ public class PowForwardHeaderProvider(
     ISealValidator sealValidator,
     IBlockTree blockTree,
     ISyncPeerPool syncPeerPool,
+    ISyncReport syncReport,
     ILogManager logManager
 ) : IForwardHeaderProvider
 {
@@ -47,6 +49,8 @@ public class PowForwardHeaderProvider(
             {
                 OnNewBestPeer(peerInfo);
             }
+
+            syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
 
             if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
 

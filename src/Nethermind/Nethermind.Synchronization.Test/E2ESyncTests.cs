@@ -594,7 +594,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
             catch (OperationCanceledException)
             {
-                if (DisconnectFailure != null) Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+                if (DisconnectFailure != null)
+                {
+                    Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+                }
+
+                throw;
             }
         }
     }
