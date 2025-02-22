@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             continue;
                         }
 
-                        SyncPeerAllocation allocation = await Allocate(request);
+                        SyncPeerAllocation allocation = await Allocate(request, cancellationToken);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
                         if (allocatedPeer is not null)
@@ -243,9 +243,9 @@ namespace Nethermind.Synchronization.ParallelSync
             SyncPeerPool.Free(allocation);
         }
 
-        protected async Task<SyncPeerAllocation> Allocate(T request)
+        protected async Task<SyncPeerAllocation> Allocate(T request, CancellationToken cancellationToken)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
             Downloader.OnAllocate(allocation);
             return allocation;
         }

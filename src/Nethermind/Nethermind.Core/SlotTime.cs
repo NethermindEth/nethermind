@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 
-namespace Nethermind.Shutter;
+namespace Nethermind.Core;
 
-public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
+public readonly struct SlotTime(ulong genesisTimestampMs, ITimestamper timestamper, TimeSpan slotLength, TimeSpan blockUpToDateCutoff)
 {
-    public class ShutterSlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
+    public class SlotCalulationException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public readonly ulong GenesisTimestampMs = genesisTimestampMs;
 
@@ -26,7 +25,7 @@ public class ShutterTime(ulong genesisTimestampMs, ITimestamper timestamper, Tim
         long slotTimeSinceGenesis = (long)slotTimestampMs - (long)GenesisTimestampMs;
         if (slotTimeSinceGenesis < 0)
         {
-            throw new ShutterSlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
+            throw new SlotCalulationException($"Slot timestamp {slotTimestampMs}ms was before than genesis timestamp {GenesisTimestampMs}ms.");
         }
 
         return (ulong)slotTimeSinceGenesis / (ulong)slotLength.TotalMilliseconds;
