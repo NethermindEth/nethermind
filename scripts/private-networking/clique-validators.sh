@@ -14,12 +14,12 @@ docker_image=$2
 
 if [ -z "$validators" ]
 then
-      validators=3	  
+      validators=3
 fi
 
 if [ -z "$docker_image" ]
 then
-      docker_image=nethermind/nethermind:latest	  
+      docker_image=nethermind/nethermind:latest
 fi
 
 main() {
@@ -35,30 +35,30 @@ for i in $(seq 1 $validators); do mkdir -p node_$i; done
 # Create genesis folder that will store chainspec file
 mkdir -p genesis
 
-echo "Downloading goerli chainspec from Nethermind GitHub repository"
-# Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
-wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
+echo "Downloading sepolia chainspec from Nethermind GitHub repository"
+# Download chainspec file with clique engine and place it in genesis folder (we will be using sepolia chainspec in this example)
+wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/sepolia.json
 
 # Remove all post merge EIPs
-sed -i '/TransitionTimestamp/d' goerli.json
+sed -i '/TransitionTimestamp/d' sepolia.json
 
-cp goerli.json genesis/goerli.json
+cp sepolia.json genesis/sepolia.json
 
 for i in $(seq 1 $validators); do mkdir -p node_$i/configs node_$i/staticNodes; done
 
 writeEmptyStaticNodesFile $i
 
-for i in $(seq 1 $validators); 
-do 
+for i in $(seq 1 $validators);
+do
     PORT=$(( 30301 + $i ))
     PRIVATE_IP=10.5.0.$(( 1 + $i ))
-    KEY=$(openssl rand -hex 32) 
+    KEY=$(openssl rand -hex 32)
     writeNethermindConfig $i $PORT $PRIVATE_IP $KEY
 done
 
 writeDockerComposeHead
-for i in $(seq 1 $validators); 
-do 
+for i in $(seq 1 $validators);
+do
     JSONRPC_PORT=$(( 8545 + $i ))
     PRIVATE_IP=10.5.0.$(( 1 + $i ))
     writeDockerComposeService $i $JSONRPC_PORT $PRIVATE_IP
@@ -71,8 +71,8 @@ echo "Waiting for JSON RPC service..."
 
 echo "[" > static-nodes-updated.json
 
-for i in $(seq 1 $validators); 
-do 
+for i in $(seq 1 $validators);
+do
     ATTEMPT=0
     MAX_ATTEMPTS=20
     JSONRPC_PORT=$(( 8545 + $i ))
@@ -105,8 +105,8 @@ echo "]" >> static-nodes-updated.json
 SIGNERS=""
 
 # Reading Node addresses and save to $SIGNERS variable
-for i in $(seq 1 $validators); 
-do 
+for i in $(seq 1 $validators);
+do
     name="SIGNER_$i"
     res=$(readSigners $i)
     SIGNERS+=$res
@@ -115,7 +115,7 @@ done
 echo "SIGNERS: $SIGNERS"
 docker-compose down
 
-# Writing Extra Data field to goerli.json chainspec
+# Writing Extra Data field to sepolia.json chainspec
 writeExtraData $validators
 
 # Clear db's
@@ -123,7 +123,7 @@ clearDbs
 
 mv static-nodes-updated.json static-nodes.json
 docker-compose up
-} 
+}
 #END of main
 
 function writeNethermindConfig() {
@@ -134,7 +134,7 @@ cat <<EOF > node_$1/configs/config.json
         "StoreReceipts" : true,
         "EnableUnsecuredDevWallet": true,
         "IsMining": true,
-        "ChainSpecPath": "/config/genesis/goerli.json",
+        "ChainSpecPath": "/config/genesis/sepolia.json",
         "BaseDbPath": "nethermind_db/clique",
         "LogFileName": "clique.logs.txt",
         "StaticNodesPath": "Data/static-nodes.json"
@@ -221,11 +221,11 @@ function writeExtraData() {
     EXTRA_SEAL="0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     EXTRA_DATA=${EXTRA_VANITY}${SIGNERS}${EXTRA_SEAL}
     echo "EXTRA_DATA: $EXTRA_DATA"
-    cat goerli.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"' | .params.chainID = "0x12341234" | .params.networkID = "0x12341234" | .nodes = [] | .engine.clique.params.period = 3' > genesis/goerli.json
+    cat sepolia.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"' | .params.chainID = "0x12341234" | .params.networkID = "0x12341234" | .nodes = [] | .engine.clique.params.period = 3' > genesis/sepolia.json
 }
 
 function clearDbs() {
-    for i in $(seq 1 $validators); 
+    for i in $(seq 1 $validators);
     do
         printf "Clearing db of node_$i\n"
         # sudo because they are created by docker

@@ -8,7 +8,7 @@ namespace Nethermind.Era1.Test;
 public class EraPathUtilsTests
 {
     [TestCase("test", 0, "0x0000000000000000000000000000000000000000000000000000000000000000", "test-00000-00000000.era1")]
-    [TestCase("goerli", 1, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "goerli-00001-ffffffff.era1")]
+
     [TestCase("sepolia", 2, "0x1122ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sepolia-00002-1122ffff.era1")]
     public void Filename_ValidParameters_ReturnsExpected(string network, int epoch, string hash, string expected)
     {
