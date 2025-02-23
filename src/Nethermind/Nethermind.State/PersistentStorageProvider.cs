@@ -370,11 +370,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         if (!exists)
         {
             Hash256 storageRoot = _stateProvider.GetStorageRoot(address);
-            if (storageRoot == Keccak.EmptyTreeHash)
-            {
-                // We know all lookups will be empty against this tree
-                isEmpty = true;
-            }
+            isEmpty = storageRoot == Keccak.EmptyTreeHash; // We know all lookups will be empty against this tree
             value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), storageRoot, StateRoot, _logManager);
         }
 
