@@ -310,7 +310,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return;
         }
 
-        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address, out _);
         Db.Metrics.StorageTreeWrites++;
         toUpdateRoots.Add(change.StorageCell.Address);
         tree.Set(change.StorageCell.Index, change.Value);
@@ -363,12 +363,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _storages.Clear();
     }
 
-    private StorageTree GetOrCreateStorage(Address address)
+    private StorageTree GetOrCreateStorage(Address address, out bool isEmpty)
     {
+        isEmpty = false;
         ref StorageTree? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists)
         {
-            value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+            Hash256 storageRoot = _stateProvider.GetStorageRoot(address);
+            if (storageRoot == Keccak.EmptyTreeHash)
+            {
+                isEmpty = true;
+            }
+            value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), storageRoot, StateRoot, _logManager);
         }
 
         return value;
@@ -444,7 +450,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private byte[] LoadFromTreeStorage(StorageCell storageCell)
     {
-        StorageTree tree = GetOrCreateStorage(storageCell.Address);
+        StorageTree tree = GetOrCreateStorage(storageCell.Address, out bool isEmpty);
+        if (isEmpty)
+        {
+            _blockCache[storageCell.Address].MarkEmpty();
+            return StorageTree.EmptyBytes;
+        }
+
         Db.Metrics.IncrementStorageTreeReads();
         return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
     }
@@ -503,19 +515,24 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class SelfDestructDictionary<TValue>(TValue destructedValue)
     {
-        private bool _selfDestruct;
+        private bool _missingAreEmpty;
         private readonly Dictionary<UInt256, TValue> _dictionary = new(Comparer.Instance);
+
+        public void MarkEmpty()
+        {
+            _missingAreEmpty = true;
+        }
 
         public void SelfDestruct()
         {
-            _selfDestruct = true;
+            _missingAreEmpty = true;
             _dictionary.Clear();
         }
 
         public ref TValue? GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
         {
             ref TValue value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
-            if (!exists && _selfDestruct)
+            if (!exists && _missingAreEmpty)
             {
                 value = destructedValue;
                 exists = true;
