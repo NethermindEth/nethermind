@@ -83,9 +83,6 @@ public class ValidateSubmissionHandler
 
         string payloadStr = $"BuilderBlock: {payload}";
 
-        if (_logger.IsInfo)
-            _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
-
         if (!payload.TryGetBlock(out Block? block))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}.");
@@ -104,6 +101,8 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
         }
 
+        if (_logger.IsInfo && block is not null)
+            _logger.Info($"Validated block {block.Number}, TX count: {block.Transactions.Length}");
 
         return FlashbotsResult.Valid();
     }
