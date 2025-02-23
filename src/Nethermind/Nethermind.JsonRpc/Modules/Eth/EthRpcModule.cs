@@ -401,13 +401,15 @@ public partial class EthRpcModule(
 
     public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
     {
-        Transaction? transaction = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true).Transaction;
+        var getTxResult = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        var transaction = getTxResult.Transaction;
         if (transaction is null)
         {
             return ResultWrapper<string?>.Success(null);
         }
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.None));
+        var isMempoolTx = getTxResult.Receipt is null;
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, isMempoolTx ? RlpBehaviors.InMempoolForm : RlpBehaviors.None));
         using NettyRlpStream stream = new(buffer);
         TxDecoder.Instance.Encode(stream, transaction);
 
