@@ -372,6 +372,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             Hash256 storageRoot = _stateProvider.GetStorageRoot(address);
             if (storageRoot == Keccak.EmptyTreeHash)
             {
+                // We know all lookups will be empty against this tree
                 isEmpty = true;
             }
             value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), storageRoot, StateRoot, _logManager);
@@ -453,6 +454,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         StorageTree tree = GetOrCreateStorage(storageCell.Address, out bool isEmpty);
         if (isEmpty)
         {
+            // We know all lookups will be empty against this tree
             _blockCache[storageCell.Address].MarkEmpty();
             return StorageTree.EmptyBytes;
         }
@@ -497,6 +499,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
         }
 
+        // We know all lookups will be empty against this tree
         dict.SelfDestruct();
 
         // here it is important to make sure that we will not reuse the same tree when the contract is revived
@@ -513,28 +516,31 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             => new(trieStore, storageRoot, logManager);
     }
 
-    private sealed class SelfDestructDictionary<TValue>(TValue destructedValue)
+    private sealed class SelfDestructDictionary<TValue>(TValue defaultValue)
     {
-        private bool _missingAreEmpty;
+        private bool _missingAreDefault;
         private readonly Dictionary<UInt256, TValue> _dictionary = new(Comparer.Instance);
 
         public void MarkEmpty()
         {
-            _missingAreEmpty = true;
+            _missingAreDefault = true;
         }
 
         public void SelfDestruct()
         {
-            _missingAreEmpty = true;
+            _missingAreDefault = true;
             _dictionary.Clear();
         }
 
         public ref TValue? GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
         {
             ref TValue value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
-            if (!exists && _missingAreEmpty)
+            if (!exists && _missingAreDefault)
             {
-                value = destructedValue;
+                // Where we know the rest of the tree is empty
+                // we can say the value was found but is default
+                // rather than having to check the database
+                value = defaultValue;
                 exists = true;
             }
             return ref value;
