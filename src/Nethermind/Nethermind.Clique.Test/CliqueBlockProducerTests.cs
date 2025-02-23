@@ -87,18 +87,18 @@ public class CliqueBlockProducerTests
             MemDb stateDb = new();
             MemDb codeDb = new();
 
-            ISpecProvider specProvider = GoerliSpecProvider.Instance;
+            ISpecProvider specProvider = SepoliaSpecProvider.Instance;
 
             var trieStore = new TrieStore(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-            GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
-            stateProvider.Commit(goerliSpecProvider.GenesisSpec);
+            SepoliaSpecProvider sepoliaSpecProvider = SepoliaSpecProvider.Instance;
+            stateProvider.Commit(sepoliaSpecProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithSpecProvider(goerliSpecProvider)
+                .WithSpecProvider(sepoliaSpecProvider)
                 .WithBlocksDb(blocksDb)
                 .WithoutSettingHead
                 .TestObject;
@@ -110,9 +110,9 @@ public class CliqueBlockProducerTests
             CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                 new TxPoolConfig(),
-                new TxValidator(goerliSpecProvider.ChainId),
+                new TxValidator(sepoliaSpecProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer());
             _pools[privateKey] = txPool;
@@ -128,12 +128,12 @@ public class CliqueBlockProducerTests
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-            TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
+            TransactionProcessor transactionProcessor = new(sepoliaSpecProvider, stateProvider,
                 new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new(
-                goerliSpecProvider,
+                sepoliaSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -141,7 +141,7 @@ public class CliqueBlockProducerTests
                 NullReceiptStorage.Instance,
                 transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                new BlockhashStore(goerliSpecProvider, stateProvider),
+                new BlockhashStore(sepoliaSpecProvider, stateProvider),
                 nodeLogManager);
 
             BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -151,18 +151,18 @@ public class CliqueBlockProducerTests
 
             WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
             VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
-            TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
+            TransactionProcessor minerTransactionProcessor = new(sepoliaSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
             BlockProcessor minerBlockProcessor = new(
-                goerliSpecProvider,
+                sepoliaSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, sepoliaSpecProvider, _logManager),
                 minerStateProvider,
                 NullReceiptStorage.Instance,
                 minerTransactionProcessor,
                 new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
-                new BlockhashStore(goerliSpecProvider, minerStateProvider),
+                new BlockhashStore(sepoliaSpecProvider, minerStateProvider),
                 nodeLogManager);
 
             BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -185,7 +185,7 @@ public class CliqueBlockProducerTests
                 new CryptoRandom(),
                 snapshotManager,
                 cliqueSealer,
-                new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(sepoliaSpecProvider, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 _cliqueConfig,
                 nodeLogManager);
@@ -208,9 +208,9 @@ public class CliqueBlockProducerTests
             return this;
         }
 
-        public static On Goerli => new();
+        public static On Sepolia => new();
 
-        public static On FastGoerli => new(1);
+        public static On FastSepolia => new(1);
 
         private readonly Block _genesis3Validators;
 
@@ -566,7 +566,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Can_produce_block_with_transactions()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
             .ProcessGenesis()
@@ -577,7 +577,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task IsProducingBlocks_returns_expected_results()
     {
-        On result = await On.Goerli
+        On result = await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .IsProducingBlocks(TestItem.PrivateKeyA, true, null)
@@ -590,7 +590,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task When_producing_blocks_skips_queued_and_bad_transactions()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
@@ -605,7 +605,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
             .ProcessGenesis()
@@ -616,7 +616,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Produces_block_on_top_of_genesis()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .CreateNode(TestItem.PrivateKeyB)
             .ProcessGenesis()
@@ -631,7 +631,7 @@ public class CliqueBlockProducerTests
     [Test]
     public void Single_validator_can_produce_first_block_in_turn()
     {
-        On.Goerli
+        On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
@@ -641,7 +641,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Single_validator_can_produce_first_block_out_of_turn()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyB)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
@@ -652,7 +652,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Cannot_produce_blocks_when_not_on_signers_list()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyC)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 0)
@@ -662,7 +662,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Can_cast_vote_to_include()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .ProcessGenesis()
@@ -673,7 +673,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Can_uncast_vote_to()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .UncastVote(TestItem.PrivateKeyA, TestItem.AddressC)
@@ -685,8 +685,8 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Can_vote_a_validator_in()
     {
-        On goerli = On.FastGoerli;
-        goerli
+        On sepolia = On.FastSepolia;
+        sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .CreateNode(TestItem.PrivateKeyB)
             .CreateNode(TestItem.PrivateKeyC)
@@ -696,25 +696,25 @@ public class CliqueBlockProducerTests
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 1)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressD)
-            .Process(TestItem.PrivateKeyA, goerli.GetBlock(TestItem.PrivateKeyB, 1))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyB, 1))
+            .Process(TestItem.PrivateKeyA, sepolia.GetBlock(TestItem.PrivateKeyB, 1))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyB, 1))
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 2)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 2)
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 2))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyA, 2))
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyA, 2))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyA, 2))
             .Wait(1000)
             .AssertSignersCount(TestItem.PrivateKeyC, 2, 4);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
-        await goerli.StopNode(TestItem.PrivateKeyB);
-        await goerli.StopNode(TestItem.PrivateKeyC);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyB);
+        await sepolia.StopNode(TestItem.PrivateKeyC);
     }
 
     [Test, Retry(3)]
     public async Task Can_vote_a_validator_out()
     {
-        On goerli = On.FastGoerli;
-        goerli
+        On sepolia = On.FastSepolia;
+        sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .CreateNode(TestItem.PrivateKeyB)
             .CreateNode(TestItem.PrivateKeyC)
@@ -724,49 +724,49 @@ public class CliqueBlockProducerTests
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 1)
-            .Process(TestItem.PrivateKeyA, goerli.GetBlock(TestItem.PrivateKeyB, 1))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyB, 1))
+            .Process(TestItem.PrivateKeyA, sepolia.GetBlock(TestItem.PrivateKeyB, 1))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyB, 1))
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 2)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 2)
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 2))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyA, 2))
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyA, 2))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyA, 2))
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 3)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 3)
-            .Process(TestItem.PrivateKeyA, goerli.GetBlock(TestItem.PrivateKeyC, 3))
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyC, 3))
+            .Process(TestItem.PrivateKeyA, sepolia.GetBlock(TestItem.PrivateKeyC, 3))
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyC, 3))
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 4)
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 4)
             .VoteToExclude(TestItem.PrivateKeyB, TestItem.AddressA)
             .VoteToExclude(TestItem.PrivateKeyC, TestItem.AddressA)
-            .Process(TestItem.PrivateKeyA, goerli.GetBlock(TestItem.PrivateKeyB, 4))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyB, 4))
+            .Process(TestItem.PrivateKeyA, sepolia.GetBlock(TestItem.PrivateKeyB, 4))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyB, 4))
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 5)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 5)
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 5))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyA, 5))
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyA, 5))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyA, 5))
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 6)
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 6)
-            .Process(TestItem.PrivateKeyA, goerli.GetBlock(TestItem.PrivateKeyC, 6))
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyC, 6))
+            .Process(TestItem.PrivateKeyA, sepolia.GetBlock(TestItem.PrivateKeyC, 6))
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyC, 6))
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 6)
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 7)
-            .Process(TestItem.PrivateKeyA, goerli.GetBlock(TestItem.PrivateKeyB, 7))
-            .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyB, 7))
+            .Process(TestItem.PrivateKeyA, sepolia.GetBlock(TestItem.PrivateKeyB, 7))
+            .Process(TestItem.PrivateKeyC, sepolia.GetBlock(TestItem.PrivateKeyB, 7))
             .Wait(1000)
             .AssertSignersCount(TestItem.PrivateKeyA, 7, 2)
             .AssertTallyEmpty(TestItem.PrivateKeyA, 7, TestItem.PrivateKeyB)
             .AssertTallyEmpty(TestItem.PrivateKeyA, 7, TestItem.PrivateKeyA)
             .AssertTallyEmpty(TestItem.PrivateKeyA, 7, TestItem.PrivateKeyC);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
-        await goerli.StopNode(TestItem.PrivateKeyB);
-        await goerli.StopNode(TestItem.PrivateKeyC);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyB);
+        await sepolia.StopNode(TestItem.PrivateKeyC);
     }
 
     [Test]
     public async Task Can_cast_vote_to_exclude()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToExclude(TestItem.PrivateKeyA, TestItem.AddressB)
             .ProcessGenesis()
@@ -777,7 +777,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Cannot_vote_to_exclude_node_that_is_not_on_the_list()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToExclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .ProcessGenesis()
@@ -788,7 +788,7 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Cannot_vote_to_include_node_that_is_already_on_the_list()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressB)
             .ProcessGenesis()
@@ -799,25 +799,25 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Can_reorganize_when_receiving_in_turn_blocks()
     {
-        On goerli = On.FastGoerli;
-        goerli
+        On sepolia = On.FastSepolia;
+        sepolia
             .CreateNode(TestItem.PrivateKeyB)
             .CreateNode(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyA, 1))
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 2);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
-        await goerli.StopNode(TestItem.PrivateKeyB);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyB);
     }
 
     [Test]
     public async Task Ignores_blocks_from_bad_network()
     {
-        On goerli = On.FastGoerli;
-        goerli
+        On sepolia = On.FastSepolia;
+        sepolia
             .CreateNode(TestItem.PrivateKeyB)
             .ProcessGenesis(TestItem.PrivateKeyB)
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
@@ -825,46 +825,46 @@ public class CliqueBlockProducerTests
             .ProcessBadGenesis(TestItem.PrivateKeyA)
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1);
 
-        Assert.That(goerli.GetBlock(TestItem.PrivateKeyB, 0).Hash, Is.Not.EqualTo(goerli.GetBlock(TestItem.PrivateKeyA, 0).Hash), "same genesis");
+        Assert.That(sepolia.GetBlock(TestItem.PrivateKeyB, 0).Hash, Is.Not.EqualTo(sepolia.GetBlock(TestItem.PrivateKeyA, 0).Hash), "same genesis");
 
-        goerli
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
+        sepolia
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyA, 1))
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
-        await goerli.StopNode(TestItem.PrivateKeyB);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyB);
     }
 
     [Test]
     public async Task Waits_for_block_timestamp_before_broadcasting()
     {
-        On goerli = On.Goerli;
-        goerli
+        On sepolia = On.Sepolia;
+        sepolia
             .CreateNode(TestItem.PrivateKeyB)
             .CreateNode(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1);
 
-        Assert.That(goerli.GetBlock(TestItem.PrivateKeyB, 0).Hash, Is.EqualTo(goerli.GetBlock(TestItem.PrivateKeyA, 0).Hash), "same genesis");
-        goerli
-            .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
+        Assert.That(sepolia.GetBlock(TestItem.PrivateKeyB, 0).Hash, Is.EqualTo(sepolia.GetBlock(TestItem.PrivateKeyA, 0).Hash), "same genesis");
+        sepolia
+            .Process(TestItem.PrivateKeyB, sepolia.GetBlock(TestItem.PrivateKeyA, 1))
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
-        await goerli.StopNode(TestItem.PrivateKeyB);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyB);
     }
 
     [Test]
     [Retry(3)]
     public async Task Creates_blocks_without_signals_from_block_tree()
     {
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyA, true)
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
             .StopNode(TestItem.PrivateKeyA);
 
-        await On.Goerli
+        await On.Sepolia
             .CreateNode(TestItem.PrivateKeyB, true)
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyB);
@@ -873,16 +873,16 @@ public class CliqueBlockProducerTests
     [Test]
     public async Task Can_stop()
     {
-        On goerli = On.Goerli
+        On sepolia = On.Sepolia
             .CreateNode(TestItem.PrivateKeyA);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
 
-        goerli.ProcessGenesis();
+        sepolia.ProcessGenesis();
         await Task.Delay(1000);
-        goerli.AssertHeadBlockIs(TestItem.PrivateKeyA, 0);
+        sepolia.AssertHeadBlockIs(TestItem.PrivateKeyA, 0);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
+        await sepolia.StopNode(TestItem.PrivateKeyA);
     }
 
     [Test, Retry(3)]
@@ -890,10 +890,10 @@ public class CliqueBlockProducerTests
     {
         PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, AddressComparer.Instance).ToArray();
 
-        On goerli = On.FastGoerli;
+        On sepolia = On.Fastsepolia;
         for (int i = 0; i < keys.Length; i++)
         {
-            goerli
+            sepolia
                 .CreateNode(keys[i])
                 .ProcessGenesis3Validators(keys[i])
                 .AssertHeadBlockIs(keys[i], 1);
@@ -902,27 +902,27 @@ public class CliqueBlockProducerTests
         for (int i = 1; i <= 10; i++)
         {
             PrivateKey inTurnKey = keys[i % 3];
-            goerli.AddPendingTransaction(keys[(i + 1) % 3]);
+            sepolia.AddPendingTransaction(keys[(i + 1) % 3]);
             for (int j = 0; j < keys.Length; j++)
             {
                 PrivateKey nodeKey = keys[j];
                 if (!nodeKey.Equals(inTurnKey))
                 {
-                    goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, i));
-                    goerli.AssertHeadBlockIs(keys[j], i + 1);
-                    goerli.AssertHeadBlockTimestamp(keys[j]);
+                    sepolia.Process(nodeKey, sepolia.GetBlock(inTurnKey, i));
+                    sepolia.AssertHeadBlockIs(keys[j], i + 1);
+                    sepolia.AssertHeadBlockTimestamp(keys[j]);
                 }
                 else
                 {
-                    goerli.AssertHeadBlockIs(keys[j], i);
-                    goerli.AssertHeadBlockTimestamp(keys[j]);
+                    sepolia.AssertHeadBlockIs(keys[j], i);
+                    sepolia.AssertHeadBlockTimestamp(keys[j]);
                 }
             }
         }
 
         for (int i = 0; i < keys.Length; i++)
         {
-            await goerli.StopNode(keys[i]);
+            await sepolia.StopNode(keys[i]);
         }
     }
 }
