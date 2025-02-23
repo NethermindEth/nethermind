@@ -281,17 +281,17 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (block.Header.Number <= _blockTree.Head?.Number)
-        {
-            error = $"Block {block.Header.Number} is not better than head {_blockTree.Head?.Number}";
-            return false;
-        }
-
-        if (block.Header.TotalDifficulty != null && !_blockTree.IsBetterThanHead(block.Header))
-        {
-            error = $"Block {block.Header.Hash} is not better than head {_blockTree.Head?.Hash}";
-            return false;
-        }
+        // if (block.Header.Number <= _blockTree.Head?.Number)
+        // {
+        //     error = $"Block {block.Header.Number} is not better than head {_blockTree.Head?.Number}";
+        //     return false;
+        // }
+        //
+        // if (block.Header.TotalDifficulty != null && !_blockTree.IsBetterThanHead(block.Header))
+        // {
+        //     error = $"Block {block.Header.Hash} is not better than head {_blockTree.Head?.Hash}";
+        //     return false;
+        // }
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit);
 
