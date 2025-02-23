@@ -634,13 +634,54 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 }
             }
 
-            return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+            // https://github.com/curiosity-ai/rocksdb-sharp/pull/61
+            // return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+            return Get(key, cf, flags);
         }
         catch (RocksDbSharpException e)
         {
             CreateMarkerIfCorrupt(e);
             throw;
         }
+    }
+
+    private unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
+    {
+        // https://github.com/curiosity-ai/rocksdb-sharp/pull/61
+        // return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+
+        nint db = _db.Handle;
+        var read_options = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions).Handle;
+        UIntPtr skLength = (UIntPtr)key.Length;
+        IntPtr handle;
+        IntPtr errPtr;
+        fixed (byte* ptr = &MemoryMarshal.GetReference(key))
+        {
+            handle = cf is null
+                            ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                            : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+        }
+        if (errPtr != IntPtr.Zero)
+        {
+            return null;
+        }
+
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
+        if (valuePtr == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        int length = (int)valueLength;
+        byte[] result = new byte[length];
+        Marshal.Copy(valuePtr, result, 0, length);
+        Native.Instance.rocksdb_pinnableslice_destroy(handle);
+        return result;
     }
 
     /// <summary>
