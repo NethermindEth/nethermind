@@ -43,7 +43,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
-    private readonly Dictionary<AddressAsKey, SelfDestructDictionary<byte[]>> _blockCache = new(4_096);
+    private readonly Dictionary<AddressAsKey, DefaultableDictionary<byte[]>> _blockCache = new(4_096);
     private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
     private readonly Func<StorageCell, byte[]> _loadFromTree;
 
@@ -315,10 +315,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         toUpdateRoots.Add(change.StorageCell.Address);
         tree.Set(change.StorageCell.Index, change.Value);
 
-        ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+        ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
         if (!exists)
         {
-            dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
+            dict = new DefaultableDictionary<byte[]>(StorageTree.EmptyBytes);
         }
 
         dict[change.StorageCell.Index] = change.Value;
@@ -394,10 +394,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
-        ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+        ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
         if (!exists)
         {
-            dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
+            dict = new DefaultableDictionary<byte[]>(StorageTree.EmptyBytes);
         }
 
         ref byte[]? value = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
@@ -451,7 +451,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         if (isEmpty)
         {
             // We know all lookups will be empty against this tree
-            _blockCache[storageCell.Address].MarkEmpty();
+            _blockCache[storageCell.Address].ClearAndSetMissingAsDefault();
             return StorageTree.EmptyBytes;
         }
 
@@ -489,14 +489,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         base.ClearStorage(address);
 
-        ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+        ref DefaultableDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
         if (!exists)
         {
-            dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
+            dict = new DefaultableDictionary<byte[]>(StorageTree.EmptyBytes);
         }
 
         // We know all lookups will be empty against this tree
-        dict.SelfDestruct();
+        dict.ClearAndSetMissingAsDefault();
 
         // here it is important to make sure that we will not reuse the same tree when the contract is revived
         // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
@@ -512,17 +512,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             => new(trieStore, storageRoot, logManager);
     }
 
-    private sealed class SelfDestructDictionary<TValue>(TValue defaultValue)
+    private sealed class DefaultableDictionary<TValue>(TValue defaultValue)
     {
         private bool _missingAreDefault;
         private readonly Dictionary<UInt256, TValue> _dictionary = new(Comparer.Instance);
 
-        public void MarkEmpty()
-        {
-            _missingAreDefault = true;
-        }
-
-        public void SelfDestruct()
+        public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
             _dictionary.Clear();
