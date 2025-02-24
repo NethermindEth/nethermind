@@ -791,30 +791,5 @@ public partial class ForwardHeaderProviderTests
             byte[] messageSerialized = _bodiesSerializer.Serialize(message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
-
-        public async Task<IOwnedReadOnlyList<TxReceipt[]?>> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)
-        {
-            TxReceipt[][] receipts = new TxReceipt[blockHashes.Count][];
-            for (int i = 0; i < receipts.Length; i++)
-            {
-                BlockBody body = _bodies[blockHashes[i]];
-                receipts[i] = body.Transactions
-                    .Select(static t => Build.A.Receipt
-                        .WithStatusCode(StatusCode.Success)
-                        .WithGasUsed(10)
-                        .WithBloom(Bloom.Empty)
-                        .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress!).WithTopics(TestItem.KeccakA).TestObject)
-                        .TestObject)
-                    .ToArray();
-
-                _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
-                    ? Keccak.EmptyTreeHash
-                    : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
-            }
-
-            using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
-            return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
-        }
     }
 }

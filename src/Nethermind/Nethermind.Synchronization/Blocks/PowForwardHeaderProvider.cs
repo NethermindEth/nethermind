@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -12,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
@@ -146,19 +148,27 @@ public class PowForwardHeaderProvider(
             if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
-            // TODO: Check how TTD is updated without inserting to block.
-            IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
-            if (headers.Count < 2)
+            try
             {
-                // Peer dont have new header
-                headers.Dispose();
+                IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
+                if (headers.Count < 2)
+                {
+                    // Peer dont have new header
+                    headers.Dispose();
+                    return null;
+                }
+
+                // Remember, we start downloading from currentNumber+1
+                if (!CheckAncestorJump(bestPeer, headers[1], ref _currentNumber)) continue;
+
+                return headers;
+            }
+            catch (EthSyncException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer}, {e}");
+                syncPeerPool.ReportBreachOfProtocol(bestPeer, DisconnectReason.ForwardSyncFailed, e.Message);
                 return null;
             }
-
-            // Remember, we start downloading from currentNumber+1
-            if (!CheckAncestorJump(bestPeer, headers[1], ref _currentNumber)) continue;
-
-            return headers;
         }
     }
 
@@ -272,6 +282,10 @@ public class PowForwardHeaderProvider(
         if (!exceptions.IsEmpty)
         {
             if (_logger.IsDebug) _logger.Debug("Seal validation failure");
+            if (exceptions.First() is EthSyncException ethSyncException)
+            {
+                throw ethSyncException;
+            }
             throw new AggregateException(exceptions);
         }
         cancellation.ThrowIfCancellationRequested();
