@@ -443,7 +443,7 @@ namespace Nethermind.Synchronization.Blocks
             SyncEvent?.Invoke(this, args);
         }
 
-        private void HandleSyncRequestResult(Task<long> task, PeerInfo? peerInfo)
+        private void HandleSyncRequestResult(Task task, PeerInfo? peerInfo)
         {
             switch (task)
             {
@@ -482,7 +482,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     break;
                 case { IsCompletedSuccessfully: true } t:
-                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed with progress {t.Result}.");
+                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed.");
                     if (peerInfo is not null) // fix this for node data sync
                     {
                         InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
