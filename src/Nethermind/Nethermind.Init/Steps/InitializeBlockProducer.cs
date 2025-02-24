@@ -62,7 +62,15 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        public virtual IBlockProducerEnvFactory InitBlockProducerEnvFactory() =>
+        /// <summary>
+        /// Creates the <see cref="IBlockProducerEnvFactory"/> to be for the <see cref="NethermindApi"/>
+        /// </summary>
+        /// <remarks>
+        /// Usually if you're overriding this method you're probably also overriding the way the BlockProducer
+        /// is created by the <see cref="IConsensusPlugin"/>. At which point it's probably better to just override
+        /// api.BlockProducerEnvFactory directly in the same `IConsensusPlugin.InitBlockProducer` method.
+        /// </remarks>
+        protected virtual IBlockProducerEnvFactory InitBlockProducerEnvFactory() =>
             new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
                 _api.BlockTree!,
