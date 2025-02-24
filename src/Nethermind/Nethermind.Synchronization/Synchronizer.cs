@@ -307,9 +307,10 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             // so its  declared on its own and other use is binded.
             .AddScoped<BlockDownloader>()
             .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
-            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+            .AddScoped<ISyncDownloader<BlocksRequest>, MultiBlockDownloader>()
+            .Bind<IForwardSyncController, BlockDownloader>()
 
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
+            .Add<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
             // For headers. There are two header scope, Fast and Beacon
