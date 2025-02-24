@@ -165,8 +165,7 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        await headerTask.Should().ThrowAsync<EthSyncException>();
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 

@@ -118,8 +118,8 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             DownloaderOptions options = blocksRequest.Options;
-            bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
-            bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
+            bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
+            bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
             // pivot number - 6 for uncle validation
@@ -132,11 +132,12 @@ namespace Nethermind.Synchronization.Blocks
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return blocksSynced;
 
+                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[0].Number, originalShouldProcess, originalDownloadReceiptOpts);
+
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
                 long startTime = Stopwatch.GetTimestamp();
                 await RequestBodies(bestPeer, cancellation, context);
 
-                (shouldProcess, downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[0].Number, shouldProcess, downloadReceipts);
                 if (context.DownloadReceipts)
                 {
                     if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
