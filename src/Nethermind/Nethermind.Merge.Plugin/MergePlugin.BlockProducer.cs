@@ -62,17 +62,17 @@ namespace Nethermind.Merge.Plugin
                 IMergeBlockProducer mergeBlockProducer = blockProducer as IMergeBlockProducer
                     ?? throw new ArgumentException("Merge enabled, but block producer is not IMergeBlockProducer");
 
-                IBlockProducer preMergeBlockProducer = mergeBlockProducer.PreMergeBlockProducer
-                    ?? throw new ArgumentException("Merge enabled, but pre-merge block producer is null");
+                IBlockProducer? preMergeBlockProducer = mergeBlockProducer.PreMergeBlockProducer;
+                IBlockProducerRunner? preMergeRunner = preMergeBlockProducer is not null
+                    ? baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer)
+                    : null;
+
                 // IBlockProducer postMergeBlockProducer = mergeBlockProducer.PostMergeBlockProducer;
-
-                IBlockProducerRunner baseRunner = baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer);
-
                 // TODO: Why is mergeBlockProducer used instead of postMergeBlockProducer?
                 StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
                     _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
 
-                return new MergeBlockProducerRunner(baseRunner, postMergeRunner, _poSSwitcher);
+                return new MergeBlockProducerRunner(preMergeRunner, postMergeRunner, _poSSwitcher);
             }
 
             return baseRunnerFactory.InitBlockProducerRunner(blockProducer);
