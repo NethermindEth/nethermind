@@ -12,9 +12,9 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 
 public class StateSyncPivotTest
 {
-    [TestCase(1000, 1000, 10, 100, 1022, 0)]
-    [TestCase(900, 1000, 10, 50, 1022, 0)]
-    [TestCase(900, 1000, 10, 100, 1022, 0)]
+    [TestCase(1000, 1000, 10, 100, 1000, 0)]
+    [TestCase(900, 1000, 10, 50, 1000, 0)]
+    [TestCase(900, 1000, 10, 100, 1000, 0)]
     [TestCase(900, 900, 32, 100, 900, 0)]
     [TestCase(0, 300, 32, 100, 301, 300)]
     public void Will_set_new_best_header_some_distance_from_best_suggested(

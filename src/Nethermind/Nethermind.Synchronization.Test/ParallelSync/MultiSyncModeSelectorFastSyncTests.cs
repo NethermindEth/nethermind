@@ -593,7 +593,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
             syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
-            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - 32);
             syncProgressResolver.FindBestProcessedBlock().Returns(0);
             syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
             syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
