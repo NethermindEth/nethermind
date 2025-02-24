@@ -7,8 +7,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using Microsoft.IO;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 
 namespace Nethermind.Core.ExecutionRequest;
 
@@ -43,15 +45,15 @@ public static class ExecutionRequestExtensions
         }
 
         using SHA256 sha256 = SHA256.Create();
-        using ArrayPoolList<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(ExecutionRequestExtensions),Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(sha256.ComputeHash(requests));
+            stream.Write(sha256.ComputeHash(requests));
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
+        return new Hash256(sha256.ComputeHash(stream));
     }
 
 
