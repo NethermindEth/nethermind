@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -19,6 +20,7 @@ namespace Nethermind.Consensus.Processing
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats
     {
+        private static readonly DefaultObjectPool<BlockData> _dataPool = new(new BlockDataPolicy(), 16);
         private readonly Action<BlockData> _executeFromThreadPool;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
@@ -85,30 +87,30 @@ namespace Nethermind.Consensus.Processing
                 _lastBlockNumber = block.Number;
             }
 
-            CaptureReportData(new BlockData
-            {
-                RunningMicroseconds = _runStopwatch.ElapsedMicroseconds(),
-                RunMicroseconds = (_runStopwatch.ElapsedMicroseconds() - _lastElapsedRunningMicroseconds),
-                Block = block,
-                BranchRoot = branchRoot,
-                StartSLoadOps = _startSLoadOps,
-                StartSStoreOps = _startSStoreOps,
-                StartCallOps = _startCallOps,
-                StartEmptyCalls = _startEmptyCalls,
-                StartCachedContractsUsed = _startCachedContractsUsed,
-                StartContractsAnalyzed = _startContractsAnalyzed,
-                StartCreateOps = _startCreateOps,
-                StartSelfDestructOps = _startSelfDestructOps,
-                ProcessingMicroseconds = blockProcessingTimeInMicros,
-                CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode,
-                CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode,
-                CurrentCallOps = Evm.Metrics.ThreadLocalCalls,
-                CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls,
-                CurrentCachedContractsUsed = Db.Metrics.ThreadLocalCodeDbCache,
-                CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed,
-                CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates,
-                CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs,
-            });
+            BlockData blockData = _dataPool.Get();
+            blockData.Block = block;
+            blockData.BranchRoot = branchRoot;
+            blockData.RunningMicroseconds = _runStopwatch.ElapsedMicroseconds();
+            blockData.RunMicroseconds = (_runStopwatch.ElapsedMicroseconds() - _lastElapsedRunningMicroseconds);
+            blockData.StartSLoadOps = _startSLoadOps;
+            blockData.StartSStoreOps = _startSStoreOps;
+            blockData.StartCallOps = _startCallOps;
+            blockData.StartEmptyCalls = _startEmptyCalls;
+            blockData.StartCachedContractsUsed = _startCachedContractsUsed;
+            blockData.StartContractsAnalyzed = _startContractsAnalyzed;
+            blockData.StartCreateOps = _startCreateOps;
+            blockData.StartSelfDestructOps = _startSelfDestructOps;
+            blockData.ProcessingMicroseconds = blockProcessingTimeInMicros;
+            blockData.CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
+            blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
+            blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
+            blockData.CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
+            blockData.CurrentCachedContractsUsed = Db.Metrics.ThreadLocalCodeDbCache;
+            blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
+            blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
+            blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+
+            CaptureReportData(blockData);
         }
 
         private void CaptureReportData(in BlockData data) => ThreadPool.UnsafeQueueUserWorkItem(_executeFromThreadPool, data, preferLocal: false);
@@ -128,9 +130,13 @@ namespace Nethermind.Consensus.Processing
                 // Don't allow exception to escape to ThreadPool
                 if (_logger.IsError) _logger.Error("Error when generating processing statistics", ex);
             }
+            finally
+            {
+                _dataPool.Return(data);
+            }
         }
 
-        private void GenerateReport(in BlockData data)
+        private void GenerateReport(BlockData data)
         {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
@@ -371,7 +377,20 @@ namespace Nethermind.Consensus.Processing
             new Address("0x0b92619DdE55C0cbf828d32993a7fB004E00c84B"), // Extra data as: Builder+ www.btcs.com/builder
         };
 
-        private struct BlockData
+        private class BlockDataPolicy() : IPooledObjectPolicy<BlockData>
+        {
+            public BlockData Create() => new BlockData();
+            public bool Return(BlockData data)
+            {
+                // Release the object references so we don't hold them from being GC'd
+                data.Block = null;
+                data.BranchRoot = null;
+
+                return true;
+            }
+        }
+
+        private class BlockData
         {
             public Block Block;
             public Hash256 BranchRoot;
