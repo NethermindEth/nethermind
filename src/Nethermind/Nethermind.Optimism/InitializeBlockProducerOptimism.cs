@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 
@@ -18,21 +21,20 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         _api = api;
     }
 
-    protected override IBlockProducer BuildProducer()
+    public override IBlockProducerEnvFactory InitBlockProducerEnvFactory()
     {
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-        if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-        if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
-        if (_api.TransactionComparerProvider is null) throw new StepDependencyException(nameof(_api.TransactionComparerProvider));
-        if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
-        if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
-        if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
-        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.BlockValidator);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.TxPool);
+        StepDependencyException.ThrowIfNull(_api.TransactionComparerProvider);
+        StepDependencyException.ThrowIfNull(_api.SpecHelper);
+        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
 
-        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+        return new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
             _api.BlockTree,
             _api.SpecProvider,
@@ -46,23 +48,5 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.SpecHelper,
             _api.L1CostHelper,
             _api.LogManager);
-
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
-        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
-
-        _api.BlockProducer = new OptimismPostMergeBlockProducer(
-            new OptimismPayloadTxSource(),
-            producerEnv.TxSource,
-            producerEnv.ChainProcessor,
-            producerEnv.BlockTree,
-            producerEnv.ReadOnlyStateProvider,
-            _api.GasLimitCalculator,
-            NullSealEngine.Instance,
-            new ManualTimestamper(),
-            _api.SpecProvider,
-            _api.LogManager,
-            _api.Config<IBlocksConfig>());
-
-        return _api.BlockProducer;
     }
 }

@@ -74,10 +74,26 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             throw new ArgumentException(
                 "Optimism does not support additional tx source");
 
-        ArgumentNullException.ThrowIfNull(_api);
-        ArgumentNullException.ThrowIfNull(_api.BlockProducer);
+        StepDependencyException.ThrowIfNull(_api);
+        StepDependencyException.ThrowIfNull(_api.BlockProducerEnvFactory);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
-        return _api.BlockProducer;
+        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
+
+        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+
+        return new OptimismPostMergeBlockProducer(
+            new OptimismPayloadTxSource(),
+            producerEnv.TxSource,
+            producerEnv.ChainProcessor,
+            producerEnv.BlockTree,
+            producerEnv.ReadOnlyStateProvider,
+            _api.GasLimitCalculator,
+            NullSealEngine.Instance,
+            new ManualTimestamper(),
+            _api.SpecProvider,
+            _api.LogManager,
+            _api.Config<IBlocksConfig>());
     }
 
     #endregion
