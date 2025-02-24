@@ -86,7 +86,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.L1CostHelper);
 
-       _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
             _api.BlockTree,
             _api.SpecProvider,
