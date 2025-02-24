@@ -81,8 +81,7 @@ public static class T8nInputProcessor
             throw new T8nException(e, $"unsupported fork {arguments.StateFork}", T8nErrorCodes.ErrorConfig);
         }
 
-        if (spec == Prague.Instance) spec = PragueGnosis.Instance;
-        if (spec == Cancun.Instance) spec = CancunGnosis.Instance;
+        spec = ChainUtils.ResolveSpec(spec, arguments.StateChainId)!;
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 
         if (!string.IsNullOrEmpty(arguments.StateReward) && arguments.StateReward != "-1") // (-1 means rewards are disabled)
