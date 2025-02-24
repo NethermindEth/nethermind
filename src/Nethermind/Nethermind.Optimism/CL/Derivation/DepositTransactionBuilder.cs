@@ -8,6 +8,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
@@ -28,12 +29,21 @@ public static class DepositEvent
     }
 }
 
+// TODO: Find where to put these constants
+public static class _L1BlockInfo
+{
+    public static readonly string DepositsCompleteSignature = "depositsComplete()";
+    public static readonly byte[] DepositsCompleteBytes4 = Keccak.Compute(DepositsCompleteSignature).Bytes[..4].ToArray();
+    public static readonly Address DepositerAddress = new("0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001");
+    public static readonly Address BlockAddress = new("0x4200000000000000000000000000000000000015");
+    // `DepositsCompleteGas` allocates 21k gas for intrinsic tx costs, and
+    // an additional 15k to ensure that the `DepositsComplete` call does not run out of gas.
+    public static readonly UInt64 DepositsCompleteGas = 21_000 + 15_000;
+}
+
 public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameters engineParameters)
 {
     private const int SystemTxDataLengthEcotone = 164;
-    private static readonly string DepositEventABI = "TransactionDeposited(address,address,uint256,bytes)";
-    private static readonly Hash256 DepositEventABIHash = Keccak.Compute(DepositEventABI);
-    private static readonly Hash256 DepositEventVersion0 = Hash256.Zero;
 
     public Transaction BuildL1InfoTransaction(L1BlockInfo blockInfo)
     {
@@ -82,7 +92,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             foreach (var log in receipt.Logs)
             {
                 if (log.Address != engineParameters.DepositAddress) continue;
-                if (log.Topics.Length == 0 || log.Topics[0] != DepositEventABIHash) continue;
+                if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
 
                 try
                 {
@@ -139,7 +149,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         }
 
         var version = log.Topics[3];
-        if (version == DepositEventVersion0)
+        if (version == DepositEvent.Version0)
         {
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
             var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
@@ -166,9 +176,42 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         return []; // TODO implement
     }
 
-    public Transaction[] BuildForceIncludeTransactions()
+    public List<Transaction> BuildForceIncludeTransactions(UInt64 sequenceNumber, BlockForRpc block)
     {
-        return []; // TODO implement
+        static Hash256 ComputeSourceHash(UInt64 sequenceNumber, Hash256 l1BlockHash)
+        {
+            Span<byte> buffer = stackalloc byte[32 * 2];
+            Span<byte> span = buffer;
+
+            l1BlockHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
+            span.TakeAndMove(32 - 8); // skip 24 bytes
+            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), sequenceNumber);
+            var depositIdHash = Keccak.Compute(buffer);
+
+            buffer.Clear();
+            span = buffer;
+
+            span.TakeAndMove(32 - 8); // skip 24 bytes
+            BinaryPrimitives.WriteUInt64BigEndian(span.TakeAndMove(8), (ulong)DepositEvent.SourceDomain.AfterForceInclude);
+            depositIdHash.Bytes.CopyTo(span.TakeAndMove(Hash256.Size));
+
+            return Keccak.Compute(buffer);
+        }
+
+        var sourceHash = ComputeSourceHash(sequenceNumber, block.Hash);
+        var transaction = new Transaction
+        {
+            Type = TxType.DepositTx,
+            SourceHash = sourceHash,
+            SenderAddress = _L1BlockInfo.DepositerAddress,
+            To = _L1BlockInfo.BlockAddress,
+            Value = 0,
+            GasLimit = (long)_L1BlockInfo.DepositsCompleteGas, // WARNING: Dangerous cast
+            IsOPSystemTransaction = false,
+            Data = _L1BlockInfo.DepositsCompleteBytes4
+        };
+
+        return [transaction];
     }
 }
 
