@@ -27,12 +27,6 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[][]? Blobs { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-    public override UInt256? GasPrice { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-    public override UInt256? V { get; set; }
-
     [JsonConstructor]
     public BlobTransactionForRpc() { }
 
