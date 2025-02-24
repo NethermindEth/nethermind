@@ -11,7 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class Secp256r1PrecompilePrecompileTests : VirtualMachineTestsBase
+    public class Secp256r1PrecompileTests : VirtualMachineTestsBase
     {
         private static readonly byte[] ValidAnswer = Bytes.FromHexString(
             "0000000000000000000000000000000000000000000000000000000000000001"
