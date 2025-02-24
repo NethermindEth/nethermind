@@ -589,23 +589,24 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
+        const string InvalidBlockRangeParams = "invalid block range params";
+
         BlockParameter fromBlock = filter.FromBlock;
         BlockParameter toBlock = filter.ToBlock;
 
         // because of lazy evaluation of enumerable, we need to do the validation here first
-        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        if (!TryFindOrUseLatest(_blockFinder, ref toBlock, out SearchResult<BlockHeader> toBlockResult, out long sourceToBlockNumber))
+        if (!TryFindOrUseLatest(_blockFinder, ref toBlock, out SearchResult<BlockHeader> toBlockResult, out long? sourceToBlockNumber))
         {
-            timeout.Dispose();
             return FailWithNoHeadersSyncedYet(toBlockResult);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
         SearchResult<BlockHeader> fromBlockResult;
-        long sourceFromBlockNumber;
+        long? sourceFromBlockNumber;
 
         if (fromBlock == toBlock)
         {
@@ -614,19 +615,16 @@ public partial class EthRpcModule(
         }
         else if (!TryFindOrUseLatest(_blockFinder, ref fromBlock, out fromBlockResult, out sourceFromBlockNumber))
         {
-            timeout.Dispose();
             return FailWithNoHeadersSyncedYet(fromBlockResult);
         }
 
         if (sourceFromBlockNumber > sourceToBlockNumber)
         {
-            timeout.Dispose();
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {sourceFromBlockNumber} is later than to block {sourceToBlockNumber}.", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(InvalidBlockRangeParams, ErrorCodes.InvalidParams);
         }
 
         if (_blockFinder.Head?.Number is not null && sourceFromBlockNumber > _blockFinder.Head.Number)
         {
-            timeout.Dispose();
             return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
         }
 
@@ -643,18 +641,15 @@ public partial class EthRpcModule(
 
             ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
 
-            using (timeout)
+            foreach (FilterLog log in filterLogs)
             {
-                foreach (FilterLog log in filterLogs)
+                logs.Add(log);
+                if (JsonRpcContext.Current.Value?.IsAuthenticated != true // not authenticated
+                    && _rpcConfig.MaxLogsPerResponse != 0                 // not unlimited
+                    && logs.Count > _rpcConfig.MaxLogsPerResponse)
                 {
-                    logs.Add(log);
-                    if (JsonRpcContext.Current.Value?.IsAuthenticated != true // not authenticated
-                        && _rpcConfig.MaxLogsPerResponse != 0                 // not unlimited
-                        && logs.Count > _rpcConfig.MaxLogsPerResponse)
-                    {
-                        logs.Dispose();
-                        return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
-                    }
+                    logs.Dispose();
+                    return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
                 }
             }
 
@@ -668,13 +663,13 @@ public partial class EthRpcModule(
         ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
             => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
 
-        static bool TryFindOrUseLatest(IBlockFinder blockFinder, ref BlockParameter blockParameter, out SearchResult<BlockHeader> blockResult, out long sourceBlockNumber)
+        static bool TryFindOrUseLatest(IBlockFinder blockFinder, ref BlockParameter blockParameter, out SearchResult<BlockHeader> blockResult, out long? sourceBlockNumber)
         {
             blockResult = blockFinder.SearchForHeader(blockParameter);
 
             if (blockResult.IsError)
             {
-                sourceBlockNumber = blockParameter.Type is BlockParameterType.BlockNumber ? blockParameter.BlockNumber.Value : 0;
+                sourceBlockNumber = blockParameter.Type is BlockParameterType.BlockNumber ? blockParameter.BlockNumber.Value : null;
 
                 if (blockParameter.Type is BlockParameterType.BlockNumber &&
                     blockFinder.Head?.Number is not null &&
