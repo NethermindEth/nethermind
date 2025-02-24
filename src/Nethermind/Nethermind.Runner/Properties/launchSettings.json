@@ -23,7 +23,7 @@
     },
     "Energy Web": {
       "commandName": "Project",
-      "commandLineArgs": "-c energyweb --data-dir .data --jsonrpc-enabled true",
+      "commandLineArgs": "-c energyweb --data-dir .data --jsonrpc-enabled",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -107,7 +107,7 @@
     },
     "Volta": {
       "commandName": "Project",
-      "commandLineArgs": "-c volta --data-dir .data --jsonrpc-enabled true",
+      "commandLineArgs": "-c volta --data-dir .data --jsonrpc-enabled",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

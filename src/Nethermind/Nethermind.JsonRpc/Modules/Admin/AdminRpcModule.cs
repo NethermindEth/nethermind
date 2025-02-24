@@ -37,6 +37,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IStateReader _stateReader;
     private NodeInfo _nodeInfo = null!;
     private readonly IAdminEraService _eraService;
+    private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
 
     public AdminRpcModule(
@@ -51,6 +52,7 @@ public class AdminRpcModule : IAdminRpcModule
         string dataDir,
         ManualPruningTrigger pruningTrigger,
         ChainParameters parameters,
+        ITrustedNodesManager trustedNodesManager,
         ISubscriptionManager subscriptionManager)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
@@ -64,6 +66,7 @@ public class AdminRpcModule : IAdminRpcModule
         _pruningTrigger = pruningTrigger;
         _eraService = eraService;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+        _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
         BuildNodeInfo();
         _subscriptionManager = subscriptionManager;
@@ -133,6 +136,22 @@ public class AdminRpcModule : IAdminRpcModule
             ? ResultWrapper<string>.Success(enode)
             : ResultWrapper<string>.Fail("Failed to remove peer.");
     }
+
+    public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode)
+    {
+        Enode enodeObj = new(enode);
+
+        if (_trustedNodesManager.IsTrusted(enodeObj) || await _trustedNodesManager.AddAsync(enodeObj, updateFile: true))
+        {
+            _peerPool.GetOrAdd(new NetworkNode(enodeObj));
+            return ResultWrapper<bool>.Success(true);
+        }
+        else
+        {
+            return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
+        }
+    }
+
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
         => ResultWrapper<PeerInfo[]>.Success(
