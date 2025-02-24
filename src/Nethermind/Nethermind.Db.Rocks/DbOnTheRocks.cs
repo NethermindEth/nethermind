@@ -5,6 +5,8 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -16,6 +18,7 @@ using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -673,27 +676,34 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                         ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
                         : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
         }
-        if (errPtr != IntPtr.Zero)
+
+        if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+        if (handle == IntPtr.Zero) return null;
+
+        try
         {
-            return null;
+            IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
+            if (valuePtr == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            int length = (int)valueLength;
+            byte[] result = new byte[length];
+            new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(new Span<byte>(result));
+            return result;
+        }
+        finally
+        {
+            Native.Instance.rocksdb_pinnableslice_destroy(handle);
         }
 
-        if (handle == IntPtr.Zero)
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static unsafe void ThrowRocksDbException(nint errPtr)
         {
-            return null;
+            throw new RocksDbException(errPtr);
         }
-
-        IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
-        if (valuePtr == IntPtr.Zero)
-        {
-            return null;
-        }
-
-        int length = (int)valueLength;
-        byte[] result = new byte[length];
-        Marshal.Copy(valuePtr, result, 0, length);
-        Native.Instance.rocksdb_pinnableslice_destroy(handle);
-        return result;
     }
 
     /// <summary>
