@@ -347,6 +347,7 @@ internal class TrieStoreDirtyNodesCache
         void PersistNode(TrieNode n, Hash256? address, TreePath path)
         {
             if (n.Keccak is null) return;
+            if (n.NodeType == NodeType.Unknown) return;
             Key key = new Key(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {

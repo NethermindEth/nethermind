@@ -185,7 +185,7 @@ namespace Ethereum.Test.Base
                             transaction.SenderAddress = Address.Zero;
                         }
                         return new AuthorizationTuple(
-                            i.ChainId.u0,
+                            i.ChainId,
                             i.Address,
                             i.Nonce.u0,
                             (byte)i.V,
