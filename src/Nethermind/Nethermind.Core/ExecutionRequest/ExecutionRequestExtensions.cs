@@ -45,7 +45,7 @@ public static class ExecutionRequestExtensions
         }
 
         using SHA256 sha256 = SHA256.Create();
-        using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(ExecutionRequestExtensions),Hash256.Size * MaxRequestsCount);
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(ExecutionRequestExtensions), Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
