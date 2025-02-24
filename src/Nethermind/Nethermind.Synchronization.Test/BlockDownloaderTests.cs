@@ -160,7 +160,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await downloader.Dispatch(peerInfo, new BlocksRequest(), CancellationToken.None);
-        syncPeer.DisconnectReason.Should().Be(DisconnectReason.ForwardSyncFailed);
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
         ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(2048);
     }
 
@@ -355,7 +355,7 @@ public partial class BlockDownloaderTests
 
         BlockDownloader downloader = ctx.BlockDownloader;
         await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
-        syncPeer.Received().Disconnect(DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
     [Test]
@@ -375,7 +375,7 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         await downloader.Dispatch(peerInfo, new BlocksRequest(DownloaderOptions.Insert, 0), CancellationToken.None);
-        syncPeer.Received().Disconnect(DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
     [Test]
@@ -843,13 +843,13 @@ public partial class BlockDownloaderTests
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
 
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.IncorrectReceiptRoot));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
         syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions).Result);
+            .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions | Response.IncorrectReceiptRoot).Result);
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1);
