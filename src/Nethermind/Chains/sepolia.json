@@ -74,6 +74,7 @@
     "eip7251TransitionTimestamp": "0x67C7FD60",
     "eip7623TransitionTimestamp": "0x67C7FD60",
     "eip7702TransitionTimestamp": "0x67C7FD60",
+    "depositContractAddress": "0x4242424242424242424242424242424242424242",
     "blobSchedule": {
       "cancun": {
         "target": 3,
