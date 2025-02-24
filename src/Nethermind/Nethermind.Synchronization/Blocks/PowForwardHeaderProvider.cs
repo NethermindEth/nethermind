@@ -150,7 +150,8 @@ public class PowForwardHeaderProvider(
             cancellation.ThrowIfCancellationRequested();
             try
             {
-                IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
+                IOwnedReadOnlyList<BlockHeader>? headers =
+                    await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
                 if (headers.Count < 2)
                 {
                     // Peer dont have new header
@@ -163,12 +164,18 @@ public class PowForwardHeaderProvider(
 
                 return headers;
             }
+            catch (TimeoutException)
+            {
+                syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
+                return null;
+            }
             catch (EthSyncException e)
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer}, {e}");
                 syncPeerPool.ReportBreachOfProtocol(bestPeer, DisconnectReason.ForwardSyncFailed, e.Message);
-                return null;
             }
+
+            return null;
         }
     }
 

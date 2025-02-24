@@ -121,9 +121,10 @@ public partial class ForwardHeaderProviderTests
 
         Response responseOptions = Response.AllCorrect;
         SyncPeerMock syncPeer = new(2072 + 1, true, responseOptions);
-        ctx.ConfigureBestPeer(syncPeer);
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        await headerTask.Should().ThrowAsync<EthSyncException>();
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
     [TestCase(33L)]
@@ -166,6 +167,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         await headerTask.Should().ThrowAsync<EthSyncException>();
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
     [Test]
@@ -184,8 +186,8 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        await headerTask.Should().ThrowAsync<EthSyncException>();
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
     private class SlowSealValidator : ISealValidator
