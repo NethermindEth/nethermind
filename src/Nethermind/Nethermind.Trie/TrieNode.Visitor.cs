@@ -39,8 +39,7 @@ namespace Nethermind.Trie
         private int _visitedNodes;
 
         internal void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path) {
-            long totalSize = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
-            Console.Error.WriteLine($"TotalSize: {totalSize}");
+            _ = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
         }
 
         internal long Accept(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, bool isStorage, long subtreeSizeHint)
