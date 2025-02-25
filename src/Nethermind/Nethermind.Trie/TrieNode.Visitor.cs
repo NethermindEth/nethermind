@@ -38,7 +38,8 @@ namespace Nethermind.Trie
 
         private int _visitedNodes;
 
-        internal void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path) {
+        internal void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path)
+        {
             _ = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
         }
 
