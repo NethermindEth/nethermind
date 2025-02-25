@@ -50,10 +50,51 @@ namespace Nethermind.State.Proofs
             return bytes;
         }
 
+        private AccountProofCollector(ReadOnlySpan<byte> hashedAddress, IEnumerable<ValueHash256>? keccakStorageKeys, int length, byte[][]? storageKeys)
+        {
+            _storageNodeInfosLookup = _storageNodeInfos.GetAlternateLookup<ValueHash256>();
+            _nodeToVisitFilterLookup = _nodeToVisitFilter.GetAlternateLookup<ValueHash256>();
+
+            keccakStorageKeys ??= [];
+
+            _fullAccountPath = Nibbles.FromBytes(hashedAddress);
+
+            _accountProof = new AccountProof
+            {
+                StorageProofs = new StorageProof[length],
+                Address = _address
+            };
+
+            _fullStoragePaths = new Nibble[length][];
+            _storageProofItems = new List<byte[]>[length];
+            for (int i = 0; i < _storageProofItems.Length; i++)
+            {
+                _storageProofItems[i] = new List<byte[]>();
+            }
+
+            if (keccakStorageKeys is not null)
+            {
+                int i = 0;
+                foreach (ValueHash256 storageKey in keccakStorageKeys)
+                {
+                    _fullStoragePaths[i] = Nibbles.FromBytes(storageKey.Bytes);
+
+                    _accountProof.StorageProofs[i] = new StorageProof
+                    {
+                        // we don't know the key (index)
+                        Key = storageKeys?[i],
+                        Value = Bytes.ZeroByte
+                    };
+
+                    i++;
+                }
+            }
+        }
+
         /// <summary>
         /// Only for testing
         /// </summary>
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[]? keccakStorageKeys)
+        internal AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[]? keccakStorageKeys)
             : this(hashedAddress, keccakStorageKeys?.Select(static keccak => (ValueHash256)keccak).ToArray())
         {
         }
@@ -61,43 +102,13 @@ namespace Nethermind.State.Proofs
         /// <summary>
         /// Only for testing too
         /// </summary>
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[]? keccakStorageKeys)
+        internal AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[]? keccakStorageKeys)
+            : this(hashedAddress, keccakStorageKeys, keccakStorageKeys?.Length ?? 0, null)
         {
-            keccakStorageKeys ??= [];
-
-            _fullAccountPath = Nibbles.FromBytes(hashedAddress);
-
-            _accountProof = new AccountProof
-            {
-                StorageProofs = new StorageProof[keccakStorageKeys.Length],
-                Address = _address
-            };
-
-            _fullStoragePaths = new Nibble[keccakStorageKeys.Length][];
-            _storageProofItems = new List<byte[]>[keccakStorageKeys.Length];
-            for (int i = 0; i < _storageProofItems.Length; i++)
-            {
-                _storageProofItems[i] = new List<byte[]>();
-            }
-
-            for (int i = 0; i < keccakStorageKeys.Length; i++)
-            {
-                _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Bytes);
-
-                _accountProof.StorageProofs[i] = new StorageProof
-                {
-                    // we don't know the key (index)
-                    //_accountProof.StorageProofs[i].Key = storageKeys[i];
-                    Value = Bytes.ZeroByte
-                };
-            }
-
-            _storageNodeInfosLookup = _storageNodeInfos.GetAlternateLookup<ValueHash256>();
-            _nodeToVisitFilterLookup = _nodeToVisitFilter.GetAlternateLookup<ValueHash256>();
         }
 
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][]? storageKeys)
-            : this(hashedAddress, storageKeys?.Select(ToKey).ToArray())
+            : this(hashedAddress, storageKeys?.Select(ToKey), storageKeys?.Length ?? 0, storageKeys)
         {
         }
 
