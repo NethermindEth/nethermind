@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Test.Runner;
 
@@ -33,21 +34,17 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
     public bool IsTracingLogs => false;
-    public bool IsTracingEvmChunks => false;
-    public bool IsTracingEvmSegments => false;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs || IsTracingEvmChunks || IsTracingEvmSegments;
+    public bool IsTracingIlEvmCalls => true;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
-    public bool IsTracingPredefinedPatterns => throw new NotImplementedException();
 
-    public bool IsTracingCompiledSegments => throw new NotImplementedException();
-
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
     {
         _trace.Result.Error = _traceEntry?.Error ?? error;
         _trace.Result.Output = output ?? Bytes.Empty;
@@ -278,20 +275,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
-        _gasAlreadySetForCurrentOp = false;
-        _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc;
-        _traceEntry.Operation = null;
-        _traceEntry.OperationName = segmentId;
-        _traceEntry.Gas = gas;
-        _traceEntry.Depth = env.GetGethTraceDepth();
-        _trace.Entries.Add(_traceEntry);
-    }
-    public void Dispose() { }
-
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
@@ -302,4 +286,6 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _traceEntry.Depth = env.GetGethTraceDepth();
         _trace.Entries.Add(_traceEntry);
     }
+    public void Dispose() { }
+
 }

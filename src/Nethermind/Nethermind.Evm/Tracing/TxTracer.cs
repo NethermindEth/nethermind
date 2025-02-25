@@ -6,11 +6,12 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class TxTracer : ITxTracer
+public abstract class TxTracer : ITxTracer
 {
     [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
     protected TxTracer()
@@ -27,8 +28,7 @@ public class TxTracer : ITxTracer
                     || IsTracingAccess
                     || IsTracingFees
                     || IsTracingLogs
-                    || IsTracingPredefinedPatterns
-                    || IsTracingCompiledSegments;
+                    || IsTracingIlEvmCalls;
     }
     public bool IsTracing { get; protected set; }
     public virtual bool IsTracingState { get; protected set; }
@@ -45,8 +45,7 @@ public class TxTracer : ITxTracer
     public virtual bool IsTracingFees { get; protected set; }
     public virtual bool IsTracingStorage { get; protected set; }
     public virtual bool IsTracingLogs { get; protected set; }
-    public virtual bool IsTracingPredefinedPatterns { get; protected set; }
-    public virtual bool IsTracingCompiledSegments { get; protected set; }
+    public virtual bool IsTracingIlEvmCalls { get; protected set; }
 
     public virtual void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
@@ -55,8 +54,8 @@ public class TxTracer : ITxTracer
     public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
     public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
-    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
-    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) { }
+    public virtual void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
+    public virtual void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { }
     public virtual void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
     public virtual void ReportOperationRemainingGas(long gas) { }
@@ -81,7 +80,6 @@ public class TxTracer : ITxTracer
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
-    public virtual void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env) { }
-    public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) { }
+    public virtual void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) { }
     public virtual void Dispose() { }
 }

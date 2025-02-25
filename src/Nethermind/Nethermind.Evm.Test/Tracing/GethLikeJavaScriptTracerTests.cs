@@ -453,11 +453,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
                 GetTracer(ComplexTracer),
-                Array.Empty<byte>(),
+                [],
                 MainnetSpecProvider.CancunActivation);
         GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        TestContext.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
+        TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
     }
 
     [Test]
@@ -469,7 +469,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        TestContext.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
+        TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
     }
 
 

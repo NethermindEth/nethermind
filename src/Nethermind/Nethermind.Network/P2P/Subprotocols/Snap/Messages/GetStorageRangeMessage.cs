@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public override int PacketType => SnapMessageCode.GetStorageRanges;
 
-        public StorageRange StoragetRange { get; set; }
+        public StorageRange StorageRange { get; set; }
 
         /// <summary>
         /// Soft limit at which to stop returning data

@@ -14,8 +14,8 @@ namespace Nethermind.Db
         public ReadOnlyColumnsDb(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore)
         {
             _readOnlyColumns = baseColumnDb.ColumnKeys
-                .Select(key => (key, baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
-                .ToDictionary(it => it.Item1, it => it.Item2);
+                .Select(key => (key, db: baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
+                .ToDictionary(it => it.key, it => it.db);
         }
 
         public IDb GetColumnDb(T key)
@@ -44,5 +44,7 @@ namespace Nethermind.Db
                 readOnlyColumn.Value.Dispose();
             }
         }
+
+        public void Flush(bool onlyWal = false) { }
     }
 }

@@ -95,9 +95,9 @@ namespace Nethermind.Db
                 // compression, write [preamble, bytes[0], bytes[1], ...]
                 int storedLength = bytes.Length - EmptyCodeHashStorageRoot.Length;
                 compressed[PreambleIndex] = PreambleValue;
-                bytes.Slice(0, storedLength).CopyTo(compressed.Slice(PreambleLength));
+                bytes[..storedLength].CopyTo(compressed[PreambleLength..]);
 
-                return compressed.Slice(0, storedLength + PreambleLength);
+                return compressed[..(storedLength + PreambleLength)];
             }
 
 
@@ -113,7 +113,7 @@ namespace Nethermind.Db
                 Span<byte> span = decompressed.AsSpan();
 
                 bytes.Slice(PreambleLength).CopyTo(span);
-                EmptyCodeHashStorageRoot.CopyTo(span.Slice(span.Length - EmptyCodeHashStorageRoot.Length));
+                EmptyCodeHashStorageRoot.CopyTo(span[^EmptyCodeHashStorageRoot.Length..]);
 
                 return decompressed;
             }
@@ -125,7 +125,7 @@ namespace Nethermind.Db
             public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
 
             public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _wrapped.GetAll(ordered)
-                .Select(kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
+                .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
             public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
                 _wrapped.GetAllKeys(ordered).Select(Decompress);
@@ -137,7 +137,7 @@ namespace Nethermind.Db
 
             public bool KeyExists(ReadOnlySpan<byte> key) => _wrapped.KeyExists(key);
 
-            public void Flush() => _wrapped.Flush();
+            public void Flush(bool onlyWal) => _wrapped.Flush(onlyWal);
 
             public void Clear() => _wrapped.Clear();
 

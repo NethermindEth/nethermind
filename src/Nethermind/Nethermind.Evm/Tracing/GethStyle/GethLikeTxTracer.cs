@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -26,18 +27,19 @@ public abstract class GethLikeTxTracer : TxTracer
     public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }
     public override bool IsTracingInstructions => true;
+    public override bool IsTracingIlEvmCalls => true;
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         Trace.ReturnValue = output;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
-        Trace.ReturnValue = output ?? Array.Empty<byte>();
+        Trace.ReturnValue = output ?? [];
     }
 
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)
@@ -82,11 +84,8 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         _gasCostAlreadySetForCurrentOp = false;
     }
 
-    public override void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public override void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
-        if (IsTracingCompiledSegments)
-            return;
-
         if (CurrentTraceEntry is not null)
             AddTraceEntry(CurrentTraceEntry);
 
@@ -94,25 +93,9 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.ProgramCounter = pc;
         CurrentTraceEntry.SegmentID = segmentID;
-        CurrentTraceEntry.IsPrecompiled = false;
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
     }
 
-    public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-    {
-        if (IsTracingCompiledSegments)
-            return;
-
-        if (CurrentTraceEntry is not null)
-            AddTraceEntry(CurrentTraceEntry);
-
-        CurrentTraceEntry = new();
-        CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.ProgramCounter = pc;
-        CurrentTraceEntry.SegmentID = segmentID;
-        CurrentTraceEntry.IsPrecompiled = true;
-        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
-    }
 
     public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 

@@ -50,13 +50,13 @@ namespace Nethermind.Evm.Tracing
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             }
 
-            long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+            var lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
 
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= intrinsicGas)
+            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound)
                 ? gasTracer.GasSpent - 1
-                : intrinsicGas - 1;
-            long rightBound = (tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas)
+                : lowerBound - 1;
+            long rightBound = (tx.GasLimit != 0 && tx.GasLimit >= lowerBound)
                 ? tx.GasLimit
                 : header.GasLimit;
 
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Tracing
 
             transaction.GasLimit = gasLimit;
 
-            BlockExecutionContext blCtx = new(block);
+            BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
             _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
             transaction.GasLimit = originalGasLimit;
 
@@ -132,11 +132,11 @@ namespace Nethermind.Evm.Tracing
             public override bool IsTracingActions => true;
             public bool OutOfGas { get; private set; }
 
-            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+            public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
             {
             }
 
-            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+            public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
             {
             }
 

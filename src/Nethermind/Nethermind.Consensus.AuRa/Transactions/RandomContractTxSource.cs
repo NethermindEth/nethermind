@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IEciesCipher _eciesCipher;
         private readonly ISigner _signer;
-        private readonly ProtectedPrivateKey _previousCryptoKey;
+        private readonly IProtectedPrivateKey _previousCryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
         private readonly ILogger _logger;
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ISigner signer,
-            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
+            IProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {

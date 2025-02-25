@@ -42,8 +42,8 @@ public class AuraWithdrawalProcessorTests
         spec.WithdrawalsEnabled.Returns(true);
 
         // we need to capture those values, because the ArrayPools will be disposed before we can match them
-        ulong[] values = Array.Empty<ulong>();
-        Address[] addresses = Array.Empty<Address>();
+        ulong[] values = [];
+        Address[] addresses = [];
         contract.ExecuteWithdrawals(
             block.Header,
             4,

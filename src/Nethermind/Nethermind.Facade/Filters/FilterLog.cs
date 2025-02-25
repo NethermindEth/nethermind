@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Facade.Filters
 {
-    public class FilterLog
+    public class FilterLog : ILogEntry
     {
         public Address Address { get; }
         public Hash256 BlockHash { get; }
@@ -17,30 +17,27 @@ namespace Nethermind.Facade.Filters
         public Hash256[] Topics { get; }
         public Hash256 TransactionHash { get; }
         public long TransactionIndex { get; }
-        public long TransactionLogIndex { get; }
 
-        public FilterLog(long logIndex, long transactionLogIndex, TxReceipt txReceipt, LogEntry logEntry, bool removed = false)
+        public FilterLog(long logIndex, TxReceipt txReceipt, LogEntry logEntry, bool removed = false)
             : this(
                 logIndex,
-                transactionLogIndex,
                 txReceipt.BlockNumber,
                 txReceipt.BlockHash,
                 txReceipt.Index,
                 txReceipt.TxHash,
-                logEntry.LoggersAddress,
+                logEntry.Address,
                 logEntry.Data,
                 logEntry.Topics,
                 removed)
         { }
 
-        public FilterLog(long logIndex, long transactionLogIndex, long blockNumber, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false)
+        public FilterLog(long logIndex, long blockNumber, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false)
         {
             Removed = removed;
             LogIndex = logIndex;
             BlockNumber = blockNumber;
             BlockHash = blockHash;
             TransactionIndex = transactionIndex;
-            TransactionLogIndex = transactionLogIndex;
             TransactionHash = transactionHash;
             Address = address;
             Data = data;

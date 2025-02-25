@@ -65,7 +65,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             receiptStorage,
             scope.TransactionProcessor,
             new BlockhashStore(specProvider, scope.WorldState),
-            new BeaconBlockRootHandler(scope.TransactionProcessor),
+            new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
             logManager,
             opSpecHelper,
             contractRewriter,

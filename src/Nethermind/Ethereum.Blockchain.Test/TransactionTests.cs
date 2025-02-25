@@ -27,7 +27,7 @@ namespace Ethereum.Blockchain.Test
                 return;
             }
 
-            Assert.True(RunTest(test).Pass);
+            Assert.That(RunTest(test).Pass, Is.True);
         }
 
         public static IEnumerable<GeneralStateTest> LoadTests()

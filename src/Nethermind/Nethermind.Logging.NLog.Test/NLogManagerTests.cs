@@ -54,7 +54,7 @@ namespace Nethermind.Logging.NLog.Test
             NLogManager manager = new("test", null, "*:Error");
             LogManager.Configuration.LoggingRules.Should().BeEquivalentTo(
                 new LoggingRule[] { new LoggingRule("*", global::NLog.LogLevel.Error, null) },
-                c => c.Excluding(r => r.Targets));
+                static c => c.Excluding(static r => r.Targets));
         }
     }
 }

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -13,7 +14,6 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -28,11 +28,10 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -57,10 +56,11 @@ public static class NettyMemoryEstimator
     typeof(InitializeNodeStats),
     typeof(ResolveIps),
     typeof(InitializePlugins),
+    typeof(EraStep),
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    private const string PeersDbPath = "peers";
+    public const string PeersDbPath = "peers";
 
     protected readonly IApiWithNetwork _api;
     private readonly ILogger _logger;
@@ -98,23 +98,7 @@ public class InitializeNetwork : IStep
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-        int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-        SyncPeerPool apiSyncPeerPool = new(_api.BlockTree, _api.NodeStatsManager!, _api.BetterPeerStrategy, _api.LogManager, maxPeersCount, maxPriorityPeersCount);
-
-        _api.SyncPeerPool = apiSyncPeerPool;
-        _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
-        _api.DisposeStack.Push(_api.SyncPeerPool);
-
-        if (_api.TrieStore is HealingTrieStore healingTrieStore)
-        {
-            healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
-        }
-
-        if (_api.WorldState is HealingWorldState healingWorldState)
-        {
-            healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
-        }
 
         IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
@@ -126,55 +110,30 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
+            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
+                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
-            _api.Synchronizer ??= new Synchronizer(
-                _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-                _api.SpecProvider!,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
-                _syncConfig,
-                blockDownloaderFactory,
-                _api.Pivot,
-                _api.ProcessExit!,
-                _api.BetterPeerStrategy,
-                _api.ChainSpec,
-                _api.StateReader!,
-                _api.LogManager);
+            ContainerBuilder builder = new ContainerBuilder();
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
+            builder.RegisterModule(new SynchronizerModule(_syncConfig));
+            IContainer container = builder.Build();
+
+            _api.ApiWithNetworkServiceContainer = container;
+            _api.DisposeStack.Push((IAsyncDisposable)container);
         }
 
-        _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
-        _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
+        _api.WorldStateManager!.InitializeNetwork(
+            new PathNodeRecovery(
+                new NodeDataRecovery(_api.SyncPeerPool!, _api.MainNodeStorage!, _api.LogManager),
+                new SnapRangeRecovery(_api.SyncPeerPool!, _api.LogManager),
+                _api.LogManager
+            )
+        );
 
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
-            _api.SyncModeSelector, _api.SyncProgressResolver, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-        _api.DisposeStack.Push(_api.SyncModeSelector);
-        _api.DisposeStack.Push(_api.Synchronizer);
 
-        ISyncServer syncServer = _api.SyncServer = new SyncServer(
-            _api.TrieStore!.TrieNodeRlpStore,
-            _api.DbProvider.CodeDb,
-            _api.BlockTree,
-            _api.ReceiptStorage!,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _api.SyncPeerPool,
-            _api.SyncModeSelector,
-            _api.Config<ISyncConfig>(),
-            _api.GossipPolicy,
-            _api.SpecProvider!,
-            _api.LogManager);
-
-        _api.DisposeStack.Push(syncServer);
+        _ = _api.SyncServer; // Need to be resolved at least once before the peer pool is started.
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
@@ -302,15 +261,12 @@ public class InitializeNetwork : IStep
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
-            _api.NodeStatsManager, _api.IpResolver, _api.PeerManager
+            _api.NodeStatsManager, _api.IpResolver
         );
-
-        _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
     }
 
     private Task StartSync()
     {
-        if (_api.SyncPeerPool is null) throw new StepDependencyException(nameof(_api.SyncPeerPool));
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
@@ -341,7 +297,6 @@ public class InitializeNetwork : IStep
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
-        if (_api.SyncPeerPool is null) throw new StepDependencyException(nameof(_api.SyncPeerPool));
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
@@ -384,16 +339,12 @@ public class InitializeNetwork : IStep
         _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
-            _api.NodeKey.PublicKey,
-            _networkConfig.ProcessingThreadCount,
-            _networkConfig.P2PPort,
-            _networkConfig.LocalIp,
-            _networkConfig.ConnectTimeoutMs,
+            _api.NodeKey!,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
-            _api.LogManager,
-            TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs)
+            _networkConfig,
+            _api.LogManager
         );
 
         await _api.RlpxPeer.Init();
@@ -401,8 +352,11 @@ public class InitializeNetwork : IStep
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
 
+        _api.TrustedNodesManager = new TrustedNodesManager(initConfig.TrustedNodesPath, _api.LogManager);
+        await _api.TrustedNodesManager.InitAsync();
+
         // ToDo: PeersDB is registered outside dbProvider
-        string dbName = "PeersDB";
+        string dbName = INetworkStorage.PeerDb;
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
             ? new MemDb(dbName)
             : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
@@ -413,14 +367,7 @@ public class InitializeNetwork : IStep
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
-
-        ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            // TODO: Add a proper config for the state persistence depth.
-            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
-        }
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
@@ -437,13 +384,17 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
-            snapServer,
+            _api.WorldStateManager!,
             _api.LogManager,
             _api.TxGossipPolicy);
 
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
+        if (_api.WorldStateManager!.HashServer is null)
+        {
+            _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }
 
         _api.ProtocolValidator = protocolValidator;
@@ -453,32 +404,31 @@ public class InitializeNetwork : IStep
         // I do not use the key here -> API is broken - no sense to use the node signer here
         NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
         EnrRecordParser enrRecordParser = new(nodeRecordSigner);
-        EnrDiscovery enrDiscovery = new(enrRecordParser, _api.LogManager); // initialize with a proper network
+
+        if (_networkConfig.DiscoveryDns == null)
+        {
+            string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
+            _networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
+        }
+
+        EnrDiscovery enrDiscovery = new(enrRecordParser, _networkConfig, _api.LogManager); // initialize with a proper network
 
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
+            _ = new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
         }
 
-        CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
-        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
+        CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
+            ? new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader)
+            : new(_api.StaticNodesManager, _api.TrustedNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager, _api.TrustedNodesManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
             _api.PeerPool,
             _api.NodeStatsManager,
             _networkConfig,
             _api.LogManager);
-
-        string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
-        string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
-        _ = enrDiscovery.SearchTree(domain).ContinueWith(t =>
-        {
-            if (t.IsFaulted)
-            {
-                _logger.Error($"ENR discovery failed: {t.Exception}");
-            }
-        });
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {

@@ -23,7 +23,7 @@ namespace Nethermind.Db
     {
         DbMetric GatherMetric(bool includeSharedCache = false) => new DbMetric();
 
-        void Flush() { }
+        void Flush(bool onlyWal = false);
         void Clear() { }
         void Compact() { }
 

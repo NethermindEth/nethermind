@@ -39,9 +39,9 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
     public PongMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(results.Data);
+        NettyRlpStream rlp = new(Data);
 
         rlp.ReadSequenceLength();
         rlp.ReadSequenceLength();
@@ -53,7 +53,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         byte[] token = rlp.DecodeByteArray();
         long expirationTime = rlp.DecodeLong();
 
-        PongMsg msg = new(results.FarPublicKey, expirationTime, token);
+        PongMsg msg = new(FarPublicKey, expirationTime, token);
         return msg;
     }
 

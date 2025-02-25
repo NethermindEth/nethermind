@@ -40,5 +40,6 @@ namespace Nethermind.Network.Config
         public int ProcessingThreadCount { get; set; } = 1;
         public string? ClientIdMatcher { get; set; } = null;
         public bool DisableDiscV4DnsFeeder { get; set; } = false;
+        public long RlpxHostShutdownCloseTimeoutMs { get; set; } = 1000;
     }
 }

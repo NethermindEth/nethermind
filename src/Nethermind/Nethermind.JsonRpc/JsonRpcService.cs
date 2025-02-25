@@ -9,14 +9,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
@@ -33,7 +32,7 @@ public class JsonRpcService : IJsonRpcService
     {
         _logger = logManager.GetClassLogger<JsonRpcService>();
         _rpcModuleProvider = rpcModuleProvider;
-        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
+        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
         _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
     }
 
@@ -95,6 +94,8 @@ public class JsonRpcService : IJsonRpcService
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
+        int initialMissingParamsCount = missingParamsCount;
+
         if (providedParametersLength > 0)
         {
             foreach (JsonElement item in providedParameters.EnumerateArray())
@@ -102,6 +103,10 @@ public class JsonRpcService : IJsonRpcService
                 if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
                 {
                     missingParamsCount++;
+                }
+                else
+                {
+                    missingParamsCount = initialMissingParamsCount;
                 }
             }
         }
@@ -351,17 +356,24 @@ public class JsonRpcService : IJsonRpcService
             }
             else if (providedParametersLength > parallelThreshold)
             {
-                Parallel.For(0, providedParametersLength, (int i) =>
+                ParallelUnbalancedWork.For(
+                    0,
+                    providedParametersLength,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (providedParameters, expectedParameters, executionParameters, hasMissing),
+                    static (i, state) =>
                 {
-                    JsonElement providedParameter = providedParameters[i];
-                    ExpectedParameter expectedParameter = expectedParameters[i];
+                    JsonElement providedParameter = state.providedParameters[i];
+                    ExpectedParameter expectedParameter = state.expectedParameters[i];
 
                     object? parameter = DeserializeParameter(providedParameter, expectedParameter);
-                    executionParameters[i] = parameter;
-                    if (!hasMissing && ReferenceEquals(parameter, Type.Missing))
+                    state.executionParameters[i] = parameter;
+                    if (!state.hasMissing && ReferenceEquals(parameter, Type.Missing))
                     {
-                        hasMissing = true;
+                        state.hasMissing = true;
                     }
+
+                    return state;
                 });
             }
 

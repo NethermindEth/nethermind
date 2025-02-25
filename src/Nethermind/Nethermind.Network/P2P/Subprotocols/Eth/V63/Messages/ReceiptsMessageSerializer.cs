@@ -72,8 +72,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(itemContext =>
-                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? Array.Empty<TxReceipt>(), true);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(static itemContext =>
+                itemContext.DecodeArray(static nestedContext => _decoder.Decode(nestedContext)) ?? [], true);
             ReceiptsMessage message = new(data);
 
             return message;

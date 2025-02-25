@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -36,7 +35,7 @@ namespace Nethermind.Facade
             public override object[] Call(CallInfo callInfo)
             {
                 var transaction = GenerateTransaction(callInfo);
-                var result = _blockchainBridge.Call(callInfo.ParentHeader, transaction, CancellationToken.None);
+                var result = _blockchainBridge.Call(callInfo.ParentHeader, transaction);
                 if (!string.IsNullOrEmpty(result.Error))
                 {
                     throw new AbiException(result.Error);

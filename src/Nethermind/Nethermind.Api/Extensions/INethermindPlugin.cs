@@ -14,7 +14,7 @@ public interface INethermindPlugin : IAsyncDisposable
 
     string Author { get; }
 
-    void InitRlpDecoders(INethermindApi api) { }
+    void InitTxTypesAndRlpDecoders(INethermindApi api) { }
 
     Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 

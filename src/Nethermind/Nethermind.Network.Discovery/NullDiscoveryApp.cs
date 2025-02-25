@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
@@ -36,6 +35,11 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
         add { }
         remove { }
+    }
+
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+    {
+        return AsyncEnumerable.Empty<Node>();
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved

@@ -3,6 +3,7 @@
 
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -13,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -30,7 +32,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 {
     private const string DiscoveryNodesDbPath = "discoveryNodes";
 
-    private readonly ProtectedPrivateKey _nodeKey;
+    private readonly IProtectedPrivateKey _nodeKey;
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly IInitConfig _initConfig;
@@ -41,17 +43,20 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly ICryptoRandom? _cryptoRandom;
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly IIPResolver _ipResolver;
-    private readonly IPeerManager? _peerManager;
     private readonly IConnectionsPool _connections;
+    private readonly IChannelFactory? _channelFactory;
 
     private IDiscoveryApp? _v4;
     private IDiscoveryApp? _v5;
+    private INodeSource _compositeNodeSource = null!;
 
-    public CompositeDiscoveryApp(ProtectedPrivateKey? nodeKey,
+    public CompositeDiscoveryApp(
+        [KeyFilter(IProtectedPrivateKey.NodeKey)]
+        IProtectedPrivateKey? nodeKey,
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IPeerManager? peerManager
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IChannelFactory? channelFactory = null
     )
     {
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
@@ -65,47 +70,30 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _cryptoRandom = cryptoRandom;
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
-        _peerManager = peerManager;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
-    }
+        _channelFactory = channelFactory;
 
-    public event EventHandler<NodeEventArgs>? NodeAdded
-    {
-        add
-        {
-            if (_v4 != null) _v4.NodeAdded += value;
-            if (_v5 != null) _v5.NodeAdded += value;
-        }
-        remove
-        {
-            if (_v4 != null) _v4.NodeAdded -= value;
-            if (_v5 != null) _v5.NodeAdded -= value;
-        }
-    }
-
-    public event EventHandler<NodeEventArgs>? NodeRemoved
-    {
-        add
-        {
-            if (_v4 != null) _v4.NodeRemoved += value;
-            if (_v5 != null) _v5.NodeRemoved += value;
-        }
-        remove
-        {
-            if (_v4 != null) _v4.NodeRemoved -= value;
-            if (_v5 != null) _v5.NodeRemoved -= value;
-        }
+        Initialize(nodeKey.PublicKey);
     }
 
     public void Initialize(PublicKey masterPublicKey)
     {
         var nodeKeyProvider = new SameKeyGenerator(_nodeKey.Unprotect());
+        List<INodeSource> allNodeSources = new();
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
+        {
             InitDiscoveryV4(_discoveryConfig, nodeKeyProvider);
+            allNodeSources.Add(_v4!);
+        }
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
+        {
             InitDiscoveryV5(nodeKeyProvider);
+            allNodeSources.Add(_v5!);
+        }
+
+        _compositeNodeSource = new CompositeNodeSource(allNodeSources.ToArray());
     }
 
     public void InitializeChannel(IChannel channel)
@@ -121,8 +109,10 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         Bootstrap bootstrap = new();
         bootstrap.Group(new MultithreadEventLoopGroup(1));
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            bootstrap.ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork));
+        if (_channelFactory is not null)
+            bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
         else
             bootstrap.Channel<SocketDatagramChannel>();
 
@@ -137,10 +127,10 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     public Task StopAsync() => Task.WhenAll(
-        _connections.StopAsync(),
-        _v4?.StopAsync() ?? Task.CompletedTask,
-        _v5?.StopAsync() ?? Task.CompletedTask
-    );
+            _connections.StopAsync(),
+            _v4?.StopAsync() ?? Task.CompletedTask,
+            _v5?.StopAsync() ?? Task.CompletedTask
+        );
 
     public void AddNodeToDiscovery(Node node)
     {
@@ -220,7 +210,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
             _logManager);
 
-        _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _peerManager, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
+        _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
         _v5.Initialize(_nodeKey.PublicKey);
     }
 
@@ -241,5 +231,16 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         }
 
         return selfNodeRecord;
+    }
+
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+    {
+        return _compositeNodeSource.DiscoverNodes(cancellationToken);
+    }
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved
+    {
+        add => _compositeNodeSource.NodeRemoved += value;
+        remove => _compositeNodeSource.NodeRemoved -= value;
     }
 }

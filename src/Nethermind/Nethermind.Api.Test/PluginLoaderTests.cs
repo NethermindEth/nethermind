@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
@@ -24,10 +23,10 @@ public class PluginLoaderTests
     public void full_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
-        loader.Load(new TestLogManager());
-        loader.OrderPlugins(new PluginConfig { PluginOrder = Array.Empty<string>() });
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+        loader.Load();
+        loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
         var expected = new List<Type>
         {
             typeof(AuRaPlugin),
@@ -37,18 +36,18 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
     public void full_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+        loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig { PluginOrder = new[] { "Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura" } };
+            new PluginConfig { PluginOrder = ["Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
@@ -60,18 +59,18 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
     public void partial_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+        loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig() { PluginOrder = new[] { "Hive", "NethDev", "Ethash" } };
+            new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
@@ -83,17 +82,16 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
     public void default_config()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem,
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin),
-            typeof(MergePlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin), typeof(MergePlugin));
+        loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
@@ -106,6 +104,6 @@ public class PluginLoaderTests
             typeof(HealthChecksPlugin),
             typeof(HivePlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 }

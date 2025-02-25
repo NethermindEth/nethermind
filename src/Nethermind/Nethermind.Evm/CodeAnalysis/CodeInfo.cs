@@ -4,59 +4,65 @@
 using System;
 using System.Threading;
 using Nethermind.Evm.CodeAnalysis.IL;
-using System.Runtime.CompilerServices;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Tracing;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Config;
-
+using Nethermind.Logging;
+using IlevmMode = int;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using System.Linq;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
     {
-        public Hash256 CodeHash { get; init; }
+        public Address? Address { get; init; }
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
-
 
         // IL-EVM
         private int _callCount;
 
-        public async void NoticeExecution(IVMConfig vmConfig)
+        public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
-            if (_callCount > Math.Max(vmConfig.JittingThreshold, vmConfig.PatternMatchingThreshold))
+            int[] maxThresholds = [vmConfig.PartialAotThreshold, vmConfig.PartialAotThreshold, vmConfig.PatternMatchingThreshold];
+            if (_callCount > maxThresholds.Max())
                 return;
 
             Interlocked.Increment(ref _callCount);
             // use Interlocked just in case of concurrent execution to run it only once
-            IlInfo.ILMode mode =
-                 vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
-                    ? IlInfo.ILMode.PatternMatching
-                    : vmConfig.IsJitEnabled && _callCount == vmConfig.JittingThreshold
-                        ? IlInfo.ILMode.SubsegmentsCompiling
-                        : IlInfo.ILMode.NoIlvm;
+            IlevmMode mode = vmConfig.IsFullAotEnabled && _callCount == vmConfig.FullAotThreshold
+                ? ILMode.FULL_AOT_MODE
+                : vmConfig.IsPartialAotEnabled && _callCount == vmConfig.PartialAotThreshold
+                ? ILMode.PARTIAL_AOT_MODE
+                : vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
+                ? ILMode.PATTERN_BASED_MODE
+                : ILMode.NO_ILVM;
 
-            if (mode == IlInfo.ILMode.NoIlvm)
+            if (mode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
                 return;
 
-            await IlAnalyzer.StartAnalysis(this, mode).ConfigureAwait(false);
+            IlAnalyzer.Enqueue(this, mode, vmConfig, logger);
+
         }
+
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-        public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>(), Keccak.OfAnEmptyString);
+        public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>(), null);
 
-        public CodeInfo(byte[] code, Hash256 codeHash = null)
+        public CodeInfo(byte[] code, Address source = null)
         {
-            CodeHash = codeHash ?? Keccak.Compute(code.AsSpan());
+            Address = source;
             MachineCode = code;
+            IlInfo = IlInfo.Empty(MachineCode.Length);
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
-        public CodeInfo(ReadOnlyMemory<byte> code, Hash256 codeHash = null)
+        public CodeInfo(ReadOnlyMemory<byte> code, Address source = null)
         {
-            CodeHash = codeHash ?? Keccak.Compute(code.Span);
+            Address = source;
             MachineCode = code;
+            IlInfo = IlInfo.Empty(MachineCode.Length);
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
@@ -66,14 +72,14 @@ namespace Nethermind.Evm.CodeAnalysis
         /// <summary>
         /// Gets information whether this code info has IL-EVM optimizations ready.
         /// </summary>
-        internal IlInfo? IlInfo { get; set; } = IlInfo.Empty;
+        internal IlInfo? IlInfo { get; set; }
 
         public CodeInfo(IPrecompile precompile)
         {
+            Address = null;
             Precompile = precompile;
             MachineCode = Array.Empty<byte>();
             _analyzer = _emptyAnalyzer;
-            CodeHash = Keccak.OfAnEmptyString;
         }
 
         public bool ValidateJump(int destination)

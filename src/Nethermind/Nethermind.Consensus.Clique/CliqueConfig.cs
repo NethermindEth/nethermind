@@ -10,5 +10,7 @@ namespace Nethermind.Consensus.Clique
         public ulong BlockPeriod { get; set; } = 15;
 
         public ulong Epoch { get; set; } = 30000;
+
+        public int MinimumOutOfTurnDelay { get; set; }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -323,7 +322,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
+                new PooledTxsRequestor(_transactionPool, new TxPoolConfig(), _specProvider),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);

@@ -6,7 +6,6 @@ using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -43,7 +42,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Decompress()
         {
-            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic);
+            _ = new EthereumEcdsa(BlockchainIds.Olympic);
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
             PublicKey expected = privateKey.PublicKey;

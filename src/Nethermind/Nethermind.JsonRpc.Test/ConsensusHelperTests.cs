@@ -6,17 +6,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using FluentAssertions;
 using FluentAssertions.Equivalency;
-using FluentAssertions.Json;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 
@@ -27,22 +23,21 @@ namespace Nethermind.JsonRpc.Test
     [Explicit]
     public partial class ConsensusHelperTests
     {
-        private static readonly Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>> ReceiptOptions =
-            options => options.WithStrictOrdering()
+        private static readonly Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>> ReceiptOptions = static options => options.WithStrictOrdering()
                 .IncludingNestedObjects()
-                .Including(r => r.TransactionHash)
-                .Including(r => r.TransactionIndex)
-                .Including(r => r.BlockHash)
-                .Including(r => r.BlockNumber)
-                .Including(r => r.From)
-                .Including(r => r.To)
-                .Including(r => r.CumulativeGasUsed)
-                .Including(r => r.GasUsed)
-                .Including(r => r.ContractAddress)
-                .Including(r => r.LogsBloom)
-                .Including(r => r.Logs)
-                .Including(r => r.Root)
-                .Including(r => r.Status);
+                .Including(static r => r.TransactionHash)
+                .Including(static r => r.TransactionIndex)
+                .Including(static r => r.BlockHash)
+                .Including(static r => r.BlockNumber)
+                .Including(static r => r.From)
+                .Including(static r => r.To)
+                .Including(static r => r.CumulativeGasUsed)
+                .Including(static r => r.GasUsed)
+                .Including(static r => r.ContractAddress)
+                .Including(static r => r.LogsBloom)
+                .Including(static r => r.Logs)
+                .Including(static r => r.Root)
+                .Including(static r => r.Status);
 
         public static IEnumerable Tests
         {
@@ -178,7 +173,7 @@ namespace Nethermind.JsonRpc.Test
                     T data, expectation;
                     (data, dataJson) = await source1.GetData();
                     (expectation, expectationJson) = await source2.GetData();
-                    data.Should().BeEquivalentTo(expectation, options ?? (o => o));
+                    data.Should().BeEquivalentTo(expectation, options ?? (static o => o));
                 }
                 finally
                 {
@@ -208,7 +203,7 @@ namespace Nethermind.JsonRpc.Test
                     IEnumerable<T> data, expectation;
                     (data, dataJson) = await source1.GetData();
                     (expectation, expectationJson) = await source2.GetData();
-                    data.Should().BeEquivalentTo(expectation, options ?? (o => o));
+                    data.Should().BeEquivalentTo(expectation, options ?? (static o => o));
                 }
                 finally
                 {

@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Threading;
 using Nethermind.Db.Rocks.Statistics;
 using NUnit.Framework;
 using NSubstitute;
@@ -119,7 +117,7 @@ namespace Nethermind.Db.Test
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
             new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
 
-            logger.Received().Warn(Arg.Is<string>(s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
+            logger.Received().Warn(Arg.Is<string>(static s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
         }
 
         [Test]

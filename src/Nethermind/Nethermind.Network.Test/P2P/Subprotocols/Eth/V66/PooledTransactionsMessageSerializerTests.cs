@@ -23,7 +23,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 GasLimit = 0x2e248,
                 To = new Address("0x3535353535353535353535353535353535353535"),
                 Value = 0x200,
-                Data = new byte[] { },
+                Data = System.Array.Empty<byte>(),
                 Signature = new Signature(
                     new Hash256("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c12").Bytes,
                     new Hash256("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c10").Bytes, 0x25),
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 GasLimit = 0x33450,
                 To = new Address("0x3535353535353535353535353535353535353535"),
                 Value = 0x2d9,
-                Data = new byte[] { },
+                Data = System.Array.Empty<byte>(),
                 Signature = new Signature(
                     new Hash256("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes,
                     new Hash256("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes, 0x25),

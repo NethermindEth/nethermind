@@ -17,7 +17,7 @@ public class InvalidHeaderSealInterceptor : ISealValidator
     {
         _baseValidator = baseValidator;
         _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger(typeof(InvalidHeaderInterceptor));
+        _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
     }
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)

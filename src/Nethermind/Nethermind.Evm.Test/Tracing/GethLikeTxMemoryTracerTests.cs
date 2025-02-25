@@ -298,13 +298,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         }; */
 
         Assert.That(trace.Entries[0].Storage.Count, Is.EqualTo(0), "BEGIN 1");
-        Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(2), "CALL FROM 1");
+        Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(0), "CALL FROM 1");
         Assert.That(trace.Entries[14].Storage.Count, Is.EqualTo(0), "BEGIN 2");
-        Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(1), "CREATE FROM 2");
+        Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(0), "CREATE FROM 2");
         Assert.That(trace.Entries[27].Storage.Count, Is.EqualTo(0), "BEGIN 3");
         Assert.That(trace.Entries[32].Storage.Count, Is.EqualTo(0), "END 3");
-        Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(1), "END 2");
-        Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(2), "END 1");
+        Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(0), "END 2");
+        Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(0), "END 1");
     }
 
     [Test]

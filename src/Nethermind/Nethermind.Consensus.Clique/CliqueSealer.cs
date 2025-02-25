@@ -7,11 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
@@ -80,8 +77,8 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Copy signature bytes (R and S)
-            byte[] signatureBytes = signature.Bytes;
-            Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
+            ReadOnlySpan<byte> signatureBytes = signature.Bytes;
+            signatureBytes.CopyTo(header.ExtraData.AsSpan(header.ExtraData.Length - Clique.ExtraSealLength));
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
             header.ExtraData[^1] = recoveryId;

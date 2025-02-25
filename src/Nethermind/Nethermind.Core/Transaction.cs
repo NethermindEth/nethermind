@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -29,6 +30,9 @@ namespace Nethermind.Core
         /// </summary>
         public TxType Type { get; set; }
 
+        // Taiko Anchor transaction
+        public bool IsAnchorTx { get; set; }
+
         // Optimism deposit transaction fields
         // SourceHash uniquely identifies the source of the deposit
         public Hash256? SourceHash { get; set; }
@@ -43,9 +47,10 @@ namespace Nethermind.Core
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
-        public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
-        public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
+        public bool SupportsAccessList => Type.SupportsAccessList();
+        public bool Supports1559 => Type.Supports1559();
+        public bool SupportsBlobs => Type.SupportsBlobs();
+        public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -55,6 +60,12 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+
+        [MemberNotNullWhen(true, nameof(AuthorizationList))]
+        public bool HasAuthorizationList =>
+            Type == TxType.SetCode &&
+            AuthorizationList is not null &&
+            AuthorizationList.Length > 0;
 
         private Hash256? _hash;
 
@@ -162,6 +173,12 @@ namespace Nethermind.Core
         public object? NetworkWrapper { get; set; }
 
         /// <summary>
+        /// List of EOA code authorizations.
+        /// https://eips.ethereum.org/EIPS/eip-7702
+        /// </summary>
+        public AuthorizationTuple[]? AuthorizationList { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -178,9 +195,11 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this);
+            return shouldCountBlobs
+              ? _size ??= sizeCalculator.GetLength(this, true)
+              : sizeCalculator.GetLength(this, false);
         }
 
         public string ToShortString()
@@ -213,8 +232,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? Array.Empty<byte>()).ToHexString()}");
-            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? Array.Empty<byte>()).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Signature: {Signature?.Bytes.ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
@@ -263,6 +282,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
+                obj.AuthorizationList = default;
 
                 return true;
             }
@@ -293,6 +313,7 @@ namespace Nethermind.Core
             tx.IsServiceTransaction = IsServiceTransaction;
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
+            tx.AuthorizationList = AuthorizationList;
         }
     }
 
@@ -304,7 +325,10 @@ namespace Nethermind.Core
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public class SystemTransaction : Transaction { }
+    public class SystemTransaction : Transaction
+    {
+        private new const long GasLimit = 30_000_000L;
+    }
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size
@@ -312,7 +336,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx);
+        int GetLength(Transaction tx, bool shouldCountBlobs = true);
     }
 
     /// <summary>

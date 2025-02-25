@@ -7,8 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.KeyStore;
 using Nethermind.Wallet;
 
@@ -16,7 +15,6 @@ namespace Nethermind.JsonRpc.Modules.Personal
 {
     public class PersonalRpcModule : IPersonalRpcModule
     {
-        private readonly Encoding _messageEncoding = Encoding.UTF8;
         private readonly IEcdsa _ecdsa;
         private readonly IWallet _wallet;
         private readonly IKeyStore _keyStore;
@@ -85,7 +83,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<byte[]> personal_sign(byte[] message, Address address, string passphrase = null)
+        public ResultWrapper<Memory<byte>> personal_sign(byte[] message, Address address, string passphrase = null)
         {
             if (!_wallet.IsUnlocked(address))
             {
@@ -97,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
 
             message = ToEthSignedMessage(message);
-            return ResultWrapper<byte[]>.Success(_wallet.Sign(Keccak.Compute(message), address).Bytes);
+            return ResultWrapper<Memory<byte>>.Success(_wallet.Sign(Keccak.Compute(message), address).Memory);
         }
     }
 }

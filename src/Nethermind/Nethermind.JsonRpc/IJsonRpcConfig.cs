@@ -128,7 +128,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "keystore/jwt-secret")]
+    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }
 
     [ConfigItem(Description = "Whether to disable authentication of the Engine API. Should not be used in production environments.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -141,7 +141,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2]")]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
@@ -166,4 +166,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
+
+    [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
+    string[] CorsOrigins { get; set; }
 }

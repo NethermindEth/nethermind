@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/op-sepolia.json.zst",
+    "GenesisHash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
+    "BaseDbPath": "nethermind_db/op-sepolia",
+    "LogFileName": "op-sepolia.logs.txt"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "PivotNumber": 23920000,
+    "PivotHash": "0x08b7d7b7828c0c820027e4d720da3fadae69127b26c5c0fd518abeeabb30c48d"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://sepolia-sequencer.optimism.io"
+  }
+}

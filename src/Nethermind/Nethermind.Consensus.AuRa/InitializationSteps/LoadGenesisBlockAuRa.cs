@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor is not null);
+            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(static a => a.Constructor is not null);
             if (hasConstructorAllocation)
             {
                 worldState.CreateAccount(Address.Zero, UInt256.Zero);

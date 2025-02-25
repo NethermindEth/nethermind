@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Config;
 
 namespace Nethermind.Init.Steps
 {
@@ -32,7 +30,7 @@ namespace Nethermind.Init.Steps
                 return Task.CompletedTask;
             }
 
-            _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_api.NodeKey.PublicKey) ?? false).ToArray() ?? Array.Empty<NetworkNode>();
+            _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_api.NodeKey.PublicKey) ?? false).ToArray() ?? [];
             return Task.CompletedTask;
         }
     }

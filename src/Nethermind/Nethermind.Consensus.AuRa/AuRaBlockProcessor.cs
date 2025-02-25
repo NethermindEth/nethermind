@@ -8,8 +8,8 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -17,12 +17,10 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -53,7 +51,7 @@ namespace Nethermind.Consensus.AuRa
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
             IBlockCachePreWarmer? preWarmer = null,
-            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
+            IExecutionRequestsProcessor? executionRequestsProcessor = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -67,7 +65,7 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 withdrawalProcessor,
                 preWarmer: preWarmer,
-                consensusRequestsProcessor: consensusRequestsProcessor)
+                executionRequestsProcessor: executionRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -182,7 +180,7 @@ namespace Nethermind.Consensus.AuRa
 
         private class NullAuRaValidator : IAuRaValidator
         {
-            public Address[] Validators => Array.Empty<Address>();
+            public Address[] Validators => [];
             public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
             public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
         }

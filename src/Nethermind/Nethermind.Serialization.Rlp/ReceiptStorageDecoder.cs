@@ -321,8 +321,8 @@ namespace Nethermind.Serialization.Rlp
         /// </summary>
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
-            (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
-            int receiptPayloadLength = Rlp.LengthOfSequence(length.Total);
+            (int Total, _) = GetContentLength(item, rlpBehaviors);
+            int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = item.TxType != TxType.Legacy
@@ -376,9 +376,9 @@ namespace Nethermind.Serialization.Rlp
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
             decoderContext.DecodeBloomStructRef(out item.Bloom);
 
-            (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
+            (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();
-            int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
+            int logsBytes = ContentLength + PrefixLength;
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 

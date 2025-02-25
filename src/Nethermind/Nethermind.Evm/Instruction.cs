@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -178,6 +179,11 @@ namespace Nethermind.Evm
     }
     public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush)
     {
+        // these values are just indicators that these opcodes have extra gas handling 
+        private const int DYNAMIC = 0;
+        private const int FREE = 0;
+        private const int MEMORY_EXPANSION = 0;
+        private const int ACCOUNT_ACCESS = 0;
         /// <summary>
         /// The gas cost.
         /// </summary>
@@ -202,10 +208,10 @@ namespace Nethermind.Evm
             new Dictionary<Instruction, OpcodeMetadata>()
             {
                 [Instruction.POP] = new(GasCostOf.Base, 0, 1, 0),
-                [Instruction.STOP] = new(0, 0, 0, 0),
+                [Instruction.STOP] = new(FREE, 0, 0, 0),
                 [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
 
-                [Instruction.PUSH0] = new(GasCostOf.VeryLow, 0, 0, 1),
+                [Instruction.PUSH0] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.PUSH1] = new(GasCostOf.VeryLow, 1, 0, 1),
                 [Instruction.PUSH2] = new(GasCostOf.VeryLow, 2, 0, 1),
                 [Instruction.PUSH3] = new(GasCostOf.VeryLow, 3, 0, 1),
@@ -261,21 +267,21 @@ namespace Nethermind.Evm
                 [Instruction.DUP16] = new(GasCostOf.VeryLow, 0, 16, 17),
 
                 [Instruction.SWAP1] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP2] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP3] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP4] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP5] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP6] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP7] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP8] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP9] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP10] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP11] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP12] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP13] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP14] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP15] = new(GasCostOf.VeryLow, 0, 2, 2),
-                [Instruction.SWAP16] = new(GasCostOf.VeryLow, 0, 2, 2),
+                [Instruction.SWAP2] = new(GasCostOf.VeryLow, 0, 3, 3),
+                [Instruction.SWAP3] = new(GasCostOf.VeryLow, 0, 4, 4),
+                [Instruction.SWAP4] = new(GasCostOf.VeryLow, 0, 5, 5),
+                [Instruction.SWAP5] = new(GasCostOf.VeryLow, 0, 6, 6),
+                [Instruction.SWAP6] = new(GasCostOf.VeryLow, 0, 7, 7),
+                [Instruction.SWAP7] = new(GasCostOf.VeryLow, 0, 8, 8),
+                [Instruction.SWAP8] = new(GasCostOf.VeryLow, 0, 9, 9),
+                [Instruction.SWAP9] = new(GasCostOf.VeryLow, 0, 10, 10),
+                [Instruction.SWAP10] = new(GasCostOf.VeryLow, 0, 11, 11),
+                [Instruction.SWAP11] = new(GasCostOf.VeryLow, 0, 12, 12),
+                [Instruction.SWAP12] = new(GasCostOf.VeryLow, 0, 13, 13),
+                [Instruction.SWAP13] = new(GasCostOf.VeryLow, 0, 14, 14),
+                [Instruction.SWAP14] = new(GasCostOf.VeryLow, 0, 15, 15),
+                [Instruction.SWAP15] = new(GasCostOf.VeryLow, 0, 16, 16),
+                [Instruction.SWAP16] = new(GasCostOf.VeryLow, 0, 17, 17),
 
                 [Instruction.ADD] = new(GasCostOf.VeryLow, 0, 2, 1),
                 [Instruction.MUL] = new(GasCostOf.Low, 0, 2, 1),
@@ -303,24 +309,23 @@ namespace Nethermind.Evm
                 [Instruction.SAR] = new(GasCostOf.VeryLow, 0, 2, 1),
                 [Instruction.BYTE] = new(GasCostOf.VeryLow, 0, 2, 1),
 
-                [Instruction.KECCAK256] = new(GasCostOf.VeryLow, 0, 2, 1),
+                [Instruction.KECCAK256] = new(GasCostOf.Sha3 + MEMORY_EXPANSION, 0, 2, 1),
                 [Instruction.ADDRESS] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.BALANCE] = new(0, 0, 1, 1), // we need call GetBalanceCost in ILCompiler
+                [Instruction.BALANCE] = new(DYNAMIC + ACCOUNT_ACCESS, 0, 1, 1), // we need call GetBalanceCost in ILCompiler
                 [Instruction.ORIGIN] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.CALLER] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.CALLVALUE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.CALLDATALOAD] = new(GasCostOf.VeryLow, 0, 1, 1),
                 [Instruction.CALLDATASIZE] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.CALLDATACOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
+                [Instruction.CALLDATACOPY] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 3, 0),
                 [Instruction.CODESIZE] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.CODECOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
+                [Instruction.CODECOPY] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 3, 0),
                 [Instruction.GASPRICE] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.EXTCODESIZE] = new(0, 0, 1, 1),
-                [Instruction.EXTCODECOPY] = new(0, 0, 4, 0),
+                [Instruction.EXTCODESIZE] = new(DYNAMIC, 0, 1, 1),
+                [Instruction.EXTCODECOPY] = new(DYNAMIC + MEMORY_EXPANSION + ACCOUNT_ACCESS, 0, 4, 0),
                 [Instruction.RETURNDATASIZE] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.RETURNDATACOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
-                [Instruction.EXTCODEHASH] = new(0, 0, 1, 1),
-                [Instruction.EXTCODECOPY] = new(GasCostOf.ExtCode, 0, 4, 0),
+                [Instruction.RETURNDATACOPY] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 3, 0),
+                [Instruction.EXTCODEHASH] = new(DYNAMIC, 0, 1, 1),
 
                 [Instruction.BLOCKHASH] = new(GasCostOf.BlockHash, 0, 1, 1),
                 [Instruction.COINBASE] = new(GasCostOf.Base, 0, 0, 1),
@@ -333,51 +338,92 @@ namespace Nethermind.Evm
                 [Instruction.BASEFEE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.BLOBHASH] = new(GasCostOf.BlobHash, 0, 1, 1),
                 [Instruction.BLOBBASEFEE] = new(GasCostOf.Base, 0, 0, 1),
+                [Instruction.INVALID] = new(GasCostOf.Base, 0, 0, 0),
 
-                [Instruction.POP] = new(GasCostOf.Base, 0, 1, 0),
-                [Instruction.MLOAD] = new(GasCostOf.VeryLow, 0, 1, 1),
-                [Instruction.MSTORE] = new(GasCostOf.VeryLow, 0, 2, 0),
-                [Instruction.MSTORE8] = new(GasCostOf.VeryLow, 0, 2, 0),
-                [Instruction.SLOAD] = new(GasCostOf.SLoad, 0, 1, 1),
-                [Instruction.SSTORE] = new(GasCostOf.SSet, 0, 2, 0),
-                [Instruction.JUMP] = new(GasCostOf.Mid, 0, 1, 0),
+                [Instruction.MLOAD] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 1, 1),
+                [Instruction.MSTORE] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 2, 0),
+                [Instruction.MSTORE8] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 2, 0),
                 [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.MSIZE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.GAS] = new(GasCostOf.Base, 0, 0, 1),
-                [Instruction.JUMPDEST] = new(GasCostOf.JumpDest, 0, 0, 0),
-                [Instruction.MCOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
+                [Instruction.MCOPY] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 3, 0),
 
-                [Instruction.LOG0] = new(GasCostOf.Log, 0, 2, 0),
-                [Instruction.LOG1] = new(GasCostOf.Log, 0, 3, 0),
-                [Instruction.LOG2] = new(GasCostOf.Log, 0, 4, 0),
-                [Instruction.LOG3] = new(GasCostOf.Log, 0, 5, 0),
-                [Instruction.LOG4] = new(GasCostOf.Log, 0, 6, 0),
+                [Instruction.LOG0] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 2, 0),
+                [Instruction.LOG1] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 3, 0),
+                [Instruction.LOG2] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 4, 0),
+                [Instruction.LOG3] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 5, 0),
+                [Instruction.LOG4] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 6, 0),
 
-                [Instruction.TLOAD] = new(GasCostOf.Base, 0, 1, 1),
-                [Instruction.TSTORE] = new(GasCostOf.Base, 0, 2, 0),
+                [Instruction.TLOAD] = new(GasCostOf.TLoad, 0, 1, 1),
+                [Instruction.TSTORE] = new(GasCostOf.TStore, 0, 2, 0),
 
-                [Instruction.CREATE] = new(GasCostOf.Create, 0, 3, 1),
-                [Instruction.CALL] = new(GasCostOf.Call, 0, 7, 1),
-                [Instruction.CALLCODE] = new(GasCostOf.Call, 0, 7, 1),
-                [Instruction.RETURN] = new(0, 0, 2, 0), // has memory costs
-                [Instruction.DELEGATECALL] = new(GasCostOf.Call, 0, 6, 1),
-                [Instruction.CREATE2] = new(GasCostOf.Create, 0, 4, 1),
-                [Instruction.STATICCALL] = new(GasCostOf.Call, 0, 6, 1),
-                [Instruction.REVERT] = new(0, 0, 2, 0), // has memory costs
-                [Instruction.INVALID] = new(GasCostOf.Base, 0, 0, 0),
-                [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct, 0, 1, 0),
+                [Instruction.SLOAD] = new(DYNAMIC, 0, 1, 1),
+                [Instruction.SSTORE] = new(DYNAMIC, 0, 2, 0),
+
+                [Instruction.CREATE] = new(GasCostOf.Create + DYNAMIC, 0, 3, 1),
+                [Instruction.CALL] = new(DYNAMIC, 0, 7, 1),
+                [Instruction.CALLCODE] = new(DYNAMIC, 0, 7, 1),
+                [Instruction.DELEGATECALL] = new(DYNAMIC, 0, 6, 1),
+                [Instruction.CREATE2] = new(GasCostOf.Create + DYNAMIC, 0, 4, 1),
+                [Instruction.STATICCALL] = new(DYNAMIC, 0, 6, 1),
+                [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct + DYNAMIC, 0, 1, 0),
+
+                [Instruction.RETURN] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
+                [Instruction.REVERT] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
             }.ToFrozenDictionary();
     }
-    public struct OpcodeInfo(ushort pc, Instruction instruction, int? argumentIndex)
+    public struct OpcodeInfo(int pc, Instruction instruction, int? argumentIndex)
     {
-        public OpcodeMetadata Metadata => OpcodeMetadata.Operations[instruction];
-        public Instruction Operation => instruction;
-        public ushort ProgramCounter => pc;
+        public readonly OpcodeMetadata Metadata => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
+        public readonly Instruction Operation => instruction;
+        public int ProgramCounter => pc;
         public int? Arguments { get; set; } = argumentIndex;
+        public readonly bool IsTerminating => instruction.IsTerminating();
+        public readonly bool IsInvalid => instruction.IsInvalid();
+        public readonly bool IsJump => instruction.IsJump();
+        public readonly bool IsBlocking => instruction.IsCall() || instruction.IsCreate();
     }
 
     public static class InstructionExtensions
     {
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
+        {
+            Instruction.STOP => true,
+            Instruction.RETURN => true,
+            Instruction.REVERT => true,
+            Instruction.SELFDESTRUCT => true,
+            _ => !Enum.IsDefined<Instruction>(instruction)
+        };
+
+        public static bool IsCall(this Instruction instruction) => instruction switch
+        {
+            Instruction.CALL => true,
+            Instruction.CALLCODE => true,
+            Instruction.DELEGATECALL => true,
+            Instruction.STATICCALL => true,
+            _ => false
+        };
+
+        public static bool IsCreate(this Instruction instruction) => instruction switch
+        {
+            Instruction.CREATE => true,
+            Instruction.CREATE2 => true,
+            _ => false
+        };
+
+        public static bool IsJump(this Instruction instruction) => instruction switch
+        {
+            Instruction.JUMP => true,
+            Instruction.JUMPI => true,
+            _ => false
+        };
+
+        public static bool RequiresAvailabilityCheck(this Instruction instruction)
+            => !Frontier.Instance.IsEnabled(instruction);
+
+        public static bool IsInvalid(this Instruction instruction)
+            => !Enum.IsDefined<Instruction>(instruction) || instruction is Instruction.INVALID;
+
         public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {
             Instruction.STOP => true,
@@ -466,14 +512,6 @@ namespace Nethermind.Evm
             Instruction.MCOPY => spec.MCopyIncluded,
             _ => false
         };
-        public static bool IsStateful(this Instruction instruction) => instruction switch
-        {
-            Instruction.CREATE or Instruction.CREATE2 => true,
-            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
-            Instruction.SELFDESTRUCT => true,
-            _ => false,
-        };
-
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
             instruction switch
             {

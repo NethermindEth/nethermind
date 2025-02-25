@@ -9,7 +9,6 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
-    <PublishReadyToRun>true</PublishReadyToRun>
     <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
   </PropertyGroup>
 
@@ -26,14 +25,15 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="Pyroscope" />
+    <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
@@ -56,12 +56,14 @@
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
-    <ProjectReference Include="..\Nethermind.OpcodeStats.Plugin\Nethermind.OpcodeStats.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Taiko\Nethermind.Taiko.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
+    <ProjectReference Include="..\Nethermind.Shutter\Nethermind.Shutter.csproj" />
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -72,7 +74,7 @@
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Include="configs\*.cfg">
+    <None Include="configs\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
@@ -83,19 +85,16 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
-    <Content Remove="..\Chains\kovan.json" />
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
+
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
-      <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*;$(OutputPath)\Nethermind.Init.Snapshot.*;$(OutputPath)\Nethermind.Optimism.*;$(OutputPath)\Nethermind.ExternalSigner.Plugin.*;$(OutputPath)\Nethermind.OpcodeStats.Plugin.*" />
-      <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;$(OutputPath)\Nethermind.Merge.Plugin.dll;$(OutputPath)\Nethermind.Consensus.AuRa.dll;$(OutputPath)\Nethermind.Init.dll;$(OutputPath)\Nethermind.HealthChecks.dll;$(OutputPath)\Nethermind.Api.dll;$(OutputPath)\Nethermind.EthStats.dll;$(OutputPath)\Nethermind.JsonRpc.TraceStore.dll;$(OutputPath)\Nethermind.Init.Snapshot.dll;$(OutputPath)\Nethermind.Optimism.dll;$(OutputPath)\Nethermind.ExternalSigner.Plugin.dll;$(OutputPath)\Nethermind.OpcodeStats.Plugin.dll" />
-    <ProjectReference Include="..\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj" />
-      <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*;$(OutputPath)\Nethermind.Init.Snapshot.*;$(OutputPath)\Nethermind.Optimism.*;$(OutputPath)\Nethermind.ExternalSigner.Plugin.*;$(OutputPath)\Nethermind.OpcodeStats.Plugin.*" />
-      <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;$(OutputPath)\Nethermind.Merge.Plugin.dll;$(OutputPath)\Nethermind.Consensus.AuRa.dll;$(OutputPath)\Nethermind.Init.dll;$(OutputPath)\Nethermind.HealthChecks.dll;$(OutputPath)\Nethermind.Api.dll;$(OutputPath)\Nethermind.EthStats.dll;$(OutputPath)\Nethermind.JsonRpc.TraceStore.dll;$(OutputPath)\Nethermind.Init.Snapshot.dll;$(OutputPath)\Nethermind.Optimism.dll;$(OutputPath)\Nethermind.ExternalSigner.Plugin.dll;$(OutputPath)\Nethermind.OpcodeStats.Plugin.dll" />
+      <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Shutter.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*;$(OutputPath)\Nethermind.Init.Snapshot.*;$(OutputPath)\Nethermind.Optimism.*;$(OutputPath)\Nethermind.ExternalSigner.Plugin.*;$(OutputPath)\Nethermind.Taiko.*;$(OutputPath)\Nethermind.Flashbots.*;$(OutputPath)\Nethermind.PatternAnalyzer.Plugin.*" />
+      <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;$(OutputPath)\Nethermind.Shutter.dll;$(OutputPath)\Nethermind.Merge.Plugin.dll;$(OutputPath)\Nethermind.Consensus.AuRa.dll;$(OutputPath)\Nethermind.Init.dll;$(OutputPath)\Nethermind.HealthChecks.dll;$(OutputPath)\Nethermind.Api.dll;$(OutputPath)\Nethermind.EthStats.dll;$(OutputPath)\Nethermind.JsonRpc.TraceStore.dll;$(OutputPath)\Nethermind.Init.Snapshot.dll;$(OutputPath)\Nethermind.Optimism.dll;$(OutputPath)\Nethermind.ExternalSigner.Plugin.dll;$(OutputPath)\Nethermind.Taiko.dll;$(OutputPath)\Nethermind.Flashbots.dll;$(OutputPath)\Nethermind.PatternAnalyzer.Plugin.dll" />
     </ItemGroup>
   </Target>
 

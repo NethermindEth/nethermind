@@ -67,7 +67,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -86,7 +85,6 @@ public partial class EngineModuleTests
         block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
-        pointers.LowestInsertedHeader = block.Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
@@ -237,7 +235,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -256,7 +253,7 @@ public partial class EngineModuleTests
         block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
-        pointers.LowestInsertedHeader = block.Header;
+
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(nextUnconnectedBlock));
@@ -273,6 +270,7 @@ public partial class EngineModuleTests
         nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
         pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
+
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
         AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
@@ -468,7 +466,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
@@ -503,7 +501,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
@@ -539,7 +537,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
-        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
         last.Should().NotBeNull();
         last!.IsGenesis.Should().BeTrue();
 
@@ -760,7 +758,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -790,7 +787,6 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(pivotBlock.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot!, pivotBlock.Header);
         pointers.LowestInsertedBeaconHeader = missingBlocks[^filledNum].Header;
-        pointers.LowestInsertedHeader = missingBlocks[^filledNum].Header;
         pointers.BestKnownBeaconBlock = 9;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         // finish rest of headers sync
@@ -801,7 +797,6 @@ public partial class EngineModuleTests
 
         // headers sync should be finished but not forwards beacon sync
         pointers.LowestInsertedBeaconHeader = missingBlocks[0].Header;
-        pointers.LowestInsertedHeader = missingBlocks[0].Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
@@ -911,7 +906,6 @@ public partial class EngineModuleTests
             BestSuggestedHeader = chain.BlockTree.Genesis!,
             BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
             BestKnownBeaconBlock = 0,
-            LowestInsertedHeader = null,
             LowestInsertedBeaconHeader = null
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -938,7 +932,6 @@ public partial class EngineModuleTests
         // verify correct pointers
         requests[0].TryGetBlock(out Block? destinationBlock);
         pointers.LowestInsertedBeaconHeader = destinationBlock!.Header;
-        pointers.LowestInsertedHeader = destinationBlock.Header;
         pointers.BestKnownBeaconBlock = 13;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
@@ -974,14 +967,14 @@ public partial class EngineModuleTests
         response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         // invalid best state calculation
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number < chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
 
         // autofix
         chain.BlockTree.RecalculateTreeLevels();
 
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number >= chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
     }
 
     [Test]
@@ -1011,14 +1004,14 @@ public partial class EngineModuleTests
         response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         // invalid best state calculation
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number < chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
 
         MultiSyncModeSelector multiSyncModeSelector = CreateMultiSyncModeSelector(chain);
         multiSyncModeSelector.Update();
 
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number >= chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
     }
 
     private MultiSyncModeSelector CreateMultiSyncModeSelector(MergeTestBlockchain chain)
@@ -1059,7 +1052,6 @@ public partial class EngineModuleTests
         blockTree.BestSuggestedBody.Should().Be(pointers.BestSuggestedBody);
         // TODO: post merge sync change to best beacon block
         (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
-        blockTree.LowestInsertedHeader.Should().BeEquivalentTo(pointers.LowestInsertedHeader);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
     }
 
@@ -1077,7 +1069,6 @@ public partial class EngineModuleTests
         public BlockHeader? BestSuggestedHeader;
         public Block? BestSuggestedBody;
         public long BestKnownBeaconBlock;
-        public BlockHeader? LowestInsertedHeader;
         public BlockHeader? LowestInsertedBeaconHeader;
     }
 }

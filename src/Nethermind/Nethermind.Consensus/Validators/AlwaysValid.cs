@@ -23,13 +23,13 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     private static Always _valid;
 
     public static Always Valid
-        => LazyInitializer.EnsureInitialized(ref _valid, () => new Always(true));
+        => LazyInitializer.EnsureInitialized(ref _valid, static () => new Always(true));
 
     // ReSharper disable once NotNullMemberIsNotInitialized
     private static Always _invalid;
 
     public static Always Invalid
-        => LazyInitializer.EnsureInitialized(ref _invalid, () => new Always(false));
+        => LazyInitializer.EnsureInitialized(ref _invalid, static () => new Always(false));
 
     public bool ValidateHash(BlockHeader header)
     {

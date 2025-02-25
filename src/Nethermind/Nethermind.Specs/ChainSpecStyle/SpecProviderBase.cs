@@ -33,8 +33,8 @@ public abstract class SpecProviderBase
             throw new ArgumentException($"First release specified when instantiating {GetType()} should be at genesis block (0)", $"{nameof(transitions)}");
         }
 
-        _blockTransitions = transitions.TakeWhile(t => t.Activation.Timestamp is null).ToArray();
-        _timestampTransitions = transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
+        _blockTransitions = transitions.TakeWhile(static t => t.Activation.Timestamp is null).ToArray();
+        _timestampTransitions = transitions.SkipWhile(static t => t.Activation.Timestamp is null).ToArray();
         _firstTimestampActivation = _timestampTransitions.Length != 0 ? _timestampTransitions.First().Activation : null;
         GenesisSpec = transitions.First().Spec;
     }

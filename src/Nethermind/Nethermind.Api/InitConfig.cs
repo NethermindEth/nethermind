@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Consensus.Processing;
-using Nethermind.Trie;
 
 namespace Nethermind.Api
 {
@@ -17,11 +16,11 @@ namespace Nethermind.Api
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
         public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
-        public string HiveChainSpecPath { get; set; } = "chainspec/test.json";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string? GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
+        public string TrustedNodesPath { get; set; } = "Data/trusted-nodes.json";
         public string? KzgSetupPath { get; set; } = null;
         public string LogDirectory { get; set; } = "logs";
         public string? LogRules { get; set; } = null;
@@ -38,6 +37,7 @@ namespace Nethermind.Api
         public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
         public long? ExitOnBlockNumber { get; set; } = null;
         public int BackgroundTaskConcurrency { get; set; } = 1;
+        public int BackgroundTaskMaxNumber { get; set; } = 65536;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

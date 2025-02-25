@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -17,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -81,8 +83,11 @@ public class AuRaContractGasLimitOverrideTests
 
         protected override BlockProcessor CreateBlockProcessor()
         {
-            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
+                .First();
+            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
+                blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
                     WorldStateManager,
                     BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
@@ -97,7 +102,7 @@ public class AuRaContractGasLimitOverrideTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor),
+                new BeaconBlockRootHandler(TxProcessor, State),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
@@ -114,8 +119,10 @@ public class AuRaContractGasLimitOverrideTests
     {
         protected override BlockProcessor CreateBlockProcessor()
         {
-            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-            ChainSpec.AuRa.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
+            var parameters = ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+            KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
+            parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
             return base.CreateBlockProcessor();
         }
     }

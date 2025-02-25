@@ -14,7 +14,7 @@ public interface IDiscoveryManager : IDiscoveryMsgListener
     INodeLifecycleManager? GetNodeLifecycleManager(Node node, bool isPersisted = false);
     void SendMessage(DiscoveryMsg discoveryMsg);
     Task SendMessageAsync(DiscoveryMsg discoveryMsg);
-    Task<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout);
+    ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout);
     event EventHandler<NodeEventArgs> NodeDiscovered;
 
     IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();

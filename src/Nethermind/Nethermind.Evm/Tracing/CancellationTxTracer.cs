@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -27,8 +27,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
-    private readonly bool _isTracingEvmChunks;
-    private readonly bool _isTracingEvmSegments;
+    private readonly bool _isTracingIlEvmCalls;
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -119,16 +118,10 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingOpLevelLogs = value;
     }
 
-    public bool IsTracingPredefinedPatterns
+    public bool IsTracingIlEvmCalls
     {
-        get => _isTracingEvmChunks || innerTracer.IsTracingPredefinedPatterns;
-        init => _isTracingEvmChunks = value;
-    }
-
-    public bool IsTracingCompiledSegments
-    {
-        get => _isTracingEvmSegments || innerTracer.IsTracingCompiledSegments;
-        init => _isTracingEvmSegments = value;
+        get => _isTracingIlEvmCalls || innerTracer.IsTracingIlEvmCalls;
+        init => _isTracingIlEvmCalls = value;
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -185,7 +178,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -194,7 +187,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -468,22 +461,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     {
         innerTracer.Dispose();
     }
-
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
     {
         token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
+        if (innerTracer.IsTracingIlEvmCalls)
         {
-            InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
-        }
-    }
-
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingFees)
-        {
-            InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
+            InnerTracer.ReportIlEvmChunkExecution(gas, pc, segmentId, in env);
         }
     }
 }

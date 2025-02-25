@@ -8,7 +8,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Mining.Test;
 
-[TestFixture]
 public class MiningConfigTest
 {
     [TestCase]
@@ -37,10 +36,9 @@ public class MiningConfigTest
         IBlocksConfig config = new BlocksConfig();
         string defaultData = config.ExtraData;
         byte[] defaultDataBytes = Encoding.UTF8.GetBytes(defaultData);
-
         byte[] dataBytes = Encoding.UTF8.GetBytes(data);
-        Assert.Greater(dataBytes.Length, 32);
 
+        Assert.That(dataBytes.Length, Is.GreaterThan(32));
         Assert.Throws<InvalidConfigurationException>(() => config.ExtraData = data); //throw on update
         Assert.That(defaultData, Is.EqualTo(config.ExtraData)); // Keep previous one
         Assert.That(defaultDataBytes, Is.EqualTo(config.GetExtraDataBytes()));

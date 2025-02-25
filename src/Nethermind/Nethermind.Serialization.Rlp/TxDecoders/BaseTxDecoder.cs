@@ -12,7 +12,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     : ITxDecoder where T : Transaction, new()
 {
     private const int MaxDelayedHashTxnSize = 32768;
-    private readonly Func<T> _createTransaction = transactionFactory ?? (() => new T());
+    private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
 
     public TxType Type => txType;
 
@@ -155,7 +155,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         transaction.GasPrice = decoderContext.DecodeUInt256();
     }
 
-    private Signature? DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected Signature? DecodeSignature(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ulong v = rlpStream.DecodeULong();
         ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -163,7 +163,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
     }
 
-    private Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ulong v = decoderContext.DecodeULong();
         ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();

@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -76,9 +75,6 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     public void Dispose()
     {
         List<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
-        if (list is not null)
-        {
-            list.ForEach(e => e.Dispose());
-        }
+        list?.ForEach(static e => e.Dispose());
     }
 }

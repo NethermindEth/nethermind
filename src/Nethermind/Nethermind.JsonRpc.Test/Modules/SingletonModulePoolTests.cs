@@ -2,15 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.TxPool;

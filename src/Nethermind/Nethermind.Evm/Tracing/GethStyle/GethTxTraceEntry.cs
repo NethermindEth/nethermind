@@ -23,10 +23,6 @@ public class GethTxTraceEntry
     [JsonPropertyName("segment")]
     public string? SegmentID { get; set; }
 
-    [JsonPropertyName("isPrecompiled")]
-    public bool? IsPrecompiled { get; set; }
-
-
     [JsonConverter(typeof(LongRawJsonConverter))]
     public long Gas { get; set; }
 

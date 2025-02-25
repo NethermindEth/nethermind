@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
@@ -14,11 +15,11 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     public GethLikeTxMemoryTracer(GethTraceOptions options) : base(options) => IsTracingMemory = IsTracingFullMemory;
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-        Trace.Gas = gasSpent;
+        Trace.Gas = gasSpent.SpentGas;
     }
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
@@ -64,41 +65,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     }
 
 
-    public override void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public override void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
         var previousTraceEntry = CurrentTraceEntry;
         var previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
-        base.ReportPredefinedPatternExecution(gas, pc, segmentID, env);
-
-        if (CurrentTraceEntry.Depth > previousDepth)
-        {
-            CurrentTraceEntry.Storage = new Dictionary<string, string>();
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
-        }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
-    }
-
-    public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-    {
-        var previousTraceEntry = CurrentTraceEntry;
-        var previousDepth = CurrentTraceEntry?.Depth ?? 0;
-
-        base.ReportCompiledSegmentExecution(gas, pc, segmentID, env);
+        base.ReportIlEvmChunkExecution(gas, pc, segmentID, env);
 
         if (CurrentTraceEntry.Depth > previousDepth)
         {

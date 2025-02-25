@@ -6,17 +6,14 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
 
@@ -38,7 +35,8 @@ public class EthSimulateTestsPrecompilesWithRedirection
             GasPrice = 20.GWei()
         };
 
-        TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(systemTransactionForModifiedVm);
+        ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -62,13 +60,13 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
-        Assert.IsNotNull(returnData);
+        Assert.That(returnData, Is.Not.Null);
     }
 
 
@@ -144,17 +142,15 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);
         chain.State.StateRoot = chain.BlockFinder.Head!.StateRoot!;
 
-        TransactionForRpc transactionForRpc = new(new Transaction
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(new Transaction
         {
             Data = transactionData,
             To = contractAddress,
             SenderAddress = TestItem.AddressA,
             GasLimit = 3_500_000,
             GasPrice = 20.GWei()
-        })
-        {
-            Nonce = null
-        };
+        });
+        ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -179,10 +175,10 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
-        Assert.IsTrue(chain.State.AccountExists(contractAddress));
+        Assert.That(chain.State.AccountExists(contractAddress), Is.True);
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 

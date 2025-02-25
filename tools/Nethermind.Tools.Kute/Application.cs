@@ -156,16 +156,6 @@ class Application
                 }
             case JsonRpc.SingleJsonRpc single:
                 {
-                    HttpResponseMessage? content;
-                    using (_metrics.TimeMethod(single.MethodName))
-                    {
-                        content = await task.Item1;
-                    }
-
-                    var deserialized = content is not null
-                        ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
-                        : null;
-
                     if (single.MethodName is null)
                     {
                         _metrics.TickFailed();
@@ -177,6 +167,16 @@ class Application
                         _metrics.TickIgnoredRequests();
                         return;
                     }
+
+                    HttpResponseMessage? content;
+                    using (_metrics.TimeMethod(single.MethodName))
+                    {
+                        content = await task.Item1;
+                    }
+
+                    var deserialized = content is not null
+                        ? JsonSerializer.Deserialize<JsonDocument>(await content.Content.ReadAsStreamAsync())
+                        : null;
 
                     if (_validator.IsInvalid(single, deserialized))
                     {

@@ -58,22 +58,15 @@ namespace Nethermind.Runner.Logging
 
         private bool IsLevelEnabled(LogLevel logLevel)
         {
-            switch (logLevel)
+            return logLevel switch
             {
-                case LogLevel.Error:
-                case LogLevel.Critical:
-                    return _logger.IsError;
-                case LogLevel.Information:
-                    return _logger.IsInfo;
-                case LogLevel.Warning:
-                    return _logger.IsWarn;
-                case LogLevel.Debug:
-                    return _logger.IsDebug;
-                case LogLevel.Trace:
-                    return _logger.IsTrace;
-                default:
-                    return false;
-            }
+                LogLevel.Error or LogLevel.Critical => _logger.IsError,
+                LogLevel.Information => _logger.IsInfo,
+                LogLevel.Warning => _logger.IsWarn,
+                LogLevel.Debug => _logger.IsDebug,
+                LogLevel.Trace => _logger.IsTrace,
+                _ => false,
+            };
         }
 
         private class NullScope : IDisposable

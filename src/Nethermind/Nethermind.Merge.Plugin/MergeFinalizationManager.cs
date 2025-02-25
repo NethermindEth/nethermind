@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 

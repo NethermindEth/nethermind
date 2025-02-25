@@ -117,14 +117,8 @@ namespace Nethermind.Monitoring.Metrics
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
-            PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName);
-            if (info is null)
-                throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
-
-            object value = info.GetValue(null);
-            if (value is null)
-                throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
-
+            PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName) ?? throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
+            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
             return value.ToString();
         }
 

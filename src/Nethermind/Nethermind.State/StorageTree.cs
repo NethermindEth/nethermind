@@ -6,7 +6,6 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -81,7 +80,7 @@ namespace Nethermind.State
 
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
-            ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
+            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
 
             if (value.IsEmpty)
             {
@@ -91,8 +90,6 @@ namespace Nethermind.State
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
-
-        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null) => GetArray(rawKey, rootHash);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
@@ -124,7 +121,7 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                Set(rawKey, Array.Empty<byte>());
+                Set(rawKey, []);
             }
             else
             {

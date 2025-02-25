@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
@@ -61,9 +62,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
-    public bool IsTracingPredefinedPatterns => InnerTracer.IsTracingPredefinedPatterns;
-
-    public bool IsTracingCompiledSegments => InnerTracer.IsTracingCompiledSegments;
+    public bool IsTracingIlEvmCalls => InnerTracer.IsTracingIlEvmCalls;
 
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
@@ -191,10 +190,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => InnerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
@@ -293,10 +292,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void Dispose()
         => _autoResetEvent.Dispose();
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
-        => InnerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
-
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-        => InnerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+        => InnerTracer.ReportIlEvmChunkExecution(gas, pc, segmentID, in env);
 }
 #endif

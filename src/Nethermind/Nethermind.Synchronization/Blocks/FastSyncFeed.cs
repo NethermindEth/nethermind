@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Configuration;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 

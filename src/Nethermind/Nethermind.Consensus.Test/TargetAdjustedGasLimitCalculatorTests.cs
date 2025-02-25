@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -28,6 +29,22 @@ namespace Nethermind.Consensus.Test
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
             Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.DefaultElasticityMultiplier));
+        }
+
+        [TestCase(30_000_000, 100_000_000, 30029295)]
+        public void Is_calculating_correct_gasLimit(long currentGasLimit, long targetGasLimit, long expectedGasLimit)
+        {
+            int blockNumber = 20_000_000;
+            long gasLimit = currentGasLimit;
+            TestSpecProvider specProvider = new(Prague.Instance);
+            TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider,
+                new BlocksConfig()
+                {
+                    TargetBlockGasLimit = targetGasLimit
+                });
+            BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1).WithGasLimit(gasLimit).TestObject;
+            long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
+            actualValue.Should().Be(expectedGasLimit);
         }
     }
 }

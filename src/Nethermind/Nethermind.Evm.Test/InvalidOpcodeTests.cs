@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
                 //     Instruction.JUMPSUB,
                 //     Instruction.RETURNSUB
                 // }
-                new Instruction[] { }
+                System.Array.Empty<Instruction>()
             ).ToArray();
 
         private static readonly Instruction[] LondonInstructions =

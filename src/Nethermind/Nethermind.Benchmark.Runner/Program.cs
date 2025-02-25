@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+
+// #define BENCHMARK
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
@@ -11,6 +13,22 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
+using Nethermind.Evm.Benchmark;
+using Nethermind.Evm.Config;
+using Nethermind.Abi;
+using Nethermind.Evm;
+using System;
+using Nethermind.Core.Extensions;
+using NSubstitute;
+using Nethermind.Int256;
+using BenchmarkDotNet.Toolchains.DotNetCli;
+using CommandLine;
+using System.IO;
+using Nethermind.Evm.CodeAnalysis.IL;
+using static Nethermind.Evm.VirtualMachine;
+using Microsoft.Diagnostics.Runtime;
+using BenchmarkDotNet.Columns;
+using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -23,9 +41,10 @@ namespace Nethermind.Benchmark.Runner
                 AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
             }
 
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Descriptor);
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Statistics);
-            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Params);
+            AddColumnProvider(DefaultColumnProviders.Descriptor);
+            AddColumnProvider(DefaultColumnProviders.Statistics);
+            AddColumnProvider(DefaultColumnProviders.Params);
+            AddColumnProvider(DefaultColumnProviders.Metrics);
             AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
@@ -33,23 +52,174 @@ namespace Nethermind.Benchmark.Runner
         }
     }
 
+    public class PrecompileBenchmarkConfig : DashboardConfig
+    {
+        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core90))
+        {
+            AddColumnProvider(new GasColumnProvider());
+        }
+    }
+
     public static class Program
     {
+        public class Options
+        {
+            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm, ilevm")]
+            public string Mode { get; set; }
+
+            [Option('b', "bytecode", Required = false, HelpText = "Hex encoded bytecode")]
+            public string ByteCode { get; set; }
+
+            [Option('n', "identifier", Required = false, HelpText = "Benchmark Name")]
+            public string Name { get; set; }
+
+            [Option('c', "config", Required = false, HelpText = "EVM configs : 1-STD, 2-PAT, 4-JIT, 8-AOT")]
+            public string Config { get; set; }
+        }
+
+
+        public static void _Main(string[] args)
+        {
+            IlAnalyzer.Initialize();
+
+            byte[] bytes = new byte[32];
+            ((UInt256)2048 * 2).ToBigEndian(bytes);
+            var argBytes = bytes.WithoutLeadingZeros().ToArray();
+            byte[] bytecode = Prepare.EvmCode
+                        .PushData(argBytes)
+                        .COMMENT("1st/2nd fib number")
+                        .PushData(0)
+                        .PushData(1)
+                        .COMMENT("MAINLOOP:")
+                        .JUMPDEST()
+                        .DUPx(3)
+                        .ISZERO()
+                        .PushData(26 + argBytes.Length)
+                        .JUMPI()
+                        .COMMENT("fib step")
+                        .DUPx(2)
+                        .DUPx(2)
+                        .ADD()
+                        .SWAPx(2)
+                        .POP()
+                        .SWAPx(1)
+                        .COMMENT("decrement fib step counter")
+                        .SWAPx(2)
+                        .PushData(1)
+                        .SWAPx(1)
+                        .SUB()
+                        .SWAPx(2)
+                        .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
+                        .JUMP()
+
+                        .COMMENT("CLEANUP:")
+                        .JUMPDEST()
+                        .SWAPx(2)
+                        .POP()
+                        .POP()
+                        .COMMENT("done: requested fib number is the only element on the stack!")
+                        .STOP()
+                        .Done;
+
+            var nrml = new LocalSetup<NotTracing, NotOptimizing>("ILEVM::std", bytecode, null);
+            var ilvm = new LocalSetup<NotTracing, IsOptimizing>("ILEVM::aot", bytecode, ILMode.FULL_AOT_MODE);
+
+            Run(ilvm, 100);
+            Run(nrml, 100);
+
+        }
+
+        public static void Run(ILocalSetup setup, int iterations)
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                setup.Setup();
+                setup.Run();
+                setup.Reset();
+            }
+        }
+
         public static void Main(string[] args)
+        {
+            IlAnalyzer.Initialize();
+
+            ParserResult<Options> options = Parser.Default.ParseArguments<Options>(args);
+            switch (options.Value.Mode)
+            {
+                case "full":
+                    RunFullBenchmark(args);
+                    break;
+                case "evm":
+                    RunEvmBenchmarks(options.Value);
+                    break;
+                case "ilevm":
+                    RunIlEvmBenchmarks(options.Value);
+                    break;
+                default:
+                    throw new Exception("Invalid mode");
+            }
+        }
+
+        public static void RunEvmBenchmarks(Options options)
+        {
+            int mode = 1 | 2 | 4 | 8;
+            Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE", mode.ToString());
+
+            if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
+            {
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
+            }
+            else
+            {
+                string bytecode = options.ByteCode;
+                if (Path.Exists(bytecode))
+                {
+                    bytecode = File.ReadAllText(bytecode);
+                }
+
+                Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE", bytecode);
+                Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME", options.Name);
+                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+            }
+        }
+
+
+        public static void RunIlEvmBenchmarks(Options options)
+        {
+            Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE", options.Config);
+
+            if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
+            {
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
+            }
+            else
+            {
+                string bytecode = options.ByteCode;
+                if (Path.Exists(bytecode))
+                {
+                    bytecode = File.ReadAllText(bytecode);
+                }
+
+                Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE", bytecode);
+                Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.Name", options.Name);
+                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+            }
+        }
+
+        public static void RunFullBenchmark(string[] args)
         {
             List<Assembly> additionalJobAssemblies = new()
             {
-                typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
-                typeof(Nethermind.Benchmarks.Core.Keccak256Benchmarks).Assembly,
-                typeof(Nethermind.Evm.Benchmark.EvmStackBenchmarks).Assembly,
-                typeof(Nethermind.Network.Benchmarks.DiscoveryBenchmarks).Assembly,
-                typeof(Nethermind.Precompiles.Benchmark.KeccakBenchmark).Assembly
+                typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
+                typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
+                typeof(Evm.Benchmark.EvmStackBenchmarks).Assembly,
+                typeof(Network.Benchmarks.DiscoveryBenchmarks).Assembly,
+                typeof(Precompiles.Benchmark.KeccakBenchmark).Assembly
             };
 
-            List<Assembly> simpleJobAssemblies = new()
-            {
-                typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
-            };
+            List<Assembly> simpleJobAssemblies = [
+                // typeof(EthereumTests.Benchmark.EthereumTests).Assembly,
+            ];
 
             if (Debugger.IsAttached)
             {
@@ -66,6 +236,8 @@ namespace Nethermind.Benchmark.Runner
                 {
                     BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
                 }
+
+                BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
             }
         }
     }

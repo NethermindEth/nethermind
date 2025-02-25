@@ -16,7 +16,6 @@ public partial class BlockTree
 
     public void RecalculateTreeLevels()
     {
-        LoadLowestInsertedBodyNumber();
         LoadLowestInsertedHeader();
         LoadLowestInsertedBeaconHeader();
         LoadBestKnown();
@@ -115,13 +114,6 @@ public partial class BlockTree
         SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
     }
 
-    private void LoadLowestInsertedBodyNumber()
-    {
-        LowestInsertedBodyNumber =
-            _blockStore.GetMetadata(LowestInsertedBodyNumberDbEntryAddress)?
-                .AsRlpValueContext().DecodeLong();
-    }
-
     private void LoadLowestInsertedBeaconHeader()
     {
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
@@ -134,10 +126,22 @@ public partial class BlockTree
 
     private void LoadLowestInsertedHeader()
     {
-        long left = 1L;
-        long right = _syncConfig.PivotNumberParsed;
+        if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedFastHeaderHash))
+        {
+            Hash256? headerHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash)?
+                .AsRlpStream().DecodeKeccak();
+            _lowestInsertedHeader = FindHeader(headerHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
+        else
+        {
+            // Old style binary search.
+            long left = 1L;
+            long right = _syncConfig.PivotNumberParsed;
 
-        LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
+            LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Lowest inserted header set to {LowestInsertedHeader?.Number.ToString() ?? "null"}");
     }
 
     private void LoadBestKnown()
@@ -148,30 +152,15 @@ public partial class BlockTree
 
         long right = Math.Max(0, left) + BestKnownSearchLimit;
 
-        long bestKnownNumberFound =
-            BinarySearchBlockNumber(1, left, LevelExists) ?? 0;
-        long bestKnownNumberAlternative =
-            BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
-
-        long bestSuggestedHeaderNumber =
-            BinarySearchBlockNumber(1, left, HeaderExists) ?? 0;
-        long bestSuggestedHeaderNumberAlternative
-            = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
-
-        long bestSuggestedBodyNumber
-            = BinarySearchBlockNumber(1, left, BodyExists) ?? 0;
-        long bestSuggestedBodyNumberAlternative
-            = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
+        long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
+        long bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
+        long bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
 
         if (_logger.IsInfo)
             _logger.Info("Numbers resolved, " +
-                         $"level = Max({bestKnownNumberFound}, {bestKnownNumberAlternative}), " +
-                         $"header = Max({bestSuggestedHeaderNumber}, {bestSuggestedHeaderNumberAlternative}), " +
-                         $"body = Max({bestSuggestedBodyNumber}, {bestSuggestedBodyNumberAlternative})");
-
-        bestKnownNumberFound = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
-        bestSuggestedHeaderNumber = Math.Max(bestSuggestedHeaderNumber, bestSuggestedHeaderNumberAlternative);
-        bestSuggestedBodyNumber = Math.Max(bestSuggestedBodyNumber, bestSuggestedBodyNumberAlternative);
+                         $"level = {bestKnownNumberFound}, " +
+                         $"header = {bestSuggestedHeaderNumber}, " +
+                         $"body = {bestSuggestedBodyNumber}");
 
         if (bestKnownNumberFound < 0 ||
             bestSuggestedHeaderNumber < 0 ||
@@ -195,7 +184,7 @@ public partial class BlockTree
             }
         }
 
-        BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
+        BestKnownNumber = bestKnownNumberFound;
         BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
         BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
         BestSuggestedBody = bestSuggestedBodyHeader is null
@@ -273,13 +262,8 @@ public partial class BlockTree
         long? blockNumber = BinarySearchBlockNumber(left, right, isBlockFound, direction);
         if (blockNumber.HasValue)
         {
-            ChainLevelInfo? level = LoadLevel(blockNumber.Value);
-            if (level is null)
-            {
-                throw new InvalidDataException(
+            ChainLevelInfo? level = LoadLevel(blockNumber.Value) ?? throw new InvalidDataException(
                     $"Missing chain level at number {blockNumber.Value}");
-            }
-
             BlockInfo blockInfo = level.BlockInfos[0];
             return FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
         }
@@ -369,13 +353,8 @@ public partial class BlockTree
 
     private void SetHeadBlock(Hash256 headHash)
     {
-        Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None);
-        if (headBlock is null)
-        {
-            throw new InvalidOperationException(
+        Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException(
                 "An attempt to set a head block that has not been stored in the DB.");
-        }
-
         ChainLevelInfo? level = LoadLevel(headBlock.Number);
         int? index = level?.FindIndex(headHash);
         if (!index.HasValue)

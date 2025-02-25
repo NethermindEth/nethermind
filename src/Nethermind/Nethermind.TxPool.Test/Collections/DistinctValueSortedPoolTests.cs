@@ -91,8 +91,8 @@ namespace Nethermind.TxPool.Test.Collections
             var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             var transactions = gasPriceAscending
-                ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(t => t.GasPrice)
-                : GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderByDescending(t => t.GasPrice);
+                ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(static t => t.GasPrice)
+                : GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderByDescending(static t => t.GasPrice);
 
             foreach (var transaction in transactions)
             {
@@ -168,7 +168,7 @@ namespace Nethermind.TxPool.Test.Collections
             protected override int GetKey(WithFinalizer value) => value.Index;
         }
 
-        IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
+        readonly IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create(static (t1, t2) =>
         {
             int t1Oddity = t1.Index % 2;
             int t2Oddity = t2.Index % 2;
@@ -201,7 +201,7 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
 
             _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeLessOrEqualTo(expectedAllCount - Capacity);
+            _finalizedCount.Should().BeLessThanOrEqualTo(expectedAllCount - Capacity);
             pool.Count.Should().Be(Capacity);
         }
 
@@ -249,7 +249,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _finalizedCount.Should().BeLessOrEqualTo(Capacity * (capacityMultiplier - 1));
+            _finalizedCount.Should().BeLessThanOrEqualTo(Capacity * (capacityMultiplier - 1));
             _allCount.Should().Be(Capacity * capacityMultiplier);
             pool.Count.Should().Be(Capacity);
         }
@@ -295,7 +295,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             int expectedAllCount = Capacity * capacityMultiplier * 3;
             _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeGreaterOrEqualTo(expectedAllCount - Capacity);
+            _finalizedCount.Should().BeGreaterThanOrEqualTo(expectedAllCount - Capacity);
         }
 
         private static void CollectAndFinalize()

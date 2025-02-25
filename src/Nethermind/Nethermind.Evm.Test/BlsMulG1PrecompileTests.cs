@@ -17,7 +17,7 @@ public class BlsG1MulPrecompileTests
     [Test]
     public void Test()
     {
-        IPrecompile precompile = G1MulPrecompile.Instance;
+        IPrecompile precompile = G1MSMPrecompile.Instance;
 
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {

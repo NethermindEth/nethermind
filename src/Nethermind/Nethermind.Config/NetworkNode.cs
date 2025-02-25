@@ -27,7 +27,7 @@ namespace Nethermind.Config
             string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
             if (nodeStrings is null)
             {
-                return Array.Empty<NetworkNode>();
+                return [];
             }
 
             List<NetworkNode> nodes = new();
@@ -53,6 +53,13 @@ namespace Nethermind.Config
             _enode = new Enode(publicKey, IPAddress.Parse(ip), port);
             Reputation = reputation;
         }
+
+        public NetworkNode(Enode enode)
+        {
+            _enode = enode;
+        }
+
+        public Enode Enode => _enode;
 
         public PublicKey NodeId => _enode.PublicKey;
         public string Host => _enode.HostIp.ToString();

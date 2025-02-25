@@ -11,181 +11,163 @@ using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Clique;
 using Nethermind.Core.Test.IO;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.EthStats;
+using Nethermind.Hive;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Db.Blooms;
+using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.TxPool;
+using Nethermind.Taiko;
 using NUnit.Framework;
-using LogLevel = NLog.LogLevel;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Runner.Test;
+
+[TestFixture, Parallelizable(ParallelScope.All)]
+public class EthereumRunnerTests
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class EthereumRunnerTests
+    static EthereumRunnerTests()
     {
-        static EthereumRunnerTests()
+        AssemblyLoadContext.Default.Resolving += static (_, _) => null;
+    }
+
+    private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+
+    private static ICollection InitOnce()
+    {
+        // we need this to discover ChainSpecEngineParameters
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+
+        // by pre-caching configs providers we make the tests do lot less work
+        ConcurrentQueue<(string, ConfigProvider)> result = new();
+        Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            AssemblyLoadContext.Default.Resolving += (context, name) =>
-            {
-                return null;
-            };
-        }
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new JsonConfigSource(configFile));
+            configProvider.Initialize();
+            result.Enqueue((configFile, configProvider));
+        });
 
-        private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+        return result;
+    }
 
-        private static ICollection InitOnce()
+    public static IEnumerable ChainSpecRunnerTests
+    {
+        get
         {
-            // by pre-caching configs providers we make the tests do lot less work
-            ConcurrentQueue<(string, ConfigProvider)> result = new();
-            Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
+            int index = 0;
+            foreach (var cachedProvider in _cachedProviders!.Value)
             {
-                var configProvider = new ConfigProvider();
-                configProvider.AddSource(new JsonConfigSource(configFile));
-                configProvider.Initialize();
-                result.Enqueue((configFile, configProvider));
-            });
-
-            return result;
-        }
-
-        public static IEnumerable ChainSpecRunnerTests
-        {
-            get
-            {
-                int index = 0;
-                foreach (var cachedProvider in _cachedProviders!.Value)
-                {
-                    yield return new TestCaseData(cachedProvider, index);
-                    index++;
-                }
+                yield return new TestCaseData(cachedProvider, index);
+                index++;
             }
         }
+    }
 
-        [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
         {
-            if (testCase.configProvider is null)
-            {
-                // some weird thing, not worth investigating
-                return;
-            }
-
-            await SmokeTest(testCase.configProvider, testIndex, 30330);
+            // some weird thing, not worth investigating
+            return;
         }
 
-        [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
-        {
-            if (testCase.configProvider is null)
-            {
-                // some weird thing, not worth investigating
-                return;
-            }
+        await SmokeTest(testCase.configProvider, testIndex, 30330);
+    }
 
-            await SmokeTest(testCase.configProvider, testIndex, 30430, true);
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    [MaxTime(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
+    {
+        if (testCase.configProvider is null)
+        {
+            // some weird thing, not worth investigating
+            return;
         }
 
-        private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
+        await SmokeTest(testCase.configProvider, testIndex, 30430, true);
+    }
+
+    private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
+    {
+        // An ugly hack to keep unused types
+        Console.WriteLine(typeof(IHiveConfig));
+
+        var tempPath = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(tempPath.Path);
+
+        Exception? exception = null;
+        try
         {
-            Type type1 = typeof(ITxPoolConfig);
-            Type type2 = typeof(INetworkConfig);
-            Type type3 = typeof(IKeyStoreConfig);
-            Type type4 = typeof(IDbConfig);
-            Type type7 = typeof(IEthStatsConfig);
-            Type type8 = typeof(ISyncConfig);
-            Type type9 = typeof(IBloomConfig);
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            initConfig.BaseDbPath = tempPath.Path;
 
-            Console.WriteLine(type1.Name);
-            Console.WriteLine(type2.Name);
-            Console.WriteLine(type3.Name);
-            Console.WriteLine(type4.Name);
-            Console.WriteLine(type7.Name);
-            Console.WriteLine(type8.Name);
-            Console.WriteLine(type9.Name);
+            INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+            int port = basePort + testIndex;
+            networkConfig.P2PPort = port;
+            networkConfig.DiscoveryPort = port;
 
-            var tempPath = TempPath.GetTempDirectory();
-            Directory.CreateDirectory(tempPath.Path);
+            INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
+            nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
+            EthereumRunner runner = new(nethermindApi);
 
-            Exception? exception = null;
+            using CancellationTokenSource cts = new();
+
             try
             {
-                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                initConfig.BaseDbPath = tempPath.Path;
-
-                INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
-                int port = basePort + testIndex;
-                networkConfig.P2PPort = port;
-                networkConfig.DiscoveryPort = port;
-
-                INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
-                nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
-                EthereumRunner runner = new(nethermindApi);
-
-                using CancellationTokenSource cts = new();
-
-                try
+                Task task = runner.Start(cts.Token);
+                if (cancel)
                 {
-                    Task task = runner.Start(cts.Token);
-                    if (cancel)
-                    {
-                        cts.Cancel();
-                    }
+                    cts.Cancel();
+                }
 
-                    await task;
-                }
-                catch (Exception e)
-                {
-                    exception = e;
-                }
-                finally
-                {
-                    try
-                    {
-                        await runner.StopAsync();
-                    }
-                    catch (Exception e)
-                    {
-                        if (exception is not null)
-                        {
-                            await TestContext.Error.WriteLineAsync(e.ToString());
-                        }
-                        else
-                        {
-                            throw;
-                        }
-                    }
-                }
+                await task;
+            }
+            catch (Exception e)
+            {
+                exception = e;
             }
             finally
             {
                 try
                 {
-                    tempPath.Dispose();
+                    await runner.StopAsync();
                 }
-                catch
+                catch (Exception e)
                 {
                     if (exception is not null)
                     {
-                        // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
-                        // await TestContext.Error.WriteLineAsync(e.ToString());
+                        await TestContext.Error.WriteLineAsync(e.ToString());
                     }
                     else
                     {
                         throw;
                     }
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                tempPath.Dispose();
+            }
+            catch
+            {
+                if (exception is not null)
+                {
+                    // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
+                    // await TestContext.Error.WriteLineAsync(e.ToString());
+                }
+                else
+                {
+                    throw;
                 }
             }
         }

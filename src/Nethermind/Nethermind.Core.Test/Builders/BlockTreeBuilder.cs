@@ -31,6 +31,7 @@ namespace Nethermind.Core.Test.Builders
         private ISpecProvider _specProvider;
         private IReceiptStorage? _receiptStorage;
         private IEthereumEcdsa? _ecdsa;
+        private Hash256? _stateRoot;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
@@ -97,10 +98,7 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
 
-            if (TestObjectInternal is null)
-            {
-                TestObjectInternal = BlockTree;
-            }
+            TestObjectInternal ??= BlockTree;
         }
 
         public IBloomStorage BloomStorage { get; set; } = Substitute.For<IBloomStorage>();
@@ -143,12 +141,12 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb MetadataDb { get; set; }
 
-        private IBlockStore? _badBlockStore;
-        public IBlockStore BadBlockStore
+        private IBadBlockStore? _badBlockStore;
+        public IBadBlockStore BadBlockStore
         {
             get
             {
-                return _badBlockStore ??= new BlockStore(BadBlocksDb, 100);
+                return _badBlockStore ??= new BadBlockStore(BadBlocksDb, 100);
             }
             set
             {
@@ -195,6 +193,11 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
+        public BlockTreeBuilder WithStateRoot(Hash256 stateRoot)
+        {
+            _stateRoot = stateRoot;
+            return this;
+        }
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
@@ -250,6 +253,11 @@ namespace Nethermind.Core.Test.Builders
                 .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
                 .WithBeneficiary(beneficiary);
 
+            if (_stateRoot != null)
+            {
+                currentBlockBuilder.WithStateRoot(_stateRoot);
+            }
+
             if (PostMergeBlockTree)
                 currentBlockBuilder.WithPostMergeRules();
             else
@@ -282,7 +290,7 @@ namespace Nethermind.Core.Test.Builders
                 List<TxReceipt> receipts = new();
                 foreach (Transaction transaction in currentBlock.Transactions)
                 {
-                    LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
+                    LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? [];
                     TxReceipt receipt = new()
                     {
                         Logs = logEntries,
@@ -411,7 +419,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockTreeBuilder WithBadBlockStore(IBlockStore blockStore)
+        public BlockTreeBuilder WithBadBlockStore(IBadBlockStore blockStore)
         {
             BadBlockStore = blockStore;
             return this;

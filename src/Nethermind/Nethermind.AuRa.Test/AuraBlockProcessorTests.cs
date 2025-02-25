@@ -63,7 +63,7 @@ namespace Nethermind.AuRa.Test
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
-            Block[] processedBlocks = processor.Process(
+            _ = processor.Process(
                 Keccak.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
@@ -91,7 +91,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts()
         {
-            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Hash256 stateRoot)
+            static void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Hash256 stateRoot)
             {
                 BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(blockNumber).TestObject;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(transactionProcessor),
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),

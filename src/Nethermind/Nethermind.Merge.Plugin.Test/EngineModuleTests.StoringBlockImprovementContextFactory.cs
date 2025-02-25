@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Test;
 

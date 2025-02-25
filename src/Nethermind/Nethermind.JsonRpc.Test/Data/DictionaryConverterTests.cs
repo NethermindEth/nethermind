@@ -4,8 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
-
-using System;
 using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc.Test.Data

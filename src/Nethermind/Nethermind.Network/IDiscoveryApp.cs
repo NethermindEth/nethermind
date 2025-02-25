@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 

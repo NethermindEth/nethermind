@@ -80,9 +80,9 @@ namespace Nethermind.Wallet.Test
         public void TearDown()
         {
             string resourcePath = TestContext.CurrentContext.TestDirectory;
-            foreach ((string Name, string Content) file in _files)
+            foreach ((string Name, _) in _files)
             {
-                string filePath = Path.Combine(resourcePath, file.Name);
+                string filePath = Path.Combine(resourcePath, Name);
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
@@ -113,10 +113,10 @@ namespace Nethermind.Wallet.Test
 
         public class UnlockAccountsTest
         {
-            public string[] Passwords { get; set; } = Array.Empty<string>();
+            public string[] Passwords { get; set; } = [];
             public List<string> PasswordFiles { get; set; } = new List<string>();
-            public Address[] UnlockAccounts { get; set; } = Array.Empty<Address>();
-            public string[] ExpectedPasswords { get; set; } = Array.Empty<string>();
+            public Address[] UnlockAccounts { get; set; } = [];
+            public string[] ExpectedPasswords { get; set; } = [];
 
             public override string ToString() => string.Join("; ", ExpectedPasswords);
         }

@@ -16,9 +16,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -256,7 +256,7 @@ public class CensorshipDetectorTests
         return new(
             _ethereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider),
+            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository()),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,

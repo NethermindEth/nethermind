@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public void Stop() { }
+        public void Update() { }
 
         public event EventHandler<SyncModeChangedEventArgs> Changing
         {

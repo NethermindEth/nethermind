@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -22,12 +23,15 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0b);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 500L;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    [SkipLocalsInit]
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG1AddPrecompile++;
+
         const int expectedInputLength = 2 * BlsConst.LenG1;
         if (inputData.Length != expectedInputLength)
         {
@@ -43,12 +47,12 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         if (x.IsInf())
         {
-            return (inputData[BlsConst.LenG1..], true);
+            return (inputData[BlsConst.LenG1..].ToArray(), true);
         }
 
         if (y.IsInf())
         {
-            return (inputData[..BlsConst.LenG1], true);
+            return (inputData[..BlsConst.LenG1].ToArray(), true);
         }
 
         G1 res = x.Add(y);

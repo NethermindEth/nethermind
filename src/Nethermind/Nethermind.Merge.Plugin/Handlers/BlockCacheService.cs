@@ -11,4 +11,5 @@ public class BlockCacheService : IBlockCacheService
 {
     public ConcurrentDictionary<Hash256AsKey, Block> BlockCache { get; } = new();
     public Hash256? FinalizedHash { get; set; }
+    public Hash256? HeadBlockHash { get; set; }
 }

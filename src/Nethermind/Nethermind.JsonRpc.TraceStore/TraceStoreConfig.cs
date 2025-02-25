@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.TraceStore;
 

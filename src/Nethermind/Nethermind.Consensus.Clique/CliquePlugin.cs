@@ -16,20 +16,17 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
 {
     public class CliquePlugin : IConsensusPlugin
     {
-        public string Name => "Clique";
+        public string Name => SealEngineType;
 
-        public string Description => "Clique Consensus Engine";
+        public string Description => $"{SealEngineType} Consensus Engine";
 
         public string Author => "Nethermind";
 
@@ -44,10 +41,13 @@ namespace Nethermind.Consensus.Clique
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
 
+            var chainSpec = getFromApi!.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<CliqueChainSpecEngineParameters>();
             _cliqueConfig = new CliqueConfig
             {
-                BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
-                Epoch = getFromApi.ChainSpec.Clique.Epoch
+                BlockPeriod = chainSpec.Period,
+                Epoch = chainSpec.Epoch,
+                MinimumOutOfTurnDelay = nethermindApi.Config<ICliqueConfig>().MinimumOutOfTurnDelay
             };
 
             _snapshotManager = new SnapshotManager(
@@ -57,7 +57,9 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.EthereumEcdsa!,
                 getFromApi.LogManager);
 
-            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
+            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager,
+                getFromApi.ChainSpec.EngineChainSpecParametersProvider
+                    .GetChainSpecParameters<CliqueChainSpecEngineParameters>());
 
             setInApi.SealValidator = new CliqueSealValidator(
                 _cliqueConfig,
@@ -113,7 +115,7 @@ namespace Nethermind.Consensus.Clique
                 scope.WorldState,
                 NullReceiptStorage.Instance,
                 getFromApi.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor),
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));

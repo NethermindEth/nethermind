@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Empty()
         {
-            ReadOnlySpan<byte> span = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> span = [];
             KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
         }
 

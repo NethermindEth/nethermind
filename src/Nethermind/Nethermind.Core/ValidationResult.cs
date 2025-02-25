@@ -8,6 +8,6 @@ public record struct ValidationResult(string? Error)
     public static ValidationResult Success => new(null);
     public static implicit operator bool(ValidationResult result) => result.AsBool();
     public static implicit operator ValidationResult(string error) => new(error);
-    public override string ToString() => Error ?? "Success";
-    public bool AsBool() => Error is null;
+    public override readonly string ToString() => Error ?? "Success";
+    public readonly bool AsBool() => Error is null;
 }

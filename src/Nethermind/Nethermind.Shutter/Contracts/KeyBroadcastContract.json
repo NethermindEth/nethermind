@@ -1,0 +1,21 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "uint64",
+        "name": "eon",
+        "type": "uint64"
+      }
+    ],
+    "name": "getEonKey",
+    "outputs": [
+      {
+        "internaltype": "bytes",
+        "name": "",
+        "type": "bytes"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

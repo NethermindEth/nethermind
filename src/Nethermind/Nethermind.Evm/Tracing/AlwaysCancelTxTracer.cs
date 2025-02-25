@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -25,7 +26,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public static AlwaysCancelTxTracer Instance
     {
-        get { return LazyInitializer.EnsureInitialized(ref _instance, () => new AlwaysCancelTxTracer()); }
+        get { return LazyInitializer.EnsureInitialized(ref _instance, static () => new AlwaysCancelTxTracer()); }
     }
 
     public bool IsTracingReceipt => true;
@@ -42,12 +43,11 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
     public bool IsTracingLogs => true;
-    public bool IsTracingPredefinedPatterns => true;
-    public bool IsTracingCompiledSegments => true;
+    public bool IsTracingIlEvmCalls => true;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 
@@ -107,7 +107,5 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportChunkExecutionEnd(long gas, int pc, Type segmentID) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
-
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 }

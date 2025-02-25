@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -25,7 +24,7 @@ namespace Nethermind.Blockchain
         public byte[]? GetCode(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? Array.Empty<byte>() : _stateReader.GetCode(account.CodeHash);
+            return !account.HasCode ? [] : _stateReader.GetCode(account.CodeHash);
         }
 
         public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);

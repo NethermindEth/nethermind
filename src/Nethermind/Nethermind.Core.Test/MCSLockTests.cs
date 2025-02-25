@@ -10,7 +10,6 @@ using System.Threading;
 
 namespace Nethermind.Core.Test;
 
-[TestFixture]
 public class MCSLockTests
 {
     private McsLock mcsLock;
@@ -86,6 +85,6 @@ public class MCSLockTests
         }
 
         var expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
-        CollectionAssert.AreEqual(expectedOrder, executionOrder, "Threads did not acquire lock in the order they were started.");
+        Assert.That(expectedOrder, Is.EqualTo(executionOrder), "Threads did not acquire lock in the order they were started.");
     }
 }

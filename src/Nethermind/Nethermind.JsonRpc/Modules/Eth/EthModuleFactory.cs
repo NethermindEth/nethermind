@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -14,9 +13,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -13,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -45,6 +46,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+
+    private long _lastBlockNumber;
+    private long _lastBlockGasLimit;
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
@@ -79,6 +83,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
 
+    private string GetGasChange(long blockGasLimit)
+    {
+        return (blockGasLimit - _lastBlockGasLimit) switch
+        {
+            > 0 => "👆",
+            < 0 => "👇",
+            _ => "  "
+        };
+    }
+
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>
     /// and the hash of the last valid block.
@@ -87,13 +101,18 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
-
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid request. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+        }
+
+        string requestStr = $"New Block:  {request}";
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+            _lastBlockNumber = block.Number;
+            _lastBlockGasLimit = block.Header.GasLimit;
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
@@ -156,7 +175,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error, validateHashes: false))
             {
-                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "suggested block is invalid"));
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
                 return NewPayloadV1Result.Invalid(error);
             }
 
@@ -200,6 +219,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
+        using var handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 

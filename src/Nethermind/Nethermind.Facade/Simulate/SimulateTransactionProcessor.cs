@@ -6,7 +6,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -27,7 +26,7 @@ public sealed class SimulateTransactionProcessor(
     {
         if (!validate)
         {
-            opts |= ExecutionOptions.NoValidation;
+            opts |= ExecutionOptions.SkipValidation;
         }
 
         return base.Execute(tx, in blCtx, tracer, opts);

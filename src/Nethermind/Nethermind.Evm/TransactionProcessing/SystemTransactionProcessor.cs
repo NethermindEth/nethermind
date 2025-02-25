@@ -38,21 +38,21 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, in blCtx, tracer, !opts.HasFlag(ExecutionOptions.NoValidation)
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.NoValidation
+        return base.Execute(tx, in blCtx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }
 
 
     protected override IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => new SystemTransactionReleaseSpec(base.GetSpec(tx, header), _isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode) { }
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {

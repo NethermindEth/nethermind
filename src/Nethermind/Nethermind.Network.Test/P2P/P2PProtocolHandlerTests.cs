@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using DotNetty.Buffers;
@@ -85,9 +84,16 @@ namespace Nethermind.Network.Test.P2P
         public void On_init_sends_a_hello_message_with_capabilities()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
+
+            // These are called by ProtocolsManager.
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.NodeData, 1));
+
             p2PProtocolHandler.Init();
 
-            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m => m.Capabilities.Select(c => c.ToString()).SequenceEqual(expectedCapabilities)));
         }

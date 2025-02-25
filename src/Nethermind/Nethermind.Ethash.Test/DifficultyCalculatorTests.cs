@@ -7,7 +7,6 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using NSubstitute;
-using Nethermind.Core;
 
 namespace Nethermind.Ethash.Test
 {

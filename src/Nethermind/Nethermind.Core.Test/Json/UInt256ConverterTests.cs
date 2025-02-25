@@ -3,11 +3,9 @@
 
 using System;
 using System.Globalization;
-using System.IO;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
@@ -23,9 +21,9 @@ namespace Nethermind.Core.Test.Json
         [TestCase(NumberConversion.Raw)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
-            TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
 
         [TestCase((NumberConversion)99)]
@@ -47,7 +45,7 @@ namespace Nethermind.Core.Test.Json
         {
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
             UInt256Converter converter = new();
-            TestConverter(0, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(0, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
@@ -98,7 +96,7 @@ namespace Nethermind.Core.Test.Json
         public void Throws_on_null()
         {
             Assert.Throws<JsonException>(
-                () => JsonSerializer.Deserialize<UInt256>("null", options));
+                static () => JsonSerializer.Deserialize<UInt256>("null", options));
         }
     }
 }

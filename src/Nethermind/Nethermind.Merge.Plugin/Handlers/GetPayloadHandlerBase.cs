@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -42,7 +43,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
             return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
         }
 
-        if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Full)}.");
+        if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Short)}.");
 
         Metrics.GetPayloadRequests++;
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;

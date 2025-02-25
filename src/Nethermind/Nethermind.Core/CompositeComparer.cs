@@ -24,24 +24,20 @@ namespace Nethermind.Core
 
         public CompositeComparer<T> FirstBy(IComparer<T> comparer)
         {
-            switch (comparer)
+            return comparer switch
             {
-                case CompositeComparer<T> compositeComparer:
-                    return new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers));
-                default:
-                    return new CompositeComparer<T>(new[] { comparer }.Concat(_comparers));
-            }
+                CompositeComparer<T> compositeComparer => new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers)),
+                _ => new CompositeComparer<T>(new[] { comparer }.Concat(_comparers)),
+            };
         }
 
         public CompositeComparer<T> ThenBy(IComparer<T> comparer)
         {
-            switch (comparer)
+            return comparer switch
             {
-                case CompositeComparer<T> compositeComparer:
-                    return new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers));
-                default:
-                    return new CompositeComparer<T>(_comparers.Concat(new[] { comparer }));
-            }
+                CompositeComparer<T> compositeComparer => new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers)),
+                _ => new CompositeComparer<T>(_comparers.Concat(new[] { comparer })),
+            };
         }
 
 

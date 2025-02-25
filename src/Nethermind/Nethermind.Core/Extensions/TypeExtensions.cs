@@ -34,7 +34,7 @@ public static class TypeExtensions
         throw new InvalidOperationException($"Couldn't find direct implementation of {interfaceType} interface");
     }
 
-    private static readonly ISet<Type> _valueTupleTypes = new HashSet<Type>(
+    private static readonly HashSet<Type> _valueTupleTypes = new HashSet<Type>(
         new Type[] {
             typeof(ValueTuple<>),
             typeof(ValueTuple<,>),

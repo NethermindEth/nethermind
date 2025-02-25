@@ -39,7 +39,7 @@ public class VisitingTests
             patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i))));
         }
 
-        patriciaTree.Commit(0);
+        using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
 
         var visitor = new AppendingVisitor();
 
@@ -67,8 +67,10 @@ public class VisitingTests
 
         using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
 
-        byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
+
+        var blockCommit = trieStore.BeginBlockCommit(0);
 
         for (int outi = 0; outi < 64; outi++)
         {
@@ -82,7 +84,7 @@ public class VisitingTests
                 storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
                 storage.Set(storageKey, value);
             }
-            storage.Commit(0);
+            storage.Commit();
 
             stateRootHash = storage.RootHash;
         }
@@ -99,7 +101,8 @@ public class VisitingTests
                 new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
         }
 
-        stateTree.Commit(0);
+        stateTree.Commit();
+        blockCommit.Dispose();
 
         var visitor = new AppendingVisitor();
 
@@ -128,7 +131,7 @@ public class VisitingTests
         static void AssertPath(ReadOnlySpan<byte> path)
         {
             var index = path.IndexOfAnyExcept((byte)0);
-            path.Slice(index + 1).IndexOfAnyExcept((byte)0).Should()
+            path[(index + 1)..].IndexOfAnyExcept((byte)0).Should()
                 .Be(-1, "Shall not found other values than the one nibble set");
             path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
         }
@@ -160,7 +163,7 @@ public class VisitingTests
 
         public readonly struct PathGatheringContext(byte[]? nibbles) : INodeContext<PathGatheringContext>
         {
-            public readonly byte[] Nibbles => nibbles ?? Array.Empty<byte>();
+            public readonly byte[] Nibbles => nibbles ?? [];
 
             public readonly PathGatheringContext Add(ReadOnlySpan<byte> nibblePath)
             {
