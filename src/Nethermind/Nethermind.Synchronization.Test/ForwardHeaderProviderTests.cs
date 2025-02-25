@@ -189,6 +189,40 @@ public partial class ForwardHeaderProviderTests
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
+    [Test]
+    public async Task Cache_block_headers_unless_peer_changed()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().NotBeNull();
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().NotBeNull();
+
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+
+        ISyncPeer newSyncPeer = Substitute.For<ISyncPeer>();
+        newSyncPeer.HeadHash.Returns(TestItem.KeccakB);
+        newSyncPeer.HeadNumber.Returns(1000);
+        newSyncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        newSyncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        ctx.ConfigureBestPeer(new PeerInfo(newSyncPeer));
+
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().NotBeNull();
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await newSyncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
     private class SlowSealValidator : ISealValidator
     {
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
