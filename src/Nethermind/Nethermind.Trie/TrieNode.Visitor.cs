@@ -246,7 +246,7 @@ namespace Nethermind.Trie
             int visitedNodes = Interlocked.Increment(ref _visitedNodes);
 
             // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
-            if (visitedNodes % 100_000_000 == 0)
+            if (visitedNodes % 10_000_000 == 0)
             {
                 GC.Collect();
             }
