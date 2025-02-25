@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 mock.SetFilter(null);
             }
 
-            await ActivateAndWait(ctx, 2000);
+            await ActivateAndWait(ctx, TimeoutLength);
 
 
             dbContext.CompareTrees("END");
