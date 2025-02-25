@@ -32,8 +32,7 @@ public class NodeStorage(
             : GetHashBasedStoragePath(pathSpan, keccak);
 
     public static byte[] GetHalfPathNodeStoragePath(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
-        GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak)
-            .ToArray();
+        GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak).ToArray();
 
     private static Span<byte> GetHalfPathNodeStoragePathSpan(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
