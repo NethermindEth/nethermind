@@ -1,9 +1,7 @@
-using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
-namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
 
 

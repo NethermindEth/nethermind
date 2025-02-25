@@ -1,9 +1,7 @@
-using System;
-using System.Collections.Generic;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Threading;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
 
     public class OpcodeStatsQueue : IDisposable

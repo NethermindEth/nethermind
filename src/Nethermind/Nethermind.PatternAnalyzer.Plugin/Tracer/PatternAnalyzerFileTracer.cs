@@ -2,30 +2,25 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using Nethermind.Core.Crypto;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using System.IO.Abstractions;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
-using Nethermind.Core.Threading;
-using System.Threading.Tasks;
-using Nethermind.Logging;
+using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Threading;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.Evm.Tracing.OpcodeStats;
+namespace Nethermind.PatternAnalyzer.Plugin.Stats;
 
-public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeStatsTxTracer>
+public class PatternAnalyzerFileTracer : BlockTracerBase<PatternAnalyzerTxTrace, PatternAnalyzerTxTracer>
 {
 
 
     long _initialBlock = 0;
     long _currentBlock = 0;
-    private OpcodeStatsTxTracer _tracer;
+    private PatternAnalyzerTxTracer _tracer;
     protected int _bufferSize;
     private StatsAnalyzer _statsAnalyzer;
     private McsLock _processingLock = new();
@@ -45,14 +40,14 @@ public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeS
     private DisposableResettableList<Instruction> _buffer = new DisposableResettableList<Instruction>();
 
 
-    public OpcodeStatsFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer, HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, string? fileName) : base()
+    public PatternAnalyzerFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer, HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, string? fileName) : base()
     {
 
         _bufferSize = bufferSize;
         _statsAnalyzer = statsAnalyzer;
         _ignore = ignore;
 
-        _tracer = new OpcodeStatsTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
@@ -94,7 +89,7 @@ public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeS
         var currentBlockNumber = _currentBlock;
 
         _buffer = new DisposableResettableList<Instruction>();
-        _tracer = new OpcodeStatsTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
+        _tracer = new PatternAnalyzerTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
 
         var task = Task.Run(() =>
         {
@@ -130,9 +125,9 @@ public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeS
         _tracer.AddTxEndMarker();
     }
 
-    public static void WriteTrace(long initialBlockNumber, long currentBlockNumber, OpcodeStatsTxTracer tracer, string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions)
+    public static void WriteTrace(long initialBlockNumber, long currentBlockNumber, PatternAnalyzerTxTracer tracer, string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions)
     {
-        OpcodeStatsTxTrace trace = tracer.BuildResult();
+        PatternAnalyzerTxTrace trace = tracer.BuildResult();
         trace.InitialBlockNumber = initialBlockNumber;
         trace.CurrentBlockNumber = currentBlockNumber;
 
@@ -146,7 +141,7 @@ public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeS
         }
     }
 
-    public OpcodeStatsTxTracer StartNewTxTrace(Transaction? tx) => _tracer;
+    public PatternAnalyzerTxTracer StartNewTxTrace(Transaction? tx) => _tracer;
 
     public override void StartNewBlockTrace(Block block)
     {
@@ -159,13 +154,13 @@ public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeS
     }
 
 
-    protected override OpcodeStatsTxTracer OnStart(Transaction? tx)
+    protected override PatternAnalyzerTxTracer OnStart(Transaction? tx)
     {
         return _tracer;
     }
 
 
-    protected override OpcodeStatsTxTrace OnEnd(OpcodeStatsTxTracer txTracer)
+    protected override PatternAnalyzerTxTrace OnEnd(PatternAnalyzerTxTracer txTracer)
     {
         throw new NotImplementedException();
     }

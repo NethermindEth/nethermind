@@ -1,10 +1,10 @@
 using Nethermind.Config;
 using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.OpcodeStats.Plugin
+namespace Nethermind.PatternAnalyzer.Plugin
 {
-    public interface IStatsConfig : IConfig
+    public interface IPatternAnalyzerConfig : IConfig
     {
         [ConfigItem(
             Description = "Activates or Deactivates OpcodeStats Plugin",

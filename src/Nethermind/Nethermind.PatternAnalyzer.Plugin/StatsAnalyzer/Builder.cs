@@ -1,8 +1,6 @@
-
-using System;
 using Nethermind.Evm.Config;
 
-namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
     public abstract class Builder
     {
@@ -45,6 +43,8 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
                 throw new InvalidOperationException("Sketch reset or reuse threshold must be set.");
             if (!_topN.HasValue)
                 throw new InvalidOperationException("Top N must be set.");
+            if (_sketch == null)
+                throw new InvalidOperationException("Sketch must be set.");
 
             return new StatsAnalyzer(_topN.Value, _sketch, _capacity.Value, _minSupport.Value, _bufferSizeForSketches.Value, _sketchResetOrReuseThreshold.Value);
         }

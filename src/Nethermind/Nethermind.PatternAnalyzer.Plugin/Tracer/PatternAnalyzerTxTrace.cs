@@ -2,16 +2,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using Nethermind.Evm.Tracing.GethStyle.Custom;
 
-
-namespace Nethermind.Evm.Tracing.OpcodeStats;
+namespace Nethermind.PatternAnalyzer.Plugin.Stats;
 
 [JsonConverter(typeof(OpcodeStatsTraceConvertor))]
-public class OpcodeStatsTxTrace
+public class PatternAnalyzerTxTrace
 {
 
     public long InitialBlockNumber { get; set; }
@@ -20,10 +16,10 @@ public class OpcodeStatsTxTrace
     public double Confidence { get; set; }
 
 
-    public OpcodeStatsTxTrace() { }
+    public PatternAnalyzerTxTrace() { }
 
 
-    public List<OpcodeStatsTraceEntry> Entries { get; set; } = new List<OpcodeStatsTraceEntry>();
+    public List<PatternAnalyzerTraceEntry> Entries { get; set; } = new List<PatternAnalyzerTraceEntry>();
 
 
 }

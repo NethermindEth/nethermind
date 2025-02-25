@@ -12,19 +12,19 @@ using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;
 using System.Configuration;
 using Nethermind.Logging;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
-using Nethermind.Evm.Tracing.OpcodeStats;
 using System.IO.Abstractions;
+using Nethermind.PatternAnalyzer.Plugin.Stats;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
+namespace Nethermind.PatternAnalyzer.Plugin;
 
-namespace Nethermind.OpcodeStats.Plugin;
-public class OpcodeStatsPlugin : INethermindPlugin
+public class PatternAnalyzer : INethermindPlugin
 {
     public string Name => "OpcodeStats";
     public string Description => "Allows to serve traces of n-gram stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
     private INethermindApi _api = null!;
-    private IStatsConfig _config = null!;
+    private IPatternAnalyzerConfig _config = null!;
     private ILogManager _logManager = null!;
     private ILogger _logger;
     private bool Enabled => _config?.Enabled == true;
@@ -33,8 +33,8 @@ public class OpcodeStatsPlugin : INethermindPlugin
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        _config = _api.Config<IStatsConfig>();
-        _logger = _logManager.GetClassLogger<OpcodeStatsPlugin>();
+        _config = _api.Config<IPatternAnalyzerConfig>();
+        _logger = _logManager.GetClassLogger<PatternAnalyzer>();
         return Task.CompletedTask;
     }
 
@@ -46,8 +46,8 @@ public class OpcodeStatsPlugin : INethermindPlugin
 
             // Setup tracing
             var analyzer = new StatsAnalyzer(_config.GetStatsAnalyzerConfig());
-            OpcodeStatsFileTracer opcodeStatsFileTracer = new(_config.ProcessingQueueSize, _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(),  new FileSystem(), _logger,_config.WriteFrequency, _config.File);
-            _api.BlockchainProcessor!.Tracers.Add(opcodeStatsFileTracer);
+            PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(_config.ProcessingQueueSize, _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(),  new FileSystem(), _logger,_config.WriteFrequency, _config.File);
+            _api.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
         }
 
         return Task.CompletedTask;

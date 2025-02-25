@@ -1,11 +1,11 @@
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
+using Nethermind.Evm;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test.CodeAnalysis.Stats
+namespace Nethermind.PatternAnalyzer.Plugin.Test
 {
     [TestFixture]
     public class NGramsTests

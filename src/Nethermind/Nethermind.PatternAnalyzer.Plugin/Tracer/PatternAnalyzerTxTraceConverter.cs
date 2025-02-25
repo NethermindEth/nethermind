@@ -1,21 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.Evm.Tracing.OpcodeStats;
+namespace Nethermind.PatternAnalyzer.Plugin.Stats;
 
-public class OpcodeStatsTraceConvertor : JsonConverter<OpcodeStatsTxTrace>
+public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
 {
-    public override OpcodeStatsTxTrace Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override PatternAnalyzerTxTrace Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         throw new NotImplementedException();
     }
 
-    public override void Write(Utf8JsonWriter writer, OpcodeStatsTxTrace value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, PatternAnalyzerTxTrace value, JsonSerializerOptions options)
     {
 
         if (value is null)

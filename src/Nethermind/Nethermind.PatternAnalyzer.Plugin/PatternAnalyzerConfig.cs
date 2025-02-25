@@ -1,9 +1,8 @@
 using Nethermind.Config;
 using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
-namespace Nethermind.OpcodeStats.Plugin
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
-    public class StatsConfig : IStatsConfig
+    public class PatternAnalyzerConfig : IPatternAnalyzerConfig
     {
         public bool Enabled { get; set; }
         public string? File { get; set; }

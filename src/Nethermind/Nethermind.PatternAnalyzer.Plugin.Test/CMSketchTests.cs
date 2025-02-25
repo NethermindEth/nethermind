@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
-using FluentAssertions;
-using NUnit.Framework;
 using System.Runtime.InteropServices;
+using FluentAssertions;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer;
+using NUnit.Framework;
 
-namespace Nethermind.Evm.Test.CodeAnalysis.Stats
+namespace Nethermind.PatternAnalyzer.Plugin.Test
 {
 
 

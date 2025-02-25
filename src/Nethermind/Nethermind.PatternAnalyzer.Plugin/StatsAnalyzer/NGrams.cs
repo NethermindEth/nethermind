@@ -1,11 +1,9 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
     public readonly struct NGrams : IEnumerable<ulong>
     {

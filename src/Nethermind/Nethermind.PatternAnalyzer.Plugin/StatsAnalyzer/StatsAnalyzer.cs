@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
     public class StatsAnalyzer
     {

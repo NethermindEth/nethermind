@@ -1,4 +1,4 @@
-namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
+namespace Nethermind.PatternAnalyzer.Plugin.Analyzer
 {
     public class CMSketchConfig
     {

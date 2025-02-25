@@ -1,18 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Threading;
-using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.PatternAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.Evm.Tracing.OpcodeStats;
+namespace Nethermind.PatternAnalyzer.Plugin.Stats;
 
-public class OpcodeStatsTxTracer : TxTracer
+public class PatternAnalyzerTxTracer : TxTracer
 {
 
     private StatsAnalyzer _statsAnalyzer;
@@ -28,20 +25,20 @@ public class OpcodeStatsTxTracer : TxTracer
     //      IsTracingInstructions = true;
     //  }
 
-    public OpcodeStatsTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
+    public PatternAnalyzerTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
     {
         _ignoreSet = ignoreSet;
         _statsAnalyzer = statsAnalyzer;
         _processingLock = processingLock;
         _buffer = buffer;
-        _queue = new(buffer, statsAnalyzer);
+        _queue = new(buffer, (StatsAnalyzer)statsAnalyzer);
         IsTracingInstructions = true;
     }
 
 
     public void AddTxEndMarker()
     {
-        _queue.Enqueue(NGrams.RESET);
+        _queue?.Enqueue(NGrams.RESET);
     }
 
     private void DisposeQueue()
@@ -50,23 +47,28 @@ public class OpcodeStatsTxTracer : TxTracer
         {
             _queue = null;
             _queue = new(_buffer, _statsAnalyzer);
-            q.Dispose();
+            q?.Dispose();
         }
     }
 
-    public OpcodeStatsTxTrace BuildResult()
+    public PatternAnalyzerTxTrace BuildResult()
     {
         DisposeQueue();
-        OpcodeStatsTxTrace trace = new();
+        PatternAnalyzerTxTrace trace = new();
         trace.Confidence = _statsAnalyzer.Confidence;
         trace.ErrorPerItem = _statsAnalyzer.Error;
         foreach ((ulong topN, ulong count) pattern in _statsAnalyzer.topNQueue.UnorderedItems)
         {
             NGrams _ngram = new NGrams(pattern.topN);
-            OpcodeStatsTraceEntry entry = new();
-            entry.Pattern = _ngram.ToString();
-            entry.Bytes = _ngram.ToBytes();
-            entry.Count = pattern.count;
+            PatternAnalyzerTraceEntry entry = new PatternAnalyzerTraceEntry
+            {
+                Pattern = _ngram.ToString(),
+                Bytes = _ngram.ToBytes(),
+                Count = pattern.count
+            };
+        //    entry.Pattern = _ngram.ToString();
+        //    entry.Bytes = _ngram.ToBytes();
+        //    entry.Count = pattern.count;
             trace.Entries.Add(entry);
         }
 
@@ -79,7 +81,7 @@ public class OpcodeStatsTxTracer : TxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        if (!_ignoreSet.Contains(opcode)) _queue.Enqueue(opcode);
+        if (!_ignoreSet.Contains(opcode)) _queue?.Enqueue(opcode);
     }
 }
 
