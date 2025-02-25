@@ -56,7 +56,6 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                     {
-
                         visitor.VisitBranch(nodeContext, node);
                         AddVisited();
 

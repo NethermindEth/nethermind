@@ -109,8 +109,8 @@ namespace Nethermind.Core.Crypto
         public static implicit operator Hash256(Hash256AsKey key) => key._key;
         public static implicit operator Hash256AsKey(Hash256 key) => new(key);
 
-        public bool Equals(Hash256AsKey other) => _key.Equals(other._key);
-        public override int GetHashCode() => _key.GetHashCode();
+        public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
+        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
     }
 
     [JsonConverter(typeof(Hash256Converter))]
