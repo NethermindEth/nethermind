@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -154,20 +155,30 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }
             };
 
-            safeContext.StartDispatcher();
             safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+            safeContext.StartDispatcher(safeContext.CancellationToken);
 
             await Task.WhenAny(
                 dormantAgainSource.Task,
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext(ILifetimeScope container, IBlockTree blockTree)
+        protected class SafeContext(
+            Lazy<SyncPeerMock[]> syncPeerMocks,
+            Lazy<ISyncPeerPool> syncPeerPool,
+            Lazy<TreeSync> treeSync,
+            Lazy<StateSyncFeed> stateSyncFeed,
+            Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+            IBlockTree blockTree
+        ): IDisposable
         {
-            public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
-            public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
-            public TreeSync TreeFeed => container.Resolve<TreeSync>();
-            public StateSyncFeed Feed => container.Resolve<StateSyncFeed>();
+            public SyncPeerMock[] SyncPeerMocks => syncPeerMocks.Value;
+            public ISyncPeerPool Pool => syncPeerPool.Value;
+            public TreeSync TreeFeed => treeSync.Value;
+            public StateSyncFeed Feed => stateSyncFeed.Value;
+
+            private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
+            public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
 
             public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
             {
@@ -180,9 +191,14 @@ namespace Nethermind.Synchronization.Test.FastSync
                 blockTree.UpdateMainChain([newBlock], false, true);
             }
 
-            public void StartDispatcher()
+            public void StartDispatcher(CancellationToken cancellationToken)
             {
-                Task _ = container.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
+                Task _ = syncDispatcher.Value.Start(cancellationToken);
+            }
+
+            public void Dispose()
+            {
+                _autoCancelTokenSource.Dispose();
             }
         }
 
