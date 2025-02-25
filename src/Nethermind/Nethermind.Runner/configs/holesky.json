@@ -10,9 +10,12 @@
     "Size": 1024
   },
   "Sync": {
-    "FastSync": true,
-    "SnapSync": true,
+    "FastSync": false,
+    "SnapSync": false,
     "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Pruning":  {
+    "Mode": "Hybrid"
   },
   "Metrics": {
     "NodeName": "Holesky"
