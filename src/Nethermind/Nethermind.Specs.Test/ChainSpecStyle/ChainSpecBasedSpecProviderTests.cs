@@ -165,7 +165,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
 
         IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
-        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x7f02c3e3c98b133055b8b348b2ac625669ed295d")));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.SepoliaDepositContractAddress));
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -201,7 +201,7 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
         IReleaseSpec postPragueSpec = provider.GetSpec((2, HoleskySpecProvider.PragueTimestamp));
-        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x4242424242424242424242424242424242424242")));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(Eip6110Constants.HoleskyDepositContractAddress));
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
