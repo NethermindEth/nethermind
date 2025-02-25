@@ -8,7 +8,6 @@ namespace Nethermind.Specs.GnosisForks;
 
 public class CancunGnosis : Forks.Cancun
 {
-
     private static IReleaseSpec _instance;
     protected CancunGnosis() : base()
     {

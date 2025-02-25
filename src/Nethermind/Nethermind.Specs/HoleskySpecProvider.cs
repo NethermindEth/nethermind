@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -15,6 +16,10 @@ public class HoleskySpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x65C36AC0;
     public const ulong PragueTimestamp = 0x67BCEAC0;
 
+    private static IReleaseSpec? _prague;
+
+    private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
+        static () => new Prague { DepositContractAddress = Eip6110Constants.HoleskyDepositContractAddress });
 
     private HoleskySpecProvider() { }
 
@@ -25,7 +30,7 @@ public class HoleskySpecProvider : ISpecProvider
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => Shanghai.Instance,
             < PragueTimestamp => Cancun.Instance,
-            _ => Prague.Instance
+            _ => Prague
         };
     }
 
