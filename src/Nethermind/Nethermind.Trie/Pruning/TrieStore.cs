@@ -815,13 +815,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         Task.WaitAll(disposeTasks);
 
         // Dispose top level last in case something goes wrong, at least the root won't be stored
-		topLevelWriteBatch.Set(commitSet.BlockNumber);
         topLevelWriteBatch.Dispose();
         _nodeStorage.Flush(onlyWal: true);
 
         long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
-        topLevelWriteBatch.Set(commitSet.BlockNumber);
 
         if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 

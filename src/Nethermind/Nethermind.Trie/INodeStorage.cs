@@ -48,6 +48,5 @@ public interface INodeStorage
     {
         void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags);
         void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak);
-        void Set(long blockNumber);
     }
 }

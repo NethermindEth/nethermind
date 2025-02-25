@@ -213,13 +213,5 @@ public class NodeStorage(
             // Only delete half path key. DO NOT delete hash based key.
             writeBatch.Remove(GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak));
         }
-
-        public void Set(long blockNumber)
-        {
-            // TODO: Store in 2nd db column?
-            Span<byte> bytes = stackalloc byte[4];
-            BinaryPrimitives.WriteUInt32BigEndian(bytes, (uint)blockNumber);
-            writeBatch.PutSpan(bytes, []);
-        }
     }
 }

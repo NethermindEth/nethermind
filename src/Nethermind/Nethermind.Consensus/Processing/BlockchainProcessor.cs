@@ -557,7 +557,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.MaxDepth);
+        ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
 
         bool branchingCondition;
         bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
@@ -631,8 +631,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // we need to dig deeper to go all the way to the false (reorg boundary) head
             // otherwise some nodes would be missing
             // we also need to go deeper if we already pruned state for that block
-            //bool notFoundTheBranchingPointYet = !(_blockTree.IsMainChain(branchingPoint.Hash!) && _stateReader.HasStateForRoot(branchingPoint.StateRoot!));
-            bool notFoundTheBranchingPointYet = !(_blockTree.IsMainChain(branchingPoint.Hash!));
+            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
             bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInForceProcessing;

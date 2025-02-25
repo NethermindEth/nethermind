@@ -41,13 +41,6 @@ public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb) : INodeStorag
         ReturnBatch(currentBatch);
     }
 
-    public void Set(long blockNumber)
-    {
-        INodeStorage.WriteBatch currentBatch = RentBatch();
-        currentBatch.Set(blockNumber);
-        ReturnBatch(currentBatch);
-    }
-
     private INodeStorage.WriteBatch RentBatch()
     {
         if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
