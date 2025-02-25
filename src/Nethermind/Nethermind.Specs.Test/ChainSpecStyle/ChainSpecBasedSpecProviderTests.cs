@@ -163,6 +163,9 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
 
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x7f02c3e3c98b133055b8b348b2ac625669ed295d")));
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -197,6 +200,8 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, HoleskySpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x4242424242424242424242424242424242424242")));
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
@@ -487,13 +492,14 @@ public class ChainSpecBasedSpecProviderTests
             typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
         foreach (PropertyInfo propertyInfo in propertyInfos
                      .Where(p => p.Name != nameof(IReleaseSpec.Name))
+
                      // handle mainnet specific exceptions
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
-                     .Where(p => isMainnet || checkDifficultyBomb ||
-                                 p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
-                     .Where(p => isMainnet || checkDifficultyBomb ||
-                                 p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                     .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
+                     .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                     .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DepositContractAddress))
+
                      // handle RLP decoders
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
