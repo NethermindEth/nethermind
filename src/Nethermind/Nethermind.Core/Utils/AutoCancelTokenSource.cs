@@ -12,7 +12,8 @@ namespace Nethermind.Core.Utils;
 /// </summary>
 public readonly struct AutoCancelTokenSource(CancellationTokenSource cancellationTokenSource) : IDisposable
 {
-    public AutoCancelTokenSource(): this(new CancellationTokenSource())
+    public AutoCancelTokenSource()
+        : this(new CancellationTokenSource())
     {
     }
 

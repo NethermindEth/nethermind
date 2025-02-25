@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             Lazy<StateSyncFeed> stateSyncFeed,
             Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
             IBlockTree blockTree
-        ): IDisposable
+        ) : IDisposable
         {
             public SyncPeerMock[] SyncPeerMocks => syncPeerMocks.Value;
             public ISyncPeerPool Pool => syncPeerPool.Value;
