@@ -28,7 +28,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
@@ -114,10 +113,8 @@ namespace Nethermind.Api
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlobTxStorage? BlobTxStorage { get; set; }
-        public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
-        public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner? BlockProducerRunner { get; set; }
         public IBlockTree? BlockTree { get; set; }
@@ -151,7 +148,6 @@ namespace Nethermind.Api
         public ILogFinder? LogFinder { get; set; }
         public ILogIndexStorage? LogIndexStorage { get; set; }
         public ILogManager LogManager { get; set; }
-        public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
@@ -205,9 +201,10 @@ namespace Nethermind.Api
         public IVerifyTrieStarter? VerifyTrieStarter { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
+        public ITrustedNodesManager? TrustedNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
-        public ITransactionProcessor? TransactionProcessor { get; set; }
+        public IMainProcessingContext? MainProcessingContext { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }

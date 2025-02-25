@@ -43,11 +43,23 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>();
+    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
+        new UnboundedChannelOptions()
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+        });
+
+    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
+        new BoundedChannelOptions(MaxProcessingQueueSize)
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+            // Optimize for single writer concurrency (recovery queue)
+            SingleWriter = true,
+        });
+
     private bool _recoveryComplete = false;
-
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(MaxProcessingQueueSize);
-
     private int _queueCount;
 
     private readonly ProcessingStats _stats;
@@ -58,6 +70,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private DateTime _lastProcessedBlock;
 
     private int _currentRecoveryQueueSize;
+    private bool _isProcessingBlock;
     private const int MaxBlocksDuringFastSyncTransition = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
@@ -270,7 +283,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-
+            _isProcessingBlock = true;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -303,6 +316,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                _isProcessingBlock = false;
                 Interlocked.Decrement(ref _queueCount);
             }
 
@@ -386,8 +400,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            Metrics.RecoveryQueueSize = _recoveryQueue.Reader.Count;
-            Metrics.ProcessingQueueSize = _blockQueue.Reader.Count;
+            int blockQueueCount = _blockQueue.Reader.Count;
+            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (_isProcessingBlock ? 1 : 0), 0);
+            Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
 

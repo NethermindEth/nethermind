@@ -45,10 +45,10 @@ public class ChainSpecBasedSpecProviderTests
     [NonParallelizable]
     public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
-        ChainSpec chainSpec = loader.LoadFromFile(path);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
@@ -88,10 +88,10 @@ public class ChainSpecBasedSpecProviderTests
     [NonParallelizable]
     public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
-        ChainSpec chainSpec = loader.LoadFromFile(path);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
@@ -137,8 +137,10 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(1735372, 1677557088)) { TestName = "1677557088" };
             yield return new TestCaseData((ForkActivation)(1735372, 1677557087)) { TestName = "1677557087" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
-            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp)) { TestName = "First Cancun" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 100000000)) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp)) { TestName = "First Prague" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp + 100000000)) { TestName = "Prague" };
         }
     }
 
@@ -161,7 +163,9 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
 
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
-        // TODO: add VerifyPragueSpecifics
+
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x7f02c3e3c98b133055b8b348b2ac625669ed295d")));
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -173,7 +177,10 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(3, HoleskySpecProvider.ShanghaiTimestamp + 24)) { TestName = "Post Shanghai" };
             yield return new TestCaseData(new ForkActivation(4, HoleskySpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(new ForkActivation(5, HoleskySpecProvider.CancunTimestamp)) { TestName = "Cancun" };
-            yield return new TestCaseData(new ForkActivation(6, HoleskySpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData(new ForkActivation(6, HoleskySpecProvider.CancunTimestamp + 24)) { TestName = "Post Cancun" };
+            yield return new TestCaseData(new ForkActivation(7, HoleskySpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
+            yield return new TestCaseData(new ForkActivation(8, HoleskySpecProvider.PragueTimestamp)) { TestName = "Prague" };
+            yield return new TestCaseData(new ForkActivation(9, HoleskySpecProvider.PragueTimestamp + 100000000)) { TestName = "Future Prague" };
         }
     }
 
@@ -193,7 +200,8 @@ public class ChainSpecBasedSpecProviderTests
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoleskySpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
-        // TODO: add VerifyPragueSpecifics
+        IReleaseSpec postPragueSpec = provider.GetSpec((2, HoleskySpecProvider.PragueTimestamp));
+        Assert.That(postPragueSpec.DepositContractAddress, Is.EqualTo(new Address("0x4242424242424242424242424242424242424242")));
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
@@ -484,22 +492,19 @@ public class ChainSpecBasedSpecProviderTests
             typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
         foreach (PropertyInfo propertyInfo in propertyInfos
                      .Where(p => p.Name != nameof(IReleaseSpec.Name))
+
                      // handle mainnet specific exceptions
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
-                     .Where(p => isMainnet || checkDifficultyBomb ||
-                                 p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
-                     .Where(p => isMainnet || checkDifficultyBomb ||
-                                 p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                     .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
+                     .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                     .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DepositContractAddress))
+
                      // handle RLP decoders
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
-                     // Skip EIP-4844 parameter validation
-                     .Where(p => p.Name != nameof(IReleaseSpec.BlobBaseFeeUpdateFraction))
-                     .Where(p => p.Name != nameof(IReleaseSpec.MaxBlobCount))
-                     .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
-                     .Where(p => p.Name != nameof(IReleaseSpec.TargetBlobCount))
+
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
@@ -516,9 +521,10 @@ public class ChainSpecBasedSpecProviderTests
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
-        return loader.LoadFromFile(path);
+        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        return chainSpec;
     }
 
     [Test]

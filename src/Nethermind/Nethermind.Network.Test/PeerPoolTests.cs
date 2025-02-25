@@ -20,6 +20,8 @@ public class PeerPoolTests
     [Test]
     public async Task PeerPool_ShouldThrottleSource_WhenFull()
     {
+        var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+
         TestNodeSource nodeSource = new TestNodeSource();
         PeerPool pool = new PeerPool(
             nodeSource,
@@ -30,7 +32,8 @@ public class PeerPoolTests
                 MaxActivePeers = 5,
                 MaxCandidatePeerCount = 10
             },
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            trustedNodesManager);
 
         Random rand = new Random(0);
         PrivateKeyGenerator keyGen = new PrivateKeyGenerator(new TestRandom((m) => rand.Next(m), (s) =>
