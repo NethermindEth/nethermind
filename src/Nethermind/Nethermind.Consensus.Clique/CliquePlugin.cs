@@ -163,14 +163,14 @@ namespace Nethermind.Consensus.Clique
             return blockProducer;
         }
 
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             _blockProducerRunner = new CliqueBlockProducerRunner(
                 _nethermindApi.BlockTree,
                 _nethermindApi.Timestamper,
                 _nethermindApi.CryptoRandom,
                 _snapshotManager,
-                (CliqueBlockProducer)_nethermindApi.BlockProducer!,
+                (CliqueBlockProducer)blockProducer,
                 _cliqueConfig,
                 _nethermindApi.LogManager);
             _nethermindApi.DisposeStack.Push(_blockProducerRunner);
