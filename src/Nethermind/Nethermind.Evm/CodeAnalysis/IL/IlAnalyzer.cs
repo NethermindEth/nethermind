@@ -213,7 +213,7 @@ public static class IlAnalyzer
 
             if (codeData.Item1[i].IsBlocking)
             {
-                int endSegment = i + (config.IsFullAotEnabled ? 1 : 0);
+                int endSegment = i + 1;
                 segments.Add(AnalyzeSegment(codeData.Item1, startSegment..endSegment));
                 startSegment = i + 1;
                 continue;

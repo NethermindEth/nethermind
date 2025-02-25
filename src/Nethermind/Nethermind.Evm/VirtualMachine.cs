@@ -722,7 +722,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     case ContractState.Failed:
                         return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
                     default:
-                        goto Empty;
+                        return CallResult.Empty;
                 }
             }
         }

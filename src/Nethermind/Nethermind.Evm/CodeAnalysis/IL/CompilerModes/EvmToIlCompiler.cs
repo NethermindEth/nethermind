@@ -205,18 +205,22 @@ internal static class Precompiler
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
+                method.PrintString($"PC : {op.ProgramCounter}; OP: {op}\n");
+
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
-                if (config.BakeInTracingInAotModes)
+                if(!op.IsTerminating && !op.IsJump)
                 {
-                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                    if (config.BakeInTracingInAotModes)
+                    {
+                        UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                        EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                    }
+                    else
+                    {
+                        UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
+                    }
                 }
-                else
-                {
-                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
-                }
-
 
                 if (op.IsTerminating && !hasEmittedJump)
                 {
@@ -243,10 +247,6 @@ internal static class Precompiler
         method.LoadConstant(1);
         method.Add();
         method.StoreIndirect<int>();
-
-        // return
-        Label returnTrue = method.DefineLabel();
-        Label returnFalse = method.DefineLabel();
 
         method.MarkLabel(exit);
 
@@ -462,14 +462,17 @@ internal static class Precompiler
             // else emit
             opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 
-            if (bakeInTracerCalls)
+            if (!op.IsTerminating && !op.IsJump)
             {
-                UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
-                EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-            }
-            else
-            {
-                UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
+                if (config.BakeInTracingInAotModes)
+                {
+                    UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, op);
+                    EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                }
+                else
+                {
+                    UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSegment);
+                }
             }
         }
 
