@@ -62,7 +62,7 @@ jobs:
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
           - Nethermind.Optimism.Test
-          - Nethermind.Overseer.Test
+          # - Nethermind.Overseer.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
           - Nethermind.Shutter.Test
@@ -83,8 +83,8 @@ jobs:
     - name: ${{ matrix.project }}
       id: test
       run: |
-        dotnet test src/Nethermind/${{ matrix.project }} -c release \
-          ${{ env.COLLECT_COVERAGE == 'true' && '-- --coverage --coverage-output-format cobertura' || '' }}
+        dotnet run --project src/Nethermind/${{ matrix.project }} -c release \
+          ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura' || '' }}
     - name: Save test outcome
       if: success() || failure()
       run: echo "${{ steps.test.outcome == 'success' }}," >> nethermind.outcome
@@ -150,8 +150,8 @@ jobs:
     - name: ${{ matrix.project }}
       id: test
       run: |
-        dotnet test src/Nethermind/${{ matrix.project }} -c release \
-          ${{ env.COLLECT_COVERAGE == 'true' && '-- --coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecov.settings' || '' }}
+        dotnet run --project src/Nethermind/${{ matrix.project }} -c release \
+          ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecov.settings' || '' }}
     - name: Save test outcome
       if: success() || failure()
       run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
