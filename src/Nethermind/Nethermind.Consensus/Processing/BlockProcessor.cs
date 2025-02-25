@@ -323,7 +323,7 @@ public partial class BlockProcessor(
         ReceiptsTracer.StartNewBlockTrace(block);
 
         StoreBeaconRoot(block, spec);
-        _blockhashStore.ApplyBlockhashStateChanges(header);
+        _blockhashStore.ApplyBlockhashStateChanges(header, NullTxTracer.Instance);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);

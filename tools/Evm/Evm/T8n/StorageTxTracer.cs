@@ -9,24 +9,24 @@ namespace Evm.T8n;
 
 public class StorageTxTracer : TxTracer, IBlockTracer
 {
-    private readonly Dictionary<Address, List<UInt256>> _storages = new();
+    public readonly Dictionary<Address, List<UInt256>> Storages = new();
     public bool IsTracingRewards => false;
     public override bool IsTracingOpLevelStorage => true;
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
         ReadOnlySpan<byte> currentValue)
     {
-        if (!_storages.TryGetValue(address, out _))
+        if (!Storages.TryGetValue(address, out _))
         {
-            _storages[address] = [];
+            Storages[address] = [];
         }
 
-        _storages[address].Add(storageIndex);
+        Storages[address].Add(storageIndex);
     }
 
     public List<UInt256> GetStorageKeys(Address address)
     {
-        _storages.TryGetValue(address, out List<UInt256>? storage);
+        Storages.TryGetValue(address, out List<UInt256>? storage);
         return storage ?? [];
     }
 

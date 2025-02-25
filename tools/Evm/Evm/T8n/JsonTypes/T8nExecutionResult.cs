@@ -76,7 +76,7 @@ public class T8nExecutionResult
     private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, WorldState stateProvider,
         StorageTxTracer storageTracer, Block block, List<ProofTxTracer> proofTxTracerList)
     {
-        var addresses = CollectAccountAddresses(test, block, proofTxTracerList);
+        var addresses = CollectAccountAddresses(test, block, proofTxTracerList, storageTracer);
         Dictionary<Address, AccountState> accounts = new();
         foreach (var address in addresses)
         {
@@ -93,7 +93,7 @@ public class T8nExecutionResult
         return accounts;
     }
 
-    private static HashSet<Address> CollectAccountAddresses(T8nTest test, Block block, List<ProofTxTracer> proofTxTracerList)
+    private static HashSet<Address> CollectAccountAddresses(T8nTest test, Block block, List<ProofTxTracer> proofTxTracerList, StorageTxTracer storageTracer)
     {
         HashSet<Address> addresses = [];
         addresses.AddRange(test.Alloc.Keys);
@@ -106,6 +106,7 @@ public class T8nExecutionResult
             if (tx.To is not null) addresses.Add(tx.To);
         }
         addresses.AddRange(proofTxTracerList.SelectMany(tracer => tracer.Accounts));
+        addresses.AddRange(storageTracer.Storages.Keys);
 
         return addresses;
     }

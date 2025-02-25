@@ -6,6 +6,7 @@ using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -77,6 +78,7 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
+        new BlockhashStore(test.SpecProvider, stateProvider).ApplyBlockhashStateChanges(block.Header, storageTxTracer);
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (block.ParentBeaconBlockRoot is not null)
         {
