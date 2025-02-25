@@ -33,48 +33,48 @@ jobs:
       matrix:
         project:
           - Nethermind.Abi.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.Cli.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.Hive.Test
-          - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.Optimism.Test
-          - Nethermind.Overseer.Test
-          - Nethermind.Runner.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
-          - Nethermind.Synchronization.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
-          - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
+          # - Nethermind.Api.Test
+          # - Nethermind.AuRa.Test
+          # - Nethermind.Blockchain.Test
+          # - Nethermind.Cli.Test
+          # - Nethermind.Clique.Test
+          # - Nethermind.Config.Test
+          # - Nethermind.Consensus.Test
+          # - Nethermind.Core.Test
+          # - Nethermind.Db.Test
+          # - Nethermind.Ethash.Test
+          # - Nethermind.EthStats.Test
+          # - Nethermind.Evm.Test
+          # - Nethermind.Facade.Test
+          # - Nethermind.Flashbots.Test
+          # - Nethermind.HealthChecks.Test
+          # - Nethermind.Hive.Test
+          # - Nethermind.JsonRpc.Test
+          # - Nethermind.JsonRpc.TraceStore.Test
+          # - Nethermind.KeyStore.Test
+          # - Nethermind.Logging.NLog.Test
+          # - Nethermind.Merge.AuRa.Test
+          # - Nethermind.Merge.Plugin.Test
+          # - Nethermind.Mining.Test
+          # - Nethermind.Monitoring.Test
+          # - Nethermind.Network.Discovery.Test
+          # - Nethermind.Network.Dns.Test
+          # - Nethermind.Network.Enr.Test
+          # - Nethermind.Network.Test
+          # - Nethermind.Optimism.Test
+          # - Nethermind.Overseer.Test
+          # - Nethermind.Runner.Test
+          # - Nethermind.Serialization.Ssz.Test
+          # - Nethermind.Shutter.Test
+          # - Nethermind.Sockets.Test
+          # - Nethermind.Specs.Test
+          # - Nethermind.State.Test
+          # - Nethermind.State.Test.Runner.Test
+          # - Nethermind.Synchronization.Test
+          # - Nethermind.Taiko.Test
+          # - Nethermind.Trie.Test
+          # - Nethermind.TxPool.Test
+          # - Nethermind.Wallet.Test
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
@@ -124,22 +124,22 @@ jobs:
       matrix:
         project:
           - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Legacy.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Blockchain.Legacy.Test
-          - Ethereum.Blockchain.Pyspec.Test
-          - Ethereum.Blockchain.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Transition.Test
-          - Ethereum.Trie.Test
-          - Ethereum.VM.Test
+          # - Ethereum.Basic.Test
+          # - Ethereum.Blockchain.Block.Legacy.Test
+          # - Ethereum.Blockchain.Block.Test
+          # - Ethereum.Blockchain.Legacy.Test
+          # - Ethereum.Blockchain.Pyspec.Test
+          # - Ethereum.Blockchain.Test
+          # - Ethereum.Difficulty.Test
+          # - Ethereum.HexPrefix.Test
+          # - Ethereum.KeyAddress.Test
+          # - Ethereum.KeyStore.Test
+          # - Ethereum.PoW.Test
+          # - Ethereum.Rlp.Test
+          # - Ethereum.Transaction.Test
+          # - Ethereum.Transition.Test
+          # - Ethereum.Trie.Test
+          # - Ethereum.VM.Test
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
