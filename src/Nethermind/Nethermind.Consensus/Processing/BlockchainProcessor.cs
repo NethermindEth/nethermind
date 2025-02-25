@@ -663,7 +663,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             else
             {
-                 _logger.Trace(branchingPoint is null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
+                _logger.Trace(branchingPoint is null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
             }
         }
 

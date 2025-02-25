@@ -30,7 +30,7 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]>[] _storageProofItems;
 
         private readonly Dictionary<Hash256AsKey, StorageNodeInfo> _storageNodeInfos = new(Hash256AsKeyComparer.Instance);
-        private readonly Dictionary<Hash256AsKey,StorageNodeInfo>.AlternateLookup<ValueHash256> _storageNodeInfosLookup;
+        private readonly Dictionary<Hash256AsKey, StorageNodeInfo>.AlternateLookup<ValueHash256> _storageNodeInfosLookup;
         private readonly HashSet<Hash256AsKey> _nodeToVisitFilter = new(Hash256AsKeyComparer.Instance);
         private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _nodeToVisitFilterLookup;
         private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
