@@ -29,24 +29,19 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]> _accountProofItems = new();
         private readonly List<byte[]>[] _storageProofItems;
 
-        private readonly Dictionary<Hash256, StorageNodeInfo> _storageNodeInfos = new();
-        private readonly HashSet<Hash256> _nodeToVisitFilter = new();
+        private readonly Dictionary<Hash256AsKey, StorageNodeInfo> _storageNodeInfos = new(Hash256AsKeyComparer.Instance);
+        private readonly Dictionary<Hash256AsKey,StorageNodeInfo>.AlternateLookup<ValueHash256> _storageNodeInfosLookup;
+        private readonly HashSet<Hash256AsKey> _nodeToVisitFilter = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _nodeToVisitFilterLookup;
+        private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         private class StorageNodeInfo
         {
-            public StorageNodeInfo()
-            {
-                StorageIndices = new List<int>();
-            }
-
             public int PathIndex { get; set; }
-            public List<int> StorageIndices { get; }
+            public List<int> StorageIndices { get; } = new();
         }
 
-        private static Hash256 ToKey(byte[] index)
-        {
-            return Keccak.Compute(index);
-        }
+        private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
         private static byte[] ToKey(UInt256 index)
         {
@@ -58,23 +53,25 @@ namespace Nethermind.State.Proofs
         /// <summary>
         /// Only for testing
         /// </summary>
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[] keccakStorageKeys)
-            : this(hashedAddress, keccakStorageKeys.Select(static (keccak) => (ValueHash256)keccak).ToArray())
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[]? keccakStorageKeys)
+            : this(hashedAddress, keccakStorageKeys?.Select(static keccak => (ValueHash256)keccak).ToArray())
         {
         }
 
         /// <summary>
         /// Only for testing too
         /// </summary>
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[] keccakStorageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[]? keccakStorageKeys)
         {
             keccakStorageKeys ??= [];
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
-            _accountProof = new AccountProof();
-            _accountProof.StorageProofs = new StorageProof[keccakStorageKeys.Length];
-            _accountProof.Address = _address;
+            _accountProof = new AccountProof
+            {
+                StorageProofs = new StorageProof[keccakStorageKeys.Length],
+                Address = _address
+            };
 
             _fullStoragePaths = new Nibble[keccakStorageKeys.Length][];
             _storageProofItems = new List<byte[]>[keccakStorageKeys.Length];
@@ -87,39 +84,21 @@ namespace Nethermind.State.Proofs
             {
                 _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Bytes);
 
-                _accountProof.StorageProofs[i] = new StorageProof();
-                // we don't know the key (index)
-                //_accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = Bytes.ZeroByte;
+                _accountProof.StorageProofs[i] = new StorageProof
+                {
+                    // we don't know the key (index)
+                    //_accountProof.StorageProofs[i].Key = storageKeys[i];
+                    Value = Bytes.ZeroByte
+                };
             }
+
+            _storageNodeInfosLookup = _storageNodeInfos.GetAlternateLookup<ValueHash256>();
+            _nodeToVisitFilterLookup = _nodeToVisitFilter.GetAlternateLookup<ValueHash256>();
         }
 
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][] storageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][]? storageKeys)
+            : this(hashedAddress, storageKeys?.Select(ToKey).ToArray())
         {
-            storageKeys ??= [];
-            _fullAccountPath = Nibbles.FromBytes(hashedAddress);
-
-            Hash256[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
-
-            _accountProof = new AccountProof();
-            _accountProof.StorageProofs = new StorageProof[localStorageKeys.Length];
-            _accountProof.Address = _address;
-
-            _fullStoragePaths = new Nibble[localStorageKeys.Length][];
-            _storageProofItems = new List<byte[]>[localStorageKeys.Length];
-            for (int i = 0; i < _storageProofItems.Length; i++)
-            {
-                _storageProofItems[i] = new List<byte[]>();
-            }
-
-            for (int i = 0; i < localStorageKeys.Length; i++)
-            {
-                _fullStoragePaths[i] = Nibbles.FromBytes(localStorageKeys[i].Bytes);
-
-                _accountProof.StorageProofs[i] = new StorageProof();
-                _accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = Bytes.ZeroByte;
-            }
         }
 
         public AccountProofCollector(Address address, params byte[][] storageKeys)
@@ -146,21 +125,21 @@ namespace Nethermind.State.Proofs
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(in OldStyleTrieVisitContext _, Hash256 nextNode)
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
         {
-            if (_storageNodeInfos.TryGetValue(nextNode, out StorageNodeInfo value))
+            if (_storageNodeInfosLookup.TryGetValue(nextNode, out StorageNodeInfo value))
             {
                 _pathTraversalIndex = value.PathIndex;
             }
 
-            return _nodeToVisitFilter.Contains(nextNode);
+            return _nodeToVisitFilterLookup.Contains(nextNode);
         }
 
-        public void VisitTree(in OldStyleTrieVisitContext _, Hash256 rootHash)
+        public void VisitTree(in OldStyleTrieVisitContext _, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in OldStyleTrieVisitContext _, Hash256 nodeHash)
+        public void VisitMissingNode(in OldStyleTrieVisitContext _, in ValueHash256 nodeHash)
         {
         }
 
@@ -308,8 +287,6 @@ namespace Nethermind.State.Proofs
 
             return isPathMatched;
         }
-
-        private readonly AccountDecoder _accountDecoder = new();
 
         public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account)
         {

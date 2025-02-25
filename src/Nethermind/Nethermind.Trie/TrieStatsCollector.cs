@@ -68,16 +68,16 @@ namespace Nethermind.Trie
         public TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
-        public void VisitTree(in Context nodeContext, Hash256 rootHash)
+        public void VisitTree(in Context nodeContext, in ValueHash256 rootHash)
         {
         }
 
-        public bool ShouldVisit(in Context nodeContext, Hash256 nextNode)
+        public bool ShouldVisit(in Context nodeContext, in ValueHash256 nextNode)
         {
             return true;
         }
 
-        public void VisitMissingNode(in Context nodeContext, Hash256 nodeHash)
+        public void VisitMissingNode(in Context nodeContext, in ValueHash256 nodeHash)
         {
             if (nodeContext.IsStorage)
             {

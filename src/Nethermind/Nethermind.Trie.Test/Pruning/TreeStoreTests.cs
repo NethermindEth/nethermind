@@ -1059,7 +1059,7 @@ namespace Nethermind.Trie.Test.Pruning
             UInt256 slot = 1;
 
             INodeStorage nodeStorage = new NodeStorage(memDbProvider.StateDb, _scheme);
-            (Hash256 stateRoot, Hash256 storageRoot) = SetupStartingState();
+            (Hash256 stateRoot, ValueHash256 storageRoot) = SetupStartingState();
             nodeStorage.Get(address.ToAccountPath, TreePath.Empty, storageRoot).Should().NotBeNull();
 
             using TrieStore fullTrieStore = CreateTrieStore(
@@ -1074,7 +1074,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // Simulate some kind of cache access which causes unresolved node to remain.
             IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address.ToAccountPath);
-            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot);
+            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
 
             worldState.StateRoot = stateRoot;
             worldState.IncrementNonce(address, 1);
@@ -1086,7 +1086,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             return;
 
-            (Hash256, Hash256) SetupStartingState()
+            (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 worldState.StateRoot = Keccak.EmptyTreeHash;
