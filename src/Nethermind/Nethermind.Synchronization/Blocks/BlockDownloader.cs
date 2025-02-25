@@ -27,7 +27,6 @@ using NonBlocking;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    // public class BlockDownloader : ISyncDownloader<BlocksRequest>
     public class BlockDownloader : IForwardSyncController
     {
         // This includes both body and receipt
@@ -125,7 +124,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 previousStartingHeaderNumber = headers[0].Number;
 
-                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[0].Number, originalShouldProcess, originalDownloadReceiptOpts);
+                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
                 using var satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
 
                 if (satisfiedEntry.Count == 0)
@@ -147,6 +146,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
+
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
                     {
                         if (shouldProcess)
@@ -179,13 +179,16 @@ namespace Nethermind.Synchronization.Blocks
             IList<BlockHeader> receiptsToDownload = new List<BlockHeader>();
             IList<BlockHeader> bodiesToDownload = new List<BlockHeader>();
 
+            BlockHeader parentHeader = headers[0];
             foreach (var blockHeader in headers.Skip(1))
             {
                 if (!_downloadRequests.TryGetValue(blockHeader.Hash!, out BlockEntry? entry))
                 {
-                    entry = new BlockEntry(blockHeader, null, null, null, false, false);
+                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
+                    entry = new BlockEntry(parentHeader, blockHeader, null, null, null, false, false);
                     _downloadRequests.TryAdd(blockHeader.Hash, entry);
                 }
+                parentHeader = blockHeader;
 
                 if ((bodiesOnly ?? true) && entry.Block is null && !entry.BlockRequestSent)
                 {
@@ -215,6 +218,7 @@ namespace Nethermind.Synchronization.Blocks
                     break;
                 }
             }
+            Console.Error.WriteLine($"R {receiptsToDownload.Count} B {bodiesToDownload.Count}");
 
             if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies and {receiptsToDownload.Count} receipts.");
 
@@ -232,7 +236,7 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<BlockEntry>? satisfiedEntry = null;
             try
             {
-                satisfiedEntry = ArrayPoolList<BlockEntry>.Empty();
+                satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
                 foreach (var blockHeader in headers.Skip(1))
                 {
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
@@ -279,13 +283,17 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                Block block = new Block(header, body);
+                // Note: For some magical reason, the `header` is not the same as `entry.Header`.
+                // This is important as `entry.Header.MaybeParent` need to be kept alive.
+                Block block = new Block(entry.Header, body);
 
                 if (!_blockValidator.ValidateSuggestedBlock(block, out string? errorMessage))
                 {
                     if (_logger.IsTrace) _logger.Debug($"Invalid block from {peer}, {errorMessage}");
 
-                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}");
+                    Console.Error.WriteLine($"INvalid {block.Header.MaybeParent.TryGetTarget(out _)} {entry.Header.MaybeParent.TryGetTarget(out _)}");
+
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.BlockRequestSent = false;
                     continue;
@@ -426,6 +434,7 @@ namespace Nethermind.Synchronization.Blocks
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
+            Console.Error.WriteLine($"Suggest {GetHashCode()} {currentBlock.Number} with {suggestOptions} got {addResult}");
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
                 if (!shouldProcess)
@@ -496,7 +505,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
             {
-                if (header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
+                if (peer?.SyncPeer is not null && header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
                 {
                     peer.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
                     peer.SyncPeer.HeadNumber = header.Number;
@@ -596,6 +605,7 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         private record BlockEntry(
+            BlockHeader ParentHeader, // Needed to keep the `MaybeParent` of the `Header` alive.
             BlockHeader Header,
             Block? Block,
             TxReceipt[]? Receipts,

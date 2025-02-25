@@ -43,6 +43,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
+using Nethermind.Merge.Plugin;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -374,6 +375,62 @@ public partial class BlockDownloaderTests
 
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
+
+    [Ignore("Need forward header to not go before sync pivot.")]
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Can_DownloadBlockOutOfOrder(bool isMerge)
+    {
+        int syncPivotNumber = 128;
+        int fastSyncLag = 1;
+
+        Response responseOptions = Response.AllCorrect | Response.WithTransactions;
+        SyncPeerMock syncPeer = new(1024, true, responseOptions);
+
+        BlockHeader syncPivot = syncPeer.BlockTree.FindHeader(syncPivotNumber)!;
+        ISyncConfig syncConfig = new SyncConfig()
+        {
+            FastSync = true,
+            StateMaxDistanceFromHead = fastSyncLag,
+            PivotNumber = syncPivot.Number.ToString(),
+            PivotHash = syncPivot.Hash!.ToString(),
+        };
+
+        await using IContainer container = isMerge
+            ? CreateMergeNode((_) => { }, syncConfig, new MergeConfig() { TerminalTotalDifficulty = "0" })
+            : CreateNode(configProvider: new ConfigProvider(syncConfig));
+
+        Context ctx = container.Resolve<Context>();
+
+        // ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
+        // ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
+
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        var req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req1, default);
+
+        while (true)
+        {
+            var req = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+            if (req is null) break;
+            await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req, default);
+            ctx.FastSyncFeedComponent.Feed.HandleResponse(req);
+        }
+
+        ctx.FastSyncFeedComponent.Feed.HandleResponse(req1);
+
+        // Receipt for the first req
+        var finalReq = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, finalReq, default);
+        ctx.FastSyncFeedComponent.Feed.HandleResponse(finalReq);
+
+        _ = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(99);
+    }
+
 
     private class SlowSealValidator : ISealValidator
     {
