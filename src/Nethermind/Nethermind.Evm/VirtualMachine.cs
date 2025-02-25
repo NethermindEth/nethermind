@@ -84,7 +84,7 @@ public class VirtualMachine : IVirtualMachine
             IsPatternMatchingEnabled = false,
 
             AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = logger.IsTrace,
+            BakeInTracingInAotModes = true,
 
             FullAotThreshold = 5,
             PatternMatchingThreshold = int.MaxValue,
@@ -203,7 +203,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             IsPatternMatchingEnabled = false,
 
             AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = true,
+            BakeInTracingInAotModes = false,
 
             FullAotThreshold = 5,
             PatternMatchingThreshold = int.MaxValue,
@@ -763,7 +763,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     case ContractState.Failed:
                         return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
                     default:
-                        goto Empty;
+                        return CallResult.Empty;
                 }
             }
         }

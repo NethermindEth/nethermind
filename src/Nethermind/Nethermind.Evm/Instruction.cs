@@ -372,7 +372,7 @@ namespace Nethermind.Evm
                 [Instruction.REVERT] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
             }.ToFrozenDictionary();
     }
-    public struct OpcodeInfo(int pc, Instruction instruction, int? argumentIndex)
+    public record struct OpcodeInfo(int pc, Instruction instruction, int? argumentIndex)
     {
         public readonly OpcodeMetadata Metadata => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
         public readonly Instruction Operation => instruction;
@@ -392,7 +392,7 @@ namespace Nethermind.Evm
             Instruction.RETURN => true,
             Instruction.REVERT => true,
             Instruction.SELFDESTRUCT => true,
-            _ => !Enum.IsDefined<Instruction>(instruction)
+            _ => false
         };
 
         public static bool IsCall(this Instruction instruction) => instruction switch

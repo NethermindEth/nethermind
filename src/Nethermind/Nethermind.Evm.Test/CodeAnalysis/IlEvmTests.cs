@@ -2143,7 +2143,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i < RepeatCount; i++)
             {
-                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
                 var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null && !tr.SegmentID.StartsWith("ILEVM_PRECOMPILED_")).ToList();
                 accumulatedTraces.AddRange(traces);
@@ -2190,7 +2190,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i < RepeatCount; i++)
             {
-                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
                 var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null && tr.SegmentID.StartsWith("ILEVM_PRECOMPILED_")).ToList();
                 accumulatedTraces.AddRange(traces);
@@ -2212,6 +2212,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_JIT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
         {
+            Console.WriteLine(testcase.msg);
+
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
@@ -2233,8 +2235,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 EnableMemory = true,
             };
 
-            var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
-            var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
+            using var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
+            using var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
 
             var bytecode = Prepare.EvmCode
                 .PushData(UInt256.MaxValue)
@@ -2339,8 +2341,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 EnableMemory = true,
             };
 
-            var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
-            var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
+            using var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
+            using var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
 
             var bytecode = Prepare.EvmCode
                 .PushData(UInt256.MaxValue)
@@ -2392,8 +2394,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             });
             enhancedChain.InsertCode(testcase.bytecode);
 
-            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
             var bytecode =
                 Prepare.EvmCode
@@ -2473,7 +2475,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
             enhancedChain.ForceRunAnalysis(aux, ILMode.PARTIAL_AOT_MODE);
 
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
             var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
 
@@ -2550,7 +2552,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             enhancedChain.ForceRunAnalysis(aux, ILMode.PATTERN_BASED_MODE | ILMode.PARTIAL_AOT_MODE);
 
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
             var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
 
@@ -2623,8 +2625,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Address main = enhancedChain.InsertCode(maincode);
             standardChain.InsertCode(maincode);
 
-            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
             var bytecode =
                 Prepare.EvmCode
@@ -2701,8 +2703,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Address main = enhancedChain.InsertCode(maincode);
             standardChain.InsertCode(maincode);
 
-            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
             var bytecode =
                 Prepare.EvmCode
@@ -2760,7 +2762,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
-            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            using var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
             var traces = tracer.BuildResult();
 

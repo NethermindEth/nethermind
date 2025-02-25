@@ -2336,14 +2336,10 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         method.MarkLabel(skipGasDeduction);
 
+                        envLoader.LoadVmState(method, locals, false);
+                        envLoader.LoadWorldState(method, locals, false);
                         method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                         method.Call(Word.GetAddress);
-                        method.StoreLocal(locals.address);
-
-                        envLoader.LoadVmState(method, locals, false);
-
-                        envLoader.LoadWorldState(method, locals, false);
-                        method.LoadLocal(locals.address);
                         method.LoadLocalAddress(locals.gasAvailable);
                         envLoader.LoadSpec(method, locals, false);
                         envLoader.LoadTxTracer(method, locals, false);
@@ -2365,8 +2361,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(selfDestructNotTracing);
                         }
                         method.StoreLocal(locals.uint32A);
-
-
                         method.LoadLocal(locals.uint32A);
                         method.LoadConstant((int)EvmExceptionType.None);
                         method.BranchIfEqual(happyPath);
@@ -2378,9 +2372,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadConstant((int)ContractState.Failed);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
-                        envLoader.LoadGasAvailable(method, locals, true);
-                        method.LoadLocal(locals.gasAvailable);
-                        method.StoreIndirect<long>();
                         method.FakeBranch(escapeLabels.exitLabel);
 
                         method.MarkLabel(happyPath);
@@ -2479,17 +2470,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                             method.Call(callMethodNotTracing);
                         }
                         method.StoreLocal(locals.uint32A);
-
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
-                        {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-                        }
-                        else
-                        {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
-                        }
-
                         method.LoadLocal(locals.uint32A);
                         method.LoadConstant((int)EvmExceptionType.None);
                         method.BranchIfEqual(happyPath);
@@ -2501,9 +2481,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.LoadConstant((int)ContractState.Failed);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
-                        envLoader.LoadGasAvailable(method, locals, true);
-                        method.LoadLocal(locals.gasAvailable);
-                        method.StoreIndirect<long>();
                         method.FakeBranch(escapeLabels.exitLabel); ;
 
                         method.MarkLabel(happyPath);
@@ -2519,13 +2496,22 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
                         method.BranchIfTrue(skipStateMachineScheduling);
 
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                        }
+                        else
+                        {
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                        }
+
                         // cast object to CallResult and store it in 
                         envLoader.LoadResult(method, locals, true);
                         method.Duplicate();
                         method.LoadLocal(newStateToExe);
                         method.CastClass(typeof(EvmState));
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
-
                         method.LoadConstant((int)ContractState.Halted);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
                         method.FakeBranch(escapeLabels.returnLabel);
@@ -2588,7 +2574,7 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         // load callvalue
                         if (instruction is Instruction.CREATE2)
                         {
-                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index++);
+                            method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], index);
                             method.Call(Word.GetMutableSpan);
                         }
                         else
@@ -2622,17 +2608,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         }
                         method.StoreLocal(locals.uint32A);
 
-
-                        if (ilCompilerConfig.BakeInTracingInAotModes)
-                        {
-                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
-                        }
-                        else
-                        {
-                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
-                        }
-
                         method.LoadLocal(locals.uint32A);
                         method.LoadConstant((int)EvmExceptionType.None);
                         method.BranchIfEqual(happyPath);
@@ -2643,37 +2618,9 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
                         method.LoadConstant((int)ContractState.Failed);
                         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-
-                        envLoader.LoadGasAvailable(method, locals, true);
-                        method.LoadLocal(locals.gasAvailable);
-                        method.StoreIndirect<long>();
                         method.FakeBranch(escapeLabels.exitLabel);
 
                         method.MarkLabel(happyPath);
-
-                        Label skipStateMachineScheduling = method.DefineLabel();
-
-                        method.LoadLocal(newStateToExe);
-                        method.LoadNull();
-                        method.BranchIfEqual(skipStateMachineScheduling);
-
-                        method.LoadLocal(newStateToExe);
-                        method.Call(GetPropertyInfo(typeof(VirtualMachine.CallResult), nameof(VirtualMachine.CallResult.BoxedEmpty), false, out _));
-                        method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
-                        method.BranchIfTrue(skipStateMachineScheduling);
-
-                        // cast object to CallResult and store it in 
-                        envLoader.LoadResult(method, locals, true);
-                        method.Duplicate();
-                        method.LoadLocal(newStateToExe);
-                        method.CastClass(typeof(EvmState));
-                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
-
-                        method.LoadConstant((int)ContractState.Halted);
-                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
-                        method.Branch(escapeLabels.returnLabel);
-
-                        method.MarkLabel(skipStateMachineScheduling);
                         Label hasNoItemsToPush = method.DefineLabel();
 
                         method.LoadLocalAddress(toPushToStack);
@@ -2686,6 +2633,33 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         method.Call(Word.SetUInt256);
 
                         method.MarkLabel(hasNoItemsToPush);
+
+                        Label skipStateMachineScheduling = method.DefineLabel();
+
+                        method.LoadLocal(newStateToExe);
+                        method.LoadNull();
+                        method.BranchIfEqual(skipStateMachineScheduling);
+
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                        }
+                        else
+                        {
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                        }
+
+                        envLoader.LoadResult(method, locals, true);
+                        method.Duplicate();
+                        method.LoadLocal(newStateToExe);
+                        method.CastClass(typeof(EvmState));
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.CallResult)));
+                        method.LoadConstant((int)ContractState.Halted);
+                        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+                        method.Branch(escapeLabels.returnLabel);
+
+                        method.MarkLabel(skipStateMachineScheduling);
                     });
                     break;
                 default:
