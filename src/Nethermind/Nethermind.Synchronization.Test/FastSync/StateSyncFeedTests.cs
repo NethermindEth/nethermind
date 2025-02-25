@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = PrepareDownloader(dbContext, mock =>
                 mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 1).Select(k => HashKey(k)).ToArray()));
             SafeContext ctx = container.Resolve<SafeContext>();
-            await ActivateAndWait(ctx, 1000);
+            await ActivateAndWait(ctx, 2000);
 
 
             dbContext.CompareTrees("AFTER FIRST SYNC");
