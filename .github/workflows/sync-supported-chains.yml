@@ -264,7 +264,7 @@ jobs:
           python scripts/waitForSync.py
 
       - name: Get Nethermind Debug Logs
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         id: find-and-upload
         run: |      
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
@@ -280,7 +280,7 @@ jobs:
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
 
       - name: Upload Nethermind Debug logs artifact
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.artifact_name }}
@@ -288,7 +288,7 @@ jobs:
           retention-days: 7
           
       - name: Get Consensus Logs
-        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia' && matrix.config.network != 'energyweb' && matrix.config.network != 'volta'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
@@ -373,5 +373,5 @@ jobs:
           ref: "main"
           token: "${{ steps.gh-app.outputs.token }}"
           inputs: '{
-            "nethermind_branch": "${{ github.event.workflow_run.head_branch }}"
+            "nethermind_branch": "refs/heads/${{ github.event.workflow_run.head_branch }}"
           }'

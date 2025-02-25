@@ -374,7 +374,7 @@ public partial class BlockDownloaderTests
         peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
 
         ctx.PeerPool
-            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
+            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(peerAllocation));
 
         SyncFeedComponent<BlocksRequest> fastSyncFeedComponent = ctx.FastSyncFeedComponent;

@@ -35,11 +35,6 @@ namespace Nethermind.Synchronization.ParallelSync
     public class MultiSyncModeSelector : ISyncModeSelector
     {
         /// <summary>
-        /// Number of blocks before the best peer's head when we switch from fast sync to full sync
-        /// </summary>
-        public const int FastSyncLag = 32;
-
-        /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
         /// </summary>
         private const int StickyStateNodesDelta = 32;
@@ -60,10 +55,10 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksHeadersFinished => !FastSyncEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
-        private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
+        private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? _syncConfig.StateMinDistanceFromHead;
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
         private long? LastBlockThatEnabledFullSync { get; set; }
-        private int TotalSyncLag => FastSyncLag + _syncConfig.HeaderStateDistance;
+        private int TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private readonly CancellationTokenSource _cancellation = new();
 
@@ -89,10 +84,10 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
 
-            if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
+            if (syncConfig.FastSyncCatchUpHeightDelta <= syncConfig.StateMinDistanceFromHead)
             {
                 if (_logger.IsWarn)
-                    _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FastSyncLag}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
+                    _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {syncConfig.StateMinDistanceFromHead}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
 
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
@@ -584,7 +579,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasAnyPostPivotPeer = best.AnyPostPivotPeerKnown;
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
-            bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
+            bool stickyStateNodes = best.TargetBlock - best.Header < (_syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta);
 
             bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
             bool stateNotDownloadedYet = !best.StateDownloaded;
