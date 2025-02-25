@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.Tracing
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor, _executeOptions);
 
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot)
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
