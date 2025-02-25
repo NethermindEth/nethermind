@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -54,9 +53,14 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             var bytes = Bytes.FromHexString(input);
+
             (ReadOnlyMemory<byte> output, bool success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
-            success.Should().BeTrue();
-            output.Should().Be(ReadOnlyMemory<byte>.Empty);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(success, Is.True);
+                Assert.That(output.ToArray(), Is.EquivalentTo(Array.Empty<byte>()));
+            }
         }
     }
 }
