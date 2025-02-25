@@ -26,7 +26,7 @@ using G1 = Bls.P1;
 public class ShutterTxLoader(
     ILogFinder logFinder,
     IShutterConfig cfg,
-    ShutterTime time,
+    SlotTime time,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
     IAbiEncoder abiEncoder,

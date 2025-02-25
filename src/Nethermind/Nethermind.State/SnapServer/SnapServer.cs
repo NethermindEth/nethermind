@@ -268,7 +268,7 @@ public class SnapServer : ISnapServer
     {
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
-        VisitingOptions opt = new() { ExpectAccounts = false };
+        VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();

@@ -62,15 +62,7 @@ namespace Nethermind.State
             };
         }
 
-        public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
-        {
-            ArgumentNullException.ThrowIfNull(visitor);
-            ArgumentNullException.ThrowIfNull(stateRoot);
-
-            _tree.Accept(visitor, stateRoot, visitingOptions);
-        }
-
-        public void Accept<TCtx>(ITreeVisitor<TCtx>? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
