@@ -33,7 +33,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Autofac;
-using Nethermind.State;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Taiko;
@@ -116,7 +115,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
         ArgumentNullException.ThrowIfNull(_api.SyncModeSelector);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -147,53 +145,11 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             await Task.Delay(100);
         await Task.Delay(5000);
 
-
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
-
-        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager!.CreateOverridableWorldScope(), readonlyBlockTree, _api.SpecProvider, _api.LogManager);
-
-        // TODO: This is using a mix of read only scope and main processing scope. Is this intended?
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
-        IMainProcessingContext mainScope = _api.MainProcessingContext!;
-
-        BlockProcessor blockProcessor =
-            new(_api.SpecProvider,
-                _api.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
-                scope.WorldState,
-                _api.ReceiptStorage,
-                mainScope.TransactionProcessor,
-                new BeaconBlockRootHandler(mainScope.TransactionProcessor, mainScope.WorldState),
-                new BlockhashStore(_api.SpecProvider, scope.WorldState),
-                _api.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
-
-        IBlockchainProcessor blockchainProcessor =
-            new BlockchainProcessor(
-                _api.BlockTree,
-                blockProcessor,
-                _api.BlockPreprocessor,
-                txProcessingEnv.StateReader,
-                _api.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
-        OneTimeChainProcessor chainProcessor = new(
-            scope.WorldState,
-            blockchainProcessor);
-
         IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
-
-        TaikoPayloadPreparationService payloadPreparationService = new(
-            chainProcessor,
-            scope.WorldState,
-            _api.L1OriginStore,
-            _api.LogManager,
-            txDecoder);
-
+        TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, readonlyBlockTree, txDecoder);
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         ReadOnlyTxProcessingEnvFactory readonlyTxProcessingEnvFactory = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
@@ -253,6 +209,53 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.RpcModuleProvider.RegisterSingle(engine);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
+    }
+
+    private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IReadOnlyBlockTree blockTree, IRlpStreamDecoder<Transaction> txDecoder)
+    {
+        ArgumentNullException.ThrowIfNull(api.L1OriginStore);
+        ArgumentNullException.ThrowIfNull(api.SpecProvider);
+
+        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
+            new(api.WorldStateManager!.CreateOverridableWorldScope(), blockTree, api.SpecProvider, api.LogManager);
+
+        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+
+        BlockProcessor blockProcessor =
+            new(api.SpecProvider,
+                api.BlockValidator,
+                NoBlockRewards.Instance,
+                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
+                scope.WorldState,
+                api.ReceiptStorage,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+                new BlockhashStore(api.SpecProvider, scope.WorldState),
+                api.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, api.LogManager)));
+
+        IBlockchainProcessor blockchainProcessor =
+            new BlockchainProcessor(
+                api.BlockTree,
+                blockProcessor,
+                api.BlockPreprocessor,
+                txProcessingEnv.StateReader,
+                api.LogManager,
+                BlockchainProcessor.Options.NoReceipts);
+
+        OneTimeChainProcessor chainProcessor = new(
+            scope.WorldState,
+            blockchainProcessor);
+
+
+        TaikoPayloadPreparationService payloadPreparationService = new(
+            chainProcessor,
+            scope.WorldState,
+            api.L1OriginStore,
+            api.LogManager,
+            txDecoder);
+
+        return payloadPreparationService;
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
