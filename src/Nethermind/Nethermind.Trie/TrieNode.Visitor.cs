@@ -172,6 +172,7 @@ namespace Nethermind.Trie
                 TNodeContext childContext = nodeContext.Add((byte)i);
                 if (visitor.ShouldVisit(childContext, childNode.Keccak!))
                 {
+                    // Note: Changing the subtreeSizeHint mid iteration is deliberate
                     subtreeSizeHint = Accept(childNode, childContext, trieNodeResolver, ref path, isStorage, subtreeSizeHint);
                     actualSubtreeSize += subtreeSizeHint;
                 }
@@ -204,6 +205,7 @@ namespace Nethermind.Trie
                 TNodeContext childContext = nodeContext.Add((byte)i);
                 if (visitor.ShouldVisit(childContext, child.Keccak!))
                 {
+                    // Note: Changing the subtreeSizeHint mid iteration is deliberate
                     subtreeSizeHint = Accept(child, childContext, nodeResolver, ref path, isStorage, subtreeSizeHint);
                     actualSubtreeSize += subtreeSizeHint;
                 }
@@ -246,6 +248,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
+                        // Note: Changing the subtreeSizeHint mid iteration is deliberate
                         subtreeSizeHint = Accept(child, childContext, trieNodeResolver, ref path, isStorage, subtreeSizeHint);
                         actualSubtreeSize += subtreeSizeHint;
                     }
@@ -274,7 +277,7 @@ namespace Nethermind.Trie
             int visitedNodes = Interlocked.Increment(ref _visitedNodes);
 
             // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
-            if (visitedNodes % 100_000_000 == 0)
+            if (visitedNodes % 20_000_000 == 0)
             {
                 GC.Collect();
             }
