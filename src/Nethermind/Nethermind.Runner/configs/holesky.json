@@ -29,9 +29,6 @@
     "EnginePort": 8551,
     "EngineEnabledModules": "net,eth,subscribe,engine,web3,client,flashbots"
   },
-  "Flasbots": {
-    "Enabled": true
-  },
   "Merge": {
     "Enabled": true
   }

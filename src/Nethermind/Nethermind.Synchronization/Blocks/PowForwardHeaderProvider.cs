@@ -85,10 +85,12 @@ public class PowForwardHeaderProvider(
         if (_lastResponseBatch is null) return null;
 
         long currentNumber = _currentNumber;
+        bool sameFound = false;
         ArrayPoolList<BlockHeader>? newResponse = null;
         for (int i = 0; i < _lastResponseBatch.Count; i++)
         {
-            if (_lastResponseBatch[i].Number != currentNumber) continue;
+            if (!sameFound && _lastResponseBatch[i].Number != currentNumber) continue;
+            sameFound = true;
 
             newResponse ??= new ArrayPoolList<BlockHeader>(_lastResponseBatch.Count - i);
             newResponse.Add(_lastResponseBatch[i]);
