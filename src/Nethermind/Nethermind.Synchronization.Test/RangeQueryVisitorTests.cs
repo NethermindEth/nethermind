@@ -110,7 +110,7 @@ public class RangeQueryVisitorTests
         act.Should().NotThrow();
     }
 
-    private static VisitingOptions CreateVisitingOptions() => new() { ExpectAccounts = false };
+    private static VisitingOptions CreateVisitingOptions() => new() { };
 
     [Test]
     public void RangeFetchPartialLimit()
