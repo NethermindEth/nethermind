@@ -26,15 +26,15 @@ public class NodeStorage(
     public INodeStorage.KeyScheme Scheme { get; set; } = scheme;
     public bool RequirePath { get; } = requirePath;
 
-    private Span<byte> GetExpectedPath(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak) =>
+    private Span<byte> GetExpectedPath(Span<byte> pathSpan, in ValueHash256? address, in TreePath path, in ValueHash256 keccak) =>
         Scheme == INodeStorage.KeyScheme.HalfPath
             ? GetHalfPathNodeStoragePathSpan(pathSpan, address, path, keccak)
             : GetHashBasedStoragePath(pathSpan, keccak);
 
-    public static byte[] GetHalfPathNodeStoragePath(Hash256? address, in TreePath path, in ValueHash256 keccak) =>
+    public static byte[] GetHalfPathNodeStoragePath(in ValueHash256? address, in TreePath path, in ValueHash256 keccak) =>
         GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak).ToArray();
 
-    private static Span<byte> GetHalfPathNodeStoragePathSpan(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak)
+    private static Span<byte> GetHalfPathNodeStoragePathSpan(Span<byte> pathSpan, in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
     {
         Debug.Assert(pathSpan.Length == StoragePathLength);
 
@@ -84,7 +84,7 @@ public class NodeStorage(
         else
         {
             pathSpan[0] = 2;
-            address.Bytes.CopyTo(pathSpan[1..]);
+            address.Value.Bytes.CopyTo(pathSpan[1..]);
             path.Path.BytesAsSpan[..8].CopyTo(pathSpan[33..]);
 
             pathSpan[41] = (byte)path.Length;
@@ -101,7 +101,7 @@ public class NodeStorage(
         return pathSpan[..32];
     }
 
-    public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public byte[]? Get(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         // Some of the code does not save empty tree at all so this is more about correctness than optimization.
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -132,7 +132,7 @@ public class NodeStorage(
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
-    public bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 keccak)
+    public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
         {
@@ -159,7 +159,7 @@ public class NodeStorage(
         return new WriteBatch(batch, this);
     }
 
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
+    public void Set(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
         {
@@ -199,7 +199,7 @@ public class NodeStorage(
             writeBatch.Dispose();
         }
 
-        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
+        public void Set(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {
             if (keccak != Keccak.EmptyTreeHash.ValueHash256)
             {
@@ -207,7 +207,7 @@ public class NodeStorage(
             }
         }
 
-        public void Remove(Hash256? address, in TreePath path, in ValueHash256 keccak)
+        public void Remove(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
         {
             // Only delete half path key. DO NOT delete hash based key.
             writeBatch.Remove(GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak));
