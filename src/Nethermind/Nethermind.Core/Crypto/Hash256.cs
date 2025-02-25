@@ -32,6 +32,7 @@ namespace Nethermind.Core.Crypto
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
+        public static implicit operator ValueHash256?(Hash256? keccak) => keccak?.ValueHash256;
         public static implicit operator ValueHash256(Hash256? keccak) => keccak?.ValueHash256 ?? default;
 
         public ValueHash256(byte[] bytes)
