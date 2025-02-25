@@ -14,7 +14,6 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
-    <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
     <EmbeddedResource Include="..\..\tests\PoWTests\ethash_tests.json">
       <Link>keyaddrtest.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -1,0 +1,11 @@
+<Configuration>
+  <CodeCoverage>
+    <Functions>
+      <Exclude>
+        <Function>^Ethereum\.Test\.Base.*</Function>
+        <Function>^Nethermind\.Blockchain\.Test.*</Function>
+        <Function>^Nethermind\.Core\.Test.*</Function>
+      </Exclude>
+    </Functions>
+  </CodeCoverage>
+</Configuration>
