@@ -630,11 +630,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // we need to dig deeper to go all the way to the false (reorg boundary) head
             // otherwise some nodes would be missing
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number);
             bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition =
-                (notFoundTheBranchingPointYet || (notReachedTheReorgBoundary && !hasState))
+                (notFoundTheBranchingPointYet || !hasState)
                 && notInForceProcessing;
             if (_logger.IsTrace)
                 _logger.Trace(
@@ -644,7 +643,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     $"TD: {branchingPoint.TotalDifficulty} " +
                     $"Processing conditions " +
                     $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
-                    $"notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, " +
                     $"hasState: {hasState}, " +
                     $"notInForceProcessing: {notInForceProcessing}, ");
 
