@@ -17,6 +17,7 @@ using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;
+using System.Linq;
 
 namespace Nethermind.Network.Test.Rlpx;
 
@@ -78,40 +79,25 @@ public class ZeroNettyP2PHandlerTests
     {
         // Arrange
         ISession session = Substitute.For<ISession>();
-        IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        channelHandlerContext.Allocator.Returns(UnpooledByteBufferAllocator.Default);
 
-        // Create a handler with our mocked session
-        var handler = new MaxSizeExceededTestHandler(session, LimboLogs.Instance);
+        ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+
+        // Create compressed data that will exceed MaxSnappyLength when decompressed
+        var data = Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray());
+
+        // Create a packet with our compressed data
+        IByteBuffer content = Unpooled.Buffer(data.Length);
+        content.WriteBytes(data);
+        ZeroPacket packet = new ZeroPacket(content);
 
         // Act
-        handler.TestDisconnectOnMaxSizeExceeded();
+        handler.ChannelRead(channelHandlerContext, packet);
 
         // Assert
-        session.Received(1).InitiateDisconnect(
-            DisconnectReason.BreachOfProtocol,
-            "Max message size exceeded");
-    }
-
-    // Test handler that simulates the max size exceeded condition
-    private class MaxSizeExceededTestHandler : ZeroNettyP2PHandler
-    {
-        private readonly ISession _session;
-
-        public MaxSizeExceededTestHandler(ISession session, ILogManager logManager)
-            : base(session, logManager)
-        {
-            _session = session;
-        }
-
-        // Method to test the disconnect behavior
-        public void TestDisconnectOnMaxSizeExceeded()
-        {
-            // Directly call the session's InitiateDisconnect method
-            // This is what happens in the handler when a message exceeds the max size
-            _session.InitiateDisconnect(
-                DisconnectReason.BreachOfProtocol,
-                "Max message size exceeded");
-        }
+        session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
     }
 
     private class TestInternalNethermindException : Exception, IInternalNethermindException
