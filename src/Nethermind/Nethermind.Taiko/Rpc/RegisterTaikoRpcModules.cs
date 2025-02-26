@@ -80,7 +80,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.BlockTree.AsReadOnly(),
             _jsonRpcConfig,
-            _api.CreateBlockchainBridge(),
+            _api,
             new BlocksConfig().SecondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,

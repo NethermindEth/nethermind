@@ -45,10 +45,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IStateReader _stateReader;
         private readonly IOverridableTxProcessorSource _env;
         private readonly IBlockchainBridge _blockchainBridge;
-        private readonly IJsonRpcConfig _rpcConfig;
         private readonly ulong _secondsPerSlot;
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader? stateReader, IOverridableTxProcessorSource? env, IBlockchainBridge? blockchainBridge, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot)
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader? stateReader, IOverridableTxProcessorSource? env, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -57,12 +56,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _env = env ?? throw new ArgumentNullException(nameof(env));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
         }
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env, IBlockchainBridge? blockchainBridge, IJsonRpcConfig? rpcConfig, ulong? secondsPerSlot)
-            : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env, blockchainBridge, rpcConfig, secondsPerSlot) { }
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot)
+            : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env, blockchainBridge, secondsPerSlot) { }
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
@@ -329,10 +327,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Simulate transactions using ParityLikeBlockTracer
         /// </summary>
-        public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
+        public ResultWrapper<IReadOnlyList<ParityLikeTxTrace>> trace_simulateV1(
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
         {
-            return new SimulateTxExecutor<ParityLikeTxTrace> (_blockchainBridge, _blockFinder, _rpcConfig, _secondsPerSlot)
+            return new SimulateTxExecutor<ParityLikeTxTrace> (_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
                 .Execute(payload, blockParameter);
         }
 

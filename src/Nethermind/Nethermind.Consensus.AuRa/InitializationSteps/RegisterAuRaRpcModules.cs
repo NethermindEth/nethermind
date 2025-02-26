@@ -70,7 +70,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
-            _api.CreateBlockchainBridge(),
+            _api,
             new BlocksConfig().SecondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
@@ -87,7 +87,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
-        IBlockchainBridge blockchainBridge,
+        IBlockchainBridgeFactory blockchainBridgeFactory,
         ulong secondsPerSlot,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -96,7 +96,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IPoSSwitcher poSSwitcher,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, recoveryStep, rewardCalculatorSource,
+        : TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridgeFactory, secondsPerSlot, recoveryStep, rewardCalculatorSource,
             receiptFinder, specProvider, poSSwitcher, logManager)
     {
         protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager,
@@ -209,7 +209,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
-            _api.CreateBlockchainBridge(),
+            _api,
             new BlocksConfig().SecondsPerSlot,
             _api.BlockValidator,
             _api.BlockPreprocessor,
@@ -232,7 +232,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
-        IBlockchainBridge blockchainBridge,
+        IBlockchainBridgeFactory blockchainBridgeFactory,
         ulong secondsPerSlot,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
@@ -246,7 +246,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         IFileSystem fileSystem,
         ILogManager logManager,
         IAuRaBlockProcessorFactory factory)
-        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep,
+        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridgeFactory, secondsPerSlot, blockValidator, recoveryStep,
             rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
             badBlockStore, fileSystem, logManager)
     {

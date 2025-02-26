@@ -9,8 +9,8 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
-public class SimulateBlockResult<T>(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
+public class SimulateBlockResult(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
     : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
-    public IReadOnlyList<T> Calls { get; set; } = Array.Empty<T>();
+    public IReadOnlyList<SimulateCallResult> Calls { get; set; } = Array.Empty<SimulateCallResult>();
 }

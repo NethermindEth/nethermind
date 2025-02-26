@@ -6,10 +6,10 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateOutput<T>
+public class SimulateOutput<TTrace>
 {
     public string? Error { get; set; }
     public int? ErrorCode { get; set; }
 
-    public IReadOnlyList<T> Items { get; set; }
+    public IReadOnlyList<TTrace> Items { get; set; }
 }

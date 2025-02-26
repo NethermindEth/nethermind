@@ -17,10 +17,10 @@ namespace Nethermind.Taiko.Rpc;
 
 class TaikoTraceModuleFactory(
     IWorldStateManager worldStateManager,
-    IBlockTree blockTree, IJsonRpcConfig jsonRpcConfig, IBlockchainBridge blockchainBridge, ulong secondsPerSlot,
+    IBlockTree blockTree, IJsonRpcConfig jsonRpcConfig, IBlockchainBridgeFactory blockchainBridgeFactory, ulong secondsPerSlot,
     IBlockPreprocessorStep recoveryStep, IRewardCalculatorSource rewardCalculatorSource, IReceiptStorage receiptFinder,
     ISpecProvider specProvider, IPoSSwitcher poSSwitcher, ILogManager logManager) :
-    TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, recoveryStep, rewardCalculatorSource, receiptFinder, specProvider, poSSwitcher, logManager)
+    TraceModuleFactory(worldStateManager, blockTree, jsonRpcConfig, blockchainBridgeFactory, secondsPerSlot, recoveryStep, rewardCalculatorSource, receiptFinder, specProvider, poSSwitcher, logManager)
 {
     protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) => new TaikoReadOnlyTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
 }

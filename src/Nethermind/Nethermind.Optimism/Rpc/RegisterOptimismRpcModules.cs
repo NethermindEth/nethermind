@@ -102,7 +102,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.WorldStateManager,
             _api.BlockTree,
             _jsonRpcConfig,
-            _api.CreateBlockchainBridge(),
+            _api,
             new BlocksConfig().SecondsPerSlot,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,

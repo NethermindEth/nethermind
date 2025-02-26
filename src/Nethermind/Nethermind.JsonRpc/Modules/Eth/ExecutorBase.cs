@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -43,7 +44,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
     protected abstract TProcessing Prepare(TRequest call);
 
-    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
+    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token, IBlockTracer? tracer = null);
 
     protected ResultWrapper<TResult>? TryGetInputError(CallOutput result)
     {

@@ -391,7 +391,7 @@ public class DebugRpcModule : IDebugRpcModule
     /// <summary>
     /// Simulate transactions using ParityLikeBlockTracer
     /// </summary>
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
+    public ResultWrapper<IReadOnlyList<GethLikeTxTrace>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
     {
         return new SimulateTxExecutor<GethLikeTxTrace> (_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)

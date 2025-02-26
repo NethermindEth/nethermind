@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
     private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly IBlockchainBridge _blockchainBridge;
+    private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;
     private readonly ulong _secondsPerSlot;
     private readonly IBlockValidator _blockValidator;
     protected readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -49,7 +49,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
-        IBlockchainBridge blockchainBridge,
+        IBlockchainBridgeFactory blockchainBridgeFactory,
         ulong secondsPerSlot,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
@@ -67,7 +67,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
         _secondsPerSlot = secondsPerSlot;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
@@ -115,7 +115,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _syncModeSelector,
             _badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridgeFactory.CreateBlockchainBridge(), _secondsPerSlot, _blockTree);
     }
 
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,

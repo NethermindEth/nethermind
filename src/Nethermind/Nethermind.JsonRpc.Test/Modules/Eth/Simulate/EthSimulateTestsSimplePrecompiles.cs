@@ -95,11 +95,10 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             TraceTransfers = true
         };
 
-        SimulateOutput<SimulateBlockResult<SimulateCallResult>> result = chain.Bridge.Simulate(
+        SimulateOutput<SimulateBlockResult> result = chain.Bridge.Simulate<SimulateBlockResult>(
             chain.BlockFinder.Head?.Header!,
             payload,
-            CancellationToken.None,
-            new BlockchainBridge.SimulateBlockTracerFactory()
+            CancellationToken.None
         );
 
         byte[] addressBytes = result.Items[0].Calls[0].ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);

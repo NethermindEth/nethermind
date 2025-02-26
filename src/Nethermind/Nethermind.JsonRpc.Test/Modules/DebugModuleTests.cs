@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -47,7 +48,7 @@ public class DebugModuleTests
         byte[] value = new byte[] { 4, 5, 6 };
         debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
         _ = Substitute.For<IConfigProvider>();
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response =
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as JsonRpcSuccessResponse;
 
@@ -59,7 +60,7 @@ public class DebugModuleTests
     {
         debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null!);
         _ = Substitute.For<IConfigProvider>();
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         byte[] key = new byte[] { 1, 2, 3 };
         using var response =
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as
@@ -81,7 +82,7 @@ public class DebugModuleTests
                     new BlockInfo(TestItem.KeccakB, 1001),
                 }));
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
         var chainLevel = response?.Result as ChainLevelForRpc;
         Assert.That(chainLevel, Is.Not.Null);
@@ -96,7 +97,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
@@ -109,7 +110,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(blk.Header);
         debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", 0) as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
@@ -122,7 +123,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
@@ -136,7 +137,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
@@ -147,7 +148,7 @@ public class DebugModuleTests
     {
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
@@ -158,7 +159,7 @@ public class DebugModuleTests
     {
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
@@ -171,7 +172,7 @@ public class DebugModuleTests
         _ = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
@@ -209,7 +210,7 @@ public class DebugModuleTests
 
         debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new object());
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
@@ -222,7 +223,7 @@ public class DebugModuleTests
 
         debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new object());
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"customProperty\":1},\"id\":67}"));
@@ -256,7 +257,7 @@ public class DebugModuleTests
 
         debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new { disableStack = true });
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
@@ -295,7 +296,7 @@ public class DebugModuleTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         ResultWrapper<IEnumerable<BadBlock>> blocks = rpcModule.debug_getBadBlocks();
         Assert.That(blocks.Data.Count, Is.EqualTo(1));
         Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
@@ -308,7 +309,7 @@ public class DebugModuleTests
         GethTraceOptions passedOption = null!;
         debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Do<GethTraceOptions>(arg => passedOption = arg))
             .Returns(new GethLikeTxTrace());
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new { disableStack = true, tracerConfig = new { a = true } });
         passedOption.TracerConfig!.ToString().Should().Be("{\"a\":true}");
     }
@@ -347,7 +348,7 @@ public class DebugModuleTests
 
         debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
         var expected = ResultWrapper<GethLikeTxTrace>.Success(
             new GethLikeTxTrace()
@@ -393,7 +394,7 @@ public class DebugModuleTests
     public async Task Migrate_receipts()
     {
         debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
-        IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);
     }
@@ -402,7 +403,7 @@ public class DebugModuleTests
     public async Task Update_head_block()
     {
         debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
-        IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         await RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem.KeccakA);
         debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
@@ -418,7 +419,7 @@ public class DebugModuleTests
             .GetBlockTrace(blockRlp, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(traces);
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
 
@@ -434,7 +435,7 @@ public class DebugModuleTests
             .GetBlockTrace(blockRlp, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(default(GethLikeTxTrace[]));
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.Bytes.ToHexString()}", ErrorCodes.ResourceNotFound);
 
@@ -453,7 +454,7 @@ public class DebugModuleTests
             .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
         var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
 
@@ -472,7 +473,7 @@ public class DebugModuleTests
             .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
         var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
 
@@ -490,7 +491,7 @@ public class DebugModuleTests
             .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(traces);
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_traceBlockByHash(blockHash);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
 
@@ -506,7 +507,7 @@ public class DebugModuleTests
             .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(default(GethLikeTxTrace[]));
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_traceBlockByHash(blockHash);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
 
@@ -524,7 +525,7 @@ public class DebugModuleTests
             .GetBlockTrace(blockNumber, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(traces);
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_traceBlockByNumber(blockNumber);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
 
@@ -540,7 +541,7 @@ public class DebugModuleTests
             .GetBlockTrace(blockNumber, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(default(GethLikeTxTrace[]));
 
-        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         var actual = rpcModule.debug_traceBlockByNumber(blockNumber);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
 
