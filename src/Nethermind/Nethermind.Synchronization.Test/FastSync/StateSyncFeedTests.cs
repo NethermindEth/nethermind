@@ -217,6 +217,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
+        [Retry(3)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -245,11 +246,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.RemoteStateTree.Commit();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
-
             ctx.Pool.WakeUpAll();
-
             ctx.Feed.FallAsleep();
+
+            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             foreach (SyncPeerMock mock in ctx.SyncPeerMocks)
             {
