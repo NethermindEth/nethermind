@@ -36,6 +36,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
@@ -409,76 +410,6 @@ public partial class BlockDownloaderTests
         public bool ValidateSeal(BlockHeader header, bool force)
         {
             Thread.Sleep(1000);
-            return true;
-        }
-    }
-
-    private class SlowHeaderValidator : IBlockValidator
-    {
-
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool Validate(BlockHeader header, bool isUncle)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool ValidateSuggestedBlock(Block block)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool ValidateWithdrawals(Block block, out string? error)
-        {
-            Thread.Sleep(1000);
-            error = string.Empty;
-            return true;
-        }
-
-        public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
             return true;
         }
     }
@@ -907,17 +838,16 @@ public partial class BlockDownloaderTests
             .Build();
     }
 
-    private class Context(IComponentContext scope)
+    private record Context(
+        ResponseBuilder ResponseBuilder,
+        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+        IBlockTree BlockTree,
+        InMemoryReceiptStorage ReceiptStorage,
+        ISyncPeerPool PeerPool
+    )
     {
-        public ResponseBuilder ResponseBuilder => scope.Resolve<ResponseBuilder>();
-        public SyncFeedComponent<BlocksRequest> FastSyncFeedComponent =>
-            scope.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed));
-        private SyncFeedComponent<BlocksRequest> FullSyncFeedComponent =>
-            scope.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed));
         public BlockDownloader BlockDownloader => FullSyncFeedComponent.BlockDownloader;
-        public IBlockTree BlockTree => scope.Resolve<IBlockTree>();
-        public InMemoryReceiptStorage ReceiptStorage => scope.Resolve<InMemoryReceiptStorage>();
-        public ISyncPeerPool PeerPool => scope.Resolve<ISyncPeerPool>();
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
         public SyncDispatcher<BlocksRequest> Dispatcher => FullSyncFeedComponent.Dispatcher;
 

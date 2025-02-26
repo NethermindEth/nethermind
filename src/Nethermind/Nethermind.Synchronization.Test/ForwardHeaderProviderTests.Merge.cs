@@ -148,10 +148,11 @@ public partial class ForwardHeaderProviderTests
         }, configs);
     }
 
-    private class PostMergeContext(IComponentContext scope) : Context(scope)
-    {
-        private readonly IComponentContext _scope = scope;
-        public IBeaconPivot BeaconPivot => _scope.Resolve<IBeaconPivot>();
-        public IPoSSwitcher PosSwitcher => _scope.Resolve<IPoSSwitcher>();
-    }
+    private record PostMergeContext(
+        IBeaconPivot BeaconPivot,
+        ResponseBuilder ResponseBuilder,
+        IForwardHeaderProvider ForwardHeaderProvider,
+        IBlockTree BlockTree,
+        ISyncPeerPool PeerPool
+    ) : Context(ResponseBuilder, ForwardHeaderProvider, BlockTree, PeerPool);
 }

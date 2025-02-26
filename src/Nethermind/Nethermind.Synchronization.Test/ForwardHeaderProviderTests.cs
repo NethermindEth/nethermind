@@ -19,20 +19,16 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Network;
 using Nethermind.Specs;
-using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Test;
@@ -265,76 +261,6 @@ public partial class ForwardHeaderProviderTests
         }
     }
 
-    private class SlowHeaderValidator : IBlockValidator
-    {
-
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool Validate(BlockHeader header, bool isUncle)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool ValidateSuggestedBlock(Block block)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-        {
-            Thread.Sleep(1000);
-            return true;
-        }
-
-        public bool ValidateWithdrawals(Block block, out string? error)
-        {
-            Thread.Sleep(1000);
-            error = string.Empty;
-            return true;
-        }
-
-        public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-
-        public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
-        {
-            Thread.Sleep(1000);
-            error = null;
-            return true;
-        }
-    }
-
     [Test, MaxTime(7000)]
     [Ignore("Fails OneLoggerLogManager Travis only")]
     public async Task Can_cancel_seal_validation()
@@ -490,9 +416,7 @@ public partial class ForwardHeaderProviderTests
         JustFirst = 8,
         AllKnown = 16,
         TimeoutOnFullBatch = 32,
-        NoBody = 64,
         WithTransactions = 128,
-        IncorrectReceiptRoot = 256
     }
 
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
@@ -527,18 +451,16 @@ public partial class ForwardHeaderProviderTests
             .Build();
     }
 
-    private class Context(IComponentContext scope)
+    private record Context(
+        ResponseBuilder ResponseBuilder,
+        IForwardHeaderProvider ForwardHeaderProvider,
+        IBlockTree BlockTree,
+        ISyncPeerPool PeerPool
+    )
     {
-        public ResponseBuilder ResponseBuilder => scope.Resolve<ResponseBuilder>();
-        public IForwardHeaderProvider ForwardHeaderProvider => scope.Resolve<IForwardHeaderProvider>();
-        public IBlockTree BlockTree => scope.Resolve<IBlockTree>();
-        public InMemoryReceiptStorage ReceiptStorage => scope.Resolve<InMemoryReceiptStorage>();
-        public ISyncPeerPool PeerPool => scope.Resolve<ISyncPeerPool>();
-
         public void ConfigureBestPeer(ISyncPeer syncPeer)
         {
-            PeerInfo peerInfo = new(syncPeer);
-            ConfigureBestPeer(peerInfo);
+            ConfigureBestPeer(new PeerInfo(syncPeer));
         }
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
@@ -548,11 +470,11 @@ public partial class ForwardHeaderProviderTests
             peerAllocationStrategy
                 .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
                 .Returns(peerInfo);
-            SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.ForwardHeader, null);
+            SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
             peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), BlockTree);
 
             PeerPool
-                .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
+                .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(peerAllocation));
         }
     }
@@ -607,11 +529,6 @@ public partial class ForwardHeaderProviderTests
             HeadNumber = BlockTree.Head!.Number;
             HeadHash = BlockTree.HeadHash!;
             TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
-        }
-
-        public void ExtendTree(long newLength)
-        {
-            BuildTree(newLength, _withReceipts);
         }
 
         public Node Node { get; } = null!;

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -487,10 +488,37 @@ public partial class BlockDownloaderTests
         }, configs);
     }
 
-    private class PostMergeContext(IComponentContext scope) : Context(scope)
-    {
-        private readonly IComponentContext _scope = scope;
-        public IBeaconPivot BeaconPivot => _scope.Resolve<IBeaconPivot>();
-        public IPoSSwitcher PosSwitcher => _scope.Resolve<IPoSSwitcher>();
-    }
+    /**
+    private record PostMergeContext(
+        IBeaconPivot BeaconPivot,
+        IPoSSwitcher PosSwitcher,
+        ResponseBuilder ResponseBuilder,
+        SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+        SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+        IBlockTree BlockTree,
+        InMemoryReceiptStorage ReceiptStorage,
+        ISyncPeerPool PeerPool) : Context(
+        ResponseBuilder,
+        FastSyncFeedComponent,
+        FullSyncFeedComponent,
+        BlockTree,
+        ReceiptStorage,
+        PeerPool);
+        */
+
+    private record PostMergeContext(
+        IBeaconPivot BeaconPivot,
+        IPoSSwitcher PosSwitcher,
+        ResponseBuilder ResponseBuilder,
+        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+        IBlockTree BlockTree,
+        InMemoryReceiptStorage ReceiptStorage,
+        ISyncPeerPool PeerPool) : Context(
+        ResponseBuilder,
+        FastSyncFeedComponent,
+        FullSyncFeedComponent,
+        BlockTree,
+        ReceiptStorage,
+        PeerPool);
 }
