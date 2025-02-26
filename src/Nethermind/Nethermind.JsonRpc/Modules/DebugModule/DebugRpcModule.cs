@@ -394,7 +394,8 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<IReadOnlyList<GethLikeTxTrace>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
     {
+        GethLikeBlockMemoryTracer tracer = new(GethTraceOptions.Default);
         return new SimulateTxExecutor<GethLikeTxTrace> (_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
-            .Execute(payload, blockParameter);
+            .Execute(payload, blockParameter, tracer: tracer);
     }
 }

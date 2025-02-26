@@ -50,7 +50,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
-                Dictionary<Address, AccountOverride>? stateOverride = null)
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                IBlockTracer? tracer = null)
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);

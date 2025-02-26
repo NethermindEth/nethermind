@@ -123,7 +123,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
@@ -137,7 +137,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot, Substitute.For<IBlockFinder>());
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));

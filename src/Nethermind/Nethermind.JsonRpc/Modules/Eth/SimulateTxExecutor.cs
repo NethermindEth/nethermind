@@ -97,7 +97,8 @@ public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBl
     public override ResultWrapper<IReadOnlyList<TTrace>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
-        Dictionary<Address, AccountOverride>? stateOverride = null)
+        Dictionary<Address, AccountOverride>? stateOverride = null,
+        IBlockTracer? tracer = null)
     {
         if (call.BlockStateCalls is null)
             return ResultWrapper<IReadOnlyList<TTrace>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
@@ -187,7 +188,7 @@ public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBl
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token, tracer);
     }
 
     protected override ResultWrapper<IReadOnlyList<TTrace>> Execute(BlockHeader header,
