@@ -204,7 +204,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
     }
 
-    private void CommitAndPersistNode(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags, INodeStorage.WriteBatch? writeBatch)
+    private void CommitAndPersistNode(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags, INodeStorage.IWriteBatch? writeBatch)
     {
         Debug.Assert(!_pruningStrategy.PruningEnabled);
 
@@ -348,7 +348,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         {
             // For safety we prefer to commit half of the batch rather than not commit at all.
             // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-            using INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
+            using INodeStorage.IWriteBatch currentBatch = _nodeStorage.StartWriteBatch();
             ParallelPersistBlockCommitSet(set);
         }
 
@@ -747,7 +747,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         WriteFlags writeFlags = WriteFlags.None
     )
     {
-        INodeStorage.WriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
+        INodeStorage.IWriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
         const int parallelBoundaryPathLength = 2;
 
         using ArrayPoolList<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new(ShardedDirtyNodeCount);
@@ -787,7 +787,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         // So parallel read should go there first instead of to the database for these dataset,
         // so it should be fine for these to be non atomic.
         Task[] disposeTasks = _disposeTasks;
-        Channel<INodeStorage.WriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.WriteBatch>(disposeTasks.Length * 2);
+        Channel<INodeStorage.IWriteBatch> disposeQueue = Channel.CreateBounded<INodeStorage.IWriteBatch>(disposeTasks.Length * 2);
         try
         {
             for (int index = 0; index < disposeTasks.Length; index++)
@@ -828,10 +828,10 @@ public class TrieStore : ITrieStore, IPruningTrieStore
 
     private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
         Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
-        WriteFlags writeFlags, Channel<INodeStorage.WriteBatch> disposeQueue)
+        WriteFlags writeFlags, Channel<INodeStorage.IWriteBatch> disposeQueue)
     {
         long persistedNodeCount = 0;
-        INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+        INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
         async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
         {
@@ -850,7 +850,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
-    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
+    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
     {
         ArgumentNullException.ThrowIfNull(currentNode);
 
@@ -966,7 +966,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+            INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
             for (int index = 0; index < candidateSets.Count; index++)
             {
                 BlockCommitSet blockCommitSet = candidateSets[index];
@@ -1167,7 +1167,7 @@ public class TrieStore : ITrieStore, IPruningTrieStore
     private class NonPruningTrieStoreCommitter(
         TrieStore trieStore,
         Hash256? address,
-        INodeStorage.WriteBatch writeBatch,
+        INodeStorage.IWriteBatch writeBatch,
         WriteFlags writeFlags = WriteFlags.None
     ) : ICommitter
     {

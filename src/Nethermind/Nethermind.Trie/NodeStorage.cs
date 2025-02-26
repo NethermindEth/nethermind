@@ -101,7 +101,7 @@ public class NodeStorage(
         return pathSpan[..32];
     }
 
-    public byte[]? Get(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         // Some of the code does not save empty tree at all so this is more about correctness than optimization.
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -150,7 +150,7 @@ public class NodeStorage(
                || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
     }
 
-    public INodeStorage.WriteBatch StartWriteBatch()
+    public INodeStorage.IWriteBatch StartWriteBatch()
     {
         IWriteBatch batch = _keyValueStore is IKeyValueStoreWithBatching withBatching
             ? withBatching.StartWriteBatch()
@@ -159,7 +159,7 @@ public class NodeStorage(
         return new WriteBatch(batch, this);
     }
 
-    public void Set(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
+    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
         {
@@ -192,25 +192,19 @@ public class NodeStorage(
         }
     }
 
-    private class WriteBatch(IWriteBatch writeBatch, NodeStorage nodeStorage) : INodeStorage.WriteBatch
+    private class WriteBatch(IWriteBatch writeBatch, NodeStorage nodeStorage) : INodeStorage.IWriteBatch
     {
         public void Dispose()
         {
             writeBatch.Dispose();
         }
 
-        public void Set(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {
             if (keccak != Keccak.EmptyTreeHash.ValueHash256)
             {
                 writeBatch.PutSpan(nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
             }
-        }
-
-        public void Remove(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
-        {
-            // Only delete half path key. DO NOT delete hash based key.
-            writeBatch.Remove(GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak));
         }
     }
 }

@@ -11,7 +11,7 @@ namespace Nethermind.Trie.Pruning
         public static IReadOnlyTrieStore AsReadOnly(this ITrieStore trieStore, INodeStorage? readOnlyStore = null) =>
             trieStore.AsReadOnly(readOnlyStore);
 
-        public static IScopedTrieStore GetTrieStore(this ITrieStore trieStore, ValueHash256 address) =>
+        public static IScopedTrieStore GetTrieStore(this ITrieStore trieStore, in ValueHash256 address) =>
             trieStore.GetTrieStore((Hash256)address);
     }
 }
