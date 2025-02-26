@@ -58,7 +58,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private DateTime _lastProcessedBlock;
 
     private int _currentRecoveryQueueSize;
-    private const int MaxBlocksDuringFastSyncTransition = 8192;
+    private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
 
@@ -579,6 +579,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         do
         {
             iterations++;
+            if (iterations > MaxBranchSize)
+            {
+                throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+            }
+
             if (!options.ContainsFlag(ProcessingOptions.Trace))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
