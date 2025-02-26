@@ -251,7 +251,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (stage == "END")
                 {
-                    Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
+                    Assert.That(local, Is.EqualTo(remote), $"{stage}{Environment.NewLine}{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
                     LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
