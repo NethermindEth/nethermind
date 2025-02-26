@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.Ethash
 
         public string SealEngineType => NethDev;
 
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
                 .IfPoolIsNotEmpty(_nethermindApi.TxPool)
@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.Ethash
             return new StandardBlockProducerRunner(
                 trigger,
                 _nethermindApi.BlockTree,
-                _nethermindApi.BlockProducer!);
+                blockProducer);
         }
     }
 }

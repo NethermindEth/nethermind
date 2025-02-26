@@ -71,12 +71,12 @@ namespace Nethermind.Consensus.AuRa
             return null;
         }
 
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             return new StandardBlockProducerRunner(
                 _blockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
-                _nethermindApi.BlockProducer!);
+                blockProducer);
         }
 
         public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,

@@ -66,7 +66,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     public IEnumerable<StepInfo> GetSteps()
     {
         yield return typeof(InitializeBlockchainOptimism);
-        yield return typeof(InitializeBlockProducerOptimism);
+        // yield return typeof(InitializeBlockProducerOptimism);
         yield return typeof(RegisterOptimismRpcModules);
     }
 
@@ -82,10 +82,49 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             throw new ArgumentException(
                 "Optimism does not support additional tx source");
 
-        ArgumentNullException.ThrowIfNull(_api);
-        ArgumentNullException.ThrowIfNull(_api.BlockProducer);
+        StepDependencyException.ThrowIfNull(_api);
+        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.SpecProvider);
+        StepDependencyException.ThrowIfNull(_api.BlockValidator);
+        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.TxPool);
+        StepDependencyException.ThrowIfNull(_api.TransactionComparerProvider);
+        StepDependencyException.ThrowIfNull(_api.SpecHelper);
+        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
 
-        return _api.BlockProducer;
+        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+            _api.WorldStateManager,
+            _api.BlockTree,
+            _api.SpecProvider,
+            _api.BlockValidator,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
+            _api.BlockPreprocessor,
+            _api.TxPool,
+            _api.TransactionComparerProvider,
+            _api.Config<IBlocksConfig>(),
+            _api.SpecHelper,
+            _api.L1CostHelper,
+            _api.LogManager);
+
+        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
+
+        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+
+        return new OptimismPostMergeBlockProducer(
+            new OptimismPayloadTxSource(),
+            producerEnv.TxSource,
+            producerEnv.ChainProcessor,
+            producerEnv.BlockTree,
+            producerEnv.ReadOnlyStateProvider,
+            _api.GasLimitCalculator,
+            NullSealEngine.Instance,
+            new ManualTimestamper(),
+            _api.SpecProvider,
+            _api.LogManager,
+            _api.Config<IBlocksConfig>());
     }
 
     #endregion
@@ -96,7 +135,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
@@ -147,13 +186,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
         ArgumentNullException.ThrowIfNull(_api.BetterPeerStrategy);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
 
-        _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
+        _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor);
 
         _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
@@ -295,18 +333,18 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
             _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
                 _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
-            _cl.Start();
+            await _cl.Start();
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
     }
 
-    public IBlockProducerRunner CreateBlockProducerRunner()
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
     {
         return new StandardBlockProducerRunner(
             DefaultBlockProductionTrigger,
             _api!.BlockTree!,
-            _api.BlockProducer!);
+            blockProducer);
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

@@ -23,7 +23,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
-    [TestFixture]
     public class ReceiptMigrationTests
     {
         [TestCase(null, 0, false, false, false, false)] // No change to migrate
@@ -71,6 +70,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
             TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
             TestMemDb txDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Transactions);
+            TestMemDb defaultDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Default);
 
             // Put the last block receipt encoding
             Block lastBlock = blockTree.FindBlock(chainLength - 1);
@@ -93,21 +93,20 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             if (commandStartBlockNumber.HasValue)
             {
-                _ = migration.Run(commandStartBlockNumber.Value);
+                _ = migration.Run(0, commandStartBlockNumber.Value);
                 await migration._migrationTask!;
             }
             else
             {
                 await migration.Run(CancellationToken.None);
+                Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
             }
-
-            Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
 
             if (wasMigrated)
             {
-                int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
+                int blockNum = commandStartBlockNumber ?? (chainLength - 1);
                 int txCount = blockNum * 2;
-                txDb.KeyWasWritten((item => item.Item2 is null), txCount);
+                defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
                 outMemoryReceiptStorage.Count.Should().Be(txCount);
             }

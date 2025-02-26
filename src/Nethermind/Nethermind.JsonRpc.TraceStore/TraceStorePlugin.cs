@@ -57,7 +57,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         ParityLikeBlockTracer parityTracer = new(traceStoreConfig.TraceTypes);
         DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
             new(parityTracer, _db!, _traceSerializer!, _logManager);
-        _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
+        _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
 
         // Potentially we could add protocol for syncing traces.
         return Task.CompletedTask;

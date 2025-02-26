@@ -9,11 +9,9 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IConsensusPlugin : INethermindPlugin, IBlockProducerFactory
+    public interface IConsensusPlugin : INethermindPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
     {
         INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
-
-        IBlockProducerRunner CreateBlockProducerRunner();
     }
 }

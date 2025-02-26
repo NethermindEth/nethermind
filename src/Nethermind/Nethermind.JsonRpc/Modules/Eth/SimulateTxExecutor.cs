@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -124,87 +125,63 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
         if (call.BlockStateCalls is not null)
         {
-            long lastBlockNumber = -1;
-            ulong lastBlockTime = 0;
+            long lastBlockNumber = header.Number;
+            ulong lastBlockTime = header.Timestamp;
+
+            using ArrayPoolList<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
 
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
-                ulong givenNumber = blockToSimulate.BlockOverrides?.Number ??
-                                    (lastBlockNumber == -1 ? (ulong)header.Number + 1 : (ulong)lastBlockNumber + 1);
+                blockToSimulate.BlockOverrides ??= new BlockOverride();
+                ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? (ulong)lastBlockNumber + 1;
 
                 if (givenNumber > long.MaxValue)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
                         $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
-                if (givenNumber < (ulong)header.Number)
+                if (givenNumber <= (ulong)lastBlockNumber)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block number out of order {givenNumber} is < than given base number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                        $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
-                long given = (long)givenNumber;
-                if (given > lastBlockNumber)
-                {
-                    lastBlockNumber = given;
-                }
-                else
-                {
+                // if the no. of filler blocks are greater than maximum simulate blocks cap
+                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block number out of order {givenNumber}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
-                }
+                        $"too many blocks",
+                        ErrorCodes.ClientLimitExceededError);
 
-                blockToSimulate.BlockOverrides ??= new BlockOverride();
-                blockToSimulate.BlockOverrides.Number = givenNumber;
-
-                ulong givenTime = blockToSimulate.BlockOverrides.Time ??
-                                  (lastBlockTime == 0
-                                      ? header.Timestamp + secondsPerSlot.Value
-                                      : lastBlockTime + secondsPerSlot.Value);
-
-                if (givenTime < header.Timestamp)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block timestamp out of order {givenTime} is < than given base timestamp of {header.Timestamp}!", ErrorCodes.BlockTimestampNotIncreased);
-
-                if (givenTime > lastBlockTime)
+                for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
-                    lastBlockTime = givenTime;
-                }
-                else
-                {
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
-                        $"Block timestamp out of order {givenTime}!", ErrorCodes.BlockTimestampNotIncreased);
-                }
-
-                blockToSimulate.BlockOverrides.Time = givenTime;
-            }
-
-            long minBlockNumber = Math.Min(
-                call.BlockStateCalls.Min(b => (long)(b.BlockOverrides?.Number ?? ulong.MaxValue)),
-                header.Number + 1);
-
-            long maxBlockNumber = Math.Max(
-                call.BlockStateCalls.Max(b => (long)(b.BlockOverrides?.Number ?? ulong.MinValue)),
-                minBlockNumber);
-
-            HashSet<long> existingBlockNumbers =
-            [
-                .. call.BlockStateCalls.Select(b => (long)(b.BlockOverrides?.Number ?? ulong.MinValue))
-            ];
-
-            List<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = call.BlockStateCalls;
-
-            for (long blockNumber = minBlockNumber; blockNumber <= maxBlockNumber; blockNumber++)
-            {
-                if (!existingBlockNumbers.Contains(blockNumber))
-                {
+                    ulong fillBlockTime = lastBlockTime + secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
-                        BlockOverrides = new BlockOverride { Number = (ulong)blockNumber },
+                        BlockOverrides = new BlockOverride { Number = fillBlockNumber, Time = fillBlockTime },
                         StateOverrides = null,
                         Calls = []
                     });
+                    lastBlockTime = fillBlockTime;
                 }
-            }
 
-            call.BlockStateCalls.Sort((b1, b2) => b1.BlockOverrides!.Number!.Value.CompareTo(b2.BlockOverrides!.Number!.Value));
+                blockToSimulate.BlockOverrides.Number = givenNumber;
+
+                if (blockToSimulate.BlockOverrides.Time is not null)
+                {
+                    if (blockToSimulate.BlockOverrides.Time <= lastBlockTime)
+                    {
+                        return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(
+                            $"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
+                    }
+                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                }
+                else
+                {
+                    blockToSimulate.BlockOverrides.Time = lastBlockTime + secondsPerSlot;
+                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                }
+                lastBlockNumber = (long)givenNumber;
+
+                completeBlockStateCalls.Add(blockToSimulate);
+            }
+            call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();

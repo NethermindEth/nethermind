@@ -36,6 +36,33 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await stepsManager.InitializeAll(source.Token);
         }
 
+        /*
+        [Test]
+        public async Task With_steps_from_here()
+        {
+            NethermindApi runnerContext = CreateNethermindApi();
+
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
+            EthereumStepsManager stepsManager = new EthereumStepsManager(
+                stepsLoader,
+                runnerContext,
+                LimboLogs.Instance);
+
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            try
+            {
+                await stepsManager.InitializeAll(source.Token);
+            }
+            catch (Exception e)
+            {
+                if (!(e is OperationCanceledException))
+                {
+                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
+                }
+            }
+        }
+        */
+
         [Test]
         [Retry(3)]
         public async Task With_steps_from_here_AuRa()
@@ -76,8 +103,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             try
             {
                 await stepsManager.InitializeAll(source.Token);
@@ -113,7 +139,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     {
         public async Task Execute(CancellationToken cancellationToken)
         {
-            await Task.Delay(100000);
+            await Task.Delay(100000, cancellationToken);
         }
 
         public StepForever(NethermindApi runnerContext)

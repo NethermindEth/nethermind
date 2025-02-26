@@ -32,7 +32,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         block.Transactions[0].IsAnchorTx = true;
 
-        BlockExecutionContext blkCtx = new(block.Header);
+        BlockExecutionContext blkCtx = new(block.Header, spec);
         using ArrayPoolList<Transaction> correctTransactions = new(block.Transactions.Length);
 
         for (int i = 0; i < block.Transactions.Length; i++)

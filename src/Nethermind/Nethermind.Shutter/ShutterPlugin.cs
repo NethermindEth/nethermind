@@ -67,7 +67,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 
-        Multiaddress[] bootnodeP2PAddresses;
+        IEnumerable<Multiaddress> bootnodeP2PAddresses;
         try
         {
             shutterConfig!.Validate(out bootnodeP2PAddresses);

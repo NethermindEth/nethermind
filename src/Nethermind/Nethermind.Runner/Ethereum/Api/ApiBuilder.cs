@@ -72,8 +72,8 @@ public class ApiBuilder
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath, _logger);
+        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
         return chainSpec;
     }
 

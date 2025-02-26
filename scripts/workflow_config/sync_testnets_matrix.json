@@ -56,6 +56,14 @@
     "agent": "g6-standard-6"
   },
   {
+    "network": "world-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
     "network": "op-mainnet",
     "cl": "",
     "cl_image": "",
@@ -72,7 +80,15 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "taiko-mainnet",
+    "network": "world-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "taiko-alethia",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
@@ -113,6 +129,22 @@
   },
   {
     "network": "linea-sepolia",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "energyweb",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
+    "network": "volta",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
