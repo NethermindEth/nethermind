@@ -198,6 +198,14 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
         }
 
+        List<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>().ToList();
+        if (consensusPlugins.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Only one consensus plugin can be enabled at any one time. Enabled plugins: {string.Join(", ", consensusPlugins)}"
+            );
+        }
+
         return plugins;
     }
 }

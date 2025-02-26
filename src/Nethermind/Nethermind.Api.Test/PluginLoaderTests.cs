@@ -8,15 +8,19 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Api.Test;
@@ -28,7 +32,12 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
-            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+            typeof(AuRaPlugin),
+            typeof(CliquePlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin),
+            typeof(HivePlugin),
+            typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
         var expected = new List<Type>
@@ -48,7 +57,12 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
-            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+            typeof(AuRaPlugin),
+            typeof(CliquePlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin),
+            typeof(HivePlugin),
+            typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig { PluginOrder = ["Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"] };
@@ -64,6 +78,31 @@ public class PluginLoaderTests
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
+    }
+
+    [Test]
+    public void throws_when_multiple_consensus_plugin()
+    {
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        PluginLoader loader = new PluginLoader(
+            string.Empty,
+            fileSystem,
+            new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin),
+            typeof(AnotherAura),
+            typeof(CliquePlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin),
+            typeof(HivePlugin),
+            typeof(TestPlugin));
+        loader.Load();
+        loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
+
+        IConfigProvider configProvider = new ConfigProvider();
+        ChainSpec chainSpec = new ChainSpec();
+        chainSpec.SealEngineType = SealEngineType.AuRa;
+
+        loader.LoadPlugins(configProvider, chainSpec).Should().Throws<InvalidOperationException>();
     }
 
     [Test]
@@ -154,6 +193,30 @@ public class PluginLoaderTests
         public ValueTask DisposeAsync()
         {
             return ValueTask.CompletedTask;
+        }
+    }
+
+
+    private class AnotherAura() : IConsensusPlugin
+    {
+        public string Name => "TestPlugin2";
+        public string Description => "TestPlugin2";
+        public string Author => "TestPlugin2";
+        public bool Enabled => true;
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        public IBlockProducer InitBlockProducer(ITxSource additionalTxSource = null)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+        {
+            throw new NotImplementedException();
         }
     }
 }
