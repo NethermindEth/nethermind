@@ -50,5 +50,7 @@ public class SubSegmentMetadata
 
     public HashSet<Instruction> Instructions => SubSegment.Select(x => x.Operation).ToHashSet();
 
+    public bool RequireNotStaticEnv => SubSegment.Any(x => x.Metadata.IsNotStaticOpcode);
+
     public bool RequiresOpcodeCheck => Instructions.Any(x => x.RequiresAvailabilityCheck());
 }

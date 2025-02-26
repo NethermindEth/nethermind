@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
@@ -137,6 +138,11 @@ internal static class Precompiler
                             continue;
                         }
 
+                        if(currentSegment.RequireNotStaticEnv)
+                        {
+                            method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
+                        }
+
                         if (currentSegment.RequiresOpcodeCheck)
                         {
                             method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
@@ -153,11 +159,6 @@ internal static class Precompiler
                         {
                             method.LoadLocal(locals.stackHeadIdx);
                             method.LoadConstant(currentSegment.RequiredStack);
-
-                            method.PrintString($"Stack Required : {currentSegment.RequiredStack}; Current Size: ");
-                            method.Print(locals.stackHeadIdx);
-                            method.PrintString($"\n");
-
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
                         }
                         // we check if locals.stackHeadRef overflow can occur
@@ -192,6 +193,12 @@ internal static class Precompiler
                         method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
                         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                     }
+
+                    if(op.Metadata.IsNotStaticOpcode)
+                    {
+                        method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
+                    }
+
                     method.EmitStaticGasCheck(locals.gasAvailable, op.Metadata.GasCost, evmExceptionLabels);
 
                     method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);

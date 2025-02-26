@@ -1809,12 +1809,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
                             var topicsCount = (sbyte)(opcodeMetadata.Operation - Instruction.LOG0);
-
-                            envLoader.LoadVmState(method, locals, false);
-
-                            method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
-                            method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
-
                             using Local logEntry = method.DeclareLocal<LogEntry>();
 
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
@@ -1914,11 +1908,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                     {
                         AddEmitter(instruction, (ilCompilerConfig, contractMetadata, segmentMetadata, currentSubSegment, i, opcodeMetadata, method, locals, envLoader, evmExceptionLabels, escapeLabels) =>
                         {
-                            envLoader.LoadVmState(method, locals, false);
-
-                            method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
-                            method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
-
                             method.StackLoadPrevious(locals.stackHeadRef, segmentMetadata.StackOffsets[i], 1);
                             method.Call(Word.GetUInt256);
                             method.StoreLocal(locals.uint256A);
@@ -2326,11 +2315,6 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
 
                         Label skipGasDeduction = method.DefineLabel();
                         Label happyPath = method.DefineLabel();
-
-                        envLoader.LoadVmState(method, locals, false);
-
-                        method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
-                        method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
 
                         envLoader.LoadSpec(method, locals, false);
                         method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());

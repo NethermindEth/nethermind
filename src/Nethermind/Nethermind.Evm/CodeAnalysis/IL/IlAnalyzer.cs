@@ -330,7 +330,7 @@ public static class IlAnalyzer
 
                     if(subSegment.Start <= subSegment.End)
                     {
-                        subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
+                        subSegment.SubSegment = metadata.Segment[subSegment.Start..(subSegment.End + 1)];
                     }
 
                     metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
@@ -374,7 +374,7 @@ public static class IlAnalyzer
                             subSegment.IsReachable = hasJumpdest;
 
                             subSegment.StaticGasSubSegmentes[costStart] = coststack; // remember the stackHeadRef chain of opcodes
-                            subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
+                            subSegment.SubSegment = metadata.Segment[subSegment.Start..(subSegment.End+1)];
 
                             metadata.SubSegments[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
@@ -407,7 +407,7 @@ public static class IlAnalyzer
             subSegment.IsFailing = hasInvalidOpcode;
             subSegment.RequiredStack = -subSegment.RequiredStack;
             subSegment.End = metadata.Segment.Length - 1;
-            subSegment.SubSegment = metadata.Segment[subSegment.Start..subSegment.End];
+            subSegment.SubSegment = metadata.Segment[subSegment.Start..(subSegment.End + 1)];
             metadata.SubSegments[subSegment.Start] = subSegment;
         }
 
