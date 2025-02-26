@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Healing;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -131,17 +131,11 @@ public class PruningTrieStateFactory(
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
-        TrieStore trieStore = syncConfig.TrieHealing
-            ? new HealingTrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                logManager)
-            : new TrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                logManager);
+        TrieStore trieStore = new TrieStore(
+            mainNodeStorage,
+            pruningStrategy,
+            persistenceStrategy,
+            logManager);
 
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;
@@ -167,8 +161,6 @@ public class PruningTrieStateFactory(
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false);
 
-        disposeStack.Push(mainWorldTrieStore);
-
         // Init state if we need system calls before actual processing starts
         worldState.StateRoot = blockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
         if (blockTree!.Head?.StateRoot is not null)
@@ -181,7 +173,14 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             logManager,
-            processExit);
+            new LastNStateRootTracker(blockTree, 128));
+
+        // NOTE: Don't forget this! Very important!
+        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);
+        // Must be disposed after main trie store or the final persist on dispose will not set persisted state on blocktree.
+        disposeStack.Push(trieStoreBoundaryWatcher);
+
+        disposeStack.Push(mainWorldTrieStore);
 
         InitializeFullPruning(
             stateManager.GlobalStateReader,

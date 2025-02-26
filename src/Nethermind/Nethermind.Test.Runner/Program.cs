@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
+using Nethermind.Specs;
 
 namespace Nethermind.Test.Runner;
 
@@ -41,6 +42,9 @@ internal class Program
 
         public static CliOption<bool> Stdin { get; } =
             new("--stdin", "-x") { Description = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
+
+        public static CliOption<bool> GnosisTest { get; } =
+            new("--gnosisTest", "-g") { Description = "Set test as gnosisTest. if not, it will be by default assumed a mainnet test." };
     }
 
     public static async Task<int> Main(params string[] args)
@@ -55,7 +59,8 @@ internal class Program
             Options.ExcludeMemory,
             Options.ExcludeStack,
             Options.Wait,
-            Options.Stdin
+            Options.Stdin,
+            Options.GnosisTest,
         ];
         rootCommand.SetAction(Run);
 
@@ -78,15 +83,18 @@ internal class Program
 
         if (parseResult.GetValue(Options.Stdin))
             input = Console.ReadLine();
+        ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
+
 
         while (!string.IsNullOrWhiteSpace(input))
         {
             if (parseResult.GetValue(Options.BlockTest))
-                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter)));
+                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter), chainId));
             else
                 RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
                     !parseResult.GetValue(Options.ExcludeStack),
+                    chainId,
                     parseResult.GetValue(Options.Filter)));
 
             if (!parseResult.GetValue(Options.Stdin))

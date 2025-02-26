@@ -56,7 +56,7 @@ public class EthereumRunner(INethermindApi api)
         Task blockProducerTask = Stop(() => _api.BlockProducerRunner?.StopAsync(), "Stopping block producer");
         Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
         Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
-        Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
+        Task blockchainProcessorTask = Stop(() => _api.MainProcessingContext?.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
         Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping RLPx peer");
         await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
@@ -65,12 +65,7 @@ public class EthereumRunner(INethermindApi api)
             await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
         }
 
-        while (_api.DisposeStack.Count != 0)
-        {
-            IAsyncDisposable disposable = _api.DisposeStack.Pop();
-            await Stop(async () => await disposable.DisposeAsync(), $"Disposing {disposable}");
-        }
-
+        await _api.DisposeStack.DisposeAsync();
         Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
         if (_logger.IsInfo)

@@ -348,7 +348,7 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, ReadOnlySpan<UInt128> value)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt128> value)
     {
         const int typeSize = 16;
         int partialChunkLength = value.Length % (32 / typeSize);

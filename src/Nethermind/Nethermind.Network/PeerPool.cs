@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -28,6 +29,7 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
+        private readonly ITrustedNodesManager _trustedNodesManager;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -48,9 +50,11 @@ namespace Nethermind.Network
         public PeerPool(
             INodeSource nodeSource,
             INodeStatsManager nodeStatsManager,
-            INetworkStorage peerStorage,
+            [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            ITrustedNodesManager trustedNodesManager)
+
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -58,6 +62,7 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
             // Early explicit closure
             _createNewNodePeer = CreateNew;
@@ -100,7 +105,8 @@ namespace Nethermind.Network
 
         private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
-            Node node = new(arg.Node);
+            Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
+
             Peer peer = new(node, _stats.GetOrAdd(node));
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));

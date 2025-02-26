@@ -703,6 +703,37 @@ public class FastHeadersSyncTests
         Assert.That(feed.IsFinished, Is.False);
     }
 
+    [Test]
+    public void When_lowestInsertedHeaderHasNoTD_then_fetchFromBlockTreeAgain()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        using HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: Substitute.For<ISyncPeerPool>(),
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = "1000",
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000",
+            },
+            syncReport: new NullSyncReport(),
+            totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy(),
+            logManager: LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(900).TestObject;
+        header.Difficulty = 10;
+        header.TotalDifficulty = null;
+        blockTree.LowestInsertedHeader.Returns(header);
+
+        BlockHeader header2 = Build.A.BlockHeader.WithNumber(900).TestObject;
+        header2.Difficulty = 10;
+        header2.TotalDifficulty = 1000;
+        blockTree.FindHeader(header.Number, BlockTreeLookupOptions.RequireCanonical).Returns(header2);
+
+        feed.InitializeFeed();
+    }
+
     private class ResettableHeaderSyncFeed : HeadersSyncFeed
     {
         private readonly ManualResetEventSlim? _hangLatch;

@@ -18,6 +18,8 @@ public class DbModule : Module
             DbNames.State,
             DbNames.Code,
             DbNames.Metadata,
+            DbNames.BlockNumbers,
+            DbNames.BadBlocks,
             DbNames.Blocks,
             DbNames.Headers,
             DbNames.BlockInfos,

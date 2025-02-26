@@ -45,15 +45,17 @@ public class SnapServer : ISnapServer
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
     private readonly AccountDecoder _decoder = new AccountDecoder();
+    private readonly ILastNStateRootTracker? _lastNStateRootTracker;
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, IStateReader stateReader, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, IStateReader stateReader, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _stateReader = stateReader;
+        _lastNStateRootTracker = lastNStateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
 
@@ -66,7 +68,7 @@ public class SnapServer : ISnapServer
 
     private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment());
+        return !_stateReader.HasStateForRoot(stateRoot.ToCommitment()) || (_lastNStateRootTracker?.HasStateRoot(stateRoot) == false);
     }
 
     public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
@@ -266,7 +268,7 @@ public class SnapServer : ISnapServer
     {
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
-        VisitingOptions opt = new() { ExpectAccounts = false };
+        VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
