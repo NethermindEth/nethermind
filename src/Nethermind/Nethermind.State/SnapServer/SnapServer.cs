@@ -71,7 +71,7 @@ public class SnapServer : ISnapServer
         return !_stateReader.HasStateForRoot(stateRoot) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
-    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in Hash256 rootHash, CancellationToken cancellationToken)
+    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
 
@@ -169,7 +169,12 @@ public class SnapServer : ISnapServer
         return response;
     }
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(in Hash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(
+        Hash256 rootHash,
+        in ValueHash256 startingHash,
+        in ValueHash256? limitHash,
+        long byteLimit,
+        CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
@@ -189,7 +194,13 @@ public class SnapServer : ISnapServer
         return (nodes, proofs);
     }
 
-    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(in Hash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
+        Hash256 rootHash,
+        IReadOnlyList<PathWithAccount> accounts,
+        in ValueHash256? startingHash,
+        in ValueHash256? limitHash,
+        long byteLimit,
+        CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
