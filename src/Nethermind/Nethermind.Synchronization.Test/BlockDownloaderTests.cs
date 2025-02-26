@@ -666,22 +666,36 @@ public partial class BlockDownloaderTests
             .Build();
     }
 
-    private record Context(
-        ResponseBuilder ResponseBuilder,
-        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
-        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
-        IForwardSyncController ForwardSyncController,
-        IBlockTree BlockTree,
-        InMemoryReceiptStorage ReceiptStorage,
-        ISyncPeerPool PeerPool
-    )
+    private record Context
     {
         private readonly ConcurrentDictionary<Hash256, bool> _wasSuggested = new();
-            // BlockTree.NewBestSuggestedBlock += (sender, args) => _wasSuggested[args.Block.Hash!] = true;
 
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
-        public SyncDispatcher<BlocksRequest> Dispatcher => FullSyncFeedComponent.Dispatcher;
-        public BlockDownloader  BlockDownloader => (BlockDownloader) FullSyncFeedComponent.Downloader;
+        public ResponseBuilder ResponseBuilder { get; init; }
+        public SyncFeedComponent<BlocksRequest> FastSyncFeedComponent { get; init; }
+        public SyncFeedComponent<BlocksRequest> FullSyncFeedComponent { get; init; }
+        public IForwardSyncController ForwardSyncController { get; init; }
+        public IBlockTree BlockTree { get; init; }
+        public InMemoryReceiptStorage ReceiptStorage { get; init; }
+        public ISyncPeerPool PeerPool { get; init; }
+
+        public Context(ResponseBuilder ResponseBuilder,
+            [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+            [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+            IForwardSyncController ForwardSyncController,
+            IBlockTree BlockTree,
+            InMemoryReceiptStorage ReceiptStorage,
+            ISyncPeerPool PeerPool)
+        {
+            this.ResponseBuilder = ResponseBuilder;
+            this.FastSyncFeedComponent = FastSyncFeedComponent;
+            this.FullSyncFeedComponent = FullSyncFeedComponent;
+            this.ForwardSyncController = ForwardSyncController;
+            this.BlockTree = BlockTree;
+            this.ReceiptStorage = ReceiptStorage;
+            this.PeerPool = PeerPool;
+            BlockTree.NewBestSuggestedBlock += (sender, args) => _wasSuggested[args.Block.Hash!] = true;
+        }
 
         public void ConfigureBestPeer(ISyncPeer syncPeer)
         {
@@ -782,6 +796,17 @@ public partial class BlockDownloaderTests
         public virtual void ShouldFastSyncedUntil(long blockNumber)
         {
             BlockTree.BestSuggestedHeader!.Number.Should().Be(blockNumber);
+        }
+
+        public void Deconstruct(out ResponseBuilder ResponseBuilder, out SyncFeedComponent<BlocksRequest> FastSyncFeedComponent, out SyncFeedComponent<BlocksRequest> FullSyncFeedComponent, out IForwardSyncController ForwardSyncController, out IBlockTree BlockTree, out InMemoryReceiptStorage ReceiptStorage, out ISyncPeerPool PeerPool)
+        {
+            ResponseBuilder = this.ResponseBuilder;
+            FastSyncFeedComponent = this.FastSyncFeedComponent;
+            FullSyncFeedComponent = this.FullSyncFeedComponent;
+            ForwardSyncController = this.ForwardSyncController;
+            BlockTree = this.BlockTree;
+            ReceiptStorage = this.ReceiptStorage;
+            PeerPool = this.PeerPool;
         }
     }
 
