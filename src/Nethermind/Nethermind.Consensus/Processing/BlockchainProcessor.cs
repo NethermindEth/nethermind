@@ -289,7 +289,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
                     BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
-                    throw new InvalidOperationException("Processing loop expects only resolved blocks");
+                    throw new InvalidOperationException("Block processing expects only resolved blocks");
                 }
 
                 Block block = blockRef.Block;
