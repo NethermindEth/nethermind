@@ -78,9 +78,19 @@ internal class AotOpcodeEmitter<TDelegateType> : OpcodeILEmitter<TDelegateType>
                         {
                             UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
                         }
+
                         method.Branch(escapeLabels.jumpTable);
 
                         method.MarkLabel(noJump);
+                        if (ilCompilerConfig.BakeInTracingInAotModes)
+                        {
+                            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
+                            EmitCallToEndInstructionTrace(method, locals.gasAvailable, envLoader, locals);
+                        }
+                        else
+                        {
+                            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, i, currentSubSegment);
+                        }
                     });
                     break;
                 case Instruction.POP:

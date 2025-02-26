@@ -123,6 +123,7 @@ internal static class Precompiler
                     method.LoadConstant(op.ProgramCounter);
                     method.StoreLocal(locals.programCounter);
                 }
+                method.PrintString($"PC : {op.ProgramCounter}; OP: {op}\n");
 
                 if (!config.BakeInTracingInAotModes)
                 {
@@ -140,7 +141,6 @@ internal static class Precompiler
                         {
                             method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
-
                         // and we emit failure for failing jumpless segment at start 
                         if (currentSegment.IsFailing)
                         {
@@ -153,9 +153,13 @@ internal static class Precompiler
                         {
                             method.LoadLocal(locals.stackHeadIdx);
                             method.LoadConstant(currentSegment.RequiredStack);
+
+                            method.PrintString($"Stack Required : {currentSegment.RequiredStack}; Current Size: ");
+                            method.Print(locals.stackHeadIdx);
+                            method.PrintString($"\n");
+
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
                         }
-
                         // we check if locals.stackHeadRef overflow can occur
                         if (currentSegment.MaxStack != 0)
                         {
@@ -205,7 +209,6 @@ internal static class Precompiler
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
-                method.PrintString($"PC : {op.ProgramCounter}; OP: {op}\n");
 
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 

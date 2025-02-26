@@ -194,25 +194,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-
-#if ILVM_DEBUG
-        _vmConfig = new VMConfig
-        {
-            IsPartialAotEnabled = false,
-            IsFullAotEnabled = true,
-            IsPatternMatchingEnabled = false,
-
-            AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = false,
-
-            FullAotThreshold = 5,
-            PatternMatchingThreshold = int.MaxValue,
-            AnalysisQueueMaxSize = 8,
-            PartialAotThreshold = int.MaxValue,
-        };
-#else
         _vmConfig = vmConfig;
-#endif
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -864,6 +846,9 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         case ContractState.Failed:
                             exceptionType = chunkExecutionResult.ExceptionType;
                             goto ReturnFailure;
+                        case ContractState.Halted:
+                            returnData = chunkExecutionResult.CallResult;
+                            goto DataReturnNoTrace;
                     }
 
                     if (programCounter >= codeLength)
@@ -878,6 +863,10 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
+
+            OpcodeInfo opcodeInfo = new OpcodeInfo(programCounter, instruction, 0);
+            Debug.WriteLine($"PC: {programCounter}; OP: {opcodeInfo}");
+
 
             if (isCancelable && _txTracer.IsCancelled)
             {
