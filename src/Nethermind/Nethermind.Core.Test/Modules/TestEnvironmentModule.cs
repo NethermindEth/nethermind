@@ -107,6 +107,12 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 networkConfig.ExternalIp ??= "127.0.0.1";
                 networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
                 return networkConfig;
-            });
+            })
+            .AddDecorator<IPruningConfig>((_, pruningConfig) =>
+            {
+                pruningConfig.CacheMb = 4;
+                return pruningConfig;
+            })
+            ;
     }
 }

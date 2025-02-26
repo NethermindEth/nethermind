@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -933,13 +932,13 @@ namespace Nethermind.Trie
             else if (_nodeData is LeafData leafData)
             {
                 TrieNode? storageRoot = leafData.StorageRoot;
-                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
+                if (resolveStorageRoot && (storageRoot is not null || TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {leafData.StorageRoot} of {this}");
                     Hash256 storagePathAddr;
                     using (currentPath.ScopedAppend(Key))
                     {
-                        if (currentPath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                        if (currentPath.Length != 64) throw new Exception($"unexpected storage path length. Total nibble count should add up to 64. Got {currentPath.Length}.");
                         storagePathAddr = currentPath.Path.ToCommitment();
                     }
 
@@ -1135,7 +1134,7 @@ namespace Nethermind.Trie
             // }
         }
 
-        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath, out TrieNode? storageRoot)
+        internal bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
 
@@ -1265,8 +1264,9 @@ namespace Nethermind.Trie
         /// <param name="tree"></param>
         /// <param name="path"></param>
         /// <param name="output"></param>
-        private void ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode?[] output)
+        internal int ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, Span<TrieNode?> output)
         {
+            int chCount = 0;
             RlpFactory rlp = _rlp;
             if (rlp is null)
             {
@@ -1274,10 +1274,12 @@ namespace Nethermind.Trie
                 for (int i = 0; i < 16; i++)
                 {
                     path.SetLast(i);
-                    output[i] = GetChildWithChildPath(tree, ref path, i);
+                    var n = GetChildWithChildPath(tree, ref path, i);
+                    if (n is not null) chCount++;
+                    output[i] = n;
                 }
                 path.TruncateOne();
-                return;
+                return chCount;
             }
 
             ValueRlpStream rlpStream = rlp.GetRlpStream();
@@ -1303,6 +1305,7 @@ namespace Nethermind.Trie
                             path.SetLast(i);
                             Hash256 keccak = rlpStream.DecodeKeccak();
                             TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                            chCount++;
                             output[i] = child;
 
                             break;
@@ -1312,15 +1315,18 @@ namespace Nethermind.Trie
                             ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             rlpStream.SkipItem();
+                            chCount++;
                             output[i] = child;
                             break;
                         }
                 }
             }
             path.TruncateOne();
+
+            return chCount;
         }
 
-        private void UnresolveChild(int i)
+        internal void UnresolveChild(int i)
         {
             ref var data = ref _nodeData[i];
             if (IsPersisted)

@@ -27,6 +27,6 @@ namespace Nethermind.Consensus.Tracing
         /// <param name="tracer">Trace to act on block processing events.</param>
         void Execute(Block block, IBlockTracer tracer);
 
-        void Accept(ITreeVisitor visitor, Hash256 stateRoot);
+        void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
     }
 }
