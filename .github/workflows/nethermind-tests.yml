@@ -26,6 +26,8 @@ jobs:
     name: Run ${{ matrix.project }}
     runs-on: ubuntu-latest
     continue-on-error: true
+    outputs:
+      collect_coverage: ${{ env.COLLECT_COVERAGE }}
     strategy:
       matrix:
         project:
@@ -135,7 +137,7 @@ jobs:
   codecov-upload:
     name: Upload Codecov reports
     needs: [tests-status]
-    if: env.COLLECT_COVERAGE == 'true'
+    if: needs.tests.outputs.collect_coverage == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download coverage reports
