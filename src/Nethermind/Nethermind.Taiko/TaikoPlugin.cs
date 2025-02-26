@@ -314,7 +314,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizati
     public IEnumerable<StepInfo> GetSteps()
     {
         yield return typeof(InitializeBlockchainTaiko);
-        // yield return typeof(InitializeBlockProducerTaiko);
         yield return typeof(RegisterTaikoRpcModules);
     }
 

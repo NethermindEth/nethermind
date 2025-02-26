@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -36,7 +34,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
@@ -66,7 +63,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     public IEnumerable<StepInfo> GetSteps()
     {
         yield return typeof(InitializeBlockchainOptimism);
-        // yield return typeof(InitializeBlockProducerOptimism);
         yield return typeof(RegisterOptimismRpcModules);
     }
 
