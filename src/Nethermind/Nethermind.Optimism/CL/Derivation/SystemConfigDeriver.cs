@@ -40,7 +40,8 @@ public class SystemConfigDeriver(
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = gasLimit,
-            Scalar = scalar
+            Scalar = scalar,
+            EIP1559Params = extraData.ToArray()[1..]
         };
     }
 

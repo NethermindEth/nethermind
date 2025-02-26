@@ -202,8 +202,8 @@ public class BatchDecoder
         for (int i = 0; i < (int)totalTxCount; ++i)
         {
             signatures[i] = new(
-                new(data.TakeAndMove(32)),
-                new(data.TakeAndMove(32))
+                new(data.TakeAndMove(32), true),
+                new(data.TakeAndMove(32), true)
             );
         }
 

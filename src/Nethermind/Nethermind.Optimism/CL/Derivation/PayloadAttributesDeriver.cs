@@ -117,10 +117,6 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
 
     private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong l2ParentTimestamp, SystemConfig systemConfig, Transaction systemTx, Transaction[] userTxs)
     {
-        RlpStream systemTxStream =
-            new(decoder.GetLength(systemTx, RlpBehaviors.SkipTypedWrapping, true, true, _chainId));
-        decoder.Encode(systemTx, systemTxStream, RlpBehaviors.SkipTypedWrapping, true, true, _chainId);
-
         OptimismPayloadAttributes payload = new()
         {
             GasLimit = (long)systemConfig.GasLimit,
@@ -129,8 +125,9 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
             Timestamp = l2ParentTimestamp + 2,
             Withdrawals = [],
             PrevRandao = l1Origin.MixHash,
+            EIP1559Params = systemConfig.EIP1559Params,
             SuggestedFeeRecipient = SequencerFeeVault,
-            Transactions = (new byte[][] { systemTxStream.Data!.ToArray()! }).Concat(userTxs
+            Transactions = (new [] { Rlp.Encode(systemTx, RlpBehaviors.SkipTypedWrapping).Bytes }).Concat(userTxs
                 .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
                 .ToArray()).ToArray()
         };
@@ -143,7 +140,7 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         for (ulong i = 0; i < txCount; i++)
         {
             ulong txIdx = from + i;
-            bool parityBit = ((batch.Txs.YParityBits >> (int)i) & 1) == 1;
+            bool parityBit = ((batch.Txs.YParityBits >> (int)txIdx) & 1) == 1;
             ulong v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
             Signature signature = new(batch.Txs.Signatures[txIdx].R, batch.Txs.Signatures[txIdx].S, v);
             var tx = new Transaction

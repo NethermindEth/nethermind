@@ -51,6 +51,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
         BlockForRpc finalizedBlock = finalizedBlockResult.Data;
         _currentFinalizedHash = finalizedBlock.Hash;
         _currentSafeHash = _currentFinalizedHash;
+        _logger.Error($"EL manager initialization complete: current head {_currentHead}, current finalized head hash {_currentFinalizedHash}");
         // TODO: fix safe head
     }
 
@@ -82,12 +83,12 @@ public class ExecutionEngineManager : IExecutionEngineManager
             throw new ArgumentException($"Unable to send fcu with payload attributes to EL. Error: {fcuResult.Result.Error}");
         }
 
-        if (fcuResult.Data.PayloadStatus != PayloadStatusV1.Accepted)
+        if (fcuResult.Data.PayloadStatus.Status != PayloadStatus.Valid)
         {
-            throw new ArgumentException($"Invalid payload status {fcuResult.Data.PayloadStatus.ValidationError}");
+            throw new ArgumentException($"Invalid payload status {fcuResult.Data.PayloadStatus.Status}");
         }
 
-        await Task.Delay(100); // TODO; for how long should we wait?
+        await Task.Delay(100); // TODO: for how long should we wait?
 
         _logger.Error($"Sending getPayload");
         byte[] payloadId = Convert.FromHexString(fcuResult.Data.PayloadId!.Substring(2));
@@ -99,8 +100,6 @@ public class ExecutionEngineManager : IExecutionEngineManager
         }
 
         ExecutionPayloadV3 executionPayload = (ExecutionPayloadV3)getPayloadResult.Data!.ExecutionPayload;
-        _logger.Error($"Got payload: {executionPayload.BlockNumber}, {executionPayload.BlockHash}");
-
         _currentHead = (ulong)executionPayload.BlockNumber;
         _currentHeadHash = executionPayload.BlockHash;
 
@@ -129,6 +128,7 @@ public class ExecutionEngineManager : IExecutionEngineManager
 
     private void VerifyOldPayloadAttributes(PayloadAttributesRef payloadAttributes)
     {
+        _logger.Error($"EL manager verify old payload attributes {payloadAttributes.Number}");
         // TODO: check that payloadAttributes match ether p2p block that we already sent to EL. Or ask EL for block through rpc
     }
 }

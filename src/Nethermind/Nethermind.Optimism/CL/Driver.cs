@@ -9,7 +9,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
@@ -140,7 +139,7 @@ public class Driver : IDisposable
         OptimismPayloadAttributes result = new()
         {
             NoTxPool = true,
-            EIP1559Params = null,
+            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
             GasLimit = block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
             PrevRandao = block.MixHash,
@@ -174,8 +173,9 @@ public class Driver : IDisposable
                 if (_engineParameters.BatcherInboxAddress == transaction.To &&
                     _engineParameters.BatcherAddress == transaction.From)
                 {
+                    ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
                     await ProcessBlobBatcherTransaction(transaction,
-                        startingBlobIndex, CalculateSlotNumber(block.Timestamp.ToUInt64(null)));
+                        startingBlobIndex, slotNumber);
                 }
                 startingBlobIndex += transaction.BlobVersionedHashes!.Length;
             }
@@ -188,18 +188,12 @@ public class Driver : IDisposable
                 }
             }
         }
-        _logger.Error($"Exit OnNewL1Head");
     }
 
     private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
     {
-        BlobSidecar[]? blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
+        BlobSidecar[] blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
             startingBlobIndex + transaction.BlobVersionedHashes!.Length);
-        while (blobSidecars is null)
-        {
-            blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
-                startingBlobIndex + transaction.BlobVersionedHashes.Length);
-        }
 
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {

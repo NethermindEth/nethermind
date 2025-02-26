@@ -73,7 +73,7 @@ public class OptimismCL : IDisposable
 
     private async Task SetupTest()
     {
-        var block = _l2EthRpc.eth_getBlockByNumber(new(9739163), true).Data;
+        var block = _l2EthRpc.eth_getBlockByNumber(new(10567750), true).Data;
         DepositTransactionForRpc tx = (DepositTransactionForRpc)block.Transactions.First();
         SystemConfig config =
             _systemConfigDeriver.SystemConfigFromL2BlockInfo(tx.Input!, block.ExtraData, (ulong)block.GasLimit);
@@ -90,7 +90,7 @@ public class OptimismCL : IDisposable
             Number = (ulong)block.Number!.Value,
             PayloadAttributes = new()
             {
-                EIP1559Params = null,
+                EIP1559Params = config.EIP1559Params,
                 GasLimit = block.GasLimit,
                 NoTxPool = true,
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,

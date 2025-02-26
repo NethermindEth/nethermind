@@ -19,15 +19,17 @@ public class DerivedBlocksVerifier : IDerivedBlocksVerifier
 
     public void ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber)
     {
-        _logger.Error($"CHECKING PAYLOAD ATTRIBUTES block {blockNumber}");
         if (expected.NoTxPool != actual.NoTxPool)
         {
             _logger.Error($"Invalid NoTxPool. Expected {expected.NoTxPool}, Actual {actual.NoTxPool}");
         }
 
-        if (expected.EIP1559Params != actual.EIP1559Params)
+        if ((expected.EIP1559Params is null && actual.EIP1559Params is not null) ||
+            (expected.EIP1559Params is not null && actual.EIP1559Params is null) ||
+            (expected.EIP1559Params is not null && actual.EIP1559Params is not null &&
+             !expected.EIP1559Params.SequenceEqual(actual.EIP1559Params)))
         {
-            _logger.Error($"Invalid Eip1559Params");
+            _logger.Error($"Invalid Eip1559Params expected: {expected.EIP1559Params?.ToHexString()}, actual: {actual.EIP1559Params?.ToHexString()}");
         }
 
         if (expected.GasLimit != actual.GasLimit)
@@ -76,6 +78,5 @@ public class DerivedBlocksVerifier : IDerivedBlocksVerifier
             //     }
             // }
         }
-        _logger.Error($"CHECKED number {blockNumber}");
     }
 }

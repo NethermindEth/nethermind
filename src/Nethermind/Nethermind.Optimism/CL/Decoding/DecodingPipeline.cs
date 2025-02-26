@@ -22,6 +22,7 @@ public class DecodingPipeline : IDecodingPipeline
             // TODO: cancellation
             while (true)
             {
+                // TODO: a lot of allocations here
                 byte[] blob = await _inputChannel.Reader.ReadAsync();
                 byte[] data = BlobDecoder.DecodeBlob(blob);
                 Frame[] frames = FrameDecoder.DecodeFrames(data);

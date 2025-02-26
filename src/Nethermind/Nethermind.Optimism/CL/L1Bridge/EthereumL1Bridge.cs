@@ -98,7 +98,6 @@ public class EthereumL1Bridge : IL1Bridge
 
     private async Task WriteBlock(L1Block block)
     {
-        _logger.Error($"Writing block. Number: {block.Number}, Hash: {block.Hash}");
         ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
         await _newHeadChannel.Writer.WriteAsync(block, _cancellationToken);
     }
