@@ -376,22 +376,24 @@ public partial class BlockDownloaderTests
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
-    [Ignore("Need forward header to not go before sync pivot.")]
     [TestCase(true)]
     [TestCase(false)]
     public async Task Can_DownloadBlockOutOfOrder(bool isMerge)
     {
+        int chainLength = 1024;
         int syncPivotNumber = 128;
+        int beaconPivotNumber = 256;
         int fastSyncLag = 1;
 
         Response responseOptions = Response.AllCorrect | Response.WithTransactions;
-        SyncPeerMock syncPeer = new(1024, true, responseOptions);
+        SyncPeerMock syncPeer = new(chainLength, true, responseOptions);
+        syncPeer.HeadNumber = beaconPivotNumber; // For POW
 
         BlockHeader syncPivot = syncPeer.BlockTree.FindHeader(syncPivotNumber)!;
         ISyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
-            StateMaxDistanceFromHead = fastSyncLag,
+            StateMinDistanceFromHead = fastSyncLag,
             PivotNumber = syncPivot.Number.ToString(),
             PivotHash = syncPivot.Hash!.ToString(),
         };
@@ -402,13 +404,23 @@ public partial class BlockDownloaderTests
 
         Context ctx = container.Resolve<Context>();
 
-        // ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
-        // ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
+        // Simulate fast header
+        BlockHeader syncPivotHeader = syncPeer.BlockTree.FindHeader(syncPivotNumber)!;
+        ctx.BlockTree.Insert(syncPivotHeader);
+
+        if (isMerge)
+        {
+            var mergeContext = container.Resolve<PostMergeContext>();
+            mergeContext.BeaconPivot.EnsurePivot(syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None));
+            mergeContext.InsertBeaconHeaderFrom(syncPeer, beaconPivotNumber, syncPivotNumber);
+            mergeContext.BeaconPivot.ProcessDestination = syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None);
+        }
 
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
         var req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        req1.Should().NotBeNull();
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req1, default);
 
         while (true)
@@ -428,7 +440,7 @@ public partial class BlockDownloaderTests
 
         _ = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
 
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(99);
+        ctx.ShouldFastSyncedUntil(beaconPivotNumber - fastSyncLag);
     }
 
 
@@ -909,6 +921,11 @@ public partial class BlockDownloaderTests
             }
 
             return FastSyncFeedComponent.Feed.HandleResponse(blockRequest, peerInfo);
+        }
+
+        public virtual void ShouldFastSyncedUntil(long blockNumber)
+        {
+            BlockTree.BestSuggestedHeader!.Number.Should().Be(blockNumber);
         }
     }
 

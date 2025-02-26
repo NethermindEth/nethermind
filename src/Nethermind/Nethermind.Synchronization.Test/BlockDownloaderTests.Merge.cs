@@ -346,19 +346,28 @@ public partial class BlockDownloaderTests
         }, configs);
     }
 
-    private record PostMergeContext(
-        IBeaconPivot BeaconPivot,
-        IPoSSwitcher PosSwitcher,
-        ResponseBuilder ResponseBuilder,
-        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
-        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
-        IBlockTree BlockTree,
-        InMemoryReceiptStorage ReceiptStorage,
-        ISyncPeerPool PeerPool) : Context(
-        ResponseBuilder,
-        FastSyncFeedComponent,
-        FullSyncFeedComponent,
-        BlockTree,
-        ReceiptStorage,
-        PeerPool);
+    private class PostMergeContext(IBeaconPivot beaconPivot, IPoSSwitcher poSSwitcher, ILifetimeScope scope) : Context(scope)
+    {
+        public IBeaconPivot BeaconPivot => beaconPivot;
+        public IPoSSwitcher PosSwitcher => poSSwitcher;
+        public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, long high, long low)
+        {
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
+            for (long i = high; i >= low; --i)
+            {
+                BlockHeader? beaconHeader = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None)!;
+
+                AddBlockResult insertResult = BlockTree!.Insert(beaconHeader!, headerOptions);
+                Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+            }
+        }
+
+        public override void ShouldFastSyncedUntil(long blockNumber)
+        {
+            // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
+            // But BestSuggestedBody is updated, unlike PreMerge.
+            // I don't make the rules
+            BlockTree.BestSuggestedBody!.Number.Should().Be(blockNumber);
+        }
+    }
 }

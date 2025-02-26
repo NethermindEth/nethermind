@@ -218,7 +218,6 @@ namespace Nethermind.Synchronization.Blocks
                     break;
                 }
             }
-            Console.Error.WriteLine($"R {receiptsToDownload.Count} B {bodiesToDownload.Count}");
 
             if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies and {receiptsToDownload.Count} receipts.");
 
@@ -290,8 +289,6 @@ namespace Nethermind.Synchronization.Blocks
                 if (!_blockValidator.ValidateSuggestedBlock(block, out string? errorMessage))
                 {
                     if (_logger.IsTrace) _logger.Debug($"Invalid block from {peer}, {errorMessage}");
-
-                    Console.Error.WriteLine($"INvalid {block.Header.MaybeParent.TryGetTarget(out _)} {entry.Header.MaybeParent.TryGetTarget(out _)}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {block.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -434,7 +431,6 @@ namespace Nethermind.Synchronization.Blocks
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
-            Console.Error.WriteLine($"Suggest {GetHashCode()} {currentBlock.Number} with {suggestOptions} got {addResult}");
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
                 if (!shouldProcess)

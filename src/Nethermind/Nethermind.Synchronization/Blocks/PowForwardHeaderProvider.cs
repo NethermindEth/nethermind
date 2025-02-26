@@ -163,7 +163,7 @@ public class PowForwardHeaderProvider(
                 }
 
                 // Remember, we start downloading from currentNumber+1
-                if (!CheckAncestorJump(bestPeer, headers[1], ref _currentNumber)) continue;
+                if (!CheckAncestorJump(bestPeer, headers[0], ref _currentNumber)) continue;
 
                 return headers;
             }
@@ -187,9 +187,9 @@ public class PowForwardHeaderProvider(
         _currentNumber += 1;
     }
 
-    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockZero, ref long currentNumber)
+    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockBeforeZero, ref long currentNumber)
     {
-        bool parentIsKnown = blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
+        bool parentIsKnown = blockTree.IsKnownBlock(blockBeforeZero.Number, blockBeforeZero.Hash!);
         if (!parentIsKnown)
         {
             _ancestorLookupLevel++;
