@@ -331,7 +331,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
         {
             ParityLikeBlockTracer tracer = new(ParityTraceTypes.All);
-            return new SimulateTxExecutor<ParityLikeTxTrace> (_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
+            return new SimulateTxExecutor<ParityLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, _secondsPerSlot)
                 .Execute(payload, blockParameter, tracer: tracer);
         }
 

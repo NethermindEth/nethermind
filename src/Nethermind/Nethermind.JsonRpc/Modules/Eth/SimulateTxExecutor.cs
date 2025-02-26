@@ -18,7 +18,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
+public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<TTrace>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -194,9 +194,7 @@ public class SimulateTxExecutor<TTrace> (IBlockchainBridge blockchainBridge, IBl
     protected override ResultWrapper<IReadOnlyList<TTrace>> Execute(BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token, IBlockTracer? tracer = null)
     {
-        SimulateOutput<TTrace>? results =  _blockchainBridge.Simulate<TTrace>(header, tx, token, tracer);
-
-
+        SimulateOutput<TTrace>? results = _blockchainBridge.Simulate<TTrace>(header, tx, token, tracer);
 
         foreach (SimulateBlockResult result in results.Items.OfType<SimulateBlockResult>())
         {

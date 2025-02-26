@@ -170,7 +170,7 @@ namespace Nethermind.Facade
             CancellationToken cancellationToken,
             IBlockTracer? tracer = null)
         {
-            IBlockTracer<TTrace> ttracer =  tracer != null ? (IBlockTracer<TTrace>)tracer :(IBlockTracer<TTrace>)new SimulateBlockTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
+            IBlockTracer<TTrace> ttracer = tracer != null ? (IBlockTracer<TTrace>)tracer : (IBlockTracer<TTrace>)new SimulateBlockTracer(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(ttracer);
 

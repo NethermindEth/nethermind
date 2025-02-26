@@ -14,7 +14,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISpecProvider spec) : IBlockTracer<SimulateBlockResult>
 {
     private readonly List<SimulateTxMutatorTracer> _txTracers = new();
-    public  bool IsTracingRewards => false;
+    public bool IsTracingRewards => false;
     private Block _currentBlock = null!;
     public List<SimulateBlockResult> Results { get; } = new();
 

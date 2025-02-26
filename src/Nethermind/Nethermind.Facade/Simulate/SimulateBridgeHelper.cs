@@ -121,7 +121,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
     private static void CheckMisssingAndSetTracedDefaults<TTrace>(IBlockTracer<TTrace> tracer, Block processedBlock)
     {
-        if(tracer is SimulateBlockTracer simulateBlockTracer)
+        if (tracer is SimulateBlockTracer simulateBlockTracer)
         {
             SimulateBlockResult current = simulateBlockTracer.Results.Last();
             current.StateRoot = processedBlock.StateRoot ?? Hash256.Zero;

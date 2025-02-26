@@ -4,4 +4,3 @@ public interface ISimulateResult
 {
     Error? Error { get; set; }
 }
- 
