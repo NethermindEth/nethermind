@@ -289,7 +289,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
                     BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
-                    throw new InvalidOperationException("Processing loop expects only resolved blocks");
+                    throw new InvalidOperationException("Block processing expects only resolved blocks");
                 }
 
                 Block block = blockRef.Block;
@@ -311,7 +311,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                if (_logger.IsWarn) _logger.Warn($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
+                if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
                 BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
             }
             finally
@@ -563,12 +563,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 blocksToProcess.Add(block);
             }
 
-            if (!blocksToProcess[0].IsGenesis)
+            Block firstBlock = blocksToProcess[0];
+            if (!firstBlock.IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException("Attempted to process a disconnected blockchain");
+                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
+                    throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 }
             }
         }
