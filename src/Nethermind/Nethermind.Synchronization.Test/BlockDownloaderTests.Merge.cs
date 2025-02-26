@@ -345,10 +345,28 @@ public partial class BlockDownloaderTests
         }, configs);
     }
 
-    private class PostMergeContext(IComponentContext scope) : Context(scope)
+    private class PostMergeContext(IBeaconPivot beaconPivot, IPoSSwitcher poSSwitcher, ILifetimeScope scope) : Context(scope)
     {
-        private readonly IComponentContext _scope = scope;
-        public IBeaconPivot BeaconPivot => _scope.Resolve<IBeaconPivot>();
-        public IPoSSwitcher PosSwitcher => _scope.Resolve<IPoSSwitcher>();
+        public IBeaconPivot BeaconPivot => beaconPivot;
+        public IPoSSwitcher PosSwitcher => poSSwitcher;
+        public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, long high, long low)
+        {
+            BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
+            for (long i = high; i >= low; --i)
+            {
+                BlockHeader? beaconHeader = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None)!;
+
+                AddBlockResult insertResult = BlockTree!.Insert(beaconHeader!, headerOptions);
+                Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+            }
+        }
+
+        public override void ShouldFastSyncedUntil(long blockNumber)
+        {
+            // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
+            // But BestSuggestedBody is updated, unlike PreMerge.
+            // I don't make the rules
+            BlockTree.BestSuggestedBody!.Number.Should().Be(blockNumber);
+        }
     }
 }
