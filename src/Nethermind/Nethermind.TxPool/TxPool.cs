@@ -419,7 +419,13 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) return AcceptTxResult.Syncing;
+            if (!AcceptTxWhenNotSynced &&
+                _headInfo.IsSyncing &&
+                // If local tx allow it to be accepted even when syncing
+                (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0)
+            {
+                return AcceptTxResult.Syncing;
+            }
 
             Metrics.PendingTransactionsReceived++;
 

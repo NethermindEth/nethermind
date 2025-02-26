@@ -10,21 +10,21 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class MergeBlockProducerRunner : IBlockProducerRunner
 {
-    private readonly IBlockProducerRunner? _preMergeProducer;
-    private readonly IBlockProducerRunner _eth2BlockProducer;
+    private readonly IBlockProducerRunner? _preMergeProducerRunner;
+    private readonly IBlockProducerRunner _postMergeProducerRunner;
     private readonly IPoSSwitcher _poSSwitcher;
-    private bool HasPreMergeProducer => _preMergeProducer is not null;
+    private bool HasPreMergeProducerRunner => _preMergeProducerRunner is not null;
 
-    public MergeBlockProducerRunner(IBlockProducerRunner? preMergeProducer, IBlockProducerRunner? postMergeBlockProducer, IPoSSwitcher? poSSwitcher)
+    public MergeBlockProducerRunner(IBlockProducerRunner? preMergeProducerRunner, IBlockProducerRunner? postMergeProducerRunner, IPoSSwitcher? poSSwitcher)
     {
-        _preMergeProducer = preMergeProducer;
-        _eth2BlockProducer = postMergeBlockProducer ?? throw new ArgumentNullException(nameof(postMergeBlockProducer));
+        _preMergeProducerRunner = preMergeProducerRunner;
+        _postMergeProducerRunner = postMergeProducerRunner ?? throw new ArgumentNullException(nameof(postMergeProducerRunner));
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _poSSwitcher.TerminalBlockReached += OnSwitchHappened;
-        if (HasPreMergeProducer)
-            _preMergeProducer!.BlockProduced += OnBlockProduced;
+        if (HasPreMergeProducerRunner)
+            _preMergeProducerRunner!.BlockProduced += OnBlockProduced;
 
-        postMergeBlockProducer.BlockProduced += OnBlockProduced;
+        postMergeProducerRunner.BlockProduced += OnBlockProduced;
     }
 
     private void OnBlockProduced(object? sender, BlockEventArgs e)
@@ -34,30 +34,30 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
 
     private void OnSwitchHappened(object? sender, EventArgs e)
     {
-        _preMergeProducer?.StopAsync();
+        _preMergeProducerRunner?.StopAsync();
     }
 
     public void Start()
     {
-        _eth2BlockProducer.Start();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() == false && HasPreMergeProducer)
+        _postMergeProducerRunner.Start();
+        if (_poSSwitcher.HasEverReachedTerminalBlock() == false && HasPreMergeProducerRunner)
         {
-            _preMergeProducer!.Start();
+            _preMergeProducerRunner!.Start();
         }
     }
 
     public async Task StopAsync()
     {
-        await _eth2BlockProducer.StopAsync();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducer)
-            await _preMergeProducer!.StopAsync();
+        await _postMergeProducerRunner.StopAsync();
+        if (_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducerRunner)
+            await _preMergeProducerRunner!.StopAsync();
     }
 
     public bool IsProducingBlocks(ulong? maxProducingInterval)
     {
-        return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducer == false
-            ? _eth2BlockProducer.IsProducingBlocks(maxProducingInterval)
-            : _preMergeProducer!.IsProducingBlocks(maxProducingInterval);
+        return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducerRunner == false
+            ? _postMergeProducerRunner.IsProducingBlocks(maxProducingInterval)
+            : _preMergeProducerRunner!.IsProducingBlocks(maxProducingInterval);
     }
 
     public event EventHandler<BlockEventArgs>? BlockProduced;

@@ -1,4 +1,6 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
@@ -19,7 +21,9 @@ using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.State;
 using NSubstitute;
+
 namespace Nethermind.Shutter.Test;
+
 public class ShutterApiSimulator(
     ShutterEventSimulator eventSimulator,
     IAbiEncoder abiEncoder,
@@ -125,7 +129,7 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
     {
         return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }
