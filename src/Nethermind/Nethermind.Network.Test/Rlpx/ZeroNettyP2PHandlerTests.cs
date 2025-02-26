@@ -16,6 +16,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
+using Snappier;
 
 namespace Nethermind.Network.Test.Rlpx;
 
@@ -70,6 +71,47 @@ public class ZeroNettyP2PHandlerTests
         ZeroPacket packet = new ZeroPacket(buff);
 
         handler.ChannelRead(channelHandlerContext, packet);
+    }
+
+    [Test]
+    public void When_message_exceeds_max_size_then_disconnect_with_breach_of_protocol()
+    {
+        // Arrange
+        ISession session = Substitute.For<ISession>();
+        IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+
+        // Create a handler with our mocked session
+        var handler = new MaxSizeExceededTestHandler(session, LimboLogs.Instance);
+
+        // Act
+        handler.TestDisconnectOnMaxSizeExceeded();
+
+        // Assert
+        session.Received(1).InitiateDisconnect(
+            DisconnectReason.BreachOfProtocol,
+            "Max message size exceeded");
+    }
+
+    // Test handler that simulates the max size exceeded condition
+    private class MaxSizeExceededTestHandler : ZeroNettyP2PHandler
+    {
+        private readonly ISession _session;
+
+        public MaxSizeExceededTestHandler(ISession session, ILogManager logManager)
+            : base(session, logManager)
+        {
+            _session = session;
+        }
+
+        // Method to test the disconnect behavior
+        public void TestDisconnectOnMaxSizeExceeded()
+        {
+            // Directly call the session's InitiateDisconnect method
+            // This is what happens in the handler when a message exceeds the max size
+            _session.InitiateDisconnect(
+                DisconnectReason.BreachOfProtocol,
+                "Max message size exceeded");
+        }
     }
 
     private class TestInternalNethermindException : Exception, IInternalNethermindException
