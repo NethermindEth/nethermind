@@ -84,11 +84,11 @@ public class VirtualMachine : IVirtualMachine
             IsPatternMatchingEnabled = false,
 
             AggressivePartialAotMode = true,
-            BakeInTracingInAotModes = true,
+            BakeInTracingInAotModes = false,
 
-            FullAotThreshold = 5,
+            FullAotThreshold = 4,
             PatternMatchingThreshold = int.MaxValue,
-            AnalysisQueueMaxSize = 8,
+            AnalysisQueueMaxSize = 4,
             PartialAotThreshold = int.MaxValue,
         };
 #else
@@ -681,11 +681,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsEmpty)
             {
                 vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
-            }
-
-            if (vmState.Env.CodeInfo.IlInfo.IsEmpty)
-            {
-                IlAnalyzer.Analyse(env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
             }
         }
 
