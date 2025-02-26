@@ -76,9 +76,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.EthSyncingInfo,
             feeHistoryOracle,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
-
-        sequencerJsonRpcClient,
-            _api.WorldStateManager.GlobalWorldState,
+            sequencerJsonRpcClient,
             _api.EthereumEcdsa,
             sealer,
             _api.SpecHelper);

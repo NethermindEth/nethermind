@@ -43,11 +43,23 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>();
+    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
+        new UnboundedChannelOptions()
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+        });
+
+    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
+        new BoundedChannelOptions(MaxProcessingQueueSize)
+        {
+            // Optimize for single reader concurrency
+            SingleReader = true,
+            // Optimize for single writer concurrency (recovery queue)
+            SingleWriter = true,
+        });
+
     private bool _recoveryComplete = false;
-
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(MaxProcessingQueueSize);
-
     private int _queueCount;
 
     private readonly ProcessingStats _stats;
@@ -58,6 +70,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private DateTime _lastProcessedBlock;
 
     private int _currentRecoveryQueueSize;
+    private bool _isProcessingBlock;
     private const int MaxBlocksDuringFastSyncTransition = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
@@ -270,13 +283,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-
+            _isProcessingBlock = true;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
                     BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
-                    throw new InvalidOperationException("Processing loop expects only resolved blocks");
+                    throw new InvalidOperationException("Block processing expects only resolved blocks");
                 }
 
                 Block block = blockRef.Block;
@@ -298,11 +311,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                if (_logger.IsWarn) _logger.Warn($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
+                if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
                 BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
             }
             finally
             {
+                _isProcessingBlock = false;
                 Interlocked.Decrement(ref _queueCount);
             }
 
@@ -386,8 +400,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            Metrics.RecoveryQueueSize = _recoveryQueue.Reader.Count;
-            Metrics.ProcessingQueueSize = _blockQueue.Reader.Count;
+            int blockQueueCount = _blockQueue.Reader.Count;
+            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (_isProcessingBlock ? 1 : 0), 0);
+            Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
 
@@ -548,12 +563,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 blocksToProcess.Add(block);
             }
 
-            if (!blocksToProcess[0].IsGenesis)
+            Block firstBlock = blocksToProcess[0];
+            if (!firstBlock.IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException("Attempted to process a disconnected blockchain");
+                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
+                    throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 }
             }
         }
