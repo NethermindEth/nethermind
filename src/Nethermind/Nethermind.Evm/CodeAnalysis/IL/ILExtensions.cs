@@ -158,6 +158,14 @@ public static class ReleaseSpecEmit
             }
         }
     }
+
+    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, EnvLoader<T> env, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    {
+        env.LoadVmState(method, locals, false);
+        method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
+        method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
+    }
+
     public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, EnvLoader<T> env, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         Label alreadyCheckedLabel = method.DefineLabel();

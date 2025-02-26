@@ -210,6 +210,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _env = default;
         _snapshot = default;
 
+        IlExecutionStepState = default;
         _statePool.Enqueue(this);
 
 #if DEBUG

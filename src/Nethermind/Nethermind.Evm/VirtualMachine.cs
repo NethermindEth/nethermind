@@ -816,6 +816,9 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         case ContractState.Failed:
                             exceptionType = chunkExecutionResult.ExceptionType;
                             goto ReturnFailure;
+                        case ContractState.Halted:
+                            returnData = chunkExecutionResult.CallResult;
+                            goto DataReturnNoTrace;
                     }
 
                     if (programCounter >= codeLength)
@@ -830,6 +833,10 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
+
+            OpcodeInfo opcodeInfo = new OpcodeInfo(programCounter, instruction, 0);
+            Debug.WriteLine($"PC: {programCounter}; OP: {opcodeInfo}");
+
 
             if (isCancelable && _txTracer.IsCancelled)
             {
@@ -1687,6 +1694,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                     {
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         ReadOnlySpan<byte> bytesSpan = stack.PopWord256();
+                        if (vmState.IsStatic) goto StaticCallViolation;
+
                         exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, _state, ref gasAvailable, ref result, ref bytesSpan, spec, _txTracer);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -2704,7 +2713,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     {
         Metrics.IncrementSStoreOpcode();
 
-        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 

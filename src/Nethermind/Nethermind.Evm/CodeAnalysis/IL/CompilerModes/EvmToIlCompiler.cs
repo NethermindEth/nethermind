@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
@@ -123,6 +124,7 @@ internal static class Precompiler
                     method.LoadConstant(op.ProgramCounter);
                     method.StoreLocal(locals.programCounter);
                 }
+                method.PrintString($"PC : {op.ProgramCounter}; OP: {op}\n");
 
                 if (!config.BakeInTracingInAotModes)
                 {
@@ -136,11 +138,15 @@ internal static class Precompiler
                             continue;
                         }
 
+                        if(currentSegment.RequireNotStaticEnv)
+                        {
+                            method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
+                        }
+
                         if (currentSegment.RequiresOpcodeCheck)
                         {
                             method.EmitAmortizedOpcodeCheck(currentSegment, locals, envLoader, evmExceptionLabels);
                         }
-
                         // and we emit failure for failing jumpless segment at start 
                         if (currentSegment.IsFailing)
                         {
@@ -155,7 +161,6 @@ internal static class Precompiler
                             method.LoadConstant(currentSegment.RequiredStack);
                             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
                         }
-
                         // we check if locals.stackHeadRef overflow can occur
                         if (currentSegment.MaxStack != 0)
                         {
@@ -188,6 +193,12 @@ internal static class Precompiler
                         method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
                         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                     }
+
+                    if(op.Metadata.IsNotStaticOpcode)
+                    {
+                        method.EmitAmortizedStaticEnvCheck(currentSegment, locals, envLoader, evmExceptionLabels);
+                    }
+
                     method.EmitStaticGasCheck(locals.gasAvailable, op.Metadata.GasCost, evmExceptionLabels);
 
                     method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
@@ -205,7 +216,6 @@ internal static class Precompiler
                     method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
                 }
 
-                method.PrintString($"PC : {op.ProgramCounter}; OP: {op}\n");
 
                 opEmitter.Emit(config, contractMetadata, segmentMetadata, currentSegment, i, op, method, locals, envLoader, evmExceptionLabels, (ret, jumpTable, exit));
 

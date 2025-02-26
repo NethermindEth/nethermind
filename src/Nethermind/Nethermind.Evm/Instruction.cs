@@ -177,7 +177,7 @@ namespace Nethermind.Evm
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
     }
-    public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush)
+    public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush, bool requiresStaticEnvToBeFalse = false)
     {
         // these values are just indicators that these opcodes have extra gas handling 
         private const int DYNAMIC = 0;
@@ -203,6 +203,11 @@ namespace Nethermind.Evm
         /// How many bytes are pushed by this instruction.
         /// </summary>
         public byte StackBehaviorPush { get; } = stackBehaviorPush;
+
+        /// <summary>
+        /// requires EvmState.IsStatic to be false
+        /// </summary>
+        public bool IsNotStaticOpcode { get; } = requiresStaticEnvToBeFalse;
 
         public static readonly IReadOnlyDictionary<Instruction, OpcodeMetadata> Operations =
             new Dictionary<Instruction, OpcodeMetadata>()
@@ -348,25 +353,27 @@ namespace Nethermind.Evm
                 [Instruction.GAS] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.MCOPY] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 3, 0),
 
-                [Instruction.LOG0] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 2, 0),
-                [Instruction.LOG1] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 3, 0),
-                [Instruction.LOG2] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 4, 0),
-                [Instruction.LOG3] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 5, 0),
-                [Instruction.LOG4] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 6, 0),
+                [Instruction.LOG0] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 2, 0, true),
+                [Instruction.LOG1] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 3, 0, true),
+                [Instruction.LOG2] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 4, 0, true),
+                [Instruction.LOG3] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 5, 0, true),
+                [Instruction.LOG4] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 6, 0, true),
 
                 [Instruction.TLOAD] = new(GasCostOf.TLoad, 0, 1, 1),
-                [Instruction.TSTORE] = new(GasCostOf.TStore, 0, 2, 0),
+                [Instruction.TSTORE] = new(GasCostOf.TStore, 0, 2, 0, true),
 
                 [Instruction.SLOAD] = new(DYNAMIC, 0, 1, 1),
-                [Instruction.SSTORE] = new(DYNAMIC, 0, 2, 0),
+                [Instruction.SSTORE] = new(DYNAMIC, 0, 2, 0, true),
 
-                [Instruction.CREATE] = new(GasCostOf.Create + DYNAMIC, 0, 3, 1),
+                [Instruction.CREATE] = new(GasCostOf.Create + DYNAMIC, 0, 3, 1, true),
+                [Instruction.CREATE2] = new(GasCostOf.Create + DYNAMIC, 0, 4, 1, true),
+
+                // in theory Call opcodes apart CALLCODE require isStatic but it depends on their args so not worth amortizing
                 [Instruction.CALL] = new(DYNAMIC, 0, 7, 1),
                 [Instruction.CALLCODE] = new(DYNAMIC, 0, 7, 1),
                 [Instruction.DELEGATECALL] = new(DYNAMIC, 0, 6, 1),
-                [Instruction.CREATE2] = new(GasCostOf.Create + DYNAMIC, 0, 4, 1),
                 [Instruction.STATICCALL] = new(DYNAMIC, 0, 6, 1),
-                [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct + DYNAMIC, 0, 1, 0),
+                [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct + DYNAMIC, 0, 1, 0, true),
 
                 [Instruction.RETURN] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
                 [Instruction.REVERT] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs

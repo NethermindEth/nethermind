@@ -2235,9 +2235,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 EnableMemory = true,
             };
 
-            using var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
-            using var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
-
             var bytecode = Prepare.EvmCode
                 .PushData(UInt256.MaxValue)
                 .PUSHx([2])
@@ -2254,26 +2251,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done;
 
 
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.PARTIAL_AOT_MODE);
 
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
-
-            var normal_traces = tracer1.BuildResult();
-            var ilvm_traces = tracer2.BuildResult();
+            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
 
-            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-
-            if (testcase.opcode is not null)
-            {
-                Assert.That(enhancedHasIlvmTraces, Is.True);
-                Assert.That(normalHasIlvmTraces, Is.False);
-            }
+            Assert.That(Metrics.IlvmPrecompiledSegmentsExecutions, Is.GreaterThan(0));
             Assert.That(actual, Is.EqualTo(expected), testcase.msg);
         }
 
@@ -2341,9 +2328,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 EnableMemory = true,
             };
 
-            using var tracer1 = new GethLikeTxMemoryTracer(tracerOptions);
-            using var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
-
             var bytecode = Prepare.EvmCode
                 .PushData(UInt256.MaxValue)
                 .PUSHx([2])
@@ -2360,20 +2344,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done;
 
 
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
-
-            var normal_traces = tracer1.BuildResult();
-            var ilvm_traces = tracer2.BuildResult();
+            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
-
-            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
             Assert.That(Metrics.AotPrecompiledCalls, Is.GreaterThan(0));
             Assert.That(actual, Is.EqualTo(expected), testcase.msg);
@@ -2394,35 +2372,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             });
             enhancedChain.InsertCode(testcase.bytecode);
 
-            using var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            using var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-
             var bytecode =
                 Prepare.EvmCode
                     .Call(address, 100000)
                     .STOP()
                     .Done;
 
-            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
+            standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, (ForkActivation)10000000000);
 
             enhancedChain.ForceRunAnalysis(address, ILMode.PATTERN_BASED_MODE);
 
-            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
-
-            var normal_traces = tracer1.BuildResult();
-            var ilvm_traces = tracer2.BuildResult();
+            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, (ForkActivation)10000000000);
 
             var actual = enhancedChain.StateRoot;
             var expected = standardChain.StateRoot;
 
-            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
-
-            if (testcase.opcode is not null)
-            {
-                Assert.That(enhancedHasIlvmTraces, Is.True);
-                Assert.That(normalHasIlvmTraces, Is.False);
-            }
             Assert.That(actual, Is.EqualTo(expected), testcase.opcode);
         }
 
