@@ -376,6 +376,34 @@ public partial class BlockDownloaderTests
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
+    [Test]
+    public async Task Prune_download_requests_map()
+    {
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(Always.Invalid));
+        Context ctx = node.Resolve<Context>();
+
+        SyncPeerMock syncPeer = new(40, true, Response.AllCorrect);
+        SyncPeerMock syncPeer2 = new(40, true, Response.AllCorrect, withWithdrawals: true);
+        SyncPeerMock syncPeer3 = new(40, false, Response.AllCorrect, withWithdrawals: true);
+
+        IForwardSyncController forwardSyncController = ctx.ForwardSyncController;
+
+        ctx.ConfigureBestPeer(syncPeer);
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        forwardSyncController.DownloadRequestBufferSize.Should().Be(32);
+
+        ctx.ConfigureBestPeer(syncPeer2);
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        forwardSyncController.DownloadRequestBufferSize.Should().Be(64);
+
+        ctx.ConfigureBestPeer(syncPeer3);
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        forwardSyncController.DownloadRequestBufferSize.Should().Be(96);
+
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        forwardSyncController.DownloadRequestBufferSize.Should().Be(39);
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task Can_DownloadBlockOutOfOrder(bool isMerge)
@@ -826,6 +854,7 @@ public partial class BlockDownloaderTests
         public ISynchronizer Synchronizer => _scope.Resolve<ISynchronizer>();
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
         public SyncDispatcher<BlocksRequest> Dispatcher => FullSyncFeedComponent.Dispatcher;
+        public IForwardSyncController ForwardSyncController => _scope.Resolve<IForwardSyncController>();
 
         public void ConfigureBestPeer(ISyncPeer syncPeer)
         {

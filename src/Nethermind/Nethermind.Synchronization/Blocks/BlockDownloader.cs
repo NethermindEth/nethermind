@@ -1,5 +1,3 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -58,6 +56,7 @@ namespace Nethermind.Synchronization.Blocks
         private int HeaderLookupSize => Math.Min(Math.Max(_syncBatchSize.Current, _receiptBatchSize.Current) * 10, 1024);
 
         private ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
+        public int DownloadRequestBufferSize => _downloadRequests.Count;
         private readonly ISyncPeerPool _syncPeerPool;
 
         public BlockDownloader(
@@ -158,6 +157,13 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
+                // Should only happen because of a lot of reorg
+                // or if the `HeaderLookupSize` become smaller significantly.
+                if (_downloadRequests.Count > headers.Count * 2)
+                {
+                    PruneRequestMap(headers);
+                }
+
                 if (blocksSynced > 0)
                 {
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
@@ -169,6 +175,31 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     return AssembleRequest(headers, downloadReceipts);
                 }
+            }
+        }
+
+        public void PruneDownloadBuffer()
+        {
+            _downloadRequests.Clear();
+
+            _logger.Error("==============================================PRUNE===============================================");
+        }
+
+        private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
+        {
+            HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
+            HashSet<Hash256> toRemove = new HashSet<Hash256>();
+            foreach (var kv in _downloadRequests)
+            {
+                if (!currentHeaderHashes.Contains(kv.Key))
+                {
+                    toRemove.Add(kv.Key);
+                }
+            }
+
+            foreach (var hash in toRemove)
+            {
+                _downloadRequests.Remove(hash, out _);
             }
         }
 
