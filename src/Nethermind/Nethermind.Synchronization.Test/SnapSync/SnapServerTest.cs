@@ -367,7 +367,7 @@ public class SnapServerTest
         for (int i = 1000; i < 10000; i += 1000)
         {
             Address address = TestItem.GetRandomAddress();
-            StorageTree storageTree = new(store.GetTrieStore(address.ToAccountPath), LimboLogs.Instance);
+            StorageTree storageTree = new(store.GetTrieStore(address), LimboLogs.Instance);
             for (int j = 0; j < i; j += 1)
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
