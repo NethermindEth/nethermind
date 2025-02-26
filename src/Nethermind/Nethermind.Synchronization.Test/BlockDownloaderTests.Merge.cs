@@ -258,7 +258,9 @@ public partial class BlockDownloaderTests
     public async Task BlockDownloader_works_correctly_with_withdrawals()
     {
         int fastSyncLag = 2;
-        await using IContainer container = CreateMergeNode((_) => {}, new SyncConfig()
+        await using IContainer container = CreateMergeNode((_) =>
+        {
+        }, new SyncConfig()
         {
             FastSync = true,
             StateMinDistanceFromHead = fastSyncLag,

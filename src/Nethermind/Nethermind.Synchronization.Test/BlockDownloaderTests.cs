@@ -112,7 +112,7 @@ public partial class BlockDownloaderTests
         if (enableFastSync)
         {
             int receiptCount = 0;
-            for (int i = 0;i < (int)Math.Max(0, headNumber - fastSynclag); i++)
+            for (int i = 0; i < (int)Math.Max(0, headNumber - fastSynclag); i++)
             {
                 if (i % 3 == 0)
                 {
@@ -847,7 +847,7 @@ public partial class BlockDownloaderTests
                 .Returns(Task.FromResult(peerAllocation));
         }
 
-        public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component,  PeerInfo peerInfo)
+        public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
         {
             using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
 
