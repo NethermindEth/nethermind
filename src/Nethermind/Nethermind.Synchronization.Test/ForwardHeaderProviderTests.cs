@@ -110,6 +110,33 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test]
+    public async Task Ancestor_lookup_with_sync_pivot()
+    {
+        SyncPeerMock syncPeer = new(1024, false, Response.AllCorrect);
+        int pivotNumber = 500;
+        BlockHeader syncPivot = syncPeer.BlockTree.FindHeader(pivotNumber, BlockTreeLookupOptions.None)!;
+
+        await using IContainer node = CreateNode(builder =>
+        {
+        }, new ConfigProvider(new SyncConfig()
+        {
+            PivotNumber = syncPivot.Number.ToString(),
+            PivotHash = syncPivot.Hash!.ToString(),
+        }));
+
+        // Simulate fast header adding the pivot.
+        Context ctx = node.Resolve<Context>();
+        ctx.BlockTree.Insert(syncPivot).Should().Be(AddBlockResult.Added);
+        ctx.ConfigureBestPeer(syncPeer);
+        syncPeer.HeadNumber = 700;
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+
+        headers?[0]?.Number.Should().Be(pivotNumber);
+    }
+
+    [Test]
     public async Task Ancestor_failure_blocks()
     {
         await using IContainer node = CreateNode(builder =>
