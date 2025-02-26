@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -347,10 +348,24 @@ public partial class BlockDownloaderTests
         }, configs);
     }
 
-    private class PostMergeContext(IBeaconPivot beaconPivot, IPoSSwitcher poSSwitcher, ILifetimeScope scope) : Context(scope)
+    private record PostMergeContext(
+        IBeaconPivot BeaconPivot,
+        IPoSSwitcher PosSwitcher,
+        ResponseBuilder ResponseBuilder,
+        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> FastSyncFeedComponent,
+        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> FullSyncFeedComponent,
+        IForwardSyncController ForwardSyncController,
+        IBlockTree BlockTree,
+        InMemoryReceiptStorage ReceiptStorage,
+        ISyncPeerPool PeerPool) : Context(
+        ResponseBuilder,
+        FastSyncFeedComponent,
+        FullSyncFeedComponent,
+        ForwardSyncController,
+        BlockTree,
+        ReceiptStorage,
+        PeerPool)
     {
-        public IBeaconPivot BeaconPivot => beaconPivot;
-        public IPoSSwitcher PosSwitcher => poSSwitcher;
         public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, long high, long low)
         {
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
