@@ -151,7 +151,7 @@ jobs:
       id: test
       run: |
         dotnet run --project src/Nethermind/${{ matrix.project }} -c release \
-          ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecov.settings' || '' }}
+          ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.settings.xml' || '' }}
     - name: Save test outcome
       if: success() || failure()
       run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
