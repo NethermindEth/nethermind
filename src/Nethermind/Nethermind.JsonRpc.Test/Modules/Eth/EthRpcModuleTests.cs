@@ -41,7 +41,6 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 [Parallelizable(ParallelScope.Self)]
-[SetCulture("en-US")]
 public partial class EthRpcModuleTests
 {
     [TestCase("earliest", "0x3635c9adc5dea00000")]
@@ -64,7 +63,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    [SetCulture("en-US")]
     public async Task Eth_get_eth_feeHistory()
     {
         using Context ctx = await Context.Create();
