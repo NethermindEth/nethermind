@@ -52,12 +52,12 @@ namespace Nethermind.Consensus.Ethash
 
         public string SealEngineType => Core.SealEngineType.Ethash;
 
-        public IBlockProducerRunner CreateBlockProducerRunner()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             return new StandardBlockProducerRunner(
                 _nethermindApi.ManualBlockProductionTrigger,
                 _nethermindApi.BlockTree,
-                _nethermindApi.BlockProducer!);
+                blockProducer);
         }
     }
 }

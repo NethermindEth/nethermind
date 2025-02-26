@@ -63,7 +63,6 @@ namespace Nethermind.Db.Test
             Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
         }
 
-        [SetCulture("en-US")]
         [Test]
         public void ProcessCompactionStats_DbStats_Correct()
         {

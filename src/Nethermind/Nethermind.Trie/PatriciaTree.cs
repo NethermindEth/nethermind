@@ -1258,9 +1258,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null, Hash256? storageAddr = null) =>
-            Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions, storageAddr);
-
         /// <summary>
         /// Run tree visitor
         /// </summary>
@@ -1284,10 +1281,6 @@ namespace Nethermind.Trie
 
             using TrieVisitContext trieVisitContext = new()
             {
-                // hacky but other solutions are not much better, something nicer would require a bit of thinking
-                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
-                // but we know that we have multiple optimizations and assumptions on trees
-                ExpectAccounts = visitingOptions.ExpectAccounts,
                 MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
                 IsStorage = storageAddr is not null
             };
@@ -1337,7 +1330,7 @@ namespace Nethermind.Trie
                     rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
                     if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
                     {
-                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
+                        visitor.VisitMissingNode(default, rootHash);
                         return false;
                     }
                 }
@@ -1347,7 +1340,7 @@ namespace Nethermind.Trie
 
             if (!visitor.IsFullDbScan)
             {
-                visitor.VisitTree(default, rootHash, trieVisitContext);
+                visitor.VisitTree(default, rootHash);
                 if (TryGetRootRef(out TrieNode rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
@@ -1357,14 +1350,14 @@ namespace Nethermind.Trie
             // Full db scan
             else if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
             {
-                visitor.VisitTree(default, rootHash, trieVisitContext);
+                visitor.VisitTree(default, rootHash);
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else if (TryGetRootRef(out TrieNode rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
-                visitor.VisitTree(default, rootHash, trieVisitContext);
+                visitor.VisitTree(default, rootHash);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }
