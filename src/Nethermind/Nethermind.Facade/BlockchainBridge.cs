@@ -197,7 +197,8 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            return new SimulateOutput<TTrace> { Items = ttracer.BuildResult() };
+            result.Items = ttracer.BuildResult();
+            return result;
         }
 
 
