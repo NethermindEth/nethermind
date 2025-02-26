@@ -566,10 +566,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Block firstBlock = blocksToProcess[0];
             if (!firstBlock.IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, "Attempted to process a block from incorrect fork");
+                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidBlockException(firstBlock, $"Attempted to process a block without parent state: {parentOfFirstBlock.StateRoot}");
+                    throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 }
             }
         }
