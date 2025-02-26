@@ -67,7 +67,7 @@ public class HealingStateTree : StateTree
         }
     }
 
-    private bool Recover(in TreePath missingNodePath, in Hash256 hash, Hash256 fullPath)
+    private bool Recover(in TreePath missingNodePath, Hash256 hash, Hash256 fullPath)
     {
         if (_recovery is not null)
         {
