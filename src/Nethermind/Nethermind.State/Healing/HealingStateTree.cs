@@ -71,7 +71,6 @@ public class HealingStateTree : StateTree
     {
         if (_recovery is not null)
         {
-            Console.Error.WriteLine($"recovring {missingNodePath} with hash {hash} and full path {fullPath}");
             using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
@@ -79,7 +78,6 @@ public class HealingStateTree : StateTree
                 {
                     ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
                     TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
-                    Console.Error.WriteLine($"recovered {kv.Item1}, {kv.Item2.ToHexString()}");
                 }
                 return true;
             }
