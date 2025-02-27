@@ -5,11 +5,14 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class SimulateBlockResult(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
-    : BlockForRpc(source, includeFullTransactionData, specProvider, false)
+    : BlockForRpc(source, includeFullTransactionData, specProvider)
 {
+    public bool ShouldSerializeTotalDifficulty() => false;
+    public new UInt256 TotalDifficulty { get => base.TotalDifficulty; set => base.TotalDifficulty = value; }
     public List<SimulateCallResult> Calls { get; set; } = new();
 }

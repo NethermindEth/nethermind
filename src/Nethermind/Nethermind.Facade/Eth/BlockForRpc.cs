@@ -20,7 +20,6 @@ public class BlockForRpc
 {
     private readonly BlockDecoder _blockDecoder = new();
     private readonly bool _isAuRaBlock;
-    private readonly bool _includeTotalDifficulty;
 
     protected BlockForRpc()
     {
@@ -28,10 +27,9 @@ public class BlockForRpc
     }
 
     [SkipLocalsInit]
-    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool includeTotalDifficulty = true)
+    public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
-        _includeTotalDifficulty = includeTotalDifficulty;
         Author = block.Author ?? block.Beneficiary;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
@@ -126,7 +124,6 @@ public class BlockForRpc
     public long? Step { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 TotalDifficulty { get; set; }
-    public bool ShouldSerializeTotalDifficulty() => _includeTotalDifficulty;
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
