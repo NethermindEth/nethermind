@@ -79,10 +79,8 @@ public readonly struct L1BlockGasInfo
                     return;
                 }
 
-                _l1BaseFeeScalar = new(data[4..8].Span, true);
-                _l1BlobBaseFeeScalar = new(data[8..12].Span, true);
-                _l1GasPrice = new(data[36..68].Span, true);
-                _l1BlobBaseFee = new(data[68..100].Span, true);
+                ParsePostEcotoneBaseValues(data, out _l1GasPrice, out _l1BlobBaseFee, out _l1BaseFeeScalar, out _l1BlobBaseFeeScalar);
+
                 // https://github.com/ethereum-optimism/specs/pull/382/files#diff-5ca81beda05e4bfca4ea5db10dcf59329ecc07861e3a710fd08359ebd2074379R27-R28
                 _operatorFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(data[164..168].Span);
                 _operatorFeeConstant = BinaryPrimitives.ReadUInt64BigEndian(data[168..176].Span);
@@ -94,10 +92,7 @@ public readonly struct L1BlockGasInfo
                     return;
                 }
 
-                _l1GasPrice = new(data[36..68].Span, true);
-                _l1BlobBaseFee = new(data[68..100].Span, true);
-                _l1BaseFeeScalar = new(data[4..8].Span, true);
-                _l1BlobBaseFeeScalar = new(data[8..12].Span, true);
+                ParsePostEcotoneBaseValues(data, out _l1GasPrice, out _l1BlobBaseFee, out _l1BaseFeeScalar, out _l1BlobBaseFeeScalar);
             }
             else
             {
@@ -112,6 +107,17 @@ public readonly struct L1BlockGasInfo
                 _feeScalar = new UInt256(data[(4 + 32 * 7)..(4 + 32 * 8)].Span, true);
                 _feeScalarDecimal = (((ulong)_feeScalar) / 1_000_000m).ToString();
             }
+        }
+
+        return;
+
+        static void ParsePostEcotoneBaseValues(Memory<byte> data, out UInt256? l1GasPrice, out UInt256? l1BlobBaseFee,
+            out UInt256? l1BaseFeeScalar, out UInt256? l1BlobBaseFeeScalar)
+        {
+            l1GasPrice = new(data[36..68].Span, true);
+            l1BlobBaseFee = new(data[68..100].Span, true);
+            l1BaseFeeScalar = new(data[4..8].Span, true);
+            l1BlobBaseFeeScalar = new(data[8..12].Span, true);
         }
     }
 
