@@ -49,7 +49,8 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
 
             if (uncompressedLength > SnappyParameters.MaxSnappyLength)
             {
-                throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+                _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+                return;
             }
 
             if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)

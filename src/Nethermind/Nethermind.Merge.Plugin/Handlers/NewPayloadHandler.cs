@@ -333,7 +333,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
                 if (e.ProcessingResult == ProcessingResult.Exception)
                 {
-                    BlockchainException? exception = new("Block processing threw exception.", e.Exception);
+                    BlockchainException? exception = new(e.Exception?.Message ?? "Block processing threw exception.", e.Exception);
                     blockProcessedTaskCompletionSource.SetException(exception);
                     return;
                 }
