@@ -45,7 +45,7 @@ public class OptimismReceiptTests
         var receipt = new OptimismReceiptForRpc(
             tx.Hash!,
             new OptimismTxReceipt(),
-            tx.GetGasInfo(specProvider.GetSpec(block.Header).IsEip1559Enabled, block.Header),
+            tx.GetGasInfo(specProvider.GetSpec(block.Header), block.Header),
             blockGasInfo.GetTxGasInfo(tx)
         );
 
@@ -85,7 +85,7 @@ public class OptimismReceiptTests
         var receipt = new OptimismReceiptForRpc(
             tx.Hash!,
             new OptimismTxReceipt(),
-            tx.GetGasInfo(specProvider.GetSpec(block.Header).IsEip1559Enabled, block.Header),
+            tx.GetGasInfo(specProvider.GetSpec(block.Header), block.Header),
             blockGasInfo.GetTxGasInfo(tx)
         );
 
