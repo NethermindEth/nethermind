@@ -8,10 +8,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class WebSocketPipelinesJsonRpcAdapter: PipelinesJsonRpcAdapter
+public class WebSocketPipelinesJsonRpcAdapter: PipelinesJsonRpcAdapter, ISocketsClient
 {
     protected override PipeReader PipeReader { get; }
     protected override PipeWriter PipeWriter { get; }
@@ -24,6 +25,7 @@ public class WebSocketPipelinesJsonRpcAdapter: PipelinesJsonRpcAdapter
     private long _messageSize = 0;
 
     public WebSocketPipelinesJsonRpcAdapter(
+        string clientId,
         WebSocket webSocket,
         RpcEndpoint endpointType,
         IJsonRpcProcessor jsonRpcProcessor,
@@ -34,11 +36,29 @@ public class WebSocketPipelinesJsonRpcAdapter: PipelinesJsonRpcAdapter
     ) : base(endpointType, jsonRpcProcessor, jsonRpcLocalStats, jsonSerializer, options, url)
     {
         _webSocket = webSocket;
+        ClientName = clientId;
+
         _writerPipe = new Pipe();
         PipeWriter = _writerPipe.Writer;
 
         _readerPipe = new Pipe();
         PipeReader = _readerPipe.Reader;
+    }
+
+    public string ClientName { get; }
+
+    public async Task SendAsync(SocketsMessage message)
+    {
+        if (message is null)
+        {
+            return;
+        }
+
+        if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
+            string.IsNullOrWhiteSpace(message.Client))
+        {
+            await SendJob(new { type = message.Type, client = ClientName, data = message.Data }, default);
+        }
     }
 
     protected override async Task ReadTask(CancellationToken cancellationToken)

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -99,7 +98,7 @@ public class WebSocketExtensionsTests
             Substitute.For<IJsonSerializer>(),
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
-        await webSocketsClient.ReceiveLoopAsync();
+        await webSocketsClient.Start(default);
         await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 2 * 4096 + 1024));
     }
 
@@ -151,7 +150,7 @@ public class WebSocketExtensionsTests
             return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
         });
 
-        await webSocketsClient.ReceiveLoopAsync();
+        await webSocketsClient.Start(default);
 
         Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024));
         Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(400));
@@ -177,7 +176,7 @@ public class WebSocketExtensionsTests
             Substitute.For<IJsonSerializer>(),
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
-        await webSocketsClient.ReceiveLoopAsync();
+        await webSocketsClient.Start(default);
         await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 1234));
     }
 
@@ -200,8 +199,7 @@ public class WebSocketExtensionsTests
             Substitute.For<IJsonSerializer>(),
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
-
-        await webSocketsClient.ReceiveLoopAsync();
+        await webSocketsClient.Start(default);
         await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 6 * 2000 + 1));
     }
 
@@ -224,7 +222,7 @@ public class WebSocketExtensionsTests
             Substitute.For<IJsonSerializer>(),
             (int)1.MB());
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync());
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.Start(default));
         await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>());
     }
 
@@ -242,6 +240,6 @@ public class WebSocketExtensionsTests
             Substitute.For<IJsonSerializer>(),
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
-        await webSocketsClient.ReceiveLoopAsync();
+        await webSocketsClient.Start(default);
     }
 }

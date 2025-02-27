@@ -12,5 +12,4 @@ public interface IWebSocketsModule
     string Name { get; }
     ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string client, HttpContext context);
     void RemoveClient(string clientId);
-    Task SendAsync(SocketsMessage message);
 }

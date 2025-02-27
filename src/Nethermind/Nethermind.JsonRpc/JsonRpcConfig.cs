@@ -45,6 +45,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool BufferResponses { get; set; }
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
+    public long? MaxRequestBodySizeForEngineApi { get; set; } = 128 * 1024 * 1024;
     public int MaxLogsPerResponse { get; set; } = 20_000;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;

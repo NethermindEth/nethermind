@@ -39,7 +39,7 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
     {
         SingleWriter = true
     });
-    private readonly Channel<JsonRpcResult> _writerChannel = Channel.CreateBounded<JsonRpcResult>(new BoundedChannelOptions(1)
+    private readonly Channel<object> _writerChannel = Channel.CreateBounded<object>(new BoundedChannelOptions(1)
     {
         SingleReader = true
     });
@@ -120,6 +120,10 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
             {
                 await SendJsonRpcResult(result.Value, cancellationToken);
             }
+            else
+            {
+                // TODO: null is an error, need to exit
+            }
         }
     }
 
@@ -128,52 +132,61 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
         await foreach (var result in _writerChannel.Reader.ReadAllAsync(cancellationToken))
         {
             var countingPipeWriter = new CountingPipeWriter(PipeWriter);
-            if (result.IsCollection)
-            {
-                bool isFirst = true;
-                await countingPipeWriter.WriteAsync(_jsonOpeningBracket, cancellationToken);
-                await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
-                while (await enumerator.MoveNextAsync())
-                {
-                    JsonRpcResult.Entry entry = enumerator.Current;
-                    using (entry)
-                    {
-                        if (!isFirst)
-                        {
-                            await countingPipeWriter.WriteAsync(_jsonComma, cancellationToken);
-                        }
-                        isFirst = false;
-                        await _jsonSerializer.SerializeAsync(countingPipeWriter, entry.Response, indented: false);
-                        _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
-                        // We reached the limit and don't want to responded to more request in the batch
-                        if (!_jsonRpcContext.IsAuthenticated && countingPipeWriter.WrittenCount > _maxBatchResponseBodySize)
+            if (result is JsonRpcResult jsonRpcResult)
+            {
+                if (jsonRpcResult.IsCollection)
+                {
+                    bool isFirst = true;
+                    await countingPipeWriter.WriteAsync(_jsonOpeningBracket, cancellationToken);
+                    await using JsonRpcBatchResultAsyncEnumerator enumerator = jsonRpcResult.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                    while (await enumerator.MoveNextAsync())
+                    {
+                        JsonRpcResult.Entry entry = enumerator.Current;
+                        using (entry)
                         {
-                            enumerator.IsStopped = true;
+                            if (!isFirst)
+                            {
+                                await countingPipeWriter.WriteAsync(_jsonComma, cancellationToken);
+                            }
+                            isFirst = false;
+                            await _jsonSerializer.SerializeAsync(countingPipeWriter, entry.Response, indented: false);
+                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
+
+                            // We reached the limit and don't want to responded to more request in the batch
+                            if (!_jsonRpcContext.IsAuthenticated && countingPipeWriter.WrittenCount > _maxBatchResponseBodySize)
+                            {
+                                enumerator.IsStopped = true;
+                            }
                         }
                     }
+
+                    await countingPipeWriter.WriteAsync(_jsonClosingBracket, cancellationToken);
+                }
+                else
+                {
+                    await _jsonSerializer.SerializeAsync(countingPipeWriter, jsonRpcResult.Response, indented: false);
                 }
 
-                await countingPipeWriter.WriteAsync(_jsonClosingBracket, cancellationToken);
+                long startTime = jsonRpcResult.Report?.StartTime ?? 0;
+                if (jsonRpcResult.IsCollection)
+                {
+                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
+                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, startTime, true), handlingTimeMicroseconds, countingPipeWriter.WrittenCount);
+                }
+                else
+                {
+                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
+                    _ = _jsonRpcLocalStats.ReportCall(jsonRpcResult.Report!.Value, handlingTimeMicroseconds, countingPipeWriter.WrittenCount);
+                }
             }
             else
             {
-                await _jsonSerializer.SerializeAsync(countingPipeWriter, result.Response, indented: false);
+                // For `ISocketClient`.
+                await _jsonSerializer.SerializeAsync(countingPipeWriter, result, indented: false);
             }
+
             await WriteEndOfMessage(countingPipeWriter, cancellationToken);
-
-            long startTime = result.Report?.StartTime ?? 0;
-            if (result.IsCollection)
-            {
-                long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, startTime, true), handlingTimeMicroseconds, countingPipeWriter.WrittenCount);
-            }
-            else
-            {
-                long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, countingPipeWriter.WrittenCount);
-            }
-
             IncrementBytesSentMetric((int)countingPipeWriter.WrittenCount);
         }
 
@@ -183,6 +196,11 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
     protected abstract Task<int> WriteEndOfMessage(CountingPipeWriter pipeWriter, CancellationToken cancellationToken);
 
     public async Task SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken)
+    {
+        await _writerChannel.Writer.WriteAsync(result, cancellationToken);
+    }
+
+    protected async Task SendJob(object result, CancellationToken cancellationToken)
     {
         await _writerChannel.Writer.WriteAsync(result, cancellationToken);
     }

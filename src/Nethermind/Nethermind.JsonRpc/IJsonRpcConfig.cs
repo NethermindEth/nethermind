@@ -106,6 +106,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
+    [ConfigItem(Description = "The max length of HTTP request body, in bytes for engine api.", DefaultValue = "134217728")]
+    long? MaxRequestBodySizeForEngineApi { get; set; }
+
 
     [ConfigItem(
         Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",

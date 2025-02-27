@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
@@ -45,7 +46,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         }
     }
 
-    public async Task ReceiveLoopAsync()
+    public async Task Start(CancellationToken cancellationToken)
     {
         const int standardBufferLength = 1024 * 4;
         int currentMessageLength = 0;

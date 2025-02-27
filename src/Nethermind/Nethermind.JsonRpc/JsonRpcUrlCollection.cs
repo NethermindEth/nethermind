@@ -31,7 +31,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
     private void BuildUrls(bool includeWebSockets)
     {
         bool hasEngineApi = _jsonRpcConfig.EnabledModules.Any(static m => m.Equals(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
-        long? maxRequestBodySize = hasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize;
+        long? maxRequestBodySize = hasEngineApi ? _jsonRpcConfig.MaxRequestBodySizeForEngineApi : _jsonRpcConfig.MaxRequestBodySize;
         JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, hasEngineApi, _jsonRpcConfig.EnabledModules, maxRequestBodySize);
 
         Add(defaultUrl.Port, defaultUrl);
@@ -72,7 +72,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
         }
         JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
             RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            _jsonRpcConfig.MaxRequestBodySizeForEngineApi);
 
         if (ContainsKey(url.Port))
         {
