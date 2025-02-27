@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -48,6 +49,8 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         ulong l2ParentTimestamp = l2Parent.PayloadAttributes.Timestamp;
         SystemConfig currentSystemConfig = l2Parent.SystemConfig;
         L1BlockInfo currentL1OriginBlockInfo = l2Parent.L1BlockInfo;
+        ulong tosFrom = 0;
+        ulong legacyTxFrom = 0;
         for (int i = 0; i < (int)batch.BlockCount; i++)
         {
             bool isNewOrigin = ((batch.OriginBits >> i) & 1) == 1;
@@ -70,12 +73,13 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
 
             if (isNewOrigin)
             {
-                payloadAttributes = BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origins[originIdx],
-                currentSystemConfig, systemTransaction, l1Receipts[originIdx], i, txIdx);
+                (payloadAttributes, tosFrom, legacyTxFrom) = BuildFirstBlockInEpoch(batch, l2ParentTimestamp, l1Origins[originIdx],
+                    currentSystemConfig, systemTransaction, l1Receipts[originIdx], i, txIdx, tosFrom, legacyTxFrom);
             }
             else
             {
-                payloadAttributes = BuildRegularBlock(batch, l2ParentTimestamp, l1Origins[originIdx], currentSystemConfig, systemTransaction, i, txIdx);
+                (payloadAttributes, tosFrom, legacyTxFrom) = BuildRegularBlock(batch, l2ParentTimestamp, l1Origins[originIdx],
+                    currentSystemConfig, systemTransaction, i, txIdx, tosFrom, legacyTxFrom);
             }
 
             result[i] = new()
@@ -91,28 +95,30 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         return result;
     }
 
-    private OptimismPayloadAttributes BuildFirstBlockInEpoch(BatchV1 batch, ulong l2ParentTimestamp,
-        L1Block l1Origin, SystemConfig systemConfig, Transaction systemTransaction, ReceiptForRpc[] l1OriginReceipts, int blockIdx, ulong txsFrom)
+    private (OptimismPayloadAttributes, ulong, ulong) BuildFirstBlockInEpoch(BatchV1 batch, ulong l2ParentTimestamp, L1Block l1Origin, SystemConfig systemConfig,
+        Transaction systemTransaction, ReceiptForRpc[] l1OriginReceipts, int blockIdx, ulong txsFrom, ulong tosFrom, ulong legacyTxFrom)
     {
         List<Transaction> transactions = new();
         transactions.AddRange(_depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts));
         // Transaction[] upgradeTxs = _depositTransactionBuilder.BuildUpgradeTransactions();
         // Transaction[] forceIncludeTxs = _depositTransactionBuilder.BuildForceIncludeTransactions();
-        Transaction[] userTransactions = BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx]);
+        (Transaction[] userTransactions, ulong newTosFrom, ulong newLegacyTxFrom) =
+            BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx], tosFrom, legacyTxFrom);
         transactions.AddRange(userTransactions);
 
         // Transaction[] allTxs = new[] { systemTransaction }.Concat(userDepositTxs).Concat(upgradeTxs)
         //     .Concat(forceIncludeTxs).Concat(userTransactions).ToArray();
 
-        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, transactions.ToArray());
+        return (BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, transactions.ToArray()), newTosFrom, newLegacyTxFrom);
     }
 
-    private OptimismPayloadAttributes BuildRegularBlock(BatchV1 batch, ulong l2ParentTimestamp,
-        L1Block l1Origin, SystemConfig systemConfig, Transaction systemTransaction, int blockIdx, ulong txsFrom)
+    private (OptimismPayloadAttributes, ulong, ulong) BuildRegularBlock(BatchV1 batch, ulong l2ParentTimestamp, L1Block l1Origin, SystemConfig systemConfig,
+        Transaction systemTransaction, int blockIdx, ulong txsFrom, ulong tosFrom, ulong legacyTxFrom)
     {
-        Transaction[] userTransactions = BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx]);
+        (Transaction[] userTransactions, ulong newTosFrom, ulong newLegacyTxFrom) =
+            BuildUserTransactions(batch, txsFrom, batch.BlockTxCounts[blockIdx], tosFrom, legacyTxFrom);
 
-        return BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, userTransactions);
+        return (BuildOneBlock(l1Origin, l2ParentTimestamp, systemConfig, systemTransaction, userTransactions), newTosFrom, newLegacyTxFrom);
     }
 
     private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong l2ParentTimestamp, SystemConfig systemConfig, Transaction systemTx, Transaction[] userTxs)
@@ -134,47 +140,70 @@ public class PayloadAttributesDeriver : IPayloadAttributesDeriver
         return payload;
     }
 
-    private Transaction[] BuildUserTransactions(BatchV1 batch, ulong from, ulong txCount)
+    private (Transaction[], ulong, ulong) BuildUserTransactions(BatchV1 batch, ulong from, ulong txCount, ulong tosFrom, ulong legacyTxFrom)
     {
         var userTransactions = new Transaction[txCount];
+        ulong tosIdx = tosFrom;
+        ulong legacyTxIdx = legacyTxFrom;
         for (ulong i = 0; i < txCount; i++)
         {
             ulong txIdx = from + i;
             bool parityBit = ((batch.Txs.YParityBits >> (int)txIdx) & 1) == 1;
-            ulong v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
-            Signature signature = new(batch.Txs.Signatures[txIdx].R, batch.Txs.Signatures[txIdx].S, v);
             var tx = new Transaction
             {
                 ChainId = _chainId,
                 Type = batch.Txs.Types[txIdx],
-                Signature = signature,
-                To = batch.Txs.Tos[txIdx],
                 Nonce = batch.Txs.Nonces[txIdx],
                 GasLimit = (long)batch.Txs.Gases[txIdx],
             };
+            bool contractCreationBit = ((batch.Txs.ContractCreationBits >> (int)txIdx) & 1) == 1;
+            if (!contractCreationBit)
+            {
+                tx.To = batch.Txs.Tos[tosIdx];
+                tosIdx++;
+            }
+            ulong v;
             switch (batch.Txs.Types[txIdx])
             {
                 case TxType.Legacy:
                 {
+                    bool protectedBit = ((batch.Txs.ProtectedBits >> (int)legacyTxIdx) & 1) == 1;
+                    legacyTxIdx++;
+                    if (protectedBit)
+                    {
+                        v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
+                    }
+                    else
+                    {
+                        v = 27u + (parityBit ? 1u : 0u);
+                    }
+
                     (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(batch.Txs.Datas[txIdx]);
                     break;
                 }
                 case TxType.AccessList:
                 {
+                    v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
                     (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(batch.Txs.Datas[txIdx]);
                     break;
                 }
                 case TxType.EIP1559:
                 {
+                    v = EthereumEcdsaExtensions.CalculateV(_chainId, parityBit);
                     (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) = DecodeEip1559Transaction(batch.Txs.Datas[txIdx]);
                     break;
                 }
+                default:
+                {
+                    throw new ArgumentException($"Invalid tx type {batch.Txs.Types[txIdx]}");
+                }
             }
+            Signature signature = new(batch.Txs.Signatures[txIdx].R, batch.Txs.Signatures[txIdx].S, v);
+            tx.Signature = signature;
             userTransactions[i] = tx;
-
         }
 
-        return userTransactions;
+        return (userTransactions, tosIdx, legacyTxIdx);
     }
 
     private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(byte[] encoded)
