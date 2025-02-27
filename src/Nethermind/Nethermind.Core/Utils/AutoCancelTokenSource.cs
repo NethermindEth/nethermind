@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Core.Utils;
 
@@ -31,4 +32,6 @@ public readonly struct AutoCancelTokenSource(CancellationTokenSource cancellatio
         cancellationTokenSource.Cancel();
         cancellationTokenSource.Dispose();
     }
+
+    public Task CancelAsync() => cancellationTokenSource.CancelAsync();
 }

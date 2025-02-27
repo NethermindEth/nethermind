@@ -245,7 +245,7 @@ public class Startup
                                 {
                                     ctx.Response.ContentLength = resultWriter.WrittenCount;
                                     stream.Seek(0, SeekOrigin.Begin);
-                                    await stream.CopyToAsync(ctx.Response.Body);
+                                    await stream.CopyToAsync(ctx.Response.Body, cancellationToken);
                                 }
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
@@ -263,7 +263,7 @@ public class Startup
 
                             long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                             _ = jsonRpcLocalStats.ReportCall(result.IsCollection
-                                ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
+                                ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, startTime, true)
                                 : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
 
                             Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);

@@ -36,7 +36,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
     public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
 
     public Task ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
-        ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
+        ReportCall(new RpcReport(method, handlingTimeMicroseconds, 0, success));
 
     public Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
     {

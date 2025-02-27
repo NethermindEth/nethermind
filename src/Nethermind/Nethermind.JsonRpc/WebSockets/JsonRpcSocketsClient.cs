@@ -72,7 +72,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                 if (result.IsCollection)
                 {
                     long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
+                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, result.Report?.StartTime ?? 0, true), handlingTimeMicroseconds, singleResponseSize);
                 }
                 else
                 {
@@ -109,6 +109,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
         }
+    }
+
+    public async Task SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken)
+    {
+        await SendJsonRpcResult(result);
     }
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)

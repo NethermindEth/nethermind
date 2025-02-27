@@ -135,17 +135,17 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         if (ProcessExit.IsCancellationRequested)
         {
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, 0, false)));
         }
 
         reader = await RecordRequest(reader);
 
-        await foreach (JsonParseResult parseResult in MultiParseJsonDocument(reader, cancellationToken))
+        await foreach (JsonParseResult parseResult in JsonRpcUtils.MultiParseJsonDocument(reader, cancellationToken))
         {
-            JsonRpcResult? result = await TryHandleJsonParseResult(parseResult, context);
+            JsonRpcResult? result = await HandleJsonParseResult(parseResult, context, cancellationToken);
             if (result is not null)
             {
-                yield return (JsonRpcResult)result;
+                yield return result.Value;
             }
             else
             {
@@ -157,7 +157,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         await reader.CompleteAsync();
     }
 
-    public async Task<JsonRpcResult?> TryHandleJsonParseResult(JsonParseResult parseResult, JsonRpcContext context)
+    public async Task<JsonRpcResult?> HandleJsonParseResult(JsonParseResult parseResult, JsonRpcContext context, CancellationToken cancellation)
     {
         long startTime = parseResult.StartTime;
 
@@ -188,7 +188,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
             TraceResult(response);
-            return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false)));
+            return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, startTime, false)));
         }
         JsonRpcResult? deserializationFailureResult = null;
 
@@ -274,7 +274,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
             TraceResult(errorResponse);
             if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-            deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
+            deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, startTime, false)));
             return deserializationFailureResult.Value;
         }
 
@@ -342,82 +342,9 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         if (_logger.IsDebug) _logger.Debug($"  {request} handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
-        JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
+        JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, startTime, isSuccess));
         TraceResult(result);
         return result;
-    }
-
-    public struct JsonParseResult
-    {
-        internal JsonDocument? JsonDocument;
-        internal JsonException? Exception;
-        internal ReadOnlySequence<byte> LastBytes;
-        internal long StartTime;
-    }
-
-    public static async IAsyncEnumerable<JsonParseResult> MultiParseJsonDocument(PipeReader pipeReader, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        JsonReaderState defaultState = new JsonReaderState(new JsonReaderOptions()
-        {
-            AllowMultipleValues = true,
-        });
-
-        ReadResult readResult = await pipeReader.ReadAsync(cancellationToken);
-        while (!readResult.IsCompleted && !readResult.IsCanceled && !cancellationToken.IsCancellationRequested)
-        {
-            long startTime = Stopwatch.GetTimestamp();
-            var buffer = readResult.Buffer;
-            while (!buffer.IsEmpty && !cancellationToken.IsCancellationRequested)
-            {
-                bool parsed = false;
-                JsonDocument jsonDocument = null;
-                JsonException? jsonException = null;
-                try
-                {
-                    Utf8JsonReader reader = new Utf8JsonReader(buffer, isFinalBlock: false, state: defaultState);
-                    parsed = JsonDocument.TryParseValue(ref reader, out jsonDocument);
-                    buffer = buffer.Slice(reader.Position);
-                }
-                catch (JsonException ex)
-                {
-                    jsonException = ex;
-                }
-
-                if (jsonException is not null)
-                {
-                    yield return new JsonParseResult()
-                    {
-                        StartTime = startTime,
-                        Exception = jsonException,
-                        LastBytes = new ReadOnlySequence<byte>(buffer.Slice(Math.Max(buffer.Length - 1000, 0)).ToArray())
-                    };
-                    yield break;
-                }
-
-                if (parsed)
-                {
-                    yield return new JsonParseResult()
-                    {
-                        StartTime = startTime,
-                        JsonDocument = jsonDocument,
-                    };
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            pipeReader.AdvanceTo(buffer.Start, buffer.End);
-            if (!buffer.IsEmpty)
-            {
-                readResult = await pipeReader.ReadAsync(cancellationToken);
-            }
-            else
-            {
-                readResult = await pipeReader.ReadAtLeastAsync((int)(readResult.Buffer.Length + 1), cancellationToken);
-            }
-        }
     }
 
     private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, RpcReport report) =>

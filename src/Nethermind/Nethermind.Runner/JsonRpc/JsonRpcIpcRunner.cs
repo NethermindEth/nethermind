@@ -9,11 +9,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Sockets;
 
 namespace Nethermind.Runner.JsonRpc
 {
@@ -74,19 +72,15 @@ namespace Nethermind.Runner.JsonRpc
 
                     Socket socket = await _server.AcceptAsync(cancellationToken);
 
-                    socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
-                    socket.SendTimeout = _jsonRpcConfig.Timeout;
-
-                    using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
-                        string.Empty,
-                        new IpcSocketMessageStream(socket),
-                        RpcEndpoint.IPC,
+                    await IpcPipelinesJsonRpcAdapter.Start(
                         _jsonRpcProcessor,
                         _jsonRpcLocalStats,
                         _jsonSerializer,
-                        maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
-
-                    await socketsClient.ReceiveLoopAsync();
+                        new PipelinesJsonRpcAdapter.Options(
+                            MaxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize
+                        ),
+                        socket,
+                        default);
                 }
             }
             catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
