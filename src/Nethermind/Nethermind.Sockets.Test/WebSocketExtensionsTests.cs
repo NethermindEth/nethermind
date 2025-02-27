@@ -119,7 +119,7 @@ public class WebSocketExtensionsTests
         WebSocketMock mock = new(receiveResult);
 
         var processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
+        processor.ProcessAsync(default, default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
         {
             (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
             (JsonRpcResult.Collection(new JsonRpcBatchResult(static (e, c) =>

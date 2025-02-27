@@ -9,6 +9,6 @@ namespace Nethermind.JsonRpc;
 
 public interface IJsonRpcProcessor
 {
-    IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader stream, JsonRpcContext context);
+    IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader stream, JsonRpcContext context, CancellationToken cancellationToken);
     CancellationToken ProcessExit { get; }
 }

@@ -11,8 +11,8 @@ using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
+using Humanizer;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -24,7 +24,9 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Utils;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -180,8 +182,11 @@ public class Startup
                 CountingPipeReader request = new(ctx.Request.BodyReader);
                 try
                 {
+                    CancellationToken cancellationToken  = ctx.RequestAborted;
                     using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                    await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
+                    using AutoCancelTokenSource timeoutSource = cancellationToken.CreateChildTokenSource(jsonRpcConfig.Timeout.Milliseconds());
+
+                    await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext, cancellationToken))
                     {
                         using (result)
                         {
@@ -196,7 +201,7 @@ public class Startup
                                 {
                                     resultWriter.Write(_jsonOpeningBracket);
                                     bool first = true;
-                                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
+                                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(cancellationToken);
                                     try
                                     {
                                         while (await enumerator.MoveNextAsync())
@@ -298,7 +303,7 @@ public class Startup
     }
 
     /// <summary>
-    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1) 
+    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1)
     /// </summary>
     /// <param name="remoteIp">Request source</param>
     private static bool IsLocalhost(IPAddress remoteIp)
