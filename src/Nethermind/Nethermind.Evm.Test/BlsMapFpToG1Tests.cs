@@ -20,7 +20,7 @@ public class BlsMapFpToG1Tests : PrecompileTests<BlsMapFpToG1Tests>, IPrecompile
         yield return "Bls/fail-map_fp_to_G1_bls.json";
     }
 
-    public static IPrecompile Precompile() => MapFp2ToG2Precompile.Instance;
+    public static IPrecompile Precompile() => MapFpToG1Precompile.Instance;
 
     [Test]
     public void Test()
