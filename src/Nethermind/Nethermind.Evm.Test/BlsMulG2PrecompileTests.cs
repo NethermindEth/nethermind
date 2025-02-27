@@ -20,7 +20,7 @@ public class BlsMulG2PrecompileTests : PrecompileTests<BlsMulG2PrecompileTests>,
         yield return "Bls/fail-mul_G2_bls.json";
     }
 
-    public static IPrecompile Precompile() => G1MSMPrecompile.Instance;
+    public static IPrecompile Precompile() => G2MSMPrecompile.Instance;
 
     [Test]
     public void Test()
