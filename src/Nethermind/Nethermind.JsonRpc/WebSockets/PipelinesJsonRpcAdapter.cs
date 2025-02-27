@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Configuration;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Linq;
@@ -17,8 +18,8 @@ namespace Nethermind.JsonRpc.WebSockets;
 
 public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisposable
 {
-    private readonly PipeReader _pipeReader;
-    private readonly PipeWriter _pipeWriter;
+    protected abstract PipeReader PipeReader { get; }
+    protected abstract PipeWriter PipeWriter { get; }
     private readonly IJsonRpcProcessor _jsonRpcProcessor;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
@@ -34,8 +35,14 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
     public string Id { get; } = Guid.NewGuid().ToString("N");
     private readonly int _processConcurrency = 1;
 
-    private readonly Channel<JsonParseResult> _readerChannel = Channel.CreateBounded<JsonParseResult>(new BoundedChannelOptions(1));
-    private readonly Channel<JsonRpcResult> _writerChannel = Channel.CreateBounded<JsonRpcResult>(new BoundedChannelOptions(1));
+    private readonly Channel<JsonParseResult> _readerChannel = Channel.CreateBounded<JsonParseResult>(new BoundedChannelOptions(1)
+    {
+        SingleWriter = true
+    });
+    private readonly Channel<JsonRpcResult> _writerChannel = Channel.CreateBounded<JsonRpcResult>(new BoundedChannelOptions(1)
+    {
+        SingleReader = true
+    });
 
     public record Options(
         long? MaxBatchResponseBodySize = null,
@@ -44,16 +51,12 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
 
     public PipelinesJsonRpcAdapter(
         RpcEndpoint endpointType,
-        PipeReader pipeReader,
-        PipeWriter pipeWriter,
         IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcLocalStats jsonRpcLocalStats,
         IJsonSerializer jsonSerializer,
         Options options,
         JsonRpcUrl? url = null)
     {
-        _pipeReader = pipeReader;
-        _pipeWriter = pipeWriter;
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
@@ -87,9 +90,9 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
         }
     }
 
-    private async Task ReadTask(CancellationToken cancellationToken)
+    protected virtual async Task ReadTask(CancellationToken cancellationToken)
     {
-        await foreach (var jsonParseResult in JsonRpcUtils.MultiParseJsonDocument(_pipeReader, cancellationToken))
+        await foreach (var jsonParseResult in JsonRpcUtils.MultiParseJsonDocument(PipeReader, cancellationToken))
         {
             IncrementBytesReceivedMetric((int)jsonParseResult.ReadSize);
             await _readerChannel.Writer.WriteAsync(jsonParseResult, cancellationToken);
@@ -120,11 +123,11 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
         }
     }
 
-    private async Task WriterTask(CancellationToken cancellationToken)
+    protected virtual async Task WriterTask(CancellationToken cancellationToken)
     {
         await foreach (var result in _writerChannel.Reader.ReadAllAsync(cancellationToken))
         {
-            var countingPipeWriter = new CountingPipeWriter(_pipeWriter);
+            var countingPipeWriter = new CountingPipeWriter(PipeWriter);
             if (result.IsCollection)
             {
                 bool isFirst = true;
@@ -152,13 +155,12 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
                 }
 
                 await countingPipeWriter.WriteAsync(_jsonClosingBracket, cancellationToken);
-                await WriteEndOfMessage(countingPipeWriter, cancellationToken);
             }
             else
             {
                 await _jsonSerializer.SerializeAsync(countingPipeWriter, result.Response, indented: false);
-                await WriteEndOfMessage(countingPipeWriter, cancellationToken);
             }
+            await WriteEndOfMessage(countingPipeWriter, cancellationToken);
 
             long startTime = result.Report?.StartTime ?? 0;
             if (result.IsCollection)
@@ -175,10 +177,10 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
             IncrementBytesSentMetric((int)countingPipeWriter.WrittenCount);
         }
 
-        await _pipeWriter.CompleteAsync();
+        await PipeWriter.CompleteAsync();
     }
 
-    protected abstract Task<int> WriteEndOfMessage(PipeWriter pipeWriter, CancellationToken cancellationToken);
+    protected abstract Task<int> WriteEndOfMessage(CountingPipeWriter pipeWriter, CancellationToken cancellationToken);
 
     public async Task SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken)
     {

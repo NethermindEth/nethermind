@@ -13,10 +13,12 @@ namespace Nethermind.JsonRpc.WebSockets;
 
 public class IpcPipelinesJsonRpcAdapter : PipelinesJsonRpcAdapter
 {
+    protected override PipeReader PipeReader { get; }
+    protected override PipeWriter PipeWriter { get; }
+
     private IpcPipelinesJsonRpcAdapter(
         RpcEndpoint endpointType,
-        PipeReader pipeReader,
-        PipeWriter pipeWriter,
+        Socket socket,
         IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcLocalStats jsonRpcLocalStats,
         IJsonSerializer jsonSerializer,
@@ -24,14 +26,16 @@ public class IpcPipelinesJsonRpcAdapter : PipelinesJsonRpcAdapter
         JsonRpcUrl? url = null
     ) : base(
         endpointType,
-        pipeReader,
-        pipeWriter,
         jsonRpcProcessor,
         jsonRpcLocalStats,
         jsonSerializer,
         options,
         url
     ) {
+        var networkStream = new NetworkStream(socket);
+
+        PipeReader = PipeReader.Create(networkStream);
+        PipeWriter = PipeWriter.Create(networkStream);
     }
 
     public static IpcPipelinesJsonRpcAdapter Create(
@@ -41,14 +45,9 @@ public class IpcPipelinesJsonRpcAdapter : PipelinesJsonRpcAdapter
         Options options,
         Socket socket)
     {
-        var stream = new NetworkStream(socket);
-        var reader = PipeReader.Create(stream);
-        var writer = PipeWriter.Create(stream);
-
         return new IpcPipelinesJsonRpcAdapter(
             RpcEndpoint.IPC,
-            reader,
-            writer,
+            socket,
             jsonRpcProcessor,
             jsonRpcLocalStats,
             jsonSerializer,
@@ -69,7 +68,7 @@ public class IpcPipelinesJsonRpcAdapter : PipelinesJsonRpcAdapter
 
     private static readonly byte[] Delimiter = [Convert.ToByte('\n')];
 
-    protected override Task<int> WriteEndOfMessage(PipeWriter pipeWriter, CancellationToken cancellationToken)
+    protected override Task<int> WriteEndOfMessage(CountingPipeWriter pipeWriter, CancellationToken cancellationToken)
     {
         pipeWriter.WriteAsync(Delimiter, cancellationToken);
         return Task.FromResult(0);
