@@ -100,7 +100,7 @@
     },
     "Taiko Hekla": {
       "commandName": "Project",
-      "commandLineArgs": "--config none --init-genesishash 0xbeced3738f1246571cccabc82a1e6cbd9ed9d5f7ed2b6c7ded28f9722317bd9e --init-chainspecpath C:/ethereum/taiko/chainspec.json --data-dir C:/ethereum/taiko/ --jsonrpc-jwtsecretfile C:/ethereum/taiko/jwtsecret --jsonrpc-enabled true --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0 --jsonrpc-enginehost 0.0.0.0",
+      "commandLineArgs": "-c taiko-hekla --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
