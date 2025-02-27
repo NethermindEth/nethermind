@@ -121,8 +121,8 @@ jobs:
         path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
         retention-days: 1
 
-  tests-status:
-    name: Nethermind tests
+  tests-summary:
+    name: Tests summary
     needs: tests
     runs-on: ubuntu-latest
     steps:
@@ -136,7 +136,7 @@ jobs:
 
   codecov-upload:
     name: Upload Codecov reports
-    needs: [tests-status]
+    needs: [tests-summary]
     if: needs.tests.outputs.collect_coverage == 'true'
     runs-on: ubuntu-latest
     steps:
