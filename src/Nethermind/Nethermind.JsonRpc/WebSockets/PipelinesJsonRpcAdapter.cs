@@ -50,8 +50,7 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
         IJsonRpcLocalStats jsonRpcLocalStats,
         IJsonSerializer jsonSerializer,
         Options options,
-        JsonRpcUrl? url = null,
-        long? maxBatchResponseBodySize = null)
+        JsonRpcUrl? url = null)
     {
         _pipeReader = pipeReader;
         _pipeWriter = pipeWriter;
@@ -92,6 +91,7 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
     {
         await foreach (var jsonParseResult in JsonRpcUtils.MultiParseJsonDocument(_pipeReader, cancellationToken))
         {
+            IncrementBytesReceivedMetric((int)jsonParseResult.ReadSize);
             await _readerChannel.Writer.WriteAsync(jsonParseResult, cancellationToken);
         }
         _readerChannel.Writer.Complete();
@@ -171,8 +171,11 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
                 long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                 _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, countingPipeWriter.WrittenCount);
             }
+
+            IncrementBytesSentMetric((int)countingPipeWriter.WrittenCount);
         }
 
+        await _pipeWriter.CompleteAsync();
     }
 
     protected abstract Task<int> WriteEndOfMessage(PipeWriter pipeWriter, CancellationToken cancellationToken);
@@ -189,6 +192,32 @@ public abstract class PipelinesJsonRpcAdapter : IJsonRpcDuplexClient, IAsyncDisp
     {
         _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void IncrementBytesReceivedMetric(int size)
+    {
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
+        }
+
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
+        }
+    }
+
+    private void IncrementBytesSentMetric(int size)
+    {
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
+        }
+
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
+        }
     }
 
     public async ValueTask DisposeAsync()

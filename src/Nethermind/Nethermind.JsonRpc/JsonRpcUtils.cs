@@ -29,12 +29,14 @@ public static class JsonRpcUtils
             while (!buffer.IsEmpty && !cancellationToken.IsCancellationRequested)
             {
                 bool parsed = false;
+                long readSize = 0;
                 JsonDocument jsonDocument = null;
                 JsonException? jsonException = null;
                 try
                 {
                     Utf8JsonReader reader = new Utf8JsonReader(buffer, isFinalBlock: false, state: defaultState);
                     parsed = JsonDocument.TryParseValue(ref reader, out jsonDocument);
+                    readSize = reader.BytesConsumed;
                     buffer = buffer.Slice(reader.Position);
                 }
                 catch (JsonException ex)
@@ -46,6 +48,7 @@ public static class JsonRpcUtils
                 {
                     yield return new JsonParseResult()
                     {
+                        ReadSize = readSize,
                         StartTime = startTime,
                         Exception = jsonException,
                         LastBytes = new ReadOnlySequence<byte>(buffer.Slice(Math.Max(buffer.Length - 1000, 0)).ToArray())
@@ -57,6 +60,7 @@ public static class JsonRpcUtils
                 {
                     yield return new JsonParseResult()
                     {
+                        ReadSize = readSize,
                         StartTime = startTime,
                         JsonDocument = jsonDocument,
                     };
@@ -86,4 +90,5 @@ public struct JsonParseResult
     internal JsonException? Exception;
     internal ReadOnlySequence<byte> LastBytes;
     internal long StartTime;
+    internal long ReadSize;
 }
