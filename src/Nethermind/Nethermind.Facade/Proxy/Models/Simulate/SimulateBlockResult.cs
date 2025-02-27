@@ -9,7 +9,7 @@ using Nethermind.Facade.Eth;
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class SimulateBlockResult(Block source, bool includeFullTransactionData, ISpecProvider specProvider)
-    : BlockForRpc(source, includeFullTransactionData, specProvider)
+    : BlockForRpc(source, includeFullTransactionData, specProvider, false)
 {
     public List<SimulateCallResult> Calls { get; set; } = new();
 }
