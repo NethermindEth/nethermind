@@ -32,11 +32,11 @@ namespace Nethermind.Trie
         /// </summary>
         ReadFlags ExtraReadFlag => ReadFlags.None;
 
-        bool ShouldVisit(in TNodeContext nodeContext, Hash256 nextNode);
+        bool ShouldVisit(in TNodeContext nodeContext, in ValueHash256 nextNode);
 
-        void VisitTree(in TNodeContext nodeContext, Hash256 rootHash);
+        void VisitTree(in TNodeContext nodeContext, in ValueHash256 rootHash);
 
-        void VisitMissingNode(in TNodeContext nodeContext, Hash256 nodeHash);
+        void VisitMissingNode(in TNodeContext nodeContext, in ValueHash256 nodeHash);
 
         void VisitBranch(in TNodeContext nodeContext, TrieNode node);
 

@@ -105,7 +105,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         return true;
     }
 
-    public bool ShouldVisit(in TreePathContext ctx, Hash256 nextNode)
+    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode)
     {
         return ShouldVisit(ctx.Path);
     }
@@ -145,12 +145,12 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
     }
 
-    public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash)
+    public void VisitTree(in TreePathContext nodeContext, in ValueHash256 rootHash)
     {
     }
 
 
-    public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash)
+    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash)
     {
         throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
     }
