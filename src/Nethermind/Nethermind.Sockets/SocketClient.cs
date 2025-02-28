@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,11 +6,10 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
-using Nethermind.Sockets;
 
-namespace Nethermind.JsonRpc.WebSockets;
+namespace Nethermind.Sockets;
 
-public class PipelineSocketClient : ISocketsClient
+public class SocketClient : ISocketsClient
 {
     private readonly ISocketHandler _socketHandler;
     private readonly IJsonSerializer _jsonSerializer;
@@ -20,7 +19,7 @@ public class PipelineSocketClient : ISocketsClient
         SingleReader = true
     });
 
-    public PipelineSocketClient(string clientName, ISocketHandler handler, IJsonSerializer jsonSerializer)
+    public SocketClient(string clientName, ISocketHandler handler, IJsonSerializer jsonSerializer)
     {
         ClientName = clientName;
         _socketHandler = handler;

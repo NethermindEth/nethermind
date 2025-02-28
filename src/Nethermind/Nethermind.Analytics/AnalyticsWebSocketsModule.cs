@@ -31,7 +31,7 @@ public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
 
     public ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
     {
-        PipelineSocketClient socketsClient = new(clientName, new WebsocketHandler(webSocket), _jsonSerializer);
+        SocketClient socketsClient = new(clientName, new WebsocketHandler(webSocket), _jsonSerializer);
         _clients.TryAdd(socketsClient.Id, socketsClient);
 
         return ValueTask.FromResult<ISocketsClient>(socketsClient);

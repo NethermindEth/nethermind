@@ -16,7 +16,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class PipelinesJsonRpcAdapter : PipelineSocketClient, IJsonRpcDuplexClient
+public class PipelinesJsonRpcAdapter : SocketClient, IJsonRpcDuplexClient
 {
     private readonly ISocketHandler _socketHandler;
     private readonly IJsonRpcProcessor _jsonRpcProcessor;
