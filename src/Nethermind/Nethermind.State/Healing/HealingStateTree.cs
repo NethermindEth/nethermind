@@ -67,11 +67,11 @@ public class HealingStateTree : StateTree
         }
     }
 
-    private bool Recover(in TreePath missingNodePath, in ValueHash256 hash, Hash256 fullPath)
+    private bool Recover(in TreePath missingNodePath, Hash256 hash, Hash256 fullPath)
     {
         if (_recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath, default).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 foreach ((TreePath, byte[]) kv in rlps)
