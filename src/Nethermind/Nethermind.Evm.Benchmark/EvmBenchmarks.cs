@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Benchmark
             bytecode = _bytecode;
             mode = ilvmMode;
 
-            codeInfoRepository = new CodeInfoRepository();  
+            codeInfoRepository = new TestCodeInfoRepository();  
 
             ILogManager logmanager = vmConfig.BakeInTracingInAotModes ? LimboLogs.Instance : NullLogManager.Instance;
 
@@ -167,6 +167,7 @@ namespace Nethermind.Evm.Benchmark
         public void Reset()
         {
             //_stateProvider.Reset();
+            _evmState.Dispose();
         }
 
         public override string ToString()
