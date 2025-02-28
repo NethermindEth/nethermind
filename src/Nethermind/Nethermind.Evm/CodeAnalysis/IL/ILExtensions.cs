@@ -634,13 +634,13 @@ public static class WordEmit
 
     public static void EmitIsOneCheck<T>(this Emit<T> il, Local? word = null)
     {
-        if(word.LocalType != typeof(Word).MakeByRefType())
-        {
-            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-        }
 
         if (word is not null)
         {
+            if(word.LocalType != typeof(Word).MakeByRefType())
+            {
+                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+            }
             il.LoadLocal(word);
         }
 
@@ -658,13 +658,12 @@ public static class WordEmit
 
     public static void EmitIsZeroCheck<T>(this Emit<T> il, Local? word = null)
     {
-        if (word.LocalType != typeof(Word).MakeByRefType())
-        {
-            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-        }
-
         if (word is not null)
         {
+            if (word.LocalType != typeof(Word).MakeByRefType())
+            {
+                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+            }
             il.LoadLocal(word);
         }
 
@@ -674,13 +673,13 @@ public static class WordEmit
 
     public static void EmitIsMinusOneCheck<T>(this Emit<T> il, Local? word = null)
     {
-        if (word.LocalType != typeof(Word).MakeByRefType())
-        {
-            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-        }
 
         if (word is not null)
         {
+            if (word.LocalType != typeof(Word).MakeByRefType())
+            {
+                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+            }
             il.LoadLocal(word);
         }
 
@@ -690,13 +689,13 @@ public static class WordEmit
 
     public static void EmitIsZeroOrOneCheck<T>(this Emit<T> il, Local? word = null)
     {
-        if (word.LocalType != typeof(Word).MakeByRefType())
-        {
-            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-        }
 
         if (word is not null)
         {
+            if (word.LocalType != typeof(Word).MakeByRefType())
+            {
+                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+            }
             il.LoadLocal(word);
         }
 
@@ -714,13 +713,13 @@ public static class WordEmit
 
     public static void EmitIsP255Check<T>(this Emit<T> il, Local? word = null)
     {
-        if (word.LocalType != typeof(Word).MakeByRefType())
-        {
-            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
-        }
 
         if (word is not null)
         {
+            if (word.LocalType != typeof(Word).MakeByRefType())
+            {
+                throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+            }
             il.LoadLocal(word);
         }
 
