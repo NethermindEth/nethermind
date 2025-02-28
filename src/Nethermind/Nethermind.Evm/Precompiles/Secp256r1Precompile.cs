@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
 {
-    private struct GoSlice(nint data, long len)
+    private readonly struct GoSlice(nint data, long len)
     {
         public readonly nint Data = data;
         public readonly long Len = len, Cap = len;
