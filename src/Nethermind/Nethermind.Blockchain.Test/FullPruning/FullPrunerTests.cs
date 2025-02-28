@@ -447,32 +447,32 @@ public class FullPrunerTests
         }
 
         public bool IsFullDbScan => true;
-        public bool ShouldVisit(in TreePathContextWithStorage ctx, Hash256 nextNode) => true;
+        public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode) => true;
 
-        public void VisitTree(in TreePathContextWithStorage ctx, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in TreePathContextWithStorage ctx, in ValueHash256 rootHash)
         {
         }
 
-        public void VisitMissingNode(in TreePathContextWithStorage ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePathContextWithStorage ctx, in ValueHash256 nodeHash)
         {
         }
 
-        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext)
-        {
-            CheckNode(ctx.Storage, ctx.Path, node);
-        }
-
-        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node)
         {
             CheckNode(ctx.Storage, ctx.Path, node);
         }
 
-        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node)
         {
             CheckNode(ctx.Storage, ctx.Path, node);
         }
 
-        public void VisitCode(in TreePathContextWithStorage ctx, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node)
+        {
+            CheckNode(ctx.Storage, ctx.Path, node);
+        }
+
+        public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
         {
         }
     }
