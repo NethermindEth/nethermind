@@ -634,9 +634,14 @@ public static class WordEmit
 
     public static void EmitIsOneCheck<T>(this Emit<T> il, Local? word = null)
     {
+        if(word.LocalType != typeof(Word).MakeByRefType())
+        {
+            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+        }
+
         if (word is not null)
         {
-            il.LoadLocalAddress(word);
+            il.LoadLocal(word);
         }
 
         if (BitConverter.IsLittleEndian)
@@ -653,9 +658,14 @@ public static class WordEmit
 
     public static void EmitIsZeroCheck<T>(this Emit<T> il, Local? word = null)
     {
+        if (word.LocalType != typeof(Word).MakeByRefType())
+        {
+            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+        }
+
         if (word is not null)
         {
-            il.LoadLocalAddress(word);
+            il.LoadLocal(word);
         }
 
         MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsZero)).GetMethod;
@@ -664,9 +674,14 @@ public static class WordEmit
 
     public static void EmitIsMinusOneCheck<T>(this Emit<T> il, Local? word = null)
     {
+        if (word.LocalType != typeof(Word).MakeByRefType())
+        {
+            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+        }
+
         if (word is not null)
         {
-            il.LoadLocalAddress(word);
+            il.LoadLocal(word);
         }
 
         MethodInfo methodInfo = typeof(Word).GetProperty(nameof(Word.IsMinusOne)).GetMethod;
@@ -675,9 +690,14 @@ public static class WordEmit
 
     public static void EmitIsZeroOrOneCheck<T>(this Emit<T> il, Local? word = null)
     {
+        if (word.LocalType != typeof(Word).MakeByRefType())
+        {
+            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+        }
+
         if (word is not null)
         {
-            il.LoadLocalAddress(word);
+            il.LoadLocal(word);
         }
 
         if (BitConverter.IsLittleEndian)
@@ -694,9 +714,14 @@ public static class WordEmit
 
     public static void EmitIsP255Check<T>(this Emit<T> il, Local? word = null)
     {
+        if (word.LocalType != typeof(Word).MakeByRefType())
+        {
+            throw new Exception($"Expected type {typeof(Word).MakeByRefType()} found type {word.LocalType}");
+        }
+
         if (word is not null)
         {
-            il.LoadLocalAddress(word);
+            il.LoadLocal(word);
         }
 
         if (BitConverter.IsLittleEndian)
@@ -882,30 +907,6 @@ static class EmitExtensions
             il.LoadIndirect(targetType);
         }
     }
-
-    public static void Print<T>(this Emit<T> il, Local local)
-    {
-        if (local.LocalType.IsValueType)
-        {
-            il.LoadLocalAddress(local);
-            il.Call(local.LocalType.GetMethod("ToString", []));
-        }
-        else
-        {
-            il.LoadLocal(local);
-            il.CallVirtual(local.LocalType.GetMethod("ToString", []));
-        }
-        il.Call(typeof(Debug).GetMethod(nameof(Debug.Write), [typeof(string)]));
-    }
-    public static void PrintString<T>(this Emit<T> il, string msg)
-    {
-        using Local local = il.DeclareLocal<string>();
-
-        il.LoadConstant(msg);
-        il.StoreLocal(local);
-        il.Print(local);
-    }
-
 
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
