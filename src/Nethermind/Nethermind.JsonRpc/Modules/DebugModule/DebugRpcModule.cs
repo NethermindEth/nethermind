@@ -388,9 +388,6 @@ public class DebugRpcModule : IDebugRpcModule
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _jsonRpcConfig.BuildTimeoutCancellationToken();
 
-    /// <summary>
-    /// Simulate transactions using ParityLikeBlockTracer
-    /// </summary>
     public ResultWrapper<IReadOnlyList<GethLikeTxTrace>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
     {

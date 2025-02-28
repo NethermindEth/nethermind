@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-// using Nethermind.Evm.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
