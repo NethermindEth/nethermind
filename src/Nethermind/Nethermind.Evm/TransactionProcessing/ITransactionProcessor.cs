@@ -6,13 +6,8 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public interface ITransactionProcessor
+public interface ITransactionProcessor : ITransactionProcessorAdapter
 {
-    /// <summary>
-    /// Execute transaction, commit state
-    /// </summary>
-    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
-
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
