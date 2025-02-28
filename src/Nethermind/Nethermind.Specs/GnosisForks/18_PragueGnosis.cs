@@ -13,6 +13,9 @@ public class PragueGnosis : Forks.Prague
     protected PragueGnosis() : base()
     {
         IsEip4844FeeCollectorEnabled = true;
+        BlobBaseFeeUpdateFraction = 0x10fafa;
+        TargetBlobCount = 1;
+        MaxBlobCount = 2;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new PragueGnosis());
