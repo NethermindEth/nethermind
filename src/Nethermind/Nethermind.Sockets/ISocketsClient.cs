@@ -11,11 +11,11 @@ namespace Nethermind.Sockets
     /// Interface that defines logic (higher level operations) behind a socket communication not linked to any socket implementation like WebSockets or network sockets
     /// The lower level communication is provided by implementing <see cref="ISocketHandler"/>.
     /// </summary>
-    public interface ISocketsClient : IDisposable
+    public interface ISocketsClient : IAsyncDisposable
     {
         string Id { get; }
         string ClientName { get; }
-        Task Start(CancellationToken token);
+        Task Loop(CancellationToken token);
         Task SendAsync(SocketsMessage message);
     }
 }

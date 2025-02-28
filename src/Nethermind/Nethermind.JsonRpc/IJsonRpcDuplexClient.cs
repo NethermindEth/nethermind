@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc
 {
-    public interface IJsonRpcDuplexClient : IDisposable
+    public interface IJsonRpcDuplexClient: IAsyncDisposable
     {
         string Id { get; }
         Task SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default);

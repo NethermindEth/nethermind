@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TearDown]
         public void TearDown()
         {
-            _jsonRpcDuplexClient?.Dispose();
+            _jsonRpcDuplexClient?.DisposeAsync();
             _receiptCanonicalityMonitor?.Dispose();
         }
 
@@ -873,14 +873,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
-            using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
+            await using PipelinesJsonRpcAdapter client = new(
                 clientName: "TestClient",
-                stream: stream,
+                new WebsocketHandler(socket),
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
-                jsonSerializer: new EthereumJsonSerializer()
+                jsonSerializer: new EthereumJsonSerializer(),
+                options: new PipelinesJsonRpcAdapter.Options(),
+                LimboLogs.Instance
             );
 
             using NewPendingTransactionsSubscription subscription = new(
@@ -908,14 +909,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
-            using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
+            await using PipelinesJsonRpcAdapter client = new(
                 clientName: "TestClient",
-                stream: stream,
+                socketHandler: new WebsocketHandler(socket),
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
-                jsonSerializer: new EthereumJsonSerializer()
+                jsonSerializer: new EthereumJsonSerializer(),
+                options: new PipelinesJsonRpcAdapter.Options(),
+                LimboLogs.Instance
             );
 
             Task subA = Task.Run(() =>

@@ -1,20 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Sockets.Test;
@@ -23,9 +26,18 @@ public class WebSocketExtensionsTests
 {
     private class WebSocketMock : WebSocket
     {
-        private readonly Queue<WebSocketReceiveResult> _receiveResults;
+        private readonly Queue<(WebSocketReceiveResult, byte[]?)> _receiveResults;
 
         public WebSocketMock(Queue<WebSocketReceiveResult> receiveResults)
+        {
+            _receiveResults = new Queue<(WebSocketReceiveResult, byte[]?)>();
+            foreach (var webSocketReceiveResult in receiveResults)
+            {
+                _receiveResults.Enqueue((webSocketReceiveResult, null));
+            }
+        }
+
+        public WebSocketMock(Queue<(WebSocketReceiveResult, byte[]?)> receiveResults)
         {
             _receiveResults = receiveResults;
         }
@@ -35,45 +47,64 @@ public class WebSocketExtensionsTests
             throw new NotImplementedException();
         }
 
-        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken)
+        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
-        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken)
+        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
         {
             throw new NotImplementedException();
         }
 
         public override void Dispose()
         {
-            throw new NotImplementedException();
         }
 
         public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
         {
-            // Had to use Array.Fill as it is more performant
-            Array.Fill(buffer.Array, (byte)0, buffer.Offset, buffer.Count);
+            throw new NotImplementedException();
+        }
 
+        public override ValueTask<ValueWebSocketReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        {
             if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
             {
-                Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(static () => throw new Exception());
-                a.Start();
-                return a;
+                throw new Exception();
             }
 
-            return Task.FromResult(_receiveResults.Dequeue());
+            (WebSocketReceiveResult res, byte[]? byteBuff) = _receiveResults.Dequeue();
+
+            if (byteBuff is null)
+            {
+                // Had to use Array.Fill as it is more performant
+                int length = Math.Min(buffer.Length, res.Count);
+                if (length != 0)
+                {
+                    var span = buffer.Span.Slice(0, length);
+                    span.Fill((byte)'0');
+                    // Need to be a valid json
+                    span[0] = (byte)'"';
+                    span[length-1] = (byte)'"';
+                }
+            }
+            else
+            {
+                byteBuff.CopyTo(buffer.Span);
+            }
+
+            return ValueTask.FromResult(new ValueWebSocketReceiveResult(res.Count, res.MessageType, res.EndOfMessage));
         }
 
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public override WebSocketCloseStatus? CloseStatus { get; }
-        public override string CloseStatusDescription { get; }
+        public override string CloseStatusDescription { get; } = null!;
         public override WebSocketState State { get; } = WebSocketState.Open;
-        public override string SubProtocol { get; }
+        public override string SubProtocol { get; } = null!;
         public bool ReturnTaskWithFaultOnEmptyQueue { get; set; }
     }
 
@@ -92,14 +123,12 @@ public class WebSocketExtensionsTests
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
-            "TestClient",
-            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
-            Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+        await using WebsocketHandler websocketHandler = new(mock);
+        using AutoCancelTokenSource cts = new AutoCancelTokenSource();
+        _ = websocketHandler.Start(cts.Token);
+        ReadResult result = await websocketHandler.PipeReader.ReadToEndAsync();
 
-        await webSocketsClient.Start(default);
-        await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 2 * 4096 + 1024));
+        Assert.That(result.Buffer.Length, Is.EqualTo(2 * 4096 + 1024));
     }
 
     class Disposable : IDisposable
@@ -110,52 +139,58 @@ public class WebSocketExtensionsTests
     }
 
     [Test]
+    [Parallelizable(ParallelScope.None)]
     public async Task Updates_Metrics_And_Stats_Successfully()
     {
         Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
         receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
+        receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        var processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(default, default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
+        int reqCount = 0;
+
+        var responses = new List<JsonRpcResult>()
         {
             (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
             (JsonRpcResult.Collection(new JsonRpcBatchResult(static (e, c) =>
                 new List<JsonRpcResult.Entry>()
-            {
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-            }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
-        }.ToAsyncEnumerable());
-
-        var service = Substitute.For<IJsonRpcService>();
+                {
+                    new(new JsonRpcResponse(), new RpcReport()),
+                    new(new JsonRpcResponse(), new RpcReport()),
+                    new(new JsonRpcResponse(), new RpcReport()),
+                }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
+        };
+        var processor = Substitute.For<IJsonRpcProcessor>();
+        processor.HandleJsonParseResult(default, default!, default).ReturnsForAnyArgs((x) =>
+        {
+            return responses[reqCount++];
+        });
 
         var localStats = Substitute.For<IJsonRpcLocalStats>();
+        Metrics.JsonRpcBytesReceivedWebSockets = 0;
+        Metrics.JsonRpcBytesSentWebSockets = 0;
 
-        var webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
+        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
             "TestClient",
-            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
+            new WebsocketHandler(mock),
             RpcEndpoint.Ws,
             processor,
             localStats,
-            Substitute.For<IJsonSerializer>(),
-            null,
-            30.MB());
+            new EthereumJsonSerializer(),
+            new PipelinesJsonRpcAdapter.Options()
+            {
+                MaxJsonPayloadSize = 30.MB()
+            },
+            LimboLogs.Instance);
 
-        webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
-        {
-            var par = x.Arg<JsonRpcResult>();
-            return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
-        });
+        await webSocketsClient.Loop(default);
 
-        await webSocketsClient.Start(default);
-
-        Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024));
-        Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(400));
-        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
-        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
+        Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024 * 2));
+        Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(112));
+        await localStats.Received(2).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), Arg.Any<long>());
+        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 27);
+        await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 85);
     }
 
     [Test]
@@ -166,64 +201,101 @@ public class WebSocketExtensionsTests
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(1234, WebSocketMessageType.Text, true));
         }
-
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
 
         WebSocketMock mock = new(receiveResult);
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+        var processor = Substitute.For<IJsonRpcProcessor>();
+        processor.HandleJsonParseResult(default, default!, default).ReturnsForAnyArgs((x) =>
+        {
+            return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
+        });
+        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
             "TestClient",
-            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
-            Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            new WebsocketHandler(mock),
+            RpcEndpoint.Ws,
+            processor,
+            Substitute.For<IJsonRpcLocalStats>(),
+            new EthereumJsonSerializer(),
+            new PipelinesJsonRpcAdapter.Options()
+            {
+                MaxJsonPayloadSize = 30.MB()
+            },
+            LimboLogs.Instance);
 
-        await webSocketsClient.Start(default);
-        await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 1234));
+        await webSocketsClient.Loop(default);
+        await processor.Received(1000).HandleJsonParseResult(Arg.Any<JsonParseResult>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
     public async Task Can_receive_whole_message_non_buffer_sizes()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<(WebSocketReceiveResult, byte[]?)> receiveResult = new Queue<(WebSocketReceiveResult, byte[]?)>();
+        receiveResult.Enqueue((new WebSocketReceiveResult(1, WebSocketMessageType.Text, false), "["u8.ToArray()));
+        byte[] messagePayload = new byte[1024];
+        messagePayload.Fill((byte)'0');
         for (int i = 0; i < 6; i++)
         {
-            receiveResult.Enqueue(new WebSocketReceiveResult(2000, WebSocketMessageType.Text, false));
+            receiveResult.Enqueue((new WebSocketReceiveResult(2000, WebSocketMessageType.Text, false), messagePayload));
         }
-
-        receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
-        receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
+        receiveResult.Enqueue((new WebSocketReceiveResult(1, WebSocketMessageType.Text, true), "]"u8.ToArray()));
+        receiveResult.Enqueue((new WebSocketReceiveResult(0, WebSocketMessageType.Close, true), null));
         WebSocketMock mock = new(receiveResult);
-
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+        var processor = Substitute.For<IJsonRpcProcessor>();
+        processor.HandleJsonParseResult(default, default!, default).ReturnsForAnyArgs((x) =>
+        {
+            return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
+        });
+        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
             "TestClient",
-            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
-            Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            new WebsocketHandler(mock),
+            RpcEndpoint.Ws,
+            processor,
+            Substitute.For<IJsonRpcLocalStats>(),
+            new EthereumJsonSerializer(),
+            new PipelinesJsonRpcAdapter.Options()
+            {
+                MaxJsonPayloadSize = 30.MB()
+            },
+            LimboLogs.Instance);
 
-        await webSocketsClient.Start(default);
-        await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 6 * 2000 + 1));
+        await webSocketsClient.Loop(default);
+        await processor.Received(1).HandleJsonParseResult(Arg.Any<JsonParseResult>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
     public async Task Throws_on_too_long_message()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
-        for (int i = 0; i < 2 * 1024; i++)
+        Queue<(WebSocketReceiveResult, byte[]?)> receiveResult = new Queue<(WebSocketReceiveResult, byte[]?)>();
+        receiveResult.Enqueue((new WebSocketReceiveResult(1, WebSocketMessageType.Text, false), "["u8.ToArray()));
+        byte[] messagePayload = new byte[1024];
+        messagePayload.Fill((byte)'0');
+        for (int i = 0; i < 2048; i++)
         {
-            receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, false));
+            receiveResult.Enqueue((new WebSocketReceiveResult(2000, WebSocketMessageType.Text, false), messagePayload));
         }
+        receiveResult.Enqueue((new WebSocketReceiveResult(1, WebSocketMessageType.Text, true), "]"u8.ToArray()));
+        receiveResult.Enqueue((new WebSocketReceiveResult(0, WebSocketMessageType.Close, true), null));
 
-        receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
-        receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
-
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+        var processor = Substitute.For<IJsonRpcProcessor>();
+        processor.HandleJsonParseResult(default, default!, default).ReturnsForAnyArgs((x) =>
+        {
+            return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
+        });
+        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
             "TestClient",
-            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
-            Substitute.For<IJsonSerializer>(),
-            (int)1.MB());
+            new WebsocketHandler(mock),
+            RpcEndpoint.Ws,
+            processor,
+            Substitute.For<IJsonRpcLocalStats>(),
+            new EthereumJsonSerializer(),
+            new PipelinesJsonRpcAdapter.Options()
+            {
+                MaxJsonPayloadSize = 1.MB()
+            },
+            LimboLogs.Instance);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.Start(default));
-        await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>());
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.Loop(default));
     }
 
     [Test, MaxTime(5000)]
@@ -234,12 +306,24 @@ public class WebSocketExtensionsTests
         WebSocketMock mock = new(receiveResult);
         mock.ReturnTaskWithFaultOnEmptyQueue = true;
 
-        SocketClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+        var processor = Substitute.For<IJsonRpcProcessor>();
+        processor.HandleJsonParseResult(default, default!, default).ReturnsForAnyArgs((x) =>
+        {
+            return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
+        });
+        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
             "TestClient",
-            new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
-            Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            new WebsocketHandler(mock),
+            RpcEndpoint.Ws,
+            processor,
+            Substitute.For<IJsonRpcLocalStats>(),
+            new EthereumJsonSerializer(),
+            new PipelinesJsonRpcAdapter.Options()
+            {
+                MaxJsonPayloadSize = 1.MB()
+            },
+            LimboLogs.Instance);
 
-        await webSocketsClient.Start(default);
+        Assert.ThrowsAsync<Exception>(async () => await webSocketsClient.Loop(default));
     }
 }

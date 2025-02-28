@@ -9,78 +9,82 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.JsonRpc;
 
 public static class JsonRpcUtils
 {
-    public static async IAsyncEnumerable<JsonParseResult> MultiParseJsonDocument(PipeReader pipeReader, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public static async IAsyncEnumerable<JsonParseResult> MultiParseJsonDocument(
+        PipeReader pipeReader,
+        [EnumeratorCancellation] CancellationToken cancellationToken,
+        long maxBufferSize = int.MaxValue
+    )
     {
+        Console.Error.WriteLine($" MPJD ");
         JsonReaderState defaultState = new JsonReaderState(new JsonReaderOptions()
         {
             AllowMultipleValues = true,
         });
 
-        ReadResult readResult = await pipeReader.ReadAsync(cancellationToken);
-        while (!readResult.IsCompleted && !readResult.IsCanceled && !cancellationToken.IsCancellationRequested)
+        ReadResult readResult;
+        do
         {
             long startTime = Stopwatch.GetTimestamp();
-            var buffer = readResult.Buffer;
-            while (!buffer.IsEmpty && !cancellationToken.IsCancellationRequested)
+            readResult = await pipeReader.ReadAsync(cancellationToken);
+            if (readResult.Buffer.IsEmpty && readResult.IsCompleted || readResult.IsCanceled) break;
+            if (readResult.Buffer.Length > maxBufferSize)
             {
-                bool parsed = false;
-                long readSize = 0;
-                JsonDocument jsonDocument = null;
-                JsonException? jsonException = null;
-                try
-                {
-                    Utf8JsonReader reader = new Utf8JsonReader(buffer, isFinalBlock: false, state: defaultState);
-                    parsed = JsonDocument.TryParseValue(ref reader, out jsonDocument);
-                    readSize = reader.BytesConsumed;
-                    buffer = buffer.Slice(reader.Position);
-                }
-                catch (JsonException ex)
-                {
-                    jsonException = ex;
-                }
-
-                if (jsonException is not null)
-                {
-                    yield return new JsonParseResult()
-                    {
-                        ReadSize = readSize,
-                        StartTime = startTime,
-                        Exception = jsonException,
-                        LastBytes = new ReadOnlySequence<byte>(buffer.Slice(Math.Max(buffer.Length - 1000, 0)).ToArray())
-                    };
-                    yield break;
-                }
-
-                if (parsed)
-                {
-                    yield return new JsonParseResult()
-                    {
-                        ReadSize = readSize,
-                        StartTime = startTime,
-                        JsonDocument = jsonDocument,
-                    };
-                }
-                else
-                {
-                    break;
-                }
+                throw new InvalidOperationException("Maximum json buffer size reached.");
             }
 
-            pipeReader.AdvanceTo(buffer.Start, buffer.End);
-            if (!buffer.IsEmpty)
+            Console.Error.WriteLine($"Read buffer size {readResult.Buffer}");
+
+            bool parsed = false;
+            long readSize = 0;
+            JsonDocument jsonDocument = null;
+            JsonException? jsonException = null;
+            try
             {
-                readResult = await pipeReader.ReadAsync(cancellationToken);
+                Utf8JsonReader reader = new Utf8JsonReader(readResult.Buffer, isFinalBlock: false, state: defaultState);
+                parsed = JsonDocument.TryParseValue(ref reader, out jsonDocument);
+                readSize = reader.BytesConsumed;
+            }
+            catch (JsonException ex)
+            {
+                jsonException = ex;
+            }
+
+            if (parsed)
+            {
+                var slicedBuffer = readResult.Buffer.Slice(readSize);
+                pipeReader.AdvanceTo(slicedBuffer.Start);
+                yield return new JsonParseResult()
+                {
+                    ReadSize = readSize,
+                    StartTime = startTime,
+                    JsonDocument = jsonDocument,
+                };
+            }
+            else if (jsonException is not null)
+            {
+                yield return new JsonParseResult()
+                {
+                    ReadSize = readSize,
+                    StartTime = startTime,
+                    Exception = jsonException,
+                    LastBytes = new ReadOnlySequence<byte>(readResult.Buffer.Slice(Math.Max(readResult.Buffer.Length - 1000, 0)).ToArray())
+                };
+                yield break;
             }
             else
             {
-                readResult = await pipeReader.ReadAtLeastAsync((int)(readResult.Buffer.Length + 1), cancellationToken);
+                // Incomplete
+                // Need to set tell that the end of buffer has been examined so that next read would
+                // get it.
+                pipeReader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
             }
-        }
+        } while (!readResult.IsCompleted && !cancellationToken.IsCancellationRequested);
     }
 }
 

@@ -51,9 +51,9 @@ public static class Extensions
                 if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
 
                 using WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                using ISocketsClient socketsClient = await module.CreateClient(webSocket, clientName, context);
+                await using ISocketsClient socketsClient = await module.CreateClient(webSocket, clientName, context);
                 id = socketsClient.Id;
-                await socketsClient.Start(context.RequestAborted);
+                await socketsClient.Loop(context.RequestAborted);
             }
             catch (WebSocketException ex)
             {

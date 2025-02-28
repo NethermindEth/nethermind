@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -19,6 +20,7 @@ namespace Nethermind.Runner.JsonRpc
     {
         private const int OperationCancelledError = 125;
         private readonly ILogger _logger;
+        private readonly ILogManager _logManager;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
@@ -39,6 +41,7 @@ namespace Nethermind.Runner.JsonRpc
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonRpcProcessor = jsonRpcProcessor;
             _logger = logManager.GetClassLogger();
+            _logManager = logManager;
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _jsonSerializer = jsonSerializer;
             _fileSystem = fileSystem;
@@ -72,15 +75,19 @@ namespace Nethermind.Runner.JsonRpc
 
                     Socket socket = await _server.AcceptAsync(cancellationToken);
 
-                    await IpcPipelinesJsonRpcAdapter.Start(
+                    await using PipelinesJsonRpcAdapter jsonRpcAdapter = new PipelinesJsonRpcAdapter(
+                        "ipc",
+                        new NetworkSocketHandler(socket),
+                        RpcEndpoint.IPC,
                         _jsonRpcProcessor,
                         _jsonRpcLocalStats,
                         _jsonSerializer,
                         new PipelinesJsonRpcAdapter.Options(
                             MaxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize
                         ),
-                        socket,
-                        default);
+                        _logManager);
+
+                    await jsonRpcAdapter.Loop(cancellationToken);
                 }
             }
             catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })

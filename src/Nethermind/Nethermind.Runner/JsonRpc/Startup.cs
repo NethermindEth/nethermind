@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipelines;
 using System.Net;
 using System.Security.Authentication;
 using System.Threading;
@@ -182,7 +181,7 @@ public class Startup
                 CountingPipeReader request = new(ctx.Request.BodyReader);
                 try
                 {
-                    CancellationToken cancellationToken  = ctx.RequestAborted;
+                    CancellationToken cancellationToken = ctx.RequestAborted;
                     using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
                     using AutoCancelTokenSource timeoutSource = cancellationToken.CreateChildTokenSource(jsonRpcConfig.Timeout.Milliseconds());
 
@@ -327,59 +326,5 @@ public class Startup
     {
         return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-    }
-
-    private sealed class CountingPipeReader : PipeReader
-    {
-        private readonly PipeReader _wrappedReader;
-        private ReadOnlySequence<byte> _currentSequence;
-
-        public long Length { get; private set; }
-
-        public CountingPipeReader(PipeReader stream)
-        {
-            _wrappedReader = stream;
-        }
-
-        public override void AdvanceTo(SequencePosition consumed)
-        {
-            Length += _currentSequence.GetOffset(consumed);
-            _wrappedReader.AdvanceTo(consumed);
-        }
-
-        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
-        {
-            Length += _currentSequence.GetOffset(consumed);
-            _wrappedReader.AdvanceTo(consumed, examined);
-        }
-
-        public override void CancelPendingRead()
-        {
-            _wrappedReader.CancelPendingRead();
-        }
-
-        public override void Complete(Exception? exception = null)
-        {
-            Length += _currentSequence.Length;
-            _wrappedReader.Complete(exception);
-        }
-
-        public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
-        {
-            ReadResult result = await _wrappedReader.ReadAsync(cancellationToken);
-            _currentSequence = result.Buffer;
-            return result;
-        }
-
-        public override bool TryRead(out ReadResult result)
-        {
-            bool didRead = _wrappedReader.TryRead(out result);
-            if (didRead)
-            {
-                _currentSequence = result.Buffer;
-            }
-
-            return didRead;
-        }
     }
 }

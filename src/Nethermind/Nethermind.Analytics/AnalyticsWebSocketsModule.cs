@@ -7,6 +7,7 @@ using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.PubSub;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
@@ -30,7 +31,7 @@ public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
 
     public ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
     {
-        SocketClient<WebSocketMessageStream> socketsClient = new(clientName, new WebSocketMessageStream(webSocket, _logManager), _jsonSerializer);
+        PipelineSocketClient socketsClient = new(clientName, new WebsocketHandler(webSocket), _jsonSerializer);
         _clients.TryAdd(socketsClient.Id, socketsClient);
 
         return ValueTask.FromResult<ISocketsClient>(socketsClient);

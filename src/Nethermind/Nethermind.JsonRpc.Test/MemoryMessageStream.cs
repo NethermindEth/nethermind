@@ -8,7 +8,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.Test;
 
-public class MemoryMessageStream : MemoryStream, IMessageBorderPreservingStream
+public class MemoryMessageStream : MemoryStream
 {
     private static readonly byte Delimiter = Convert.ToByte('\n');
 

@@ -127,7 +127,7 @@ public class AdminModuleTests
     [TearDown]
     public void TearDown()
     {
-        _jsonRpcDuplexClient?.Dispose();
+        _jsonRpcDuplexClient?.DisposeAsync();
         _receiptCanonicalityMonitor?.Dispose();
         _existingSession1?.Dispose();
         _existingSession2?.Dispose();
