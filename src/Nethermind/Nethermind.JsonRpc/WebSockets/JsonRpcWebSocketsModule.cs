@@ -63,14 +63,14 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
             throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
         }
 
-        PipelinesJsonRpcAdapter socketsClient = new(
+        JsonRpcSocketClient socketsClient = new(
             clientName,
             new WebsocketHandler(webSocket),
             RpcEndpoint.Ws,
             _jsonRpcProcessor,
             _jsonRpcLocalStats,
             _jsonSerializer,
-            new PipelinesJsonRpcAdapter.Options()
+            new JsonRpcSocketClient.Options()
             {
                 MaxBatchResponseBodySize = _maxBatchResponseBodySize
             },

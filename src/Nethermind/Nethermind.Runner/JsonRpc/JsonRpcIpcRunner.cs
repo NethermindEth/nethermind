@@ -75,19 +75,19 @@ namespace Nethermind.Runner.JsonRpc
 
                     Socket socket = await _server.AcceptAsync(cancellationToken);
 
-                    await using PipelinesJsonRpcAdapter jsonRpcAdapter = new PipelinesJsonRpcAdapter(
+                    await using JsonRpcSocketClient jsonRpcSocketClient = new JsonRpcSocketClient(
                         "ipc",
                         new NetworkSocketHandler(socket),
                         RpcEndpoint.IPC,
                         _jsonRpcProcessor,
                         _jsonRpcLocalStats,
                         _jsonSerializer,
-                        new PipelinesJsonRpcAdapter.Options(
+                        new JsonRpcSocketClient.Options(
                             MaxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize
                         ),
                         _logManager);
 
-                    await jsonRpcAdapter.Loop(cancellationToken);
+                    await jsonRpcSocketClient.Loop(cancellationToken);
                 }
             }
             catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })

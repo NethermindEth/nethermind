@@ -171,14 +171,14 @@ public class WebSocketExtensionsTests
         Metrics.JsonRpcBytesReceivedWebSockets = 0;
         Metrics.JsonRpcBytesSentWebSockets = 0;
 
-        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
+        await using var webSocketsClient = new JsonRpcSocketClient(
             "TestClient",
             new WebsocketHandler(mock),
             RpcEndpoint.Ws,
             processor,
             localStats,
             new EthereumJsonSerializer(),
-            new PipelinesJsonRpcAdapter.Options()
+            new JsonRpcSocketClient.Options()
             {
                 MaxJsonPayloadSize = 30.MB()
             },
@@ -209,14 +209,14 @@ public class WebSocketExtensionsTests
         {
             return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
         });
-        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
+        await using var webSocketsClient = new JsonRpcSocketClient(
             "TestClient",
             new WebsocketHandler(mock),
             RpcEndpoint.Ws,
             processor,
             Substitute.For<IJsonRpcLocalStats>(),
             new EthereumJsonSerializer(),
-            new PipelinesJsonRpcAdapter.Options()
+            new JsonRpcSocketClient.Options()
             {
                 MaxJsonPayloadSize = 30.MB()
             },
@@ -245,14 +245,14 @@ public class WebSocketExtensionsTests
         {
             return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
         });
-        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
+        await using var webSocketsClient = new JsonRpcSocketClient(
             "TestClient",
             new WebsocketHandler(mock),
             RpcEndpoint.Ws,
             processor,
             Substitute.For<IJsonRpcLocalStats>(),
             new EthereumJsonSerializer(),
-            new PipelinesJsonRpcAdapter.Options()
+            new JsonRpcSocketClient.Options()
             {
                 MaxJsonPayloadSize = 30.MB()
             },
@@ -282,14 +282,14 @@ public class WebSocketExtensionsTests
         {
             return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
         });
-        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
+        await using var webSocketsClient = new JsonRpcSocketClient(
             "TestClient",
             new WebsocketHandler(mock),
             RpcEndpoint.Ws,
             processor,
             Substitute.For<IJsonRpcLocalStats>(),
             new EthereumJsonSerializer(),
-            new PipelinesJsonRpcAdapter.Options()
+            new JsonRpcSocketClient.Options()
             {
                 MaxJsonPayloadSize = 1.MB()
             },
@@ -311,14 +311,14 @@ public class WebSocketExtensionsTests
         {
             return JsonRpcResult.Single(new JsonRpcResult.Entry(new JsonRpcSuccessResponse() { Result = "ok" }, new RpcReport()));
         });
-        await using var webSocketsClient = new PipelinesJsonRpcAdapter(
+        await using var webSocketsClient = new JsonRpcSocketClient(
             "TestClient",
             new WebsocketHandler(mock),
             RpcEndpoint.Ws,
             processor,
             Substitute.For<IJsonRpcLocalStats>(),
             new EthereumJsonSerializer(),
-            new PipelinesJsonRpcAdapter.Options()
+            new JsonRpcSocketClient.Options()
             {
                 MaxJsonPayloadSize = 1.MB()
             },
