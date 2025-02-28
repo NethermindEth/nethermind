@@ -65,7 +65,6 @@ namespace Nethermind.Evm.Benchmark
         private byte[] bytecode;
         private VMConfig vmConfig;
         private int? mode;
-        private IlAnalyzer _ilAnalyzer;
         private CodeInfo driverCodeInfo;
         public LocalSetup(string name, byte[] _bytecode, int? ilvmMode)
         {
@@ -110,8 +109,6 @@ namespace Nethermind.Evm.Benchmark
 
             _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsCompiling>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
-            _ilAnalyzer = new IlAnalyzer(_stateProvider, MainnetSpecProvider.Instance, _blockhashProvider, codeInfoRepository);
-
             var address = InsertCode(bytecode);
 
             var driver =
@@ -124,12 +121,12 @@ namespace Nethermind.Evm.Benchmark
                 .Done;
 
             var driverCodeinfo = new CodeInfo(driver, Address.FromNumber(23));
-            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance);
+            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
 
             if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled || vmConfig.IsFullAotEnabled)
             {
-                _ilAnalyzer.Analyse(driverCodeinfo, mode.Value, vmConfig, NullLogger.Instance);
-                _ilAnalyzer.Analyse(targetCodeInfo, mode.Value, vmConfig, NullLogger.Instance);
+                IlAnalyzer.Analyse(driverCodeinfo, mode.Value, vmConfig, NullLogger.Instance);
+                IlAnalyzer.Analyse(targetCodeInfo, mode.Value, vmConfig, NullLogger.Instance);
             }
 
             driverCodeInfo = driverCodeinfo;

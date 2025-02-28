@@ -269,13 +269,23 @@ public class SynchronizerTests
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
         private readonly Dictionary<string, ISyncPeer> _peers = new();
-        private IBlockTree BlockTree => Container.Resolve<IBlockTree>();
+        private IBlockTree BlockTree => FromContainer.BlockTree;
 
-        private ISyncServer SyncServer => Container.Resolve<ISyncServer>();
+        private ISyncServer SyncServer => FromContainer.SyncServer;
 
-        private ISynchronizer Synchronizer => Container.Resolve<ISynchronizer>();
-        private ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
+        private ISynchronizer Synchronizer => FromContainer.Synchronizer;
+        private ISyncPeerPool SyncPeerPool => FromContainer.SyncPeerPool;
+
         private IContainer Container { get; }
+
+        // Its faster to resolve them all at once.
+        private ContainerDependencies FromContainer { get; }
+        private record ContainerDependencies(
+            IBlockTree BlockTree,
+            SyncServer SyncServer,
+            ISynchronizer Synchronizer,
+            ISyncPeerPool SyncPeerPool
+        );
 
         readonly ILogManager _logManager = LimboLogs.Instance;
 
@@ -297,10 +307,6 @@ public class SynchronizerTests
 
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
-            syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
-            syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
-            syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
-
             MergeConfig mergeConfig = new();
             if (WithTTD(synchronizerType))
             {
@@ -315,6 +321,7 @@ public class SynchronizerTests
                 .AddSingleton(Substitute.For<IProcessExitSource>())
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
             if (IsMerge(synchronizerType))
@@ -323,7 +330,8 @@ public class SynchronizerTests
             }
 
             Container = builder.Build();
-            Container.Resolve<ISyncServer>(); // Need to be created once to register events.
+            FromContainer = Container.Resolve<ContainerDependencies>();
+            _ = FromContainer.SyncServer; // Need to be created once to register events.
             SyncPeerPool.Start();
             Synchronizer.Start();
             AllInstances.Enqueue(this);

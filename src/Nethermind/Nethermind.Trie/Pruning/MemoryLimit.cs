@@ -7,23 +7,11 @@ using Nethermind.Core;
 namespace Nethermind.Trie.Pruning
 {
     [DebuggerDisplay("{_memoryLimit/(1024*1024)} MB")]
-    public class MemoryLimit : IPruningStrategy
+    public class MemoryLimit(long memoryLimit) : IPruningStrategy
     {
-        private readonly long _memoryLimit;
-
-        public MemoryLimit(long memoryLimit)
-        {
-            _memoryLimit = memoryLimit;
-        }
-
         public bool PruningEnabled => true;
         public int MaxDepth => (int)Reorganization.MaxDepth;
-
-        public bool ShouldPrune(in long currentMemory)
-        {
-            return PruningEnabled && currentMemory >= _memoryLimit;
-        }
-
+        public bool ShouldPrune(in long currentMemory) => PruningEnabled && currentMemory >= memoryLimit;
         public int TrackedPastKeyCount => 0;
     }
 }
