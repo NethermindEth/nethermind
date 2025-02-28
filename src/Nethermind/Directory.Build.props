@@ -21,8 +21,7 @@
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
-  <PropertyGroup Label="Tests">
-    <EnableNUnitRunner>true</EnableNUnitRunner>
+  <PropertyGroup Label="DotnetTest">
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
   </PropertyGroup>
