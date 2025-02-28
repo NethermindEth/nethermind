@@ -55,6 +55,15 @@ public class TraceModuleFactory(
                 _logManager,
                 transactionsExecutor);
 
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutorForTrace(ITransactionProcessor transactionProcessor, IWorldState worldState)
+    {
+        return new RpcBlockTransactionsExecutor(transactionProcessor, worldState);
+    }
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState worldState)
+    {
+        return new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
+    }
+
     public override ITraceRpcModule Create()
     {
         OverridableWorldStateManager worldStateManager = new(dbProvider, _trieStore, logManager);
@@ -65,8 +74,8 @@ public class TraceModuleFactory(
             new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),
                 _poSSwitcher);
 
-        RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
-        BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
+        IBlockProcessor.IBlockTransactionsExecutor rpcBlockTransactionsExecutor = CreateBlockTransactionsExecutorForTrace(scope.TransactionProcessor, scope.WorldState);
+        IBlockProcessor.IBlockTransactionsExecutor executeBlockTransactionsExecutor = CreateBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
 
         ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(worldStateManager, rpcBlockTransactionsExecutor, scope, rewardCalculator);
         ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(worldStateManager, executeBlockTransactionsExecutor, scope, rewardCalculator);
