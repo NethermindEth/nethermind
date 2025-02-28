@@ -35,112 +35,58 @@
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\add_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\add_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\add_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\add_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-add_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-add_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-add_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-add_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-map_fp2_to_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-map_fp_to_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-map_fp_to_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-map_fp2_to_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-mul_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-mul_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-mul_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-mul_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-multiexp_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-multiexp_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-multiexp_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-multiexp_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\fail-pairing_check_bls.json">
+    <None Update="PrecompileVectors\Bls\fail-pairing_check_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\map_fp2_to_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\map_fp_to_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\map_fp_to_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\map_fp2_to_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\mul_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\mul_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\mul_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\mul_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\multiexp_G1_bls.json">
+    <None Update="PrecompileVectors\Bls\multiexp_G1_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\multiexp_G2_bls.json">
+    <None Update="PrecompileVectors\Bls\multiexp_G2_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Precompiles\BlsPairingCheckPrecompile\pairing_check_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\add_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\add_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-add_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-add_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-map_fp2_to_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-map_fp_to_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-mul_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-mul_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-multiexp_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-multiexp_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\fail-pairing_check_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\map_fp2_to_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\map_fp_to_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\mul_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\mul_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\multiexp_G1_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\multiexp_G2_bls.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Precompiles\Bls\pairing_check_bls.json">
+    <None Update="PrecompileVectors\Bls\pairing_check_bls.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
