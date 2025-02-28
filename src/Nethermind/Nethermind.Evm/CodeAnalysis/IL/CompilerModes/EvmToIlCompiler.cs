@@ -124,7 +124,6 @@ internal static class Precompiler
                     method.LoadConstant(op.ProgramCounter);
                     method.StoreLocal(locals.programCounter);
                 }
-                method.PrintString($"PC : {op.ProgramCounter}; OP: {op}\n");
 
                 if (!config.BakeInTracingInAotModes)
                 {

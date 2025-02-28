@@ -60,55 +60,17 @@ public struct Word
 
     public bool IsZero => (_ulong0 | _ulong1 | _ulong2 | _ulong3) == 0;
     public bool IsOneLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && _ulong0 == 1;
-    public bool IsOneBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && _ulong3 == (1ul << 63);
-    public bool IsMinusOne => _ulong1 == ulong.MaxValue || _ulong2 == ulong.MaxValue || _ulong3 == ulong.MaxValue && _ulong0 == ulong.MaxValue;
-    public bool IsP255LittleEndian => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong3 == (1ul << 63));
-    public bool IsP255BigEndian => (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong0 == 1);
+    public bool IsOneBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && _ulong3 == 128;
+    public bool IsMinusOne => _ulong1 == ulong.MaxValue && _ulong2 == ulong.MaxValue && _ulong3 == ulong.MaxValue && _ulong0 == ulong.MaxValue;
+    public bool IsP255BigEndian => (_ulong3 | _ulong1 | _ulong2) == 0 && (_ulong0 == 1);
+    public bool IsP255LittleEndian=> (_ulong0 | _ulong1 | _ulong2) == 0 && (_ulong3 == 128);
     public bool IsOneOrZeroLittleEndian => (_ulong1 | _ulong2 | _ulong3) == 0 && (_ulong0 == 1 || _ulong0 == 0);
-    public bool IsOneOrZeroBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && ((_ulong3 == 1ul << 63) || _ulong0 == 0);
+    public bool IsOneOrZeroBigEndian => (_ulong1 | _ulong2 | _ulong0) == 0 && ((_ulong3 == 1ul << 63) || _ulong3 == 0);
     public void ToZero()
     {
         _ulong0 = 0; _ulong1 = 0;
         _ulong2 = 0; _ulong3 = 0;
     }
-    public void Negate()
-    {
-        _ulong0 = ~_ulong0;
-        _ulong1 = ~_ulong1;
-        _ulong2 = ~_ulong2;
-        _ulong3 = ~_ulong3;
-
-        if (BitConverter.IsLittleEndian)
-        {
-            _ulong0 = BinaryPrimitives.ReverseEndianness(_ulong0);
-            _ulong1 = BinaryPrimitives.ReverseEndianness(_ulong1);
-            _ulong2 = BinaryPrimitives.ReverseEndianness(_ulong2);
-            _ulong3 = BinaryPrimitives.ReverseEndianness(_ulong3);
-
-        }
-        ulong carry = 0;
-        if (AddWithCarry(_ulong0, 1, ref carry, out _ulong0))
-            if (AddWithCarry(_ulong1, carry, ref carry, out _ulong1))
-                if (AddWithCarry(_ulong2, carry, ref carry, out _ulong2))
-                    AddWithCarry(_ulong3, carry, ref carry, out _ulong3);
-
-        if (BitConverter.IsLittleEndian)
-        {
-            _ulong0 = BinaryPrimitives.ReverseEndianness(_ulong0);
-            _ulong1 = BinaryPrimitives.ReverseEndianness(_ulong1);
-            _ulong2 = BinaryPrimitives.ReverseEndianness(_ulong2);
-            _ulong3 = BinaryPrimitives.ReverseEndianness(_ulong3);
-        }
-    }
-
-    public static bool AddWithCarry(ulong x, ulong y, ref ulong carry, out ulong sum)
-    {
-        sum = x + y + carry;
-        // both msb bits are 1 or one of them is 1 and we had carry from lower bits
-        carry = ((x & y) | ((x | y) & (~sum))) >> 63;
-        return carry != 0;
-    }
-
     public unsafe ZeroPaddedSpan ZeroPaddedSpan
     {
         set
@@ -367,7 +329,6 @@ public struct Word
 
     public static readonly MethodInfo SetToZero = typeof(Word).GetMethod(nameof(ToZero))!;
 
-    public static readonly MethodInfo ToNegative = typeof(Word).GetMethod(nameof(Negate))!;
     public static readonly MethodInfo AreEqual = typeof(Word).GetMethod(nameof(CheckIfEqual))!;
 
     public static readonly MethodInfo GetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.GetMethod;

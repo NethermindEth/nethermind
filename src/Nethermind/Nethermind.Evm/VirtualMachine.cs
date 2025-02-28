@@ -38,7 +38,7 @@ using System.Diagnostics;
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
-    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    public static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
     public static readonly UInt256 BigInt32 = 32;
@@ -833,10 +833,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
-
-            OpcodeInfo opcodeInfo = new OpcodeInfo(programCounter, instruction, 0);
-            Debug.WriteLine($"PC: {programCounter}; OP: {opcodeInfo}");
-
 
             if (isCancelable && _txTracer.IsCancelled)
             {
