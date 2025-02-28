@@ -63,23 +63,23 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
             throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
         }
 
-        JsonRpcSocketClient socketsClient = new(
+        JsonRpcSocketsClient socketsesClient = new(
             clientName,
             new WebsocketHandler(webSocket),
             RpcEndpoint.Ws,
             _jsonRpcProcessor,
             _jsonRpcLocalStats,
             _jsonSerializer,
-            new JsonRpcSocketClient.Options()
+            new JsonRpcSocketsClient.Options()
             {
                 MaxBatchResponseBodySize = _maxBatchResponseBodySize
             },
             _logManager,
             jsonRpcUrl);
 
-        _clients.TryAdd(socketsClient.Id, socketsClient);
+        _clients.TryAdd(socketsesClient.Id, socketsesClient);
 
-        return socketsClient;
+        return socketsesClient;
     }
 
     public void RemoveClient(string id)

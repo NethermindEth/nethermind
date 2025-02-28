@@ -45,14 +45,14 @@ public class JsonRpcSocketsClientTests
                 using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 await socket.ConnectAsync(ipEndPoint);
 
-                await using JsonRpcSocketClient client = new JsonRpcSocketClient(
+                await using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
                     "",
                     new NetworkSocketHandler(socket),
                     RpcEndpoint.IPC,
                     null!,
                     new NullJsonRpcLocalStats(),
                     new EthereumJsonSerializer(),
-                    new JsonRpcSocketClient.Options(),
+                    new JsonRpcSocketsClient.Options(),
                     LimboLogs.Instance);
 
                 using AutoCancelTokenSource cts = new();
@@ -97,14 +97,14 @@ public class JsonRpcSocketsClientTests
                 Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 await socket.ConnectAsync(ipEndPoint, cts.Token);
 
-                await using JsonRpcSocketClient client = new JsonRpcSocketClient(
+                await using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
                     "",
                     new NetworkSocketHandler(socket),
                     RpcEndpoint.IPC,
                     null!,
                     new NullJsonRpcLocalStats(),
                     new EthereumJsonSerializer(),
-                    new JsonRpcSocketClient.Options(),
+                    new JsonRpcSocketsClient.Options(),
                     LimboLogs.Instance);
 
                 Task _ = client.Loop(cts.Token);
@@ -175,14 +175,14 @@ public class JsonRpcSocketsClientTests
                 using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-                await using JsonRpcSocketClient client = new(
+                await using JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     socketHandler: new WebsocketHandler(socket),
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer(),
-                    options: new JsonRpcSocketClient.Options(),
+                    options: new JsonRpcSocketsClient.Options(),
                     LimboLogs.Instance
                 );
                 using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000), default);
@@ -220,14 +220,14 @@ public class JsonRpcSocketsClientTests
                 using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-                await using JsonRpcSocketClient client = new(
+                await using JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     socketHandler: new WebsocketHandler(socket),
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer(),
-                    options: new JsonRpcSocketClient.Options(),
+                    options: new JsonRpcSocketsClient.Options(),
                     LimboLogs.Instance
                 );
                 using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
@@ -260,14 +260,14 @@ public class JsonRpcSocketsClientTests
                 using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-                await using JsonRpcSocketClient client = new(
+                await using JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     socketHandler: new WebsocketHandler(socket),
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer(),
-                    new JsonRpcSocketClient.Options()
+                    new JsonRpcSocketsClient.Options()
                     {
                         MaxBatchResponseBodySize = maxByteCount
                     },
@@ -294,14 +294,14 @@ public class JsonRpcSocketsClientTests
         {
             await using MemoryMessageStream stream = new();
             EthereumJsonSerializer ethereumJsonSerializer = new();
-            await using JsonRpcSocketClient client = new(
+            await using JsonRpcSocketsClient client = new(
                 clientName: "TestClient",
                 socketHandler: new StreamSocketHandler(stream),
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                 jsonSerializer: ethereumJsonSerializer,
-                options: new JsonRpcSocketClient.Options(),
+                options: new JsonRpcSocketsClient.Options(),
                 logManager: LimboLogs.Instance
             );
             using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));

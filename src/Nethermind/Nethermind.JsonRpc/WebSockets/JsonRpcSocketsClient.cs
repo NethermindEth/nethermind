@@ -16,7 +16,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class JsonRpcSocketClient : SocketClient, IJsonRpcDuplexClient
+public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
 {
     private readonly ISocketHandler _socketHandler;
     private readonly IJsonRpcProcessor _jsonRpcProcessor;
@@ -46,7 +46,7 @@ public class JsonRpcSocketClient : SocketClient, IJsonRpcDuplexClient
         long MaxJsonPayloadSize = long.MaxValue
     );
 
-    public JsonRpcSocketClient(
+    public JsonRpcSocketsClient(
         string clientName,
         ISocketHandler socketHandler,
         RpcEndpoint endpointType,
@@ -63,7 +63,7 @@ public class JsonRpcSocketClient : SocketClient, IJsonRpcDuplexClient
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
-        _logger = logManager.GetClassLogger<JsonRpcSocketClient>();
+        _logger = logManager.GetClassLogger<JsonRpcSocketsClient>();
 
         _maxBatchResponseBodySize = options.MaxBatchResponseBodySize;
         _processConcurrency = options.ProcessConcurrency;
