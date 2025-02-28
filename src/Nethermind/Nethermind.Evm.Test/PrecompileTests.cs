@@ -14,13 +14,14 @@ namespace Nethermind.Evm.Test;
 public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompileTests
 {
     public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError);
+    private const string TestFilesDirectory = "PrecompileVectors";
 
     private static IEnumerable<TestCaseData> TestSource()
     {
         EthereumJsonSerializer serializer = new EthereumJsonSerializer();
         foreach (string file in T.TestFiles())
         {
-            string path = Path.Combine("Precompiles", file);
+            string path = Path.Combine(TestFilesDirectory, file);
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
