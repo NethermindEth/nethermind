@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
@@ -50,9 +51,10 @@ public class OptimismCL : IDisposable
         _ethApi = new EthereumEthApi(config, jsonSerializer, logManager);
         _beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa,
             _logger, _cancellationTokenSource.Token);
-        _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _cancellationTokenSource.Token, logManager);
+        IDecodingPipeline decodingPipeline = new DecodingPipeline(_logger);
+        _l1Bridge = new EthereumL1Bridge(_ethApi, _beaconApi, config, _chainSpecEngineParameters, decodingPipeline, _cancellationTokenSource.Token, logManager);
         _l2BlockTree = new L2BlockTree();
-        _driver = new Driver(_l1Bridge, _l2EthRpc, engineRpcModule, _l2BlockTree, config, engineParameters, _logger);
+        _driver = new Driver(_l1Bridge, decodingPipeline, _l2EthRpc, engineRpcModule, _l2BlockTree, config, engineParameters, _logger);
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters);
     }
 

@@ -32,7 +32,7 @@ public class Driver : IDisposable
 
     private readonly Task _mainTask;
 
-    public Driver(IL1Bridge l1Bridge, IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
+    public Driver(IL1Bridge l1Bridge, IDecodingPipeline decodingPipeline, IOptimismEthRpcModule l2EthRpc, IOptimismEngineRpcModule engineRpc, IL2BlockTree l2BlockTree, ICLConfig config, CLChainSpecEngineParameters engineParameters, ILogger logger)
     {
         _config = config;
         _l1Bridge = l1Bridge;
@@ -45,7 +45,7 @@ public class Driver : IDisposable
         _l2EthRpc = l2EthRpc;
         _derivedBlocksVerifier = new DerivedBlocksVerifier(logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, _l2BlockTree, _l1Bridge, _logger);
-        _decodingPipeline = new DecodingPipeline(logger);
+        _decodingPipeline = decodingPipeline;
         _executionEngineManager = new ExecutionEngineManager(engineRpc, l2EthRpc, logger);
 
         _executionEngineManager.Initialize();
@@ -61,7 +61,6 @@ public class Driver : IDisposable
                 }
                 else if (_decodingPipeline.DecodedBatchesReader.TryPeek(out var decodedBatch))
                 {
-                    // TODO: decodingPipeline can read data directly
                     ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
                     // TODO: make it properly
                     L2Block? l2Parent = _l2BlockTree.GetBlockByNumber(parentNumber);
@@ -78,10 +77,6 @@ public class Driver : IDisposable
                             await _decodingPipeline.DecodedBatchesReader.ReadAsync();
                         }
                     }
-                }
-                if (_l1Bridge.NewHeadReader.TryRead(out L1Block newHead))
-                {
-                    await OnNewL1Head(newHead);
                 }
             }
         });
@@ -151,64 +146,6 @@ public class Driver : IDisposable
         result.SetTransactions(txs);
 
         return result;
-    }
-
-    private ulong CalculateSlotNumber(ulong timestamp)
-    {
-        // TODO: review
-        const ulong beaconGenesisTimestamp = 1606824023;
-        const ulong l1SlotTime = 12;
-        return (timestamp - beaconGenesisTimestamp) / l1SlotTime;
-    }
-
-    private async Task OnNewL1Head(L1Block block)
-    {
-        _logger.Error($"New L1 Block. Number {block.Number}");
-        int startingBlobIndex = 0;
-        // Filter batch submitter transaction
-        foreach (L1Transaction transaction in block.Transactions!)
-        {
-            if (transaction.Type == TxType.Blob)
-            {
-                if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                    _engineParameters.BatcherAddress == transaction.From)
-                {
-                    ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
-                    await ProcessBlobBatcherTransaction(transaction,
-                        startingBlobIndex, slotNumber);
-                }
-                startingBlobIndex += transaction.BlobVersionedHashes!.Length;
-            }
-            else
-            {
-                if (_engineParameters.BatcherInboxAddress == transaction.To &&
-                    _engineParameters.BatcherAddress == transaction.From)
-                {
-                    ProcessCalldataBatcherTransaction(transaction);
-                }
-            }
-        }
-    }
-
-    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
-    {
-        BlobSidecar[] blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber, startingBlobIndex,
-            startingBlobIndex + transaction.BlobVersionedHashes!.Length);
-
-        for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
-        {
-            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob);
-        }
-    }
-
-    private void ProcessCalldataBatcherTransaction(L1Transaction transaction)
-    {
-        if (_logger.IsError)
-        {
-            _logger.Error($"GOT REGULAR TRANSACTION");
-        }
-
-        throw new NotImplementedException();
     }
 
     public void Dispose()

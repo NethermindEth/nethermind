@@ -12,7 +12,6 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 
 public interface IL1Bridge
 {
-    ChannelReader<L1Block> NewHeadReader { get; }
     Task<BlobSidecar[]> GetBlobSidecars(ulong slotNumber, int indexFrom, int indexTo);
     Task<L1Block> GetBlock(ulong blockNumber);
     Task<L1Block> GetBlockByHash(Hash256 blockHash);

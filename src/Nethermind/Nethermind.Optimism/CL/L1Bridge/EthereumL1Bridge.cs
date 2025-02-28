@@ -6,18 +6,22 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Optimism.CL.Decoding;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumL1Bridge : IL1Bridge
 {
     private readonly ICLConfig _config;
+    private readonly CLChainSpecEngineParameters _engineParameters;
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
     private readonly Task _headUpdateTask;
+    private readonly IDecodingPipeline _decodingPipeline;
     private readonly ILogger _logger;
     private readonly CancellationToken _cancellationToken;
 
@@ -26,10 +30,12 @@ public class EthereumL1Bridge : IL1Bridge
     private ulong _currentFinalizedNumber;
     private Hash256? _currentFinalizedHash = null;
 
-    public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config,
-        CancellationToken cancellationToken, ILogManager logManager)
+    public EthereumL1Bridge(IEthApi ethL1Rpc, IBeaconApi beaconApi, ICLConfig config, CLChainSpecEngineParameters engineParameters,
+        IDecodingPipeline decodingPipeline, CancellationToken cancellationToken, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
+        _engineParameters = engineParameters;
+        _decodingPipeline = decodingPipeline;
         _config = config;
         _ethL1Api = ethL1Rpc;
         _beaconApi = beaconApi;
@@ -39,12 +45,6 @@ public class EthereumL1Bridge : IL1Bridge
             HeadUpdateLoop();
         });
     }
-
-
-    // TODO: remove receipts
-    private readonly Channel<L1Block> _newHeadChannel = Channel.CreateBounded<L1Block>(20);
-    public ChannelReader<L1Block> NewHeadReader => _newHeadChannel.Reader;
-
 
     private async void HeadUpdateLoop()
     {
@@ -88,7 +88,7 @@ public class EthereumL1Bridge : IL1Bridge
             // TODO we can have reorg here
             _currentHeadNumber = newHeadNumber;
             _currentHeadHash = newHead.Hash;
-            await WriteBlock(newHead);
+            await ProcessBlock(newHead);
             await TryUpdateFinalized();
 
             // TODO: fix number
@@ -96,10 +96,64 @@ public class EthereumL1Bridge : IL1Bridge
         }
     }
 
-    private async Task WriteBlock(L1Block block)
+    private async Task ProcessBlock(L1Block block)
     {
         ArgumentNullException.ThrowIfNull(_currentFinalizedHash);
-        await _newHeadChannel.Writer.WriteAsync(block, _cancellationToken);
+
+        _logger.Error($"New L1 Block. Number {block.Number}");
+        int startingBlobIndex = 0;
+        // Filter batch submitter transaction
+        foreach (L1Transaction transaction in block.Transactions!)
+        {
+            if (transaction.Type == TxType.Blob)
+            {
+                if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                    _engineParameters.BatcherAddress == transaction.From)
+                {
+                    ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
+                    await ProcessBlobBatcherTransaction(transaction,
+                        startingBlobIndex, slotNumber);
+                }
+                startingBlobIndex += transaction.BlobVersionedHashes!.Length;
+            }
+            else
+            {
+                if (_engineParameters.BatcherInboxAddress == transaction.To &&
+                    _engineParameters.BatcherAddress == transaction.From)
+                {
+                    ProcessCalldataBatcherTransaction(transaction);
+                }
+            }
+        }
+    }
+
+    private ulong CalculateSlotNumber(ulong timestamp)
+    {
+        // TODO: review
+        const ulong beaconGenesisTimestamp = 1606824023;
+        const ulong l1SlotTime = 12;
+        return (timestamp - beaconGenesisTimestamp) / l1SlotTime;
+    }
+
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber)
+    {
+        BlobSidecar[] blobSidecars = await GetBlobSidecars(slotNumber, startingBlobIndex,
+            startingBlobIndex + transaction.BlobVersionedHashes!.Length);
+
+        for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
+        {
+            await _decodingPipeline.DaDataWriter.WriteAsync(blobSidecars[i].Blob);
+        }
+    }
+
+    private void ProcessCalldataBatcherTransaction(L1Transaction transaction)
+    {
+        if (_logger.IsError)
+        {
+            _logger.Error($"GOT REGULAR TRANSACTION");
+        }
+
+        throw new NotImplementedException();
     }
 
     private async Task TryUpdateFinalized()
@@ -144,7 +198,7 @@ public class EthereumL1Bridge : IL1Bridge
 
         for (int i = 0; i < chainSegment.Length; i++)
         {
-            await WriteBlock(chainSegment[i]);
+            await ProcessBlock(chainSegment[i]);
         }
     }
 
@@ -153,7 +207,7 @@ public class EthereumL1Bridge : IL1Bridge
     {
         for (ulong i = from + 1; i < to; i++)
         {
-            await WriteBlock(await GetBlock(i));
+            await ProcessBlock(await GetBlock(i));
         }
     }
 

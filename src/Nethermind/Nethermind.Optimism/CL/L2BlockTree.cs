@@ -8,49 +8,67 @@ namespace Nethermind.Optimism.CL;
 
 public class L2BlockTree : IL2BlockTree
 {
-    // TODO: pruning
-    private readonly List<L2Block> _blocks = new();
+    private const int L2BlockTreeCapacity = 1024;
 
-    public ulong HeadBlockNumber => _blocks[_blocks.Count - 1].Number;
+    private int _start = 0;
+    private int _count = 0;
+    private readonly L2Block[] _blocks = new L2Block[L2BlockTreeCapacity];
+
+    public ulong? HeadBlockNumber => GetHighestBlock()?.Number;
 
     public L2Block? GetBlockByNumber(ulong number)
     {
-        if (_blocks.Count == 0 || number < _blocks[0].Number)
+        if (_count == 0 || number < _blocks[_start].Number)
         {
             return null;
         }
-        ulong index = number - _blocks[0].Number;
-        if ((int)index >= _blocks.Count)
+        ulong index = number - _blocks[_start].Number;
+        if ((int)index >= _count)
         {
             return null;
         }
-        return _blocks[(int)index];
+        return _blocks[((int)index + _start) % L2BlockTreeCapacity];
     }
 
     public bool TryAddBlock(L2Block block)
     {
-        if (_blocks.Count == 0)
+        if (_count == 0)
         {
-            _blocks.Add(block);
+            _blocks[0] = block;
+            _count = 1;
             return true;
         }
 
-        L2Block parent = _blocks[_blocks.Count - 1];
+        L2Block parent = GetHighestBlock()!;
         if (parent.Number + 1 != block.Number || parent.Hash != block.ParentHash)
         {
             return false;
         }
 
-        _blocks.Add(block);
+        if (_count == L2BlockTreeCapacity)
+        {
+            _blocks[_start] = block;
+            _start = (_start + 1) % L2BlockTreeCapacity;
+        }
+        else
+        {
+            _blocks[_count] = block;
+            _count++;
+        }
         return true;
     }
 
     public L2Block? GetHighestBlock()
     {
-        if (_blocks.Count == 0)
+        if (_count == 0)
         {
             return null;
         }
-        return _blocks[_blocks.Count - 1];
+
+        if (_count == L2BlockTreeCapacity)
+        {
+            return _blocks[(_start + L2BlockTreeCapacity - 1) % L2BlockTreeCapacity];
+        }
+        return _blocks[_count - 1];
     }
 }
