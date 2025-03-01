@@ -33,7 +33,7 @@ namespace Nethermind.Test.Runner
         private readonly bool _enableWarmup;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null)
+        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _whenTrace = whenTrace;
