@@ -45,6 +45,9 @@ internal class Program
 
         public static CliOption<bool> GnosisTest { get; } =
             new("--gnosisTest", "-g") { Description = "Set test as gnosisTest. if not, it will be by default assumed a mainnet test." };
+
+        public static CliOption<bool> EnableWarmup { get; } =
+        new("--warmup","-wu") {Description = "Enable warmup for benchmarking purposes."};
     }
 
     public static async Task<int> Main(params string[] args)
@@ -61,6 +64,7 @@ internal class Program
             Options.Wait,
             Options.Stdin,
             Options.GnosisTest,
+            Options.EnableWarmup,
         ];
         rootCommand.SetAction(Run);
 
@@ -95,7 +99,9 @@ internal class Program
                     !parseResult.GetValue(Options.ExcludeMemory),
                     !parseResult.GetValue(Options.ExcludeStack),
                     chainId,
-                    parseResult.GetValue(Options.Filter)));
+                    parseResult.GetValue(Options.Filter),
+                    parseResult.GetValue(Options.EnableWarmup)));
+
 
             if (!parseResult.GetValue(Options.Stdin))
                 break;

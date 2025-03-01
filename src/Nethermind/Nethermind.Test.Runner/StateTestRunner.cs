@@ -30,6 +30,7 @@ namespace Nethermind.Test.Runner
         private readonly bool _traceStack;
         private readonly string? _filter;
         private readonly ulong _chainId;
+        private readonly bool _enableWarmup;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
         public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null)
@@ -40,6 +41,7 @@ namespace Nethermind.Test.Runner
             _traceStack = traceStack;
             _filter = filter;
             _chainId = chainId;
+            _enableWarmup = enableWarmup;
             Setup(null);
         }
 
@@ -72,7 +74,8 @@ namespace Nethermind.Test.Runner
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)
                 {
-                    // Warm up
+                    if(_enableWarmup){ // Warm up only when benchmarking
+
                     Parallel.For(0, 30, (i, s) =>
                     {
                         _ = RunTest(test, NullTxTracer.Instance);
@@ -81,6 +84,7 @@ namespace Nethermind.Test.Runner
                     // Give time to Jit optimized version
                     Thread.Sleep(20);
                     GC.Collect(GC.MaxGeneration);
+                    }
                     result = RunTest(test, NullTxTracer.Instance);
                 }
 
